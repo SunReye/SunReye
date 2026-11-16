@@ -401,6 +401,58 @@ async fn saving_refuses_a_module_that_overlaps_a_roof_chimney() {
     );
 }
 
+#[tokio::test]
+async fn a_roof_window_is_saved_with_its_scene_and_no_module_or_chimney_may_lie_on_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let module = core.module_type(&set_cookie).await;
+    let strings = [string(None, "south", &module, 1, 0.0)];
+    // The first module spans 0.3 m to 1.434 m across and 0.3 m to 2.022 m up the slope.
+    let glazed = |across: f64, chimney: Option<f64>| {
+        let mut scene = house(&module, &[cell(0, 0, Some(0), false)]);
+        scene["roofWindows"] = json!([{
+            "block": 0, "face": 1, "across": across, "up": 2.0, "width": 0.78, "length": 1.18,
+        }]);
+        if let Some(at) = chimney {
+            scene["chimneys"] = json!([{
+                "block": 0, "face": 1, "across": at, "up": 2.0, "width": 0.6, "depth": 0.6,
+                "height": 1.2,
+            }]);
+        }
+        scene
+    };
+    let refused = async |scene: Value| {
+        let (status, body) = core.put_scene(&set_cookie, &strings, &scene).await;
+        (status, body["code"].as_str().unwrap_or_default().to_owned())
+    };
+    let unprocessable = |code: &str| (StatusCode::UNPROCESSABLE_ENTITY, code.to_owned());
+
+    let (status, saved) = core
+        .put_scene(&set_cookie, &strings, &glazed(5.0, None))
+        .await;
+
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    assert_eq!(saved["scene"], glazed(5.0, None));
+    let (_, read) = core.call(&set_cookie, get("/api/v1/layout")).await;
+    assert_eq!(
+        read["scene"]["roofWindows"],
+        glazed(5.0, None)["roofWindows"]
+    );
+    // On the module; under a chimney; and past the verge.
+    assert_eq!(
+        refused(glazed(1.0, None)).await,
+        unprocessable("layout.covered")
+    );
+    assert_eq!(
+        refused(glazed(5.0, Some(5.3))).await,
+        unprocessable("layout.scene")
+    );
+    assert_eq!(
+        refused(glazed(9.8, None)).await,
+        unprocessable("layout.scene")
+    );
+}
+
 /// Each module's lower left corner on its face, in millimetres.
 fn corners(scene: &Value) -> Vec<(i64, i64)> {
     let mm = |metres: &Value| (metres.as_f64().unwrap() * 1000.0).round().to_string();

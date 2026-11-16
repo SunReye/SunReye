@@ -14,6 +14,7 @@ import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.j
 import * as finish from "../scene/materials.ts";
 import { fence, ground } from "../scene/surroundings.ts";
 import { conifer, crown, fan, foliage, level, uvs } from "../scene/surfaces.ts";
+import { roofWindows } from "../scene/roof-windows.ts";
 import { openings } from "../scene/wall-openings.ts";
 import { trim } from "../scene/trim.ts";
 import { panel, toThree, type Panel } from "./panels.ts";
@@ -167,11 +168,20 @@ function sections(geometry: Geometry, panels: readonly Panel[]): (() => Object3D
     () => panels.map((item) => panel(item)),
     () => (geometry.mounts ?? []).map((mount) => marker(mount)),
     () => openings(geometry.openings ?? [], roofs),
+    () => roofWindows(geometry.roofWindows ?? []),
   ];
 }
 
 /** What lies on a surface that casts the same shadow: its own would only cost a draw. */
-const FLAT: ReadonlySet<string> = new Set(["module", "ground", "trim", "opening", "spill", "soil"]);
+const FLAT: ReadonlySet<string> = new Set([
+  "module",
+  "ground",
+  "trim",
+  "opening",
+  "spill",
+  "soil",
+  "roofWindow",
+]);
 
 /** Casts and catches the sun's shadow. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js sets it in place.
@@ -190,7 +200,8 @@ function put(group: Group, parts: readonly Object3D[]): void {
   if (parts.length > 0) group.add(...parts);
 }
 
-/** The scene's meshes: per surface kind, solid, ground, fence, placed module, marker and opening. */
+/** The scene's meshes: per surface kind, solid, ground, fence, placed module, marker, opening and
+ * roof window. */
 export function buildScene(geometry: Geometry, panels: readonly Panel[] = []): Group {
   const group = new Group();
 

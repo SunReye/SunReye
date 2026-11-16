@@ -1,6 +1,6 @@
 //! Laying modules as the builder does (ADR 20 Modules): the ghost under the pointer, the row a
 //! drag lays, a module dragged to another place, a face filled, and the modules a roof chimney
-//! covers. The browser asks once a step and holds no copy of this geometry.
+//! or a roof window covers. The browser asks once a step and holds no copy of this geometry.
 
 use crate::fitting::snap;
 use crate::grid::{Area, TOLERANCE, overlap};
@@ -20,7 +20,7 @@ pub struct Ghost {
     pub across: f64,
     pub up: f64,
     pub landscape: bool,
-    /// Inside the setback, off the chimneys and 2 cm off every other module.
+    /// Inside the setback, off the chimneys and roof windows and 2 cm off every other module.
     pub fits: bool,
     /// Its corners in the scene, counter-clockwise from the lower left, seen from the front.
     pub corners: [Point; 4],
@@ -223,8 +223,8 @@ impl Scene {
         })
     }
 
-    /// The modules a roof chimney stands on, as a grid's index and a module's in it: what adding
-    /// or moving a chimney removes. A grid without its module's size has none.
+    /// The modules a roof chimney or a roof window covers, as a grid's index and a module's in
+    /// it: what adding or moving one removes. A grid without its module's size has none.
     #[must_use]
     pub fn covered(&self, size: impl Fn(u32) -> Option<Size>) -> Vec<(usize, usize)> {
         let roofs = self.roofs();
@@ -236,8 +236,10 @@ impl Scene {
             let laid = grid.modules.iter().enumerate();
             laid.filter_map(move |(module, laid)| {
                 let area = grid.footprint(size?, laid.spot);
-                let on = |chimney: &Area| overlap(area, *chimney, 0.0);
-                face?.chimneys.iter().any(on).then_some((at, module))
+                let on = |taken: &Area| overlap(area, *taken, 0.0);
+                let face = face?;
+                let mut taken = face.chimneys.iter().chain(&face.windows);
+                taken.any(on).then_some((at, module))
             })
         });
         covered.collect()

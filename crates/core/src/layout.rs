@@ -60,14 +60,14 @@ enum Refusal {
         field: &'static str,
     },
     /// A scene's grid names no roof face, a module no string or one of another module type, an
-    /// equipment marker lies off its wall, a car place, ground surface or fence is refused, or
-    /// its import names no stored surroundings.
+    /// equipment marker lies off its wall, a car place, ground surface, fence, opening, roof
+    /// chimney or roof window is refused, or its import names no stored surroundings.
     Scene,
     /// A module crosses its face's setback.
     Setback,
     /// Two modules overlap.
     Overlap,
-    /// A module overlaps a roof chimney.
+    /// A module overlaps a roof chimney or a roof window.
     Covered,
 }
 

@@ -80,6 +80,8 @@ export function misplacedText(at: Misplaced): string {
 
   if (at.kind === "chimney") return m.misplaced_chimney(module);
 
+  if (at.kind === "window") return m.misplaced_window(module);
+
   return at.kind === "setback" ? m.misplaced_setback(module) : m.misplaced_overlap(module);
 }
 

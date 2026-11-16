@@ -27,6 +27,7 @@ fn house(equipment: Vec<Equipment>) -> Scene {
         surfaces: vec![],
         fences: vec![],
         openings: vec![],
+        roof_windows: vec![],
         imported: None,
     }
 }

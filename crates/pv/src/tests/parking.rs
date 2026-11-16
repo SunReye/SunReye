@@ -27,6 +27,7 @@ fn scene(north: f64, places: Vec<CarPlace>) -> Scene {
         surfaces: vec![],
         fences: vec![],
         openings: vec![],
+        roof_windows: vec![],
         imported: None,
     }
 }

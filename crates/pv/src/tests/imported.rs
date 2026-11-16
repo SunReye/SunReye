@@ -460,6 +460,7 @@ mod placed {
             surfaces: vec![],
             fences: vec![],
             openings: vec![],
+            roof_windows: vec![],
             imported,
         }
     }
