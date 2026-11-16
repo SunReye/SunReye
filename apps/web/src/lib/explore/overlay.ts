@@ -23,7 +23,7 @@ export function overlayRange(cal: Calendar, r: Range): Range {
   return rangeFor("day", isCurrent(cal, r) ? cal.today : Math.min(r.to - 1, cal.last));
 }
 
-export interface Period {
+export interface OverlayPeriod {
   /** Its first day, `2026-11-09`. */
   readonly key: string;
   readonly range: Range;
@@ -40,7 +40,7 @@ function firstDays(range: Range, picked: readonly string[]): number[] {
 }
 
 /** The range, then the picked periods from the latest back. */
-export function periodsOf(zone: string, range: Range, picked: readonly string[]): Period[] {
+export function periodsOf(zone: string, range: Range, picked: readonly string[]): OverlayPeriod[] {
   const earlier = firstDays(range, picked)
     .toSorted((a, b) => b - a)
     .map((from) => rangeFor(kindOf(range), from));
@@ -54,11 +54,11 @@ export function periodsOf(zone: string, range: Range, picked: readonly string[])
 }
 
 /** How long the time axis runs: as long as the longest period. */
-export const spanOf = (periods: readonly Period[]): number =>
+export const spanOf = (periods: readonly OverlayPeriod[]): number =>
   Math.max(...periods.map((p) => p.to - p.from));
 
 /** A period's curve drawn from `onto`, the range's start, instead of its own. */
-export function aligned(curve: Curve, period: Period, onto: number): Curve {
+export function aligned(curve: Curve, period: OverlayPeriod, onto: number): Curve {
   const by = onto - period.from;
 
   return by === 0
@@ -66,16 +66,16 @@ export function aligned(curve: Curve, period: Period, onto: number): Curve {
     : { ...curve, samples: curve.samples.map((s) => ({ ...s, t0: s.t0 + by, t1: s.t1 + by })) };
 }
 
-export interface Pick {
+export interface QuickPick {
   readonly id: "day" | "week" | "year";
   /** A day in the period it picks. */
   readonly day: string;
 }
 
 /** The quick picks beside any date: the day before, the week before, the same day last year. */
-export function picksOf(range: Range): Pick[] {
+export function picksOf(range: Range): QuickPick[] {
   const from = range.from;
-  const week: Pick = { id: "week", day: iso(from - 7) };
+  const week: QuickPick = { id: "week", day: iso(from - 7) };
 
   // 52 weeks back is a Monday again.
   if (kindOf(range) === "week") return [week, { id: "year", day: iso(from - 364) }];
@@ -100,13 +100,11 @@ export function added(range: Range, picked: readonly string[], day: string): str
 }
 
 /** The picked days without those in `period`. */
-export function removed(range: Range, picked: readonly string[], period: Period): string[] {
-  return picked.filter(
-    (day) => rangeFor(kindOf(range), dayOfIso(day)).from !== period.range.from,
-  );
+export function removed(range: Range, picked: readonly string[], period: OverlayPeriod): string[] {
+  return picked.filter((day) => rangeFor(kindOf(range), dayOfIso(day)).from !== period.range.from);
 }
 
-/** Period `i`'s colour: the range in the series' own, each earlier one fainter. */
+/** OverlayPeriod `i`'s colour: the range in the series' own, each earlier one fainter. */
 export function tintOf(colour: string, i: number): string {
   const share = [100, 60, 42, 30, 22][i] ?? 22;
 

@@ -1168,7 +1168,6 @@
   "explore_no_match": "No series matches “{query}”.",
   "explore_catalog_error": "The series could not be loaded.",
   "explore_catalog_empty": "No series has been recorded yet.",
-  "explore_pending": "This view's chart is on its way.",
   "explore_full_series": "A chart holds 6 series. Remove one to choose another.",
   "explore_full_lanes": "A chart holds 4 lanes, one per unit. Series of the units drawn can still be chosen.",
   "explore_left": "Not drawn: {names}. A chart holds 6 series in 4 lanes, one per unit.",
@@ -1205,5 +1204,17 @@
   "explore_fold_unstored": "Nothing is recorded for {name}.",
   "explore_fold_empty": "{name} has no statistics in this range.",
   "explore_fold_error": "The statistics could not be loaded.",
-  "explore_fold_retry": "Load again"
+  "explore_fold_retry": "Load again",
+  "explore_overlay_chart": "{name} over the periods",
+  "explore_chart_read": "{chart}. Arrow keys move the pointer.",
+  "explore_overlay_with": "Compare with",
+  "explore_overlay_day_before": "Day before",
+  "explore_overlay_week_before": "Week before",
+  "explore_overlay_year_day": "Same day last year",
+  "explore_overlay_year_week": "Same week last year",
+  "explore_overlay_date": "Pick another day",
+  "explore_overlay_periods": "Compared periods",
+  "explore_overlay_full": "A chart overlays 5 periods. Remove one to pick another.",
+  "explore_overlay_first": "{name}, the first chosen series, is overlaid.",
+  "explore_overlay_hourly": "Only hourly figures are kept: {names}."
 }

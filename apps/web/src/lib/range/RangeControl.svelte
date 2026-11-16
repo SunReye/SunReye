@@ -19,7 +19,16 @@
     ["custom", m.range_custom],
   ];
 
-  let { model }: { model: Ranged } = $props();
+  let {
+    model,
+    kinds,
+  }: {
+    model: Ranged;
+    /** The kinds offered where a screen takes fewer than all. */
+    kinds?: readonly Kind[] | undefined;
+  } = $props();
+
+  const offered = $derived(kinds ? KINDS.filter(([id]) => kinds.includes(id)) : KINDS);
 
   const kind = $derived(model.range.kind);
 </script>
@@ -33,7 +42,10 @@
       type="single"
       variant="outline"
       size="sm"
-      class="grid w-full grid-cols-5 data-indicator:before:hidden! @[430px]:flex @[430px]:w-fit"
+      class={[
+        "grid w-full data-indicator:before:hidden! @[430px]:flex @[430px]:w-fit",
+        offered.length === 2 ? "grid-cols-2" : "grid-cols-5",
+      ]}
       bind:value={
         () => kind,
         (v: string) => {
@@ -47,7 +59,7 @@
       <!-- kbase's sliding pill, on a transform. -->
       <span class="rounded-[2px] bg-foreground/[0.13]" {@attach indicator('[data-state="on"]')}
       ></span>
-      {#each KINDS as [id, text] (id)}
+      {#each offered as [id, text] (id)}
         <ToggleGroup.Item value={id} class="px-2.5 text-xs">{text()}</ToggleGroup.Item>
       {/each}
     </ToggleGroup.Root>

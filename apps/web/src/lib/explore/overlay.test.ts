@@ -23,8 +23,8 @@ const week = (text: string) => rangeFor("week", dayOfIso(text));
 function hourly(from: string, to: string): Curve {
   const samples = [];
 
-  for (let t = at(from), i = 0; t < at(to); t += HOUR, i++)
-    samples.push({ t0: t, t1: t + HOUR, v: i });
+  for (let t = at(from); t < at(to); t += HOUR)
+    samples.push({ t0: t, t1: t + HOUR, v: samples.length });
 
   return { draw: "line", tier: "bucket", samples };
 }
@@ -125,6 +125,7 @@ test("weeks align on their Mondays, across a change of the clocks", () => {
 test("an aligned statistic keeps its extremes", () => {
   const [range, before] = periodsOf(ZONE, day("2026-11-16"), ["2026-11-15"]);
   const t0 = at("2026-11-15T10:00Z");
+
   const curve: Curve = {
     draw: "line",
     tier: "hour",
@@ -188,7 +189,11 @@ test("a longer range that holds today opens today", () => {
 });
 
 test("a longer range in the past opens its last day", () => {
-  const custom: Range = { kind: "custom", from: dayOfIso("2026-10-01"), to: dayOfIso("2026-10-08") };
+  const custom: Range = {
+    kind: "custom",
+    from: dayOfIso("2026-10-01"),
+    to: dayOfIso("2026-10-08"),
+  };
 
   expect(iso(overlayRange(cal, rangeFor("month", dayOfIso("2026-09-10"))).from)).toBe("2026-09-30");
   expect(overlayRange(cal, custom)).toEqual(day("2026-10-07"));

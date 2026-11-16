@@ -1168,7 +1168,6 @@
   "explore_no_match": "Keine Reihe passt zu „{query}“.",
   "explore_catalog_error": "Die Reihen konnten nicht geladen werden.",
   "explore_catalog_empty": "Noch ist keine Reihe aufgezeichnet.",
-  "explore_pending": "Das Diagramm dieser Ansicht folgt.",
   "explore_full_series": "Ein Diagramm fasst 6 Reihen. Entferne eine, um eine andere zu wählen.",
   "explore_full_lanes": "Ein Diagramm fasst 4 Bahnen, eine je Einheit. Wählbar bleiben Reihen der gezeichneten Einheiten.",
   "explore_left": "Nicht gezeichnet: {names}. Ein Diagramm fasst 6 Reihen in 4 Bahnen, eine je Einheit.",
@@ -1205,5 +1204,17 @@
   "explore_fold_unstored": "Für {name} ist nichts aufgezeichnet.",
   "explore_fold_empty": "In diesem Zeitraum gibt es für {name} keine Statistik.",
   "explore_fold_error": "Die Statistik konnte nicht geladen werden.",
-  "explore_fold_retry": "Erneut laden"
+  "explore_fold_retry": "Erneut laden",
+  "explore_overlay_chart": "{name} über die Zeiträume",
+  "explore_chart_read": "{chart}. Pfeiltasten bewegen den Zeiger.",
+  "explore_overlay_with": "Vergleichen mit",
+  "explore_overlay_day_before": "Tag davor",
+  "explore_overlay_week_before": "Woche davor",
+  "explore_overlay_year_day": "Gleicher Tag im Vorjahr",
+  "explore_overlay_year_week": "Gleiche Woche im Vorjahr",
+  "explore_overlay_date": "Anderen Tag wählen",
+  "explore_overlay_periods": "Verglichene Zeiträume",
+  "explore_overlay_full": "Ein Diagramm überlagert 5 Zeiträume. Entferne einen, um einen anderen zu wählen.",
+  "explore_overlay_first": "Überlagert wird {name}, die erste gewählte Reihe.",
+  "explore_overlay_hourly": "Nur Stundenwerte aufbewahrt: {names}."
 }
