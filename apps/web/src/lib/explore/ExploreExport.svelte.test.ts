@@ -90,18 +90,54 @@ test("fold: the bars download, a week by day with its plant-local dates", async 
   expect(lines).toHaveLength(9);
 });
 
-test("after a switch of mode the export is the open mode's", async () => {
+test("the export follows the open mode through every switch, and ends with the last series", async () => {
   await page.viewport(1280, 800);
 
   const files = downloads();
   const { screen } = await show("range=week&at=2026-11-03");
+  const button = screen.getByRole("button", { name: "Als CSV exportieren" });
+  const open = (query: string) => screen.rerender({ params: new URLSearchParams(query) });
 
-  await expect.element(screen.getByRole("group", { name: /^Reihen über die Zeit/u })).toBeVisible();
-  await screen.rerender({ params: new URLSearchParams("mode=fold&range=week&at=2026-11-03") });
+  await expect.element(button).toBeEnabled();
+  await open("mode=fold&range=week&at=2026-11-03");
   await expect.element(screen.getByRole("table", { name: "Statistik je Zeitraum" })).toBeVisible();
-  await screen.getByRole("button", { name: "Als CSV exportieren" }).click();
+  await button.click();
+  await open("range=week&at=2026-11-03");
+  await expect.element(screen.getByRole("group", { name: /^Reihen über die Zeit/u })).toBeVisible();
+  await button.click();
 
-  expect((await files.saved[0])?.name).toBe("sunreye-2026-11-02_2026-11-08-day.csv");
+  const [fold, series] = await Promise.all(files.saved);
+
+  expect([fold?.name, series?.name]).toEqual([
+    "sunreye-2026-11-02_2026-11-08-day.csv",
+    "sunreye-2026-11-02_2026-11-08-hour.csv",
+  ]);
+
+  await open("s=");
+  await expect.element(button).toBeDisabled();
+});
+
+test("on a phone the export stands in one row with the title and the mode switch", async () => {
+  await page.viewport(360, 740);
+
+  const { screen } = await show();
+  const button = screen.getByRole("button", { name: "Als CSV exportieren" });
+
+  await expect.element(button).toBeVisible();
+
+  const tops = [
+    screen.getByRole("heading", { name: "Erkunden", level: 1 }),
+    button,
+    screen.getByRole("group", { name: "Ansicht" }),
+    // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the browser's locator.
+  ].map((locator) => {
+    const box = locator.element().getBoundingClientRect();
+
+    return box.top + box.height / 2;
+  });
+
+  expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(8);
+  expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(360);
 });
 
 test("with nothing plotted there is nothing to export", async () => {

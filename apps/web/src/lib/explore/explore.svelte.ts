@@ -1,6 +1,5 @@
 // The Explore screen's state (ADR 22): its range and view from the hash route, the series catalog
 // behind the picker, and what each control does to the route. Nothing is kept outside the route.
-import { untrack } from "svelte";
 import type { Core } from "../api/core.ts";
 import { parseRange, rangeParams } from "../range/params.ts";
 import { RangeRoute, type Go } from "../range/route.svelte.ts";
@@ -65,6 +64,10 @@ export class Explore {
     return own;
   });
 
+  // Which pane named its plot last. Not state: on a switch of mode a leaving pane has read the
+  // state as still its own after the arriving pane wrote it, and cleared the new one's.
+  #pane: (() => Table | null) | null = null;
+
   /** What the open pane plotted, as it reads it now. */
   #plotted = $state.raw<(() => Table | null) | null>(null);
 
@@ -120,11 +123,15 @@ export class Explore {
 
   /** A pane names what it plots, and takes that back as it leaves. */
   plots = (read: () => Table | null): (() => void) => {
+    this.#pane = read;
     this.#plotted = read;
 
     return () => {
       // Another mode's pane may stand already.
-      if (untrack(() => this.#plotted) === read) this.#plotted = null;
+      if (this.#pane !== read) return;
+
+      this.#pane = null;
+      this.#plotted = null;
     };
   };
 

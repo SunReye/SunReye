@@ -16,13 +16,13 @@
 </script>
 
 <header
-  class="flex flex-wrap items-center gap-x-6 gap-y-3 lg:grid lg:grid-cols-[1fr_540px_1fr] lg:items-start"
+  class="flex flex-wrap items-center gap-x-3 gap-y-3 sm:gap-x-6 lg:grid lg:grid-cols-[1fr_540px_1fr] lg:items-start"
 >
   <PageTitle wide class="order-1" title={m.explore_title()} />
   <div class="order-3 w-full lg:order-2">
     <RangeControl model={x.route} kinds={x.view.mode === "overlay" ? OVERLAY_KINDS : undefined} />
   </div>
-  <div class="order-2 ml-auto flex items-center gap-2 lg:order-3 lg:justify-self-end">
+  <div class="order-2 ml-auto flex items-center gap-1.5 sm:gap-2 lg:order-3 lg:justify-self-end">
     <Button
       variant="outline"
       size="icon-sm"
