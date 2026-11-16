@@ -1,6 +1,7 @@
 /// <reference types="bun" />
 import { expect, spyOn, test } from "bun:test";
 import {
+  Box3,
   BufferAttribute,
   BufferGeometry,
   Color,
@@ -104,13 +105,12 @@ test("a roof is drawn as triangles with up as y and north as −z", () => {
   expect(roof).toContainEqual([0, 3, 0]);
 });
 
-test("walls and roofs are drawn apart, each in its own finish", () => {
+test("walls and roofs are drawn apart, each in its own tone", () => {
   expect(vertices("wall")).toContainEqual([10, 3, 0]);
-  expect(material("wall").map).not.toBeNull();
-  expect(material("wall").map).not.toBe(material("roof").map);
+  expect(material("wall").color.getHex()).not.toBe(material("roof").color.getHex());
 });
 
-test("a flat roof is rendered, a pitched one tiled", () => {
+test("a flat roof is drawn apart from a pitched one, in the same roof tone", () => {
   const flat: Geometry = {
     faces: [
       {
@@ -131,35 +131,39 @@ test("a flat roof is rendered, a pitched one tiled", () => {
   const position: unknown =
     triangles instanceof BufferGeometry ? triangles.getAttribute("position") : null;
 
-  expect(standard(drawn).map).not.toBe(material("roof").map);
+  expect(standard(drawn).color.getHex()).toBe(material("roof").color.getHex());
   expect(position instanceof BufferAttribute ? position.count : 0).toBe(3);
 });
 
-test("every map is generated in code: no texture is loaded", () => {
+test("only a module carries maps, generated in code: all else is plain clay", () => {
   const maps = ["map", "normalMap", "roughnessMap", "emissiveMap"] as const;
-  const found: unknown[] = [];
+  const mapped = new Map<string, unknown[]>();
 
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own objects.
   buildScene(house, [{ corners, string: 0 }]).traverse((object) => {
     if (object instanceof Mesh && object.material instanceof MeshStandardMaterial) {
       const used = object.material;
+      const found = maps.flatMap((key) => (used[key] === null ? [] : [used[key]]));
 
-      found.push(...maps.flatMap((key) => (used[key] === null ? [] : [used[key]])));
+      if (found.length > 0) mapped.set(object.name, found);
     }
   });
 
-  expect(found.length).toBeGreaterThan(0);
-  expect(found.every((map) => map instanceof DataTexture)).toBe(true);
+  expect([...mapped.keys()]).toEqual(["module"]);
+  expect(mapped.get("module")?.every((map) => map instanceof DataTexture)).toBe(true);
 });
 
-test("a crown is drawn at its centre and a chimney stands on its base", () => {
-  const [crown, chimney] = buildScene(house).getObjectsByProperty("name", "solid");
+test("a crown is drawn at its centre; a pole stands on its base, its radius short of its height", () => {
+  const [crown, pole] = buildScene(house).getObjectsByProperty("name", "solid");
+  const bounds = new Box3().setFromObject(pole ?? new Mesh());
 
   expect(crown?.position.toArray()).toEqual([-4, 8, 0]);
-  expect(chimney?.position.toArray()).toEqual([3, 4.5, 2]);
+  expect(bounds.min.y).toBeCloseTo(0, 5);
+  expect(bounds.max.y).toBeCloseTo(8.7, 5);
+  expect([pole?.position.x, pole?.position.z]).toEqual([3, 2]);
 });
 
-test("a crown is leaves and the trunk beneath it bark; a lone pole is neither", () => {
+test("a crown is one soft ball and the trunk beneath it a tone of its own; a lone pole is clay", () => {
   const tree: Geometry = {
     faces: [],
     solids: [
@@ -171,18 +175,23 @@ test("a crown is leaves and the trunk beneath it bark; a lone pole is neither", 
 
   const [trunk, crown, pole] = buildScene(tree).getObjectsByProperty("name", "solid");
 
-  expect(crown).toBeInstanceOf(InstancedMesh);
-  expect(standard(trunk).map).not.toBe(standard(pole).map);
+  const bounds = new Box3().setFromObject(crown ?? new Mesh());
+
+  expect(crown).not.toBeInstanceOf(InstancedMesh);
+  expect(bounds.max.y - bounds.min.y).toBeCloseTo(4, 1);
+  expect(standard(trunk).color.getHex()).not.toBe(standard(pole).color.getHex());
+  expect(standard(crown).color.getHex()).not.toBe(standard(trunk).color.getHex());
 });
 
-test("modules are full black under anti-reflective glass; the builder tells strings by glow", () => {
+test("modules are full black under glass that mirrors the sky more than the lights; the builder tells strings by glow", () => {
   const [painted, unassigned] = buildScene(house, [
     { corners, string: 0 },
     { corners },
   ]).getObjectsByProperty("name", "module");
 
-  // Plain glass reflects at a specular intensity of 1.
-  expect(glass(painted).specularIntensity).toBeLessThanOrEqual(0.5);
+  // Plain glass reflects at a specular intensity of 1: the sun and the moon leave no glare.
+  expect(glass(painted).specularIntensity).toBeLessThanOrEqual(0.25);
+  expect(glass(painted).envMapIntensity).toBeGreaterThan(1);
   expect(glass(painted).color.getHex()).toBe(0xffffff);
   expect(glass(painted).emissive.getHex()).toBe(new Color(stringColour(0)).getHex());
   expect(glass(unassigned).emissive.getHex()).toBe(new Color(stringColour(null)).getHex());

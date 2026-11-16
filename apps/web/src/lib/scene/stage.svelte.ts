@@ -53,7 +53,7 @@ export interface Lit {
     drawn: () => Group | undefined,
     shares: () => readonly (number | null)[] | undefined,
   ) => void;
-  /** Draws `group` in place of the last, which it frees; the sun's shadow and the lawn fit it. */
+  /** Draws `group` in place of the last, which it frees; the sun's shadow and the floor fit it. */
   readonly show: Staged["show"];
   /** When it draws: nothing before `opening.open` has prepared it. */
   readonly opening: Opening;

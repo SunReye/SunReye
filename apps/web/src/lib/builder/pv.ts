@@ -95,7 +95,7 @@ export interface Scene {
   readonly equipment?: readonly Equipment[];
   readonly carPlaces?: readonly CarPlace[];
   readonly chimneys?: readonly Chimney[];
-  /** Each drawn over the last; without any the plot is lawn. */
+  /** Each drawn over the last; without any the plot is the studio floor. */
   readonly surfaces?: readonly GroundSurface[];
   readonly fences?: readonly Fence[];
   readonly openings?: readonly Opening[];

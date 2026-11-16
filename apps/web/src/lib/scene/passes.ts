@@ -1,6 +1,7 @@
 // The studio's passes for its 3D quality (ADR 20 Look, Rendering quality): the scene into
 // multisampled HDR, ambient occlusion, tone mapping, and Ultra's burst of refining frames.
 import {
+  DoubleSide,
   HalfFloatType,
   type PerspectiveCamera,
   type Scene,
@@ -14,17 +15,24 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import type { Look } from "./quality.ts";
 import { jitter, Refiner } from "./refine.ts";
 
-/** One ambient-occlusion pass, as the prototype tuned it. */
+/** One ambient-occlusion pass, wide and strong: on a white model it is what sets a wall on the
+ * ground and an eave on its wall. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js reads them.
 function ambientOcclusion(scene: Scene, camera: PerspectiveCamera): GTAOPass {
   const pass = new GTAOPass(scene, camera, 1, 1);
 
-  pass.blendIntensity = 0.9;
+  // The pass draws the scene's depths and normals with a material of its own, which culls a
+  // face wound away from the camera: what stands behind it would then shade it, a wall's edge
+  // showing through its roof. The crate promises no winding, so both sides are drawn, each
+  // with the normal of the side seen.
+  pass.normalMaterial.side = DoubleSide;
+
+  pass.blendIntensity = 1;
   pass.updateGtaoMaterial({
-    radius: 0.7,
+    radius: 2,
     distanceExponent: 1.5,
     thickness: 1.5,
-    scale: 1,
+    scale: 1.5,
     samples: 12,
   });
   pass.updatePdMaterial({

@@ -1,11 +1,11 @@
 // The studio the scene is drawn in (ADR 20 Look): renderer, sun and moon, sky environment, a
-// backdrop in the page colour, a lawn that fades into it, and the passes its 3D quality asks for.
+// backdrop in the page colour, a floor that fades into it, and the passes its 3D quality asks for.
 // It draws only when asked: never in a loop.
 import {
-  ACESFilmicToneMapping,
   Color,
   DirectionalLight,
   HemisphereLight,
+  NeutralToneMapping,
   type Object3D,
   type PerspectiveCamera,
   PMREMGenerator,
@@ -18,12 +18,12 @@ import {
 } from "three";
 import { toThree } from "../builder/scene.ts";
 import { aim, backdrop, sky } from "./backdrop.ts";
-import { CLEAR_SHADOW, untone, type Daylight, type Theme } from "./light.ts";
+import { CLEAR_SHADOW, type Daylight, type Theme } from "./light.ts";
 import { Passes } from "./passes.ts";
 import { Plot } from "./plot.ts";
 import { gpuOf, type Look } from "./quality.ts";
 import { shade, shadowFor, soften } from "./sun-shadow.ts";
-import { reweather, weatherFinishes } from "./weather.ts";
+import { untone } from "./tone.ts";
 
 export class Studio {
   readonly renderer: WebGLRenderer;
@@ -70,16 +70,15 @@ export class Studio {
     });
     this.#look = look(gpuOf(this.renderer.getContext()));
     this.renderer.shadowMap.enabled = true;
-    this.renderer.toneMapping = ACESFilmicToneMapping;
+    this.renderer.toneMapping = NeutralToneMapping;
     this.renderer.outputColorSpace = SRGBColorSpace;
     this.#pmrem = new PMREMGenerator(this.renderer);
     this.#skyScene.add(this.#sky);
     soften(this.#sun);
-    this.scene.add(this.#sun, this.#sun.target, this.#fill, this.#plot.lawn);
+    this.scene.add(this.#sun, this.#sun.target, this.#fill, this.#plot.floor);
     this.scene.fog = this.#plot.fog;
 
     this.#passes = new Passes(this.renderer, this.scene, camera);
-    // Before the first frame: a finish is compiled for the look it is first drawn in.
     this.#apply();
   }
 
@@ -102,16 +101,12 @@ export class Studio {
   follow(look: Look): void {
     if (look === this.#look) return;
 
-    const before = this.#look;
-
     this.#look = look;
     this.#apply();
     this.setSize(...this.#size);
-
-    if (before.weathering !== look.weathering) reweather(this.scene);
   }
 
-  /** Fits the sun's shadow and the lawn's fade to the plot: `centre` in three.js's frame. */
+  /** Fits the sun's shadow and the floor's fade to the plot: `centre` in three.js's frame. */
   frame(centre: Readonly<Vector3>, radius: number): void {
     this.#centre.set(centre.x, centre.y, centre.z);
     this.#radius = Math.max(radius, 5);
@@ -143,11 +138,7 @@ export class Studio {
     if (this.#held === undefined) this.#environ(day, look);
     else this.#held = [day, look];
 
-    const untoned = new Color(
-      untone(page.r, look.exposure),
-      untone(page.g, look.exposure),
-      untone(page.b, look.exposure),
-    );
+    const untoned = new Color(...untone([page.r, page.g, page.b], look.exposure));
 
     const backdropped = JSON.stringify([page.r, page.g, page.b, look]);
 
@@ -255,10 +246,9 @@ export class Studio {
     this.scene.environment = this.#environment.texture;
   }
 
-  /** The look's passes, shadow map and finishes. */
+  /** The look's passes and shadow map. */
   #apply(): void {
     this.#passes.follow(this.#look);
-    weatherFinishes(this.#look.weathering);
     shadowFor(this.renderer, this.#sun, this.#look);
     this.#shade();
   }

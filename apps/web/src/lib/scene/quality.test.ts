@@ -10,19 +10,17 @@ test("Niedrig draws as the lite tier did, at a pixel ratio of 1 from a 1024 shad
     pixelRatio: 1,
     shadowMap: 1024,
     occlusion: false,
-    weathering: false,
     contact: false,
     finest: false,
   });
 });
 
-test("Mittel draws what the full tier drew: a 2048 map, occlusion, weathering, up to 1.5", () => {
+test("Mittel draws what the full tier drew: a 2048 map, occlusion, up to 1.5", () => {
   expect(drawn("medium", strong)).toEqual({
     level: "medium",
     pixelRatio: 1.5,
     shadowMap: 2048,
     occlusion: true,
-    weathering: true,
     contact: false,
     finest: false,
   });
@@ -65,12 +63,12 @@ test("the lite and still tiers cap Auto at Mittel", () => {
   }
 });
 
-test("the lite and still tiers drop occlusion and weathering at every level, as they did", () => {
+test("the lite and still tiers drop occlusion at every level, as they did", () => {
   for (const tier of ["lite", "still"] as const) {
     for (const choice of ["auto", "medium", "high", "ultra"] as const) {
-      const { occlusion, weathering } = drawn(choice, { ...strong, tier });
+      const { occlusion } = drawn(choice, { ...strong, tier });
 
-      expect([choice, occlusion, weathering]).toEqual([choice, false, false]);
+      expect([choice, occlusion]).toEqual([choice, false]);
     }
   }
 });

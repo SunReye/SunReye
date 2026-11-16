@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { ShaderChunk } from "three";
-import { penumbra, softened } from "./soft-shadow.ts";
+import { faced, penumbra, softened } from "./soft-shadow.ts";
 
 const OPENS = "float getShadow( sampler2D shadowMap,";
 
@@ -33,4 +33,21 @@ test("a penumbra is 2.8 cm wide per metre between caster and receiver, in texels
   expect(perDepth * 0.06).toBeCloseTo((6 * 2.8) / (5000 / 4096), 5);
   // Under cloud it spreads.
   expect(penumbra(3, 100, 50, 4096)).toBeCloseTo(perDepth * 3, 5);
+});
+
+test("the offset a shadow is looked up at is turned toward the camera, and only that", () => {
+  const chunk = ShaderChunk.shadowmap_vertex;
+  const turned = faced(chunk);
+  const flip = turned.split("\n").filter((line) => !chunk.includes(line.trim()));
+
+  expect(flip).toHaveLength(1);
+  expect(flip[0]).toContain("cameraPosition - worldPosition.xyz");
+  expect(flip[0]).toContain("shadowWorldNormal = - shadowWorldNormal");
+  // After the normal is found, before any light offsets along it.
+  expect(turned.indexOf(flip[0] ?? "")).toBeGreaterThan(turned.indexOf("vec3 shadowWorldNormal ="));
+  expect(turned.indexOf(flip[0] ?? "")).toBeLessThan(turned.indexOf("shadowNormalBias"));
+});
+
+test("a chunk without the normal offset is refused", () => {
+  expect(() => faced("void main() {}")).toThrow();
 });

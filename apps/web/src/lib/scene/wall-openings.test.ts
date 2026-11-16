@@ -7,7 +7,7 @@ import {
   Group,
   Mesh,
   MeshBasicMaterial,
-  MeshStandardMaterial,
+  MeshPhysicalMaterial,
   type Object3D,
 } from "three";
 import type { Face, Fitted, OpeningKind } from "../builder/pv.ts";
@@ -42,11 +42,13 @@ function drawn(made: readonly Fitted[], roofs: readonly Face[] = []): Group {
 
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own objects.
 function glow(mesh: Object3D): number {
-  if (!(mesh instanceof Mesh) || !(mesh.material instanceof MeshStandardMaterial)) {
-    throw new TypeError("no opening");
-  }
+  const glass = (mesh instanceof Mesh ? [mesh.material].flat() : []).find(
+    (material) => material instanceof MeshPhysicalMaterial,
+  );
 
-  return mesh.material.emissiveIntensity;
+  if (glass === undefined) throw new TypeError("no opening");
+
+  return glass.emissiveIntensity;
 }
 
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own objects.

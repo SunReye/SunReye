@@ -1,5 +1,5 @@
 // The light lit openings spill at night (ADR 20 Openings): one decal mesh out from their walls,
-// on the lawn or on a lower roof under a window. No light of its own.
+// on the floor or on a lower roof under a window. No light of its own.
 import { BufferGeometry, Float32BufferAttribute, Mesh } from "three";
 import type { Face, Fitted, Point } from "../builder/pv.ts";
 import { clipped, landingUnder, type Landing, type Plan } from "./landing.ts";
@@ -9,7 +9,7 @@ import { spilled } from "./materials.ts";
  * an angle, so its patch begins `start` out from the wall and `slope` further per metre of sill,
  * is `reach` deep and `past` wider than the opening on each side, deeper by `stretch` and wider
  * by `spread` per metre, and fainter until none lands from `ceiling` up. The sill is measured
- * from the surface the light lands on, found `probe` out from the wall: the lawn, or a lower roof
+ * from the surface the light lands on, found `probe` out from the wall: the floor, or a lower roof
  * under the window. `lift` holds the patch clear of that surface. */
 const SPILL = {
   start: 0.15,
@@ -132,7 +132,7 @@ export function spill(lit: readonly Fitted[], roofs: readonly Face[]): Mesh | un
 
   mesh.name = "spill";
   mesh.visible = false;
-  // Over the lawn, which is transparent where it fades.
+  // Over the floor, which is transparent where it fades.
   mesh.renderOrder = 1;
 
   return mesh;

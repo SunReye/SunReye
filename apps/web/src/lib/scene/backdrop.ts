@@ -1,4 +1,4 @@
-// The studio's surroundings (ADR 20 Look): a backdrop in the page colour with no horizon, a lawn
+// The studio's surroundings (ADR 20 Look): a backdrop in the page colour with no horizon, a floor
 // that fades into it, and the sky that lights the scene. Browser-only: colours come from CSS.
 import {
   Color,
@@ -15,16 +15,13 @@ import {
 } from "three";
 import { Sky } from "three/addons/objects/Sky.js";
 import { flowColour, type Flow } from "../energy-colours.ts";
-import { untone, type Clouds } from "./light.ts";
-import { lawn } from "./materials.ts";
+import type { Clouds } from "./light.ts";
+import { floor } from "./materials.ts";
+import { untone } from "./tone.ts";
 import { backdropAt } from "./vignette.ts";
-import { patched } from "./weather.ts";
 
-/** Metres of lawn each way; it fades long before its edge. */
-const LAWN = 400;
-
-/** Metres of lawn per grass texture repeat. */
-const GRASS = 3;
+/** Metres of floor each way; it fades long before its edge. */
+const FLOOR = 400;
 
 /** An energy flow's colour in the current theme, as linear RGB. */
 export const flowRgb = (flow: Flow): Color => cssColour(flowColour(flow));
@@ -63,13 +60,10 @@ export function backdrop(page: Color, exposure: number, dark: boolean): DataText
 
   for (let y = 0; y < size; y++)
     for (let x = 0; x < size; x++) {
-      const [r, g, b] = backdropAt(linear, dark, x / size, y / size);
-      const i = (y * size + x) * 4;
-
-      data[i] = untone(r, exposure);
-      data[i + 1] = untone(g, exposure);
-      data[i + 2] = untone(b, exposure);
-      data[i + 3] = 1;
+      data.set(
+        [...untone(backdropAt(linear, dark, x / size, y / size), exposure), 1],
+        (y * size + x) * 4,
+      );
     }
 
   const texture = new DataTexture(data, size, size, RGBAFormat, FloatType);
@@ -82,26 +76,24 @@ export function backdrop(page: Color, exposure: number, dark: boolean): DataText
   return texture;
 }
 
-/** The lawn, faded with distance from the plot's centre into the backdrop. */
-/** The lawn fade's uniforms: the plot's centre on the ground and its radius in metres. */
+/** The floor fade's uniforms: the plot's centre on the ground and its radius in metres. */
 export interface Fade {
   readonly centre: { value: Vector2 };
   readonly radius: { value: number };
 }
 
+/** The fade starts at this share of the plot's radius and ends at `END` of it, plus `PAST`
+ * metres: wide, so the floor has no edge, and long shadows still land on it. */
+const FADE = { start: 0.8, end: 2.1, past: 10 } as const;
+
+/** The studio floor, faded with distance from the plot's centre into the backdrop. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- shared with the shader.
 export function ground(fade: Fade): Mesh {
-  const geometry = new PlaneGeometry(LAWN, LAWN);
-  const uv = geometry.getAttribute("uv");
-
-  for (let i = 0; i < uv.count; i++)
-    uv.setXY(i, (uv.getX(i) * LAWN) / GRASS, (uv.getY(i) * LAWN) / GRASS);
-
-  const material = lawn();
+  const material = floor();
 
   material.transparent = true;
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js patches it in place.
-  patched(material, "fade", (shader) => {
+  material.onBeforeCompile = (shader) => {
     shader.uniforms["uFadeCentre"] = fade.centre;
     shader.uniforms["uFadeRadius"] = fade.radius;
     shader.vertexShader = shader.vertexShader
@@ -117,11 +109,13 @@ export function ground(fade: Fade): Mesh {
       )
       .replace(
         "#include <alphatest_fragment>",
-        "#include <alphatest_fragment>\ndiffuseColor.a *= 1.0 - smoothstep(uFadeRadius, uFadeRadius + 10.0, length(vFadeWorld.xz - uFadeCentre));",
+        `#include <alphatest_fragment>\ndiffuseColor.a *= 1.0 - smoothstep(uFadeRadius * ${FADE.start.toFixed(2)}, uFadeRadius * ${FADE.end.toFixed(2)} + ${FADE.past.toFixed(1)}, length(vFadeWorld.xz - uFadeCentre));`,
       );
-  });
+  };
 
-  const mesh = new Mesh(geometry, material);
+  material.customProgramCacheKey = () => "floor-fade";
+
+  const mesh = new Mesh(new PlaneGeometry(FLOOR, FLOOR), material);
 
   mesh.rotation.x = -Math.PI / 2;
   // A hair below the footprints, so the floor never flickers through them.

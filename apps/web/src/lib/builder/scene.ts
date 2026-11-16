@@ -6,6 +6,7 @@ import {
   DoubleSide,
   Float32BufferAttribute,
   Group,
+  Material,
   Mesh,
   type Object3D,
   type MeshStandardMaterial,
@@ -13,7 +14,7 @@ import {
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import * as finish from "../scene/materials.ts";
 import { fence, ground } from "../scene/surroundings.ts";
-import { conifer, crown, fan, foliage, level, uvs } from "../scene/surfaces.ts";
+import { conifer, crown, fan, level } from "../scene/surfaces.ts";
 import { roofWindows } from "../scene/roof-windows.ts";
 import { openings } from "../scene/wall-openings.ts";
 import { trim } from "../scene/trim.ts";
@@ -30,12 +31,10 @@ function surface(
   faces: readonly Face[],
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- set up, then drawn.
   material: MeshStandardMaterial,
-  repeat: readonly [number, number],
 ): Mesh {
   const geometry = new BufferGeometry();
 
   geometry.setAttribute("position", new Float32BufferAttribute(triangles(faces), 3));
-  geometry.setAttribute("uv", new Float32BufferAttribute(uvs(faces, repeat), 2));
   geometry.computeVertexNormals();
 
   // Double-sided: the crate does not promise a winding.
@@ -47,6 +46,23 @@ function surface(
   mesh.name = name;
 
   return mesh;
+}
+
+/**
+ * Pushes a wall a hair back in depth. Its top edge lies in its roof's plane: from afar the two
+ * share a depth there, and the wall would show through the roof as a broken line.
+ */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own objects.
+function behind(wall: Mesh): Mesh {
+  const material: unknown = wall.material;
+
+  if (material instanceof Material) {
+    material.polygonOffset = true;
+    material.polygonOffsetFactor = 1;
+    material.polygonOffsetUnits = 4;
+  }
+
+  return wall;
 }
 
 /** Whether a cylinder carries a crown straight above it: a trunk. */
@@ -65,27 +81,30 @@ function trunk(
 }
 
 /** A crown or a trunk, a chimney or a pole. */
-function solid(obstacle: Solid, i: number, solids: readonly Solid[]): Mesh {
+function solid(obstacle: Solid, solids: readonly Solid[]): Mesh {
   if (obstacle.kind !== "cylinder") {
-    const leaves =
+    const top =
       obstacle.kind === "sphere"
-        ? crown(obstacle.radius, 7 + i * 101)
-        : conifer(obstacle.radius, obstacle.height, 7 + i * 101);
+        ? crown(obstacle.radius)
+        : conifer(obstacle.radius, obstacle.height);
 
-    leaves.position.set(...toThree(obstacle.kind === "sphere" ? obstacle.centre : obstacle.base));
-    leaves.name = "solid";
+    top.position.set(...toThree(obstacle.kind === "sphere" ? obstacle.centre : obstacle.base));
+    top.name = "solid";
 
-    return leaves;
+    return top;
   }
 
-  const { base, radius, height } = obstacle;
+  const { base, radius } = obstacle;
+  // Drawn its radius short: a carport's post reaches its roof's highest corner over it, and
+  // would stand through the roof's slope.
+  const height = Math.max(obstacle.height - radius, 0);
 
   const upright = new Mesh(
     // A trunk tapers toward its crown.
     trunk(obstacle, solids)
       ? new CylinderGeometry(radius * 0.6, radius, height, 14)
       : new CylinderGeometry(radius, radius, height, 16),
-    trunk(obstacle, solids) ? finish.bark() : finish.render(),
+    trunk(obstacle, solids) ? finish.trunk() : finish.clay(),
   );
 
   // three.js centres a cylinder on its position.
@@ -95,15 +114,9 @@ function solid(obstacle: Solid, i: number, solids: readonly Solid[]): Mesh {
   return upright;
 }
 
-/** Hedges: a dark body under clusters of leaves. */
+/** Hedges: plain bodies in the crowns' tone. */
 function hedges(faces: readonly Face[]): Mesh[] {
-  if (faces.length === 0) return [];
-
-  const body = surface("hedge", faces, finish.hedge(), finish.REPEAT.render);
-
-  body.add(foliage(faces, 13));
-
-  return [body];
+  return faces.length === 0 ? [] : [surface("hedge", faces, finish.foliage())];
 }
 
 function marker({ at }: Mount): Mesh {
@@ -140,31 +153,29 @@ function sections(geometry: Geometry, panels: readonly Panel[]): (() => Object3D
   return [
     () =>
       painted(faces("wall")).map(([colour, walls]) =>
-        surface("wall", walls, finish.plaster(colour), finish.REPEAT.plaster),
+        behind(surface("wall", walls, finish.clay(colour))),
       ),
     () => [
       ...painted(roofs.filter((face) => !level(face))).map(([colour, pitched]) =>
-        surface("roof", pitched, finish.tiles(colour), finish.REPEAT.tiles),
+        surface("roof", pitched, finish.roofing(colour)),
       ),
       ...painted(roofs.filter((face) => level(face))).map(([colour, flat]) =>
-        surface("flat", flat, finish.render(colour), finish.REPEAT.render),
+        surface("flat", flat, finish.roofing(colour)),
       ),
       ...trim(roofs),
     ],
-    () => [surface("obstacle", faces("obstacle"), finish.render(), finish.REPEAT.render)],
+    () => [surface("obstacle", faces("obstacle"), finish.clay())],
     () => {
       const chimneys = faces("chimney");
 
-      return chimneys.length === 0
-        ? []
-        : [surface("chimney", chimneys, finish.render(), finish.REPEAT.render)];
+      return chimneys.length === 0 ? [] : [surface("chimney", chimneys, finish.clay())];
     },
     () => hedges(faces("hedge")),
     () => [
       ...(geometry.ground ?? []).map((item, i) => ground(item, i)),
       ...(geometry.fences ?? []).map((item) => fence(item)),
     ],
-    () => geometry.solids.map((obstacle, i) => solid(obstacle, i, geometry.solids)),
+    () => geometry.solids.map((obstacle) => solid(obstacle, geometry.solids)),
     () => panels.map((item) => panel(item)),
     () => (geometry.mounts ?? []).map((mount) => marker(mount)),
     () => openings(geometry.openings ?? [], roofs),

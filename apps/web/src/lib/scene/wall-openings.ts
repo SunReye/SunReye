@@ -1,35 +1,40 @@
-// Windows and doors as the scene draws them (ADR 20 Openings): fitted on their walls by the pv
-// crate, drawn only, never shading. At night some windows and the front door's light glow, and
-// their light spills on the ground out from the wall: emissive maps and one decal, no light of their own.
+// Windows and doors as the scene draws them (ADR 20 Openings): plain frames round inset dark
+// glass, fitted on their walls by the pv crate, drawn only, never shading. At night some windows
+// and the front door's light glow, and their light spills on the ground out from the wall: an
+// emissive pane and one decal, no light of their own.
 import {
   BufferGeometry,
   Float32BufferAttribute,
+  type Material,
   Mesh,
   MeshBasicMaterial,
-  MeshStandardMaterial,
+  MeshPhysicalMaterial,
   type Object3D,
 } from "three";
-import type { Face, Fitted, OpeningKind, Point } from "../builder/pv.ts";
-import { glazed } from "./materials.ts";
+import type { Face, Fitted, Point } from "../builder/pv.ts";
+import { clay, darkGlass, leaf } from "./materials.ts";
 import { spill } from "./spill.ts";
 
-/** Metres an opening's frame stands proud of its wall. */
+/** Metres: how far a frame stands proud of its wall, how wide its bars are, and how far out
+ * from the wall its glass or leaf lies, inset in the frame. */
 const PROUD = 0.05;
+const BAR = 0.07;
+const INSET = 0.012;
+
+/** The share of a front door's height its fanlight takes, above the leaf. */
+const FANLIGHT = 0.22;
 
 /** A window sill and a door's canopy: how far each reaches past the opening, its thickness and
  * its depth, in metres. */
 const SILL = { past: 0.06, thick: 0.04, deep: 0.12 } as const;
 const CANOPY = { past: 0.25, thick: 0.06, deep: 0.8, over: 0.12 } as const;
 
-/** An emissive map at full strength: a lit room seen from the garden, not a lamp. */
+/** A lit pane at full strength: a lit room seen from the garden, not a lamp. */
 const GLOW = 1.8;
 const SPILL_OPACITY = 0.55;
 
 /** The share of windows lit at night. */
 const LIT = 0.6;
-
-/** The frame's texel: every opening's map has its frame in its corner. */
-const FRAME_UV = [0.01, 0.99] as const;
 
 /** East, north, up to three.js: x east, y up, z south. */
 const toThree = ([east, north, up]: Point): [number, number, number] => [east, up, 0 - north];
@@ -40,47 +45,52 @@ const add = (a: Point, b: Point, k: number): Point => [
   a[2] + b[2] * k,
 ];
 
-/** Triangles and their UVs, gathered into one geometry. */
-interface Triangles {
-  readonly position: number[];
-  readonly uv: number[];
+/** An opening's parts, each drawn in its own material: the frame's bars, the glass, a door's
+ * leaf. */
+const PARTS = ["frame", "pane", "leaf"] as const;
+
+/** Each part's triangles, as positions in three.js's frame. */
+type Drawn = Readonly<Record<(typeof PARTS)[number], readonly number[]>>;
+
+/** A quad from its corners, counter-clockwise from the low left. */
+function quad([a, b, c, d]: readonly [Point, Point, Point, Point]): number[] {
+  return [a, b, c, a, c, d].flatMap((point) => toThree(point));
 }
 
-/** A quad from its corners, counter-clockwise from the low left, with the map's whole face or
- * one texel of it. */
-function quad(
-  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- gathers into it.
-  drawn: Triangles,
-  [a, b, c, d]: readonly [Point, Point, Point, Point],
-  whole: boolean,
-): void {
-  drawn.position.push(...[a, b, c, a, c, d].flatMap((point) => toThree(point)));
-  // The maps' first row is their top.
-  drawn.uv.push(
-    ...(whole
-      ? [0, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0]
-      : Array.from({ length: 6 }, () => FRAME_UV).flat()),
-  );
-}
+/** A point on an opening's wall: `r` metres to the right of its low left corner, `u` up and `o`
+ * out. */
+type At = (r: number, u: number, o: number) => Point;
 
-/** A box on the wall: from `low` it runs `across` to the right, `up` and `out`; its front shows
- * the map's face when `faced`, the rest the frame. */
+/** A box on the wall from `[r, u]`, `across` wide, `up` high and `deep` out: its front and its
+ * four sides. */
 function box(
-  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- gathers into it.
-  drawn: Triangles,
-  low: Point,
-  [right, out]: readonly [Point, Point],
+  at: At,
+  [r, u]: readonly [number, number],
   [across, up, deep]: readonly [number, number, number],
-  faced: boolean,
-): void {
-  const at = (r: number, u: number, o: number): Point =>
-    add(add(add(low, right, r * across), [0, 0, 1], u * up), out, o * deep);
+): number[] {
+  const [right, top] = [r + across, u + up];
 
-  quad(drawn, [at(0, 0, 1), at(1, 0, 1), at(1, 1, 1), at(0, 1, 1)], faced);
-  quad(drawn, [at(0, 1, 0), at(0, 1, 1), at(1, 1, 1), at(1, 1, 0)], false);
-  quad(drawn, [at(0, 0, 0), at(1, 0, 0), at(1, 0, 1), at(0, 0, 1)], false);
-  quad(drawn, [at(0, 0, 0), at(0, 0, 1), at(0, 1, 1), at(0, 1, 0)], false);
-  quad(drawn, [at(1, 0, 1), at(1, 0, 0), at(1, 1, 0), at(1, 1, 1)], false);
+  return [
+    ...quad([at(r, u, deep), at(right, u, deep), at(right, top, deep), at(r, top, deep)]),
+    ...quad([at(r, top, 0), at(r, top, deep), at(right, top, deep), at(right, top, 0)]),
+    ...quad([at(r, u, 0), at(right, u, 0), at(right, u, deep), at(r, u, deep)]),
+    ...quad([at(r, u, 0), at(r, u, deep), at(r, top, deep), at(r, top, 0)]),
+    ...quad([at(right, u, deep), at(right, u, 0), at(right, top, 0), at(right, top, deep)]),
+  ];
+}
+
+/** A flat sheet in the frame, a little out from the wall: glass, or a leaf. */
+function sheet(
+  at: At,
+  [r, u]: readonly [number, number],
+  [across, up]: readonly [number, number],
+): number[] {
+  return quad([
+    at(r, u, INSET),
+    at(r + across, u, INSET),
+    at(r + across, u + up, INSET),
+    at(r, u + up, INSET),
+  ]);
 }
 
 /** An opening's width and height, and the unit vector along its wall to the right. */
@@ -100,39 +110,77 @@ function span({ corners: [low, right, , high] }: Fitted): Span {
   };
 }
 
-// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- read only.
-function geometry(drawn: Triangles): BufferGeometry {
-  const made = new BufferGeometry();
-
-  made.setAttribute("position", new Float32BufferAttribute(drawn.position, 3));
-  made.setAttribute("uv", new Float32BufferAttribute(drawn.uv, 2));
-  made.computeVertexNormals();
-
-  return made;
+/** The frame's four bars round an opening `width` by `height`. */
+function ring(at: At, width: number, height: number): number[] {
+  return [
+    ...box(at, [0, 0], [BAR, height, PROUD]),
+    ...box(at, [width - BAR, 0], [BAR, height, PROUD]),
+    ...box(at, [BAR, height - BAR], [width - BAR * 2, BAR, PROUD]),
+    ...box(at, [BAR, 0], [width - BAR * 2, BAR, PROUD]),
+  ];
 }
 
-/** The frame and leaf, with a window's sill or a front door's canopy. */
+/** What fills each kind's frame: a window's glass behind a mullion on a sill, a front door's
+ * leaf under its fanlight and a canopy, a garage door's leaf. */
+function filled(at: At, { kind }: Fitted, width: number, height: number): Drawn {
+  const [across, up] = [width - BAR * 2, height - BAR * 2];
+
+  if (kind === "garageDoor") {
+    return { frame: [], pane: [], leaf: sheet(at, [BAR, 0], [across, height - BAR]) };
+  }
+
+  if (kind === "frontDoor") {
+    const transom = height * (1 - FANLIGHT);
+
+    return {
+      frame: [
+        ...box(at, [BAR, transom], [across, BAR, PROUD]),
+        ...box(
+          at,
+          [-CANOPY.past, height + CANOPY.over],
+          [width + CANOPY.past * 2, CANOPY.thick, CANOPY.deep],
+        ),
+      ],
+      pane: sheet(at, [BAR, transom + BAR], [across, height - transom - BAR * 2]),
+      leaf: sheet(at, [BAR, 0], [across, transom]),
+    };
+  }
+
+  return {
+    frame: [
+      ...box(at, [(width - BAR) / 2, BAR], [BAR, up, PROUD]),
+      ...box(at, [-SILL.past, -SILL.thick], [width + SILL.past * 2, SILL.thick, SILL.deep]),
+    ],
+    pane: sheet(at, [BAR, BAR], [across, up]),
+    leaf: [],
+  };
+}
+
+/** The frame and what fills it, as one geometry with a group for each part in `PARTS`. */
 function body(opening: Fitted): BufferGeometry {
   const { width, height, along } = span(opening);
   const [low] = opening.corners;
-  const frame = [along, opening.out] as const;
-  const drawn: Triangles = { position: [], uv: [] };
+  const at: At = (r, u, o) => add(add(add(low, along, r), [0, 0, 1], u), opening.out, o);
+  const inside = filled(at, opening, width, height);
+  const drawn: Drawn = { ...inside, frame: [...ring(at, width, height), ...inside.frame] };
+  const made = new BufferGeometry();
+  let from = 0;
 
-  box(drawn, low, frame, [width, height, PROUD], true);
-
-  if (opening.kind === "window" || opening.kind === "frenchWindow") {
-    const under = add(add(low, along, -SILL.past), [0, 0, 1], -SILL.thick);
-
-    box(drawn, under, frame, [width + SILL.past * 2, SILL.thick, SILL.deep], false);
+  for (const [i, part] of PARTS.entries()) {
+    made.addGroup(from, drawn[part].length / 3, i);
+    from += drawn[part].length / 3;
   }
 
-  if (opening.kind === "frontDoor") {
-    const over = add(add(low, along, -CANOPY.past), [0, 0, 1], height + CANOPY.over);
+  made.setAttribute(
+    "position",
+    new Float32BufferAttribute(
+      PARTS.flatMap((part) => drawn[part]),
+      3,
+    ),
+  );
+  made.computeVertexNormals();
 
-    box(drawn, over, frame, [width + CANOPY.past * 2, CANOPY.thick, CANOPY.deep], false);
-  }
-
-  return geometry(drawn);
+  return made;
 }
 
 /** A number in 0..1 from where an opening sits: the same for it on every build. */
@@ -155,20 +203,15 @@ function lit(opening: Fitted): boolean {
 }
 
 /** Each opening as a mesh named "opening", in order, then the spill of those lit at night, on
- * the lawn or on the one of `roofs` under them. */
+ * the ground or on the one of `roofs` under them. */
 export function openings(fitted: readonly Fitted[], roofs: readonly Face[]): Object3D[] {
-  const finishes = new Map<string, MeshStandardMaterial>();
-
-  const finish = (kind: OpeningKind, on: boolean): MeshStandardMaterial => {
-    const made = finishes.get(`${kind}:${on}`) ?? glazed(kind);
-
-    finishes.set(`${kind}:${on}`, made);
-
-    return made;
-  };
+  const [frame, door] = [clay(), leaf()];
+  // The lit openings' glass glows together; the others' stays dark.
+  const [glowing, dark] = [darkGlass(), darkGlass()];
 
   const meshes = fitted.map((opening) => {
-    const mesh = new Mesh(body(opening), finish(opening.kind, lit(opening)));
+    const materials: Material[] = [frame, lit(opening) ? glowing : dark, door];
+    const mesh = new Mesh(body(opening), materials);
 
     mesh.name = "opening";
     mesh.userData = { lit: lit(opening) };
@@ -185,14 +228,19 @@ export function openings(fitted: readonly Fitted[], roofs: readonly Face[]): Obj
 }
 
 /** Turns the lamps of `drawn` on by `level`, 0 by day to 1 at night. */
-// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js lights in place.
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own objects.
 export function lamps(drawn: Object3D, level: number): void {
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own objects.
   drawn.traverse((part) => {
     if (!(part instanceof Mesh)) return;
 
-    if (part.name === "opening" && part.material instanceof MeshStandardMaterial) {
-      part.material.emissiveIntensity = part.userData["lit"] === true ? level * GLOW : 0;
+    const materials: unknown[] = [part.material].flat();
+    const glass = part.name === "opening" ? materials : [];
+
+    for (const pane of glass) {
+      if (pane instanceof MeshPhysicalMaterial) {
+        pane.emissiveIntensity = part.userData["lit"] === true ? level * GLOW : 0;
+      }
     }
 
     if (part.name === "spill" && part.material instanceof MeshBasicMaterial) {

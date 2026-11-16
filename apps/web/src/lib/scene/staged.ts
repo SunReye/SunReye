@@ -16,7 +16,7 @@ function free(part: Object3D): void {
 }
 
 export interface Staged {
-  /** Draws `group` in place of the last, which it frees; the sun's shadow and the lawn fit it. */
+  /** Draws `group` in place of the last, which it frees; the sun's shadow and the floor fit it. */
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws it.
   readonly show: (group: Group) => void;
   /** Frees the drawn group and the studio. */
