@@ -56,13 +56,19 @@
 
   /** A building or a surrounding object's level: the kinds that edit the scene alone. */
   const building = $derived(
-    level.kind === "block" || level.kind === "chimney" || level.kind === "opening"
+    level.kind === "block" ||
+      level.kind === "chimney" ||
+      level.kind === "roofWindow" ||
+      level.kind === "opening"
       ? level.kind
       : null,
   );
 
   const surrounding = $derived(
-    level.kind === "obstacle" || level.kind === "surface" || level.kind === "fence"
+    level.kind === "obstacle" ||
+      level.kind === "surface" ||
+      level.kind === "fence" ||
+      level.kind === "import"
       ? level.kind
       : null,
   );

@@ -1,12 +1,12 @@
-//! Module grids on roof faces (ADR 20), checked against a 10 m × 8 m gable house at 35° worked out
+//! Modules on roof faces (ADR 20), checked against a 10 m × 8 m gable house at 35° worked out
 //! by hand: each roof face is 10 m wide and 4 m ÷ cos 35° = 4.883 m up the slope.
 
 use super::fixtures::MODULE;
 use crate::Overhang;
 use crate::shade::shaded_substrings;
 use crate::{
-    Block, Cell, Misplaced, ModuleGrid, Obstacle, Place, Plane, Point, Roof, Scene, Size, Sun,
-    open_circuit_voltage,
+    Block, GridModule, Misplaced, ModuleGrid, Obstacle, Place, Plane, Point, Roof, Scene, Size,
+    Spot, Sun, open_circuit_voltage,
 };
 
 const SIZE: Size = Size {
@@ -41,10 +41,12 @@ fn house(north: f64, grids: Vec<ModuleGrid>) -> Scene {
         surfaces: vec![],
         fences: vec![],
         openings: vec![],
+        roof_windows: vec![],
+        imported: None,
     }
 }
 
-fn grid(landscape: bool, modules: Vec<Cell>) -> ModuleGrid {
+fn grid(landscape: bool, modules: Vec<GridModule>) -> ModuleGrid {
     ModuleGrid {
         block: 0,
         face: SOUTH_FACE,
@@ -55,11 +57,25 @@ fn grid(landscape: bool, modules: Vec<Cell>) -> ModuleGrid {
     }
 }
 
-const fn cell(row: u32, column: u32, string: Option<u32>) -> Cell {
-    Cell {
-        row,
-        column,
+/// A module as scenes stored it before modules had places.
+const fn cell(row: u32, column: u32, string: Option<u32>) -> GridModule {
+    GridModule {
+        spot: Spot::Cell { row, column },
         string,
+        optimized: false,
+        order: None,
+    }
+}
+
+/// A module with its lower left corner `across` and `up` the face.
+const fn module(across: f64, up: f64, landscape: bool) -> GridModule {
+    GridModule {
+        spot: Spot::Place {
+            across,
+            up,
+            landscape,
+        },
+        string: None,
         optimized: false,
         order: None,
     }
@@ -106,38 +122,94 @@ fn the_compass_turns_each_face_with_the_scene() {
     assert!(close(roofs[SOUTH_FACE].plane.azimuth, 90.0));
 }
 
-#[test]
-fn a_cell_is_the_module_plus_a_gap_inside_the_setback() {
-    let roofs = house(0.0, vec![]).roofs();
-    let face = &roofs[SOUTH_FACE];
-
-    // Portrait: 0.3 + c × 1.154 + 1.134 ≤ 9.7 and 0.3 + r × 1.742 + 1.722 ≤ 4.583.
-    let portrait = face.cells(&grid(false, vec![]), SIZE);
-    assert_eq!(portrait.len(), 8 * 2);
-    assert!(portrait.iter().any(|c| (c.row, c.column) == (1, 7)));
-    // Landscape: 0.3 + c × 1.742 + 1.722 ≤ 9.7 and 0.3 + r × 1.154 + 1.134 ≤ 4.583.
-    let landscape = face.cells(&grid(true, vec![]), SIZE);
-    assert_eq!(landscape.len(), 5 * 3);
+fn same(actual: [[f64; 2]; 2], expected: [[f64; 2]; 2]) -> bool {
+    actual
+        .iter()
+        .flatten()
+        .zip(expected.iter().flatten())
+        .all(|(a, e)| close(*a, *e))
 }
 
 #[test]
-fn a_cell_past_the_setback_still_has_its_area_on_the_face() {
-    // Row 2 starts 0.3 + 2 × 1.742 = 3.784 m up the slope and reaches past 4.583.
-    let area = grid(false, vec![]).area(SIZE, 2, 1);
+fn a_modules_footprint_runs_from_its_place_by_its_own_orientation() {
+    let grid = grid(false, vec![]);
 
-    let expected = [[1.454, 3.784], [2.588, 5.506]];
+    let portrait = grid.footprint(SIZE, module(0.5, 1.0, false).spot);
+    let landscape = grid.footprint(SIZE, module(0.5, 1.0, true).spot);
+
+    assert!(same(portrait, [[0.5, 1.0], [1.634, 2.722]]), "{portrait:?}");
     assert!(
-        area.iter()
-            .flatten()
-            .zip(expected.iter().flatten())
-            .all(|(a, e)| close(*a, *e)),
-        "{area:?}"
+        same(landscape, [[0.5, 1.0], [2.222, 2.134]]),
+        "{landscape:?}"
     );
 }
 
 #[test]
-fn a_placed_module_takes_its_face_plane_and_its_cell_centre() {
-    let scene = house(0.0, vec![grid(false, vec![cell(0, 0, Some(4))])]);
+fn a_module_stored_in_a_cell_lies_at_the_cells_corner_in_the_grids_orientation() {
+    // Row 2 starts 0.3 + 2 × 1.742 = 3.784 m up the slope, column 1 0.3 + 1.154 m across.
+    let area = grid(false, vec![]).footprint(SIZE, cell(2, 1, None).spot);
+    // Landscape, a cell is 1.742 m across and 1.154 m up.
+    let turned = grid(true, vec![]).footprint(SIZE, cell(2, 1, None).spot);
+
+    assert!(same(area, [[1.454, 3.784], [2.588, 5.506]]), "{area:?}");
+    assert!(same(turned, [[2.042, 2.608], [3.764, 3.742]]), "{turned:?}");
+}
+
+#[test]
+fn a_scene_stored_with_rows_and_columns_loads_where_it_was_and_is_saved_with_places() {
+    let stored = serde_json::json!({
+        "block": 0, "face": 1, "moduleType": 7, "landscape": false, "setback": 0.3,
+        "modules": [
+            { "row": 0, "column": 0, "string": 4, "optimized": true, "order": 2 },
+            { "row": 1, "column": 3 },
+        ],
+    });
+    let scene = house(0.0, vec![serde_json::from_value(stored).unwrap()]);
+    let before = scene.modules(size).unwrap();
+
+    let settled = scene.settled(size);
+
+    assert_eq!(settled.modules(size).unwrap(), before);
+    let saved = serde_json::to_value(&settled.grids[0].modules).unwrap();
+    let close_to =
+        |value: &serde_json::Value, expected: f64| close(value.as_f64().unwrap(), expected);
+    assert!(close_to(&saved[0]["across"], 0.3) && close_to(&saved[0]["up"], 0.3));
+    assert!(close_to(&saved[1]["across"], 3.762) && close_to(&saved[1]["up"], 2.042));
+    assert_eq!(saved[0]["landscape"], false);
+    assert_eq!(
+        (
+            &saved[0]["string"],
+            &saved[0]["optimized"],
+            &saved[0]["order"]
+        ),
+        (&4.into(), &true.into(), &2.into())
+    );
+    assert!(saved[0].get("row").is_none() && saved[1].get("column").is_none());
+    // Saved, it reads back as it is.
+    let again: Vec<GridModule> = serde_json::from_value(saved).unwrap();
+    assert_eq!(again, settled.grids[0].modules);
+}
+
+#[test]
+fn a_module_with_neither_a_place_nor_a_cell_or_with_both_is_refused() {
+    let read = |value| serde_json::from_value::<GridModule>(value);
+
+    assert!(read(serde_json::json!({ "across": 1.0, "up": 1.0, "landscape": true })).is_ok());
+    assert!(read(serde_json::json!({ "string": 1 })).is_err());
+    assert!(read(serde_json::json!({ "across": 1.0, "up": 1.0 })).is_err());
+    assert!(
+        read(serde_json::json!({
+            "across": 1.0, "up": 1.0, "landscape": true, "row": 0, "column": 0,
+        }))
+        .is_err()
+    );
+}
+
+#[test]
+fn a_placed_module_takes_its_face_plane_and_its_own_centre() {
+    let mut first = module(0.3, 0.3, false);
+    first.string = Some(4);
+    let scene = house(0.0, vec![grid(false, vec![first])]);
 
     let placed = scene.modules(size).unwrap();
 
@@ -160,43 +232,90 @@ fn a_placed_module_takes_its_face_plane_and_its_cell_centre() {
 }
 
 #[test]
+fn portrait_and_landscape_modules_share_a_face() {
+    // The landscape one starts 2 cm right of the portrait one and is 1.722 m across.
+    let scene = house(
+        0.0,
+        vec![grid(
+            false,
+            vec![module(0.3, 0.3, false), module(1.454, 0.3, true)],
+        )],
+    );
+
+    let placed = scene.modules(size).unwrap();
+
+    let lain: Vec<Place> = placed.iter().filter_map(|p| p.module.place).collect();
+    assert_eq!(lain.len(), 2);
+    assert!(!lain[0].landscape && lain[1].landscape);
+    // Its centre lies 1.454 + 0.861 m across and 0.3 + 0.567 m up the slope.
+    assert!(close(lain[1].centre[0], 2.315), "{lain:?}");
+    assert!(close(
+        lain[1].centre[2],
+        0.867f64.mul_add(35f64.to_radians().sin(), 3.0)
+    ));
+}
+
+#[test]
 fn an_unassigned_module_is_placed_without_a_string() {
-    let scene = house(0.0, vec![grid(false, vec![cell(1, 3, None)])]);
+    let scene = house(0.0, vec![grid(false, vec![module(4.0, 2.0, false)])]);
 
     assert_eq!(scene.modules(size).unwrap()[0].string, None);
 }
 
 #[test]
-fn a_module_outside_the_setback_is_refused() {
-    let scene = house(
-        0.0,
-        vec![grid(false, vec![cell(0, 0, None), cell(2, 0, None)])],
-    );
+fn a_module_crossing_the_setback_is_refused() {
+    // 0.29 m from the left edge; and one whose top reaches past the ridge's setback at 4.583 m.
+    for crossing in [
+        module(0.29, 0.3, false),
+        module(3.0, 2.87, false),
+        cell(2, 0, None),
+    ] {
+        let scene = house(
+            0.0,
+            vec![grid(false, vec![module(0.3, 0.3, false), crossing])],
+        );
 
-    assert_eq!(
-        scene.modules(size),
-        Err(Misplaced::Setback {
-            grid: 0,
-            row: 2,
-            column: 0
-        })
-    );
+        assert_eq!(
+            scene.modules(size),
+            Err(Misplaced::Setback { grid: 0, module: 1 }),
+            "{crossing:?}"
+        );
+    }
 }
 
 #[test]
-fn two_modules_in_one_cell_are_refused() {
-    let scene = house(
+fn modules_that_overlap_are_refused_and_modules_that_touch_are_not() {
+    let overlapping = house(
         0.0,
-        vec![grid(false, vec![cell(0, 1, Some(1)), cell(0, 1, Some(2))])],
+        vec![grid(
+            false,
+            vec![module(0.3, 0.3, false), module(1.4, 2.0, false)],
+        )],
+    );
+    let touching = house(
+        0.0,
+        vec![grid(
+            false,
+            vec![module(0.3, 0.3, false), module(1.434, 0.3, false)],
+        )],
+    );
+    // A second grid on the same face lies over the first's module.
+    let across_grids = house(
+        0.0,
+        vec![
+            grid(false, vec![module(0.3, 0.3, false)]),
+            grid(true, vec![module(1.0, 1.0, true)]),
+        ],
     );
 
     assert_eq!(
-        scene.modules(size),
-        Err(Misplaced::Overlap {
-            grid: 0,
-            row: 0,
-            column: 1
-        })
+        overlapping.modules(size),
+        Err(Misplaced::Overlap { grid: 0, module: 1 })
+    );
+    assert_eq!(touching.modules(size).map(|placed| placed.len()), Ok(2));
+    assert_eq!(
+        across_grids.modules(size),
+        Err(Misplaced::Overlap { grid: 1, module: 0 })
     );
 }
 
@@ -247,7 +366,7 @@ fn a_placed_module_is_shaded_by_a_wall_in_front_of_the_house_but_never_by_its_ow
         zenith: 70.0,
         azimuth: 0.0,
     };
-    let mut scene = house(0.0, vec![grid(false, vec![cell(0, 0, Some(1))])]);
+    let mut scene = house(0.0, vec![grid(false, vec![cell(0, 0, Some(1))])]).settled(size);
     let shade = |scene: &Scene| {
         let module = scene.modules(size).unwrap()[0].module;
         shaded_substrings(
@@ -271,4 +390,40 @@ fn a_placed_module_is_shaded_by_a_wall_in_front_of_the_house_but_never_by_its_ow
         rotation: 0.0,
     });
     assert_eq!(shade(&scene), 3);
+}
+
+#[test]
+fn the_roof_inside_the_setback_is_the_outline_moved_in_from_every_edge() {
+    let mut scene = house(0.0, vec![]);
+    let roofs = scene.roofs();
+
+    let inset = roofs[SOUTH_FACE].inset(0.3).unwrap();
+
+    assert_eq!(inset.len(), 4);
+    for corner in [
+        [0.3, 0.3],
+        [9.7, 0.3],
+        [9.7, SLOPE - 0.3],
+        [0.3, SLOPE - 0.3],
+    ] {
+        assert!(
+            inset
+                .iter()
+                .any(|p| close(p[0], corner[0]) && close(p[1], corner[1])),
+            "{corner:?} missing from {inset:?}"
+        );
+    }
+    // A setback wider than half the face leaves no roof.
+    assert_eq!(roofs[SOUTH_FACE].inset(2.5), None);
+
+    // A hip's faces are triangles and trapezia: every corner stays 0.3 m inside every edge.
+    scene.blocks[0].roof = Roof::Hip { pitch: 35.0 };
+    for roof in scene.roofs() {
+        let inset = roof.inset(0.3).unwrap();
+        assert_eq!(inset.len(), roof.outline.len());
+        assert!(
+            inset.iter().all(|p| roof.inside(*p, 0.3 - 1e-6)),
+            "{inset:?}"
+        );
+    }
 }

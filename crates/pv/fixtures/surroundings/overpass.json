@@ -1,0 +1,5975 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API 0.7.62.11 87bfad18",
+  "osm3s": {
+    "timestamp_osm_base": "2026-11-15T19:21:34Z",
+    "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL."
+  },
+  "elements": [
+
+{
+  "type": "node",
+  "id": 1399872431,
+  "lat": 47.0739189,
+  "lon": 15.4413708,
+  "tags": {
+    "natural": "tree",
+    "source": "geoimage.at"
+  }
+},
+{
+  "type": "node",
+  "id": 1399872433,
+  "lat": 47.0739228,
+  "lon": 15.4411668,
+  "tags": {
+    "natural": "tree",
+    "source": "geoimage.at"
+  }
+},
+{
+  "type": "node",
+  "id": 1399872443,
+  "lat": 47.0739234,
+  "lon": 15.4411103,
+  "tags": {
+    "natural": "tree",
+    "source": "geoimage.at"
+  }
+},
+{
+  "type": "node",
+  "id": 1399872446,
+  "lat": 47.0739234,
+  "lon": 15.4412168,
+  "tags": {
+    "natural": "tree",
+    "source": "geoimage.at"
+  }
+},
+{
+  "type": "node",
+  "id": 1399872449,
+  "lat": 47.0739234,
+  "lon": 15.4412766,
+  "tags": {
+    "natural": "tree",
+    "source": "geoimage.at"
+  }
+},
+{
+  "type": "node",
+  "id": 1399872452,
+  "lat": 47.0739245,
+  "lon": 15.4410415,
+  "tags": {
+    "natural": "tree",
+    "source": "geoimage.at",
+    "species:de": "Blasenesche",
+    "species:en": "Goldenrain tree"
+  }
+},
+{
+  "type": "node",
+  "id": 1399872460,
+  "lat": 47.0739295,
+  "lon": 15.4408842,
+  "tags": {
+    "natural": "tree",
+    "source": "geoimage.at"
+  }
+},
+{
+  "type": "node",
+  "id": 1399872463,
+  "lat": 47.0739295,
+  "lon": 15.4409686,
+  "tags": {
+    "natural": "tree",
+    "source": "geoimage.at"
+  }
+},
+{
+  "type": "node",
+  "id": 1399872467,
+  "lat": 47.0739322,
+  "lon": 15.4402142,
+  "tags": {
+    "natural": "tree",
+    "source": "geoimage.at"
+  }
+},
+{
+  "type": "node",
+  "id": 1399872470,
+  "lat": 47.0739322,
+  "lon": 15.4404423,
+  "tags": {
+    "natural": "tree",
+    "source": "geoimage.at"
+  }
+},
+{
+  "type": "node",
+  "id": 1399872472,
+  "lat": 47.0739323,
+  "lon": 15.4407622,
+  "tags": {
+    "natural": "tree",
+    "source": "geoimage.at"
+  }
+},
+{
+  "type": "node",
+  "id": 1399872479,
+  "lat": 47.0739304,
+  "lon": 15.4406429,
+  "tags": {
+    "natural": "tree",
+    "source": "geoimage.at"
+  }
+},
+{
+  "type": "node",
+  "id": 1399872484,
+  "lat": 47.0739338,
+  "lon": 15.4402767,
+  "tags": {
+    "natural": "tree",
+    "source": "geoimage.at"
+  }
+},
+{
+  "type": "node",
+  "id": 1399872485,
+  "lat": 47.0739287,
+  "lon": 15.4405339,
+  "tags": {
+    "natural": "tree",
+    "source": "geoimage.at"
+  }
+},
+{
+  "type": "node",
+  "id": 1399872487,
+  "lat": 47.0739316,
+  "lon": 15.4403495,
+  "tags": {
+    "natural": "tree",
+    "source": "geoimage.at"
+  }
+},
+{
+  "type": "node",
+  "id": 1399872491,
+  "lat": 47.0739714,
+  "lon": 15.4413774,
+  "tags": {
+    "natural": "tree",
+    "source": "geoimage.at"
+  }
+},
+{
+  "type": "node",
+  "id": 1399872493,
+  "lat": 47.0739719,
+  "lon": 15.4407622,
+  "tags": {
+    "natural": "tree",
+    "source": "geoimage.at"
+  }
+},
+{
+  "type": "node",
+  "id": 1399872494,
+  "lat": 47.0739719,
+  "lon": 15.4412774,
+  "tags": {
+    "natural": "tree",
+    "source": "geoimage.at"
+  }
+},
+{
+  "type": "node",
+  "id": 1399872496,
+  "lat": 47.0739725,
+  "lon": 15.4412184,
+  "tags": {
+    "natural": "tree",
+    "source": "geoimage.at"
+  }
+},
+{
+  "type": "node",
+  "id": 1399872497,
+  "lat": 47.0739730,
+  "lon": 15.4411603,
+  "tags": {
+    "natural": "tree",
+    "source": "geoimage.at"
+  }
+},
+{
+  "type": "node",
+  "id": 1399872501,
+  "lat": 47.0739747,
+  "lon": 15.4411111,
+  "tags": {
+    "natural": "tree",
+    "source": "geoimage.at"
+  }
+},
+{
+  "type": "node",
+  "id": 1399872502,
+  "lat": 47.0739753,
+  "lon": 15.4409686,
+  "tags": {
+    "natural": "tree",
+    "source": "geoimage.at"
+  }
+},
+{
+  "type": "node",
+  "id": 1399872504,
+  "lat": 47.0739753,
+  "lon": 15.4410505,
+  "tags": {
+    "natural": "tree",
+    "source": "geoimage.at"
+  }
+},
+{
+  "type": "node",
+  "id": 1399872505,
+  "lat": 47.0739720,
+  "lon": 15.4408744,
+  "tags": {
+    "natural": "tree",
+    "source": "geoimage.at"
+  }
+},
+{
+  "type": "node",
+  "id": 1399872507,
+  "lat": 47.0739820,
+  "lon": 15.4402792,
+  "tags": {
+    "leaf_type": "broadleaved",
+    "natural": "tree",
+    "source": "geoimage.at"
+  }
+},
+{
+  "type": "node",
+  "id": 1399872510,
+  "lat": 47.0739793,
+  "lon": 15.4403525,
+  "tags": {
+    "natural": "tree",
+    "source": "geoimage.at"
+  }
+},
+{
+  "type": "node",
+  "id": 1399872511,
+  "lat": 47.0739779,
+  "lon": 15.4404413,
+  "tags": {
+    "natural": "tree",
+    "source": "geoimage.at"
+  }
+},
+{
+  "type": "node",
+  "id": 1399872512,
+  "lat": 47.0739770,
+  "lon": 15.4405359,
+  "tags": {
+    "leaf_type": "broadleaved",
+    "natural": "tree",
+    "source": "geoimage.at"
+  }
+},
+{
+  "type": "node",
+  "id": 3880661410,
+  "lat": 47.0730136,
+  "lon": 15.4409061,
+  "tags": {
+    "leaf_cycle": "deciduous",
+    "leaf_type": "broadleaved",
+    "natural": "tree"
+  }
+},
+{
+  "type": "node",
+  "id": 4251236045,
+  "lat": 47.0742176,
+  "lon": 15.4422742,
+  "tags": {
+    "natural": "tree"
+  }
+},
+{
+  "type": "node",
+  "id": 6109894558,
+  "lat": 47.0734247,
+  "lon": 15.4403588,
+  "tags": {
+    "leaf_cycle": "deciduous",
+    "leaf_type": "broadleaved",
+    "natural": "tree"
+  }
+},
+{
+  "type": "node",
+  "id": 6109894559,
+  "lat": 47.0734427,
+  "lon": 15.4406922,
+  "tags": {
+    "leaf_cycle": "deciduous",
+    "leaf_type": "broadleaved",
+    "natural": "tree"
+  }
+},
+{
+  "type": "node",
+  "id": 6109894560,
+  "lat": 47.0734822,
+  "lon": 15.4406078,
+  "tags": {
+    "leaf_cycle": "deciduous",
+    "leaf_type": "broadleaved",
+    "natural": "tree"
+  }
+},
+{
+  "type": "node",
+  "id": 6109894561,
+  "lat": 47.0733112,
+  "lon": 15.4405824,
+  "tags": {
+    "leaf_cycle": "deciduous",
+    "leaf_type": "broadleaved",
+    "natural": "tree"
+  }
+},
+{
+  "type": "node",
+  "id": 6109894562,
+  "lat": 47.0734130,
+  "lon": 15.4401952,
+  "tags": {
+    "leaf_cycle": "deciduous",
+    "leaf_type": "broadleaved",
+    "natural": "tree"
+  }
+},
+{
+  "type": "node",
+  "id": 8043309253,
+  "lat": 47.0745869,
+  "lon": 15.4425086,
+  "tags": {
+    "natural": "tree"
+  }
+},
+{
+  "type": "node",
+  "id": 8043309254,
+  "lat": 47.0745116,
+  "lon": 15.4425180,
+  "tags": {
+    "natural": "tree"
+  }
+},
+{
+  "type": "node",
+  "id": 8043309817,
+  "lat": 47.0732913,
+  "lon": 15.4423115,
+  "tags": {
+    "natural": "tree"
+  }
+},
+{
+  "type": "node",
+  "id": 8140200677,
+  "lat": 47.0739188,
+  "lon": 15.4415091,
+  "tags": {
+    "natural": "tree",
+    "source": "geoimage.at"
+  }
+},
+{
+  "type": "node",
+  "id": 8140200678,
+  "lat": 47.0739631,
+  "lon": 15.4415118,
+  "tags": {
+    "natural": "tree",
+    "source": "geoimage.at"
+  }
+},
+{
+  "type": "node",
+  "id": 8140200679,
+  "lat": 47.0739652,
+  "lon": 15.4414424,
+  "tags": {
+    "natural": "tree",
+    "source": "geoimage.at"
+  }
+},
+{
+  "type": "node",
+  "id": 8140200680,
+  "lat": 47.0739184,
+  "lon": 15.4414424,
+  "tags": {
+    "natural": "tree",
+    "source": "geoimage.at"
+  }
+},
+{
+  "type": "node",
+  "id": 8140200681,
+  "lat": 47.0742221,
+  "lon": 15.4412979,
+  "tags": {
+    "natural": "tree"
+  }
+},
+{
+  "type": "node",
+  "id": 8140213025,
+  "lat": 47.0744563,
+  "lon": 15.4405164,
+  "tags": {
+    "leaf_cycle": "deciduous",
+    "leaf_type": "broadleaved",
+    "natural": "tree"
+  }
+},
+{
+  "type": "node",
+  "id": 10059404332,
+  "lat": 47.0741657,
+  "lon": 15.4425400,
+  "tags": {
+    "leaf_cycle": "deciduous",
+    "leaf_type": "broadleaved",
+    "natural": "tree"
+  }
+},
+{
+  "type": "node",
+  "id": 10152499982,
+  "lat": 47.0733993,
+  "lon": 15.4405967,
+  "tags": {
+    "leaf_cycle": "deciduous",
+    "leaf_type": "broadleaved",
+    "natural": "tree"
+  }
+},
+{
+  "type": "node",
+  "id": 10914403662,
+  "lat": 47.0747498,
+  "lon": 15.4401195,
+  "tags": {
+    "leaf_cycle": "deciduous",
+    "leaf_type": "broadleaved",
+    "natural": "tree"
+  }
+},
+{
+  "type": "node",
+  "id": 10914403665,
+  "lat": 47.0743299,
+  "lon": 15.4404769,
+  "tags": {
+    "leaf_cycle": "deciduous",
+    "leaf_type": "broadleaved",
+    "natural": "tree"
+  }
+},
+{
+  "type": "node",
+  "id": 10914403666,
+  "lat": 47.0742297,
+  "lon": 15.4404644,
+  "tags": {
+    "leaf_cycle": "deciduous",
+    "leaf_type": "broadleaved",
+    "natural": "tree"
+  }
+},
+{
+  "type": "node",
+  "id": 12811187343,
+  "lat": 47.0742499,
+  "lon": 15.4424467,
+  "tags": {
+    "leaf_cycle": "deciduous",
+    "leaf_type": "broadleaved",
+    "natural": "tree"
+  }
+},
+{
+  "type": "node",
+  "id": 12811256201,
+  "lat": 47.0742689,
+  "lon": 15.4405325,
+  "tags": {
+    "leaf_cycle": "deciduous",
+    "leaf_type": "broadleaved",
+    "natural": "tree"
+  }
+},
+{
+  "type": "node",
+  "id": 14092125406,
+  "lat": 47.0746401,
+  "lon": 15.4424711,
+  "tags": {
+    "leaf_type": "broadleaved",
+    "natural": "tree"
+  }
+},
+{
+  "type": "way",
+  "id": 4018261,
+  "bounds": {
+    "minlat": 47.0730828,
+    "minlon": 15.4397742,
+    "maxlat": 47.0732410,
+    "maxlon": 15.4408255
+  },
+  "nodes": [
+    21099747,
+    3983175233,
+    1002246537
+  ],
+  "geometry": [
+    { "lat": 47.0730828, "lon": 15.4408255 },
+    { "lat": 47.0730869, "lon": 15.4407977 },
+    { "lat": 47.0732410, "lon": 15.4397742 }
+  ],
+  "tags": {
+    "highway": "residential",
+    "incline": "5%",
+    "lit": "yes",
+    "maxspeed": "10",
+    "name": "Ballhausgasse",
+    "name:etymology": "Ballhaus, errichtet 1602 unter Ferrante Signorini",
+    "name:start_date": "~1838",
+    "surface": "asphalt",
+    "wikidata": "Q106635452"
+  }
+},
+{
+  "type": "way",
+  "id": 27431778,
+  "bounds": {
+    "minlat": 47.0732263,
+    "minlon": 15.4413636,
+    "maxlat": 47.0738272,
+    "maxlon": 15.4413878
+  },
+  "nodes": [
+    301166871,
+    1026564402,
+    4251235879,
+    300218959,
+    452486834
+  ],
+  "geometry": [
+    { "lat": 47.0738272, "lon": 15.4413877 },
+    { "lat": 47.0737690, "lon": 15.4413863 },
+    { "lat": 47.0737070, "lon": 15.4413862 },
+    { "lat": 47.0736621, "lon": 15.4413878 },
+    { "lat": 47.0732263, "lon": 15.4413636 }
+  ],
+  "tags": {
+    "highway": "residential",
+    "incline": "-4.5%",
+    "lane_markings": "no",
+    "lit": "yes",
+    "maxspeed": "30",
+    "name": "Hartiggasse",
+    "name:etymology": "Franz Graf von Hartig",
+    "name:etymology:wikidata": "Q111488168",
+    "name:start_date": "1838",
+    "sidewalk:both": "separate",
+    "smoothness": "good",
+    "source:maxspeed": "AT:city_limit30",
+    "surface": "asphalt",
+    "wikidata": "Q106635500"
+  }
+},
+{
+  "type": "way",
+  "id": 29715016,
+  "bounds": {
+    "minlat": 47.0723935,
+    "minlon": 15.4412526,
+    "maxlat": 47.0730171,
+    "maxlon": 15.4420303
+  },
+  "nodes": [
+    327379760,
+    327379763,
+    327379766,
+    327379770,
+    327379773,
+    327379776,
+    327379780,
+    327379783,
+    327379786,
+    327379789,
+    3983175214,
+    327379795,
+    327379798,
+    3983175211,
+    327379801,
+    327379805,
+    327379808,
+    6372239936,
+    327379812,
+    327379816,
+    327379821,
+    327379826,
+    327379830,
+    327379835,
+    327379840,
+    327379844,
+    2134315986,
+    327379760
+  ],
+  "geometry": [
+    { "lat": 47.0729858, "lon": 15.4420303 },
+    { "lat": 47.0730138, "lon": 15.4418198 },
+    { "lat": 47.0729555, "lon": 15.4418024 },
+    { "lat": 47.0729592, "lon": 15.4417650 },
+    { "lat": 47.0729662, "lon": 15.4417669 },
+    { "lat": 47.0730171, "lon": 15.4413999 },
+    { "lat": 47.0728375, "lon": 15.4413488 },
+    { "lat": 47.0727850, "lon": 15.4413340 },
+    { "lat": 47.0727828, "lon": 15.4413507 },
+    { "lat": 47.0726781, "lon": 15.4413213 },
+    { "lat": 47.0726805, "lon": 15.4413032 },
+    { "lat": 47.0726849, "lon": 15.4412693 },
+    { "lat": 47.0726258, "lon": 15.4412526 },
+    { "lat": 47.0726215, "lon": 15.4412848 },
+    { "lat": 47.0726185, "lon": 15.4413078 },
+    { "lat": 47.0725059, "lon": 15.4412764 },
+    { "lat": 47.0724605, "lon": 15.4412634 },
+    { "lat": 47.0724340, "lon": 15.4414650 },
+    { "lat": 47.0723953, "lon": 15.4417602 },
+    { "lat": 47.0723935, "lon": 15.4417738 },
+    { "lat": 47.0725805, "lon": 15.4418264 },
+    { "lat": 47.0725846, "lon": 15.4417951 },
+    { "lat": 47.0725807, "lon": 15.4417940 },
+    { "lat": 47.0725973, "lon": 15.4416676 },
+    { "lat": 47.0727578, "lon": 15.4417128 },
+    { "lat": 47.0727273, "lon": 15.4419446 },
+    { "lat": 47.0728920, "lon": 15.4420023 },
+    { "lat": 47.0729858, "lon": 15.4420303 }
+  ],
+  "tags": {
+    "addr:city": "Graz",
+    "addr:country": "AT",
+    "addr:housenumber": "11",
+    "addr:postcode": "8010",
+    "addr:street": "Hofgasse",
+    "amenity": "theatre",
+    "building": "yes",
+    "building:levels": "3",
+    "construction:start_date": "1824",
+    "contact:email": "presse-sh@schauspielhaus-graz.com",
+    "contact:fax": "+43 316 8008-3488",
+    "contact:phone": "+43 316 8008",
+    "name": "Schauspielhaus",
+    "operator": "Schauspielhaus, Graz GmbH",
+    "roof:levels": "0",
+    "roof:material": "roof_tiles",
+    "roof:shape": "mansard",
+    "source": "survey",
+    "website": "https://schauspielhaus-graz.buehnen-graz.com",
+    "wheelchair": "yes",
+    "wikidata": "Q2232129",
+    "wikimedia_commons": "Category:Schauspielhaus Graz",
+    "wikipedia": "de:Schauspielhaus Graz"
+  }
+},
+{
+  "type": "way",
+  "id": 30425228,
+  "bounds": {
+    "minlat": 47.0736149,
+    "minlon": 15.4415514,
+    "maxlat": 47.0737683,
+    "maxlon": 15.4421015
+  },
+  "nodes": [
+    1026564406,
+    1026564399,
+    542034196,
+    542034198,
+    542034200,
+    542034203,
+    542034206
+  ],
+  "geometry": [
+    { "lat": 47.0737683, "lon": 15.4415514 },
+    { "lat": 47.0737623, "lon": 15.4416238 },
+    { "lat": 47.0737475, "lon": 15.4417033 },
+    { "lat": 47.0737230, "lon": 15.4417751 },
+    { "lat": 47.0736445, "lon": 15.4419644 },
+    { "lat": 47.0736200, "lon": 15.4420297 },
+    { "lat": 47.0736149, "lon": 15.4421015 }
+  ],
+  "tags": {
+    "foot": "no",
+    "highway": "service",
+    "maxheight": "2",
+    "note": "Zufahrt Tiefgarage",
+    "surface": "asphalt",
+    "tunnel": "building_passage"
+  }
+},
+{
+  "type": "way",
+  "id": 38322560,
+  "bounds": {
+    "minlat": 47.0730430,
+    "minlon": 15.4408255,
+    "maxlat": 47.0730828,
+    "maxlon": 15.4413143
+  },
+  "nodes": [
+    21099747,
+    2042061517,
+    4291613499,
+    1000024783,
+    3983175226,
+    1918259872,
+    21099807
+  ],
+  "geometry": [
+    { "lat": 47.0730828, "lon": 15.4408255 },
+    { "lat": 47.0730785, "lon": 15.4408632 },
+    { "lat": 47.0730627, "lon": 15.4410586 },
+    { "lat": 47.0730484, "lon": 15.4412345 },
+    { "lat": 47.0730466, "lon": 15.4412548 },
+    { "lat": 47.0730452, "lon": 15.4412711 },
+    { "lat": 47.0730430, "lon": 15.4413143 }
+  ],
+  "tags": {
+    "cycleway:both": "no",
+    "highway": "residential",
+    "incline": "-1.7%",
+    "lane_markings": "no",
+    "lit": "yes",
+    "maxspeed": "30",
+    "name": "Freiheitsplatz",
+    "name:start_date": "1918-11-14",
+    "source:maxspeed": "AT:city_limit30",
+    "surface": "asphalt",
+    "wikidata": "Q111488509"
+  }
+},
+{
+  "type": "way",
+  "id": 38322561,
+  "bounds": {
+    "minlat": 47.0724646,
+    "minlon": 15.4411566,
+    "maxlat": 47.0732263,
+    "maxlon": 15.4413636
+  },
+  "nodes": [
+    452486834,
+    21099807,
+    519843449,
+    747152255,
+    560985543,
+    1386746885
+  ],
+  "geometry": [
+    { "lat": 47.0732263, "lon": 15.4413636 },
+    { "lat": 47.0730430, "lon": 15.4413143 },
+    { "lat": 47.0726267, "lon": 15.4412031 },
+    { "lat": 47.0725494, "lon": 15.4411792 },
+    { "lat": 47.0725370, "lon": 15.4411761 },
+    { "lat": 47.0724646, "lon": 15.4411566 }
+  ],
+  "tags": {
+    "highway": "residential",
+    "incline": "-3.7%",
+    "lane_markings": "no",
+    "lit": "yes",
+    "maxspeed": "30",
+    "name": "Freiheitsplatz",
+    "name:start_date": "1918-11-14",
+    "source:maxspeed": "AT:city_limit30",
+    "surface": "asphalt",
+    "wikidata": "Q111488509"
+  }
+},
+{
+  "type": "way",
+  "id": 71847094,
+  "bounds": {
+    "minlat": 47.0747750,
+    "minlon": 15.4398193,
+    "maxlat": 47.0748139,
+    "maxlon": 15.4401573
+  },
+  "nodes": [
+    3983175272,
+    853831099
+  ],
+  "geometry": [
+    { "lat": 47.0747750, "lon": 15.4401573 },
+    { "lat": 47.0748139, "lon": 15.4398193 }
+  ],
+  "tags": {
+    "handrail": "yes",
+    "highway": "steps",
+    "incline": "up",
+    "lit": "no",
+    "ramp": "no",
+    "step_count": "23",
+    "surface": "concrete",
+    "tactile_paving": "no"
+  }
+},
+{
+  "type": "way",
+  "id": 77126156,
+  "bounds": {
+    "minlat": 47.0738272,
+    "minlon": 15.4399656,
+    "maxlat": 47.0739036,
+    "maxlon": 15.4413877
+  },
+  "nodes": [
+    301166866,
+    4291613561,
+    4291613560,
+    963282069,
+    301166871
+  ],
+  "geometry": [
+    { "lat": 47.0739036, "lon": 15.4399656 },
+    { "lat": 47.0739006, "lon": 15.4400608 },
+    { "lat": 47.0739004, "lon": 15.4400675 },
+    { "lat": 47.0738668, "lon": 15.4413459 },
+    { "lat": 47.0738272, "lon": 15.4413877 }
+  ],
+  "tags": {
+    "bicycle": "yes",
+    "highway": "pedestrian",
+    "lit": "yes",
+    "motor_vehicle:conditional": "delivery @ (05:00-10:00 AND maxweight<7.5)",
+    "name": "Karmeliterplatz",
+    "name:etymology": "Karmeliten",
+    "name:etymology:wikidata": "Q186277",
+    "name:start_date": "1700",
+    "psv": "yes",
+    "surface": "paving_stones",
+    "wikidata": "Q106635521"
+  }
+},
+{
+  "type": "way",
+  "id": 77384002,
+  "bounds": {
+    "minlat": 47.0736604,
+    "minlon": 15.4413132,
+    "maxlat": 47.0736608,
+    "maxlon": 15.4413248
+  },
+  "nodes": [
+    3983175250,
+    1014378992
+  ],
+  "geometry": [
+    { "lat": 47.0736608, "lon": 15.4413248 },
+    { "lat": 47.0736604, "lon": 15.4413132 }
+  ],
+  "tags": {
+    "highway": "footway",
+    "lit": "yes",
+    "smoothness": "excellent",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 85081178,
+  "bounds": {
+    "minlat": 47.0729936,
+    "minlon": 15.4398231,
+    "maxlat": 47.0730905,
+    "maxlon": 15.4400242
+  },
+  "nodes": [
+    987131467,
+    987131880,
+    987132248,
+    4295289183,
+    987131788,
+    987131467
+  ],
+  "geometry": [
+    { "lat": 47.0729936, "lon": 15.4400046 },
+    { "lat": 47.0730655, "lon": 15.4400242 },
+    { "lat": 47.0730905, "lon": 15.4398453 },
+    { "lat": 47.0730571, "lon": 15.4398336 },
+    { "lat": 47.0730272, "lon": 15.4398231 },
+    { "lat": 47.0729936, "lon": 15.4400046 }
+  ],
+  "tags": {
+    "area": "yes",
+    "highway": "footway",
+    "man_made": "courtyard",
+    "surface": "cobblestone"
+  }
+},
+{
+  "type": "way",
+  "id": 85081183,
+  "bounds": {
+    "minlat": 47.0744643,
+    "minlon": 15.4399332,
+    "maxlat": 47.0746871,
+    "maxlon": 15.4401021
+  },
+  "nodes": [
+    987131398,
+    987131814,
+    1404007698,
+    987132189,
+    987132276,
+    987131398
+  ],
+  "geometry": [
+    { "lat": 47.0746706, "lon": 15.4401021 },
+    { "lat": 47.0744643, "lon": 15.4400256 },
+    { "lat": 47.0744695, "lon": 15.4399532 },
+    { "lat": 47.0744738, "lon": 15.4399332 },
+    { "lat": 47.0746871, "lon": 15.4400180 },
+    { "lat": 47.0746706, "lon": 15.4401021 }
+  ],
+  "tags": {
+    "addr:city": "Graz",
+    "addr:country": "AT",
+    "addr:housenumber": "9",
+    "addr:postcode": "8010",
+    "addr:street": "Paulustorgasse",
+    "building": "yes",
+    "roof:material": "roof_tiles",
+    "roof:shape": "hipped",
+    "source": "survey",
+    "start_date": "1827",
+    "wikidata": "Q37797553"
+  }
+},
+{
+  "type": "way",
+  "id": 85081184,
+  "bounds": {
+    "minlat": 47.0734875,
+    "minlon": 15.4399745,
+    "maxlat": 47.0736714,
+    "maxlon": 15.4403181
+  },
+  "nodes": [
+    987131387,
+    4291613528,
+    987131486,
+    987132352,
+    987131811,
+    987132349,
+    987131914,
+    987131387
+  ],
+  "geometry": [
+    { "lat": 47.0736714, "lon": 15.4399877 },
+    { "lat": 47.0736696, "lon": 15.4401037 },
+    { "lat": 47.0736659, "lon": 15.4403181 },
+    { "lat": 47.0735149, "lon": 15.4403042 },
+    { "lat": 47.0734875, "lon": 15.4402998 },
+    { "lat": 47.0734951, "lon": 15.4400477 },
+    { "lat": 47.0735225, "lon": 15.4399745 },
+    { "lat": 47.0736714, "lon": 15.4399877 }
+  ],
+  "tags": {
+    "addr:city": "Graz",
+    "addr:country": "AT",
+    "addr:housenumber": "8",
+    "addr:postcode": "8010",
+    "addr:street": "Karmeliterplatz",
+    "building": "office",
+    "building:levels": "3",
+    "roof:material": "roof_tiles",
+    "roof:shape": "gabled",
+    "source": "data.graz.gv.at",
+    "start_date": "1600",
+    "wikidata": "Q37973310"
+  }
+},
+{
+  "type": "way",
+  "id": 85081216,
+  "bounds": {
+    "minlat": 47.0733852,
+    "minlon": 15.4398459,
+    "maxlat": 47.0735388,
+    "maxlon": 15.4400599
+  },
+  "nodes": [
+    987131980,
+    987131450,
+    987131914,
+    987132349,
+    987131556,
+    987131876,
+    987131980
+  ],
+  "geometry": [
+    { "lat": 47.0734086, "lon": 15.4398459 },
+    { "lat": 47.0735388, "lon": 15.4399191 },
+    { "lat": 47.0735225, "lon": 15.4399745 },
+    { "lat": 47.0734951, "lon": 15.4400477 },
+    { "lat": 47.0734740, "lon": 15.4400483 },
+    { "lat": 47.0733852, "lon": 15.4400599 },
+    { "lat": 47.0734086, "lon": 15.4398459 }
+  ],
+  "tags": {
+    "addr:city": "Graz",
+    "addr:country": "AT",
+    "addr:housenumber": "36",
+    "addr:postcode": "8010",
+    "addr:street": "Sporgasse",
+    "building": "apartments",
+    "building:levels": "4",
+    "roof:levels": "1",
+    "roof:material": "roof_tiles",
+    "roof:shape": "gabled",
+    "source": "data.graz.gv.at",
+    "start_date": "1862"
+  }
+},
+{
+  "type": "way",
+  "id": 85081238,
+  "bounds": {
+    "minlat": 47.0740184,
+    "minlon": 15.4400411,
+    "maxlat": 47.0742367,
+    "maxlon": 15.4407768
+  },
+  "nodes": [
+    987132142,
+    987131324,
+    987131681,
+    987131765,
+    987131796,
+    4291613577,
+    4291613571,
+    987131480,
+    4291613580,
+    4291613579,
+    987131934,
+    6723796864,
+    9134332530,
+    987131592,
+    4291613578,
+    987132142
+  ],
+  "geometry": [
+    { "lat": 47.0741837, "lon": 15.4402684 },
+    { "lat": 47.0741505, "lon": 15.4402655 },
+    { "lat": 47.0741496, "lon": 15.4403097 },
+    { "lat": 47.0741810, "lon": 15.4403152 },
+    { "lat": 47.0741851, "lon": 15.4403711 },
+    { "lat": 47.0741851, "lon": 15.4403967 },
+    { "lat": 47.0741476, "lon": 15.4404014 },
+    { "lat": 47.0741481, "lon": 15.4406247 },
+    { "lat": 47.0742367, "lon": 15.4406345 },
+    { "lat": 47.0742344, "lon": 15.4407768 },
+    { "lat": 47.0740185, "lon": 15.4407619 },
+    { "lat": 47.0740185, "lon": 15.4406601 },
+    { "lat": 47.0740184, "lon": 15.4405837 },
+    { "lat": 47.0740374, "lon": 15.4400411 },
+    { "lat": 47.0741897, "lon": 15.4400711 },
+    { "lat": 47.0741837, "lon": 15.4402684 }
+  ],
+  "tags": {
+    "addr:city": "Graz",
+    "addr:housenumber": "1",
+    "addr:postcode": "8010",
+    "addr:street": "Karmeliterplatz",
+    "building": "yes",
+    "building:levels": "3",
+    "building:use:de": "Nuntiatur",
+    "building:use:end_date": "1622",
+    "construction:name": "Jakob Rosolenz, Probst Stift Stainz",
+    "roof:levels": "1",
+    "roof:material": "roof_tiles",
+    "roof:shape": "gabled",
+    "source": "geoimage.at",
+    "start_date": "1606",
+    "wikidata": "Q38044177"
+  }
+},
+{
+  "type": "way",
+  "id": 85081242,
+  "bounds": {
+    "minlat": 47.0735076,
+    "minlon": 15.4403042,
+    "maxlat": 47.0736659,
+    "maxlon": 15.4408092
+  },
+  "nodes": [
+    987132228,
+    987132324,
+    987131347,
+    987132352,
+    987131486,
+    2123153604,
+    2123153603,
+    6746226709,
+    987131475,
+    987131859,
+    987131321,
+    987132228
+  ],
+  "geometry": [
+    { "lat": 47.0735259, "lon": 15.4406785 },
+    { "lat": 47.0735321, "lon": 15.4404287 },
+    { "lat": 47.0735126, "lon": 15.4404269 },
+    { "lat": 47.0735149, "lon": 15.4403042 },
+    { "lat": 47.0736659, "lon": 15.4403181 },
+    { "lat": 47.0736531, "lon": 15.4405865 },
+    { "lat": 47.0736359, "lon": 15.4405878 },
+    { "lat": 47.0736348, "lon": 15.4406898 },
+    { "lat": 47.0736336, "lon": 15.4408092 },
+    { "lat": 47.0735076, "lon": 15.4407824 },
+    { "lat": 47.0735082, "lon": 15.4406791 },
+    { "lat": 47.0735259, "lon": 15.4406785 }
+  ],
+  "tags": {
+    "addr:city": "Graz",
+    "addr:country": "AT",
+    "addr:housenumber": "6",
+    "addr:postcode": "8010",
+    "addr:street": "Karmeliterplatz",
+    "alt_name": "Palais Prandegg",
+    "building": "office",
+    "building:levels": "3",
+    "name": "Palais Galler",
+    "roof:levels": "1",
+    "roof:material": "roof_tiles",
+    "roof:shape": "hipped",
+    "source": "data.graz.gv.at",
+    "start_date": "1690",
+    "wikidata": "Q1432996",
+    "wikimedia_commons": "Category:Palais Galler (Karmeliterplatz), Graz",
+    "wikipedia": "de:Palais Galler"
+  }
+},
+{
+  "type": "way",
+  "id": 85081261,
+  "bounds": {
+    "minlat": 47.0732174,
+    "minlon": 15.4397857,
+    "maxlat": 47.0734086,
+    "maxlon": 15.4402505
+  },
+  "nodes": [
+    1448524236,
+    987132350,
+    8011304931,
+    1567937684,
+    8011304930,
+    987131980,
+    987131876,
+    1448524238,
+    1448524236
+  ],
+  "geometry": [
+    { "lat": 47.0732174, "lon": 15.4402160 },
+    { "lat": 47.0732783, "lon": 15.4398085 },
+    { "lat": 47.0732903, "lon": 15.4397985 },
+    { "lat": 47.0733057, "lon": 15.4397857 },
+    { "lat": 47.0733700, "lon": 15.4398233 },
+    { "lat": 47.0734086, "lon": 15.4398459 },
+    { "lat": 47.0733852, "lon": 15.4400599 },
+    { "lat": 47.0733388, "lon": 15.4402505 },
+    { "lat": 47.0732174, "lon": 15.4402160 }
+  ],
+  "tags": {
+    "addr:city": "Graz",
+    "addr:country": "AT",
+    "addr:housenumber": "1",
+    "addr:postcode": "8010",
+    "addr:street": "Ballhausgasse",
+    "building": "apartments",
+    "building:levels": "4",
+    "roof:material": "roof_tiles",
+    "source": "survey",
+    "start_date": "1847"
+  }
+},
+{
+  "type": "way",
+  "id": 85081301,
+  "bounds": {
+    "minlat": 47.0732367,
+    "minlon": 15.4407035,
+    "maxlat": 47.0734523,
+    "maxlon": 15.4413061
+  },
+  "nodes": [
+    987131448,
+    4291613514,
+    1011763998,
+    1011763999,
+    987131546,
+    4291613521,
+    987132440,
+    987131867,
+    987131883,
+    987131448
+  ],
+  "geometry": [
+    { "lat": 47.0732438, "lon": 15.4413036 },
+    { "lat": 47.0732427, "lon": 15.4408734 },
+    { "lat": 47.0732425, "lon": 15.4408066 },
+    { "lat": 47.0732367, "lon": 15.4407035 },
+    { "lat": 47.0733576, "lon": 15.4407063 },
+    { "lat": 47.0733576, "lon": 15.4408760 },
+    { "lat": 47.0733576, "lon": 15.4411243 },
+    { "lat": 47.0734481, "lon": 15.4411132 },
+    { "lat": 47.0734523, "lon": 15.4413061 },
+    { "lat": 47.0732438, "lon": 15.4413036 }
+  ],
+  "tags": {
+    "building": "apartments",
+    "building:levels": "3",
+    "roof:levels": "1",
+    "roof:material": "roof_tiles",
+    "roof:shape": "hipped",
+    "source": "geoimage.at",
+    "wikidata": "Q37973117",
+    "wikimedia_commons": "Category:Former St. Lambrechter-Hof, Freiheitsplatz 4, Graz"
+  }
+},
+{
+  "type": "way",
+  "id": 85081306,
+  "bounds": {
+    "minlat": 47.0725171,
+    "minlon": 15.4403094,
+    "maxlat": 47.0730893,
+    "maxlon": 15.4407740
+  },
+  "nodes": [
+    987132300,
+    575136974,
+    8043309860,
+    4304449305,
+    1002989913,
+    9711903231,
+    9711903230,
+    987131741,
+    987131606,
+    987131583,
+    987131394,
+    4304449307,
+    987131724,
+    987132404,
+    987132059,
+    987132009,
+    3983175229,
+    9488940460,
+    987132300
+  ],
+  "geometry": [
+    { "lat": 47.0730417, "lon": 15.4407740 },
+    { "lat": 47.0727664, "lon": 15.4407159 },
+    { "lat": 47.0726585, "lon": 15.4406947 },
+    { "lat": 47.0726460, "lon": 15.4406922 },
+    { "lat": 47.0725171, "lon": 15.4406651 },
+    { "lat": 47.0725189, "lon": 15.4406437 },
+    { "lat": 47.0725210, "lon": 15.4406114 },
+    { "lat": 47.0725484, "lon": 15.4403094 },
+    { "lat": 47.0726932, "lon": 15.4403324 },
+    { "lat": 47.0726922, "lon": 15.4403398 },
+    { "lat": 47.0726781, "lon": 15.4404722 },
+    { "lat": 47.0726860, "lon": 15.4404738 },
+    { "lat": 47.0729446, "lon": 15.4405250 },
+    { "lat": 47.0729556, "lon": 15.4404398 },
+    { "lat": 47.0729673, "lon": 15.4404435 },
+    { "lat": 47.0730893, "lon": 15.4404851 },
+    { "lat": 47.0730526, "lon": 15.4407611 },
+    { "lat": 47.0730465, "lon": 15.4407683 },
+    { "lat": 47.0730417, "lon": 15.4407740 }
+  ],
+  "tags": {
+    "building": "apartments",
+    "building:levels": "4",
+    "construction:start_date": "1841",
+    "roof:levels": "1",
+    "roof:material": "roof_tiles",
+    "roof:shape": "gabled",
+    "source": "geoimage.at",
+    "wikidata": "Q38003433"
+  }
+},
+{
+  "type": "way",
+  "id": 85081307,
+  "bounds": {
+    "minlat": 47.0726922,
+    "minlon": 15.4400046,
+    "maxlat": 47.0731274,
+    "maxlon": 15.4404851
+  },
+  "nodes": [
+    987132461,
+    987132383,
+    3620563572,
+    3620563571,
+    987131583,
+    987131606,
+    3620563564,
+    3620563569,
+    3620563570,
+    3620563567,
+    987132400,
+    987131952,
+    987131899,
+    987131431,
+    987131992,
+    987132274,
+    987131620,
+    987132438,
+    987132270,
+    987131386,
+    14294478825,
+    987132009,
+    987132059,
+    10926691310,
+    987132461
+  ],
+  "geometry": [
+    { "lat": 47.0728692, "lon": 15.4402264 },
+    { "lat": 47.0728525, "lon": 15.4403595 },
+    { "lat": 47.0728215, "lon": 15.4403534 },
+    { "lat": 47.0728192, "lon": 15.4403627 },
+    { "lat": 47.0726922, "lon": 15.4403398 },
+    { "lat": 47.0726932, "lon": 15.4403324 },
+    { "lat": 47.0726994, "lon": 15.4402611 },
+    { "lat": 47.0727690, "lon": 15.4402789 },
+    { "lat": 47.0727857, "lon": 15.4401297 },
+    { "lat": 47.0727119, "lon": 15.4401196 },
+    { "lat": 47.0727179, "lon": 15.4400046 },
+    { "lat": 47.0727268, "lon": 15.4400077 },
+    { "lat": 47.0727922, "lon": 15.4400145 },
+    { "lat": 47.0728675, "lon": 15.4400320 },
+    { "lat": 47.0728963, "lon": 15.4400408 },
+    { "lat": 47.0728844, "lon": 15.4401105 },
+    { "lat": 47.0728756, "lon": 15.4401536 },
+    { "lat": 47.0730214, "lon": 15.4401973 },
+    { "lat": 47.0730293, "lon": 15.4401603 },
+    { "lat": 47.0731274, "lon": 15.4402023 },
+    { "lat": 47.0731124, "lon": 15.4403138 },
+    { "lat": 47.0730893, "lon": 15.4404851 },
+    { "lat": 47.0729673, "lon": 15.4404435 },
+    { "lat": 47.0729970, "lon": 15.4402637 },
+    { "lat": 47.0728692, "lon": 15.4402264 }
+  ],
+  "tags": {
+    "addr:city": "Graz",
+    "addr:country": "AT",
+    "addr:housenumber": "4-4a",
+    "addr:postcode": "8010",
+    "addr:street": "Ballhausgasse",
+    "building": "apartments",
+    "building:levels": "5",
+    "roof:levels": "1",
+    "roof:material": "roof_tiles",
+    "roof:shape": "gabled",
+    "source": "geoimage.at",
+    "start_date": "1870"
+  }
+},
+{
+  "type": "way",
+  "id": 85081309,
+  "bounds": {
+    "minlat": 47.0742318,
+    "minlon": 15.4423337,
+    "maxlat": 47.0748314,
+    "maxlon": 15.4431889
+  },
+  "nodes": [
+    6603677292,
+    3669941958,
+    3669941953,
+    3669941952,
+    3669941956,
+    10047913010,
+    1716239151,
+    6603651684,
+    6603651683,
+    1716239160,
+    6603651682,
+    6603677310,
+    11574582366,
+    11574582374,
+    6603677309,
+    6603677308,
+    6603677292
+  ],
+  "geometry": [
+    { "lat": 47.0744290, "lon": 15.4424743 },
+    { "lat": 47.0744360, "lon": 15.4425741 },
+    { "lat": 47.0742382, "lon": 15.4427533 },
+    { "lat": 47.0742318, "lon": 15.4428589 },
+    { "lat": 47.0743605, "lon": 15.4431623 },
+    { "lat": 47.0743718, "lon": 15.4431889 },
+    { "lat": 47.0744081, "lon": 15.4431655 },
+    { "lat": 47.0745280, "lon": 15.4431022 },
+    { "lat": 47.0748113, "lon": 15.4430066 },
+    { "lat": 47.0748193, "lon": 15.4428692 },
+    { "lat": 47.0748242, "lon": 15.4426236 },
+    { "lat": 47.0748314, "lon": 15.4423337 },
+    { "lat": 47.0747579, "lon": 15.4423440 },
+    { "lat": 47.0746502, "lon": 15.4423590 },
+    { "lat": 47.0745272, "lon": 15.4423762 },
+    { "lat": 47.0745289, "lon": 15.4424613 },
+    { "lat": 47.0744290, "lon": 15.4424743 }
+  ],
+  "tags": {
+    "access": "yes",
+    "leisure": "playground",
+    "source": "bing"
+  }
+},
+{
+  "type": "way",
+  "id": 85081311,
+  "bounds": {
+    "minlat": 47.0741782,
+    "minlon": 15.4398306,
+    "maxlat": 47.0744255,
+    "maxlon": 15.4400022
+  },
+  "nodes": [
+    987131569,
+    987131654,
+    987131989,
+    987132086,
+    1404007691,
+    987131569
+  ],
+  "geometry": [
+    { "lat": 47.0744031, "lon": 15.4400022 },
+    { "lat": 47.0741782, "lon": 15.4399185 },
+    { "lat": 47.0741952, "lon": 15.4398306 },
+    { "lat": 47.0744255, "lon": 15.4399254 },
+    { "lat": 47.0744228, "lon": 15.4399353 },
+    { "lat": 47.0744031, "lon": 15.4400022 }
+  ],
+  "tags": {
+    "addr:city": "Graz",
+    "addr:country": "AT",
+    "addr:housenumber": "5",
+    "addr:postcode": "8010",
+    "addr:street": "Paulustorgasse",
+    "building": "yes",
+    "roof:material": "tile",
+    "roof:shape": "gabled",
+    "source": "survey",
+    "start_date": "1790"
+  }
+},
+{
+  "type": "way",
+  "id": 86150708,
+  "bounds": {
+    "minlat": 47.0726210,
+    "minlon": 15.4406947,
+    "maxlat": 47.0730473,
+    "maxlon": 15.4412571
+  },
+  "nodes": [
+    3983175217,
+    3983175218,
+    3983175220,
+    3983175221,
+    3983175227,
+    3983175230,
+    8043309858,
+    987132300,
+    575136974,
+    8043309860,
+    4304449306,
+    2042061514,
+    8043309855,
+    8043309854,
+    3983175212,
+    906950676,
+    3983175217
+  ],
+  "geometry": [
+    { "lat": 47.0729961, "lon": 15.4412571 },
+    { "lat": 47.0730092, "lon": 15.4412469 },
+    { "lat": 47.0730158, "lon": 15.4412372 },
+    { "lat": 47.0730200, "lon": 15.4412190 },
+    { "lat": 47.0730442, "lon": 15.4408740 },
+    { "lat": 47.0730473, "lon": 15.4408103 },
+    { "lat": 47.0730442, "lon": 15.4407899 },
+    { "lat": 47.0730417, "lon": 15.4407740 },
+    { "lat": 47.0727664, "lon": 15.4407159 },
+    { "lat": 47.0726585, "lon": 15.4406947 },
+    { "lat": 47.0726566, "lon": 15.4407138 },
+    { "lat": 47.0726522, "lon": 15.4407693 },
+    { "lat": 47.0726485, "lon": 15.4408136 },
+    { "lat": 47.0726242, "lon": 15.4411086 },
+    { "lat": 47.0726223, "lon": 15.4411316 },
+    { "lat": 47.0726210, "lon": 15.4411475 },
+    { "lat": 47.0729961, "lon": 15.4412571 }
+  ],
+  "tags": {
+    "area": "yes",
+    "highway": "pedestrian",
+    "lit": "yes",
+    "name": "Freiheitsplatz",
+    "name:start_date": "1918-11-14",
+    "old_name": "Franzensplatz",
+    "old_name:end_date": "1939",
+    "old_name:start_date": "1838",
+    "place": "square",
+    "smoothness": "intermediate",
+    "source:old_name": "Kubinzky, Karl A. und Wentner Astrid M.: Grazer Straßennamen. Herkunft und Bedeutung, 1., Auflage. Graz 1996. S. 120",
+    "start_date": "1835",
+    "surface": "fine_gravel",
+    "was:building": "yes",
+    "was:building:end_date": "1835",
+    "was:building:name": "Vizedomhauses",
+    "wikidata": "Q111488509",
+    "wikimedia_commons": "Category:Freiheitsplatz, Graz"
+  }
+},
+{
+  "type": "way",
+  "id": 86305534,
+  "bounds": {
+    "minlat": 47.0715585,
+    "minlon": 15.4378363,
+    "maxlat": 47.0736961,
+    "maxlon": 15.4399877
+  },
+  "nodes": [
+    20911189,
+    4295289138,
+    4297207315,
+    4297207317,
+    987892619,
+    1533380194,
+    1533380195,
+    4297207320,
+    987892507,
+    4297207321,
+    4297207322,
+    4297207323,
+    987891043,
+    4297207324,
+    4297207325,
+    1533380200,
+    1577953109,
+    4297207329,
+    987888950,
+    4297207330,
+    4297207331,
+    4297207332,
+    987892731,
+    4297207333,
+    4297207334,
+    4297207336,
+    987887221,
+    1607359550,
+    1607359551,
+    4297207337,
+    4297207338,
+    1607359552,
+    987132269,
+    1607359555,
+    4297207346,
+    4297207347,
+    987132380,
+    4297207349,
+    365266792,
+    1618073499,
+    4291613484,
+    4291613486,
+    327377548,
+    327377551,
+    4297207351,
+    4297207352,
+    4295289176,
+    4295289178,
+    987132297,
+    987132207,
+    4291613503,
+    987132313,
+    987131409,
+    9711903218,
+    9711890515,
+    1878440549,
+    1446291307,
+    987131505,
+    987131389,
+    987131652,
+    1002246529,
+    3983175254,
+    4292786442,
+    300866888,
+    4292786441,
+    4291613529,
+    987131387,
+    987131914,
+    987131450,
+    987131980,
+    8011304930,
+    1567937684,
+    8011304931,
+    987132350,
+    3983175246,
+    4292786432,
+    4291613515,
+    1002246537,
+    4291613509,
+    3983175241,
+    987131663,
+    9711903225,
+    9711903222,
+    4295289184,
+    987132076,
+    4297207355,
+    4291613494,
+    1002246540,
+    4297207353,
+    987131381,
+    14294478822,
+    987131725,
+    14294478823,
+    1392839298,
+    4295289174,
+    2848941906,
+    1878440547,
+    987132485,
+    9392281326,
+    987131991,
+    4291613482,
+    1002989899,
+    4291613471,
+    987132037,
+    2848941903,
+    987132069,
+    4297207343,
+    1197831413,
+    987132466,
+    1197831428,
+    4295289170,
+    1197831429,
+    987131997,
+    987131660,
+    4295289163,
+    4295289162,
+    1002246542,
+    4295289156,
+    4295289154,
+    987889675,
+    987891495,
+    2980071606,
+    10262292634,
+    987892411,
+    4614106082,
+    987891313,
+    987892110,
+    4295289139,
+    987890873,
+    4295289137,
+    4295289135,
+    4295289133,
+    4295289132,
+    4295289131,
+    4295289130,
+    4295289128,
+    4295289127,
+    987892034,
+    963281592,
+    20911189
+  ],
+  "geometry": [
+    { "lat": 47.0716059, "lon": 15.4378363 },
+    { "lat": 47.0716526, "lon": 15.4379435 },
+    { "lat": 47.0716664, "lon": 15.4379750 },
+    { "lat": 47.0716947, "lon": 15.4380400 },
+    { "lat": 47.0717179, "lon": 15.4380933 },
+    { "lat": 47.0717521, "lon": 15.4381500 },
+    { "lat": 47.0718099, "lon": 15.4382317 },
+    { "lat": 47.0718312, "lon": 15.4382684 },
+    { "lat": 47.0718568, "lon": 15.4383126 },
+    { "lat": 47.0718645, "lon": 15.4383212 },
+    { "lat": 47.0718813, "lon": 15.4383399 },
+    { "lat": 47.0719026, "lon": 15.4383637 },
+    { "lat": 47.0719250, "lon": 15.4383886 },
+    { "lat": 47.0719360, "lon": 15.4383985 },
+    { "lat": 47.0719641, "lon": 15.4384237 },
+    { "lat": 47.0719788, "lon": 15.4384369 },
+    { "lat": 47.0720245, "lon": 15.4384862 },
+    { "lat": 47.0720700, "lon": 15.4385250 },
+    { "lat": 47.0720898, "lon": 15.4385419 },
+    { "lat": 47.0721163, "lon": 15.4385677 },
+    { "lat": 47.0721412, "lon": 15.4385920 },
+    { "lat": 47.0721663, "lon": 15.4386164 },
+    { "lat": 47.0721840, "lon": 15.4386337 },
+    { "lat": 47.0722020, "lon": 15.4386477 },
+    { "lat": 47.0722288, "lon": 15.4386686 },
+    { "lat": 47.0722567, "lon": 15.4386903 },
+    { "lat": 47.0722673, "lon": 15.4386985 },
+    { "lat": 47.0722966, "lon": 15.4387436 },
+    { "lat": 47.0723166, "lon": 15.4387672 },
+    { "lat": 47.0723270, "lon": 15.4387813 },
+    { "lat": 47.0723348, "lon": 15.4387918 },
+    { "lat": 47.0723638, "lon": 15.4388298 },
+    { "lat": 47.0723714, "lon": 15.4388415 },
+    { "lat": 47.0724029, "lon": 15.4388917 },
+    { "lat": 47.0724318, "lon": 15.4389423 },
+    { "lat": 47.0724758, "lon": 15.4390197 },
+    { "lat": 47.0724805, "lon": 15.4390276 },
+    { "lat": 47.0725562, "lon": 15.4391336 },
+    { "lat": 47.0725653, "lon": 15.4391464 },
+    { "lat": 47.0725706, "lon": 15.4391538 },
+    { "lat": 47.0725800, "lon": 15.4391629 },
+    { "lat": 47.0725862, "lon": 15.4391578 },
+    { "lat": 47.0725903, "lon": 15.4391582 },
+    { "lat": 47.0726551, "lon": 15.4392018 },
+    { "lat": 47.0727541, "lon": 15.4392648 },
+    { "lat": 47.0727798, "lon": 15.4392810 },
+    { "lat": 47.0729027, "lon": 15.4393592 },
+    { "lat": 47.0729067, "lon": 15.4393614 },
+    { "lat": 47.0729107, "lon": 15.4393637 },
+    { "lat": 47.0731499, "lon": 15.4395092 },
+    { "lat": 47.0731591, "lon": 15.4395150 },
+    { "lat": 47.0732133, "lon": 15.4395490 },
+    { "lat": 47.0732177, "lon": 15.4395517 },
+    { "lat": 47.0732257, "lon": 15.4395576 },
+    { "lat": 47.0732414, "lon": 15.4395668 },
+    { "lat": 47.0733181, "lon": 15.4396326 },
+    { "lat": 47.0733509, "lon": 15.4396548 },
+    { "lat": 47.0733856, "lon": 15.4396865 },
+    { "lat": 47.0734807, "lon": 15.4397651 },
+    { "lat": 47.0736359, "lon": 15.4398698 },
+    { "lat": 47.0736945, "lon": 15.4399016 },
+    { "lat": 47.0736961, "lon": 15.4399077 },
+    { "lat": 47.0736940, "lon": 15.4399170 },
+    { "lat": 47.0736858, "lon": 15.4399542 },
+    { "lat": 47.0736767, "lon": 15.4399753 },
+    { "lat": 47.0736753, "lon": 15.4399785 },
+    { "lat": 47.0736714, "lon": 15.4399877 },
+    { "lat": 47.0735225, "lon": 15.4399745 },
+    { "lat": 47.0735388, "lon": 15.4399191 },
+    { "lat": 47.0734086, "lon": 15.4398459 },
+    { "lat": 47.0733700, "lon": 15.4398233 },
+    { "lat": 47.0733057, "lon": 15.4397857 },
+    { "lat": 47.0732903, "lon": 15.4397985 },
+    { "lat": 47.0732783, "lon": 15.4398085 },
+    { "lat": 47.0732694, "lon": 15.4398003 },
+    { "lat": 47.0732554, "lon": 15.4397874 },
+    { "lat": 47.0732540, "lon": 15.4397861 },
+    { "lat": 47.0732410, "lon": 15.4397742 },
+    { "lat": 47.0732187, "lon": 15.4397578 },
+    { "lat": 47.0732101, "lon": 15.4397514 },
+    { "lat": 47.0732034, "lon": 15.4397465 },
+    { "lat": 47.0731990, "lon": 15.4397436 },
+    { "lat": 47.0731838, "lon": 15.4397364 },
+    { "lat": 47.0730818, "lon": 15.4396850 },
+    { "lat": 47.0729330, "lon": 15.4396097 },
+    { "lat": 47.0729049, "lon": 15.4396002 },
+    { "lat": 47.0728967, "lon": 15.4395974 },
+    { "lat": 47.0728850, "lon": 15.4395935 },
+    { "lat": 47.0728866, "lon": 15.4395770 },
+    { "lat": 47.0728878, "lon": 15.4395642 },
+    { "lat": 47.0728925, "lon": 15.4395452 },
+    { "lat": 47.0729142, "lon": 15.4394580 },
+    { "lat": 47.0728874, "lon": 15.4394380 },
+    { "lat": 47.0728247, "lon": 15.4393864 },
+    { "lat": 47.0728106, "lon": 15.4393767 },
+    { "lat": 47.0727899, "lon": 15.4393625 },
+    { "lat": 47.0727529, "lon": 15.4393391 },
+    { "lat": 47.0727206, "lon": 15.4393179 },
+    { "lat": 47.0726141, "lon": 15.4392545 },
+    { "lat": 47.0725895, "lon": 15.4392399 },
+    { "lat": 47.0725665, "lon": 15.4392301 },
+    { "lat": 47.0725359, "lon": 15.4392479 },
+    { "lat": 47.0725098, "lon": 15.4392452 },
+    { "lat": 47.0725042, "lon": 15.4392446 },
+    { "lat": 47.0724758, "lon": 15.4391771 },
+    { "lat": 47.0724316, "lon": 15.4390948 },
+    { "lat": 47.0723880, "lon": 15.4389978 },
+    { "lat": 47.0723838, "lon": 15.4389884 },
+    { "lat": 47.0723580, "lon": 15.4389414 },
+    { "lat": 47.0723123, "lon": 15.4388556 },
+    { "lat": 47.0722823, "lon": 15.4388224 },
+    { "lat": 47.0722315, "lon": 15.4387661 },
+    { "lat": 47.0721742, "lon": 15.4387323 },
+    { "lat": 47.0720285, "lon": 15.4386198 },
+    { "lat": 47.0720268, "lon": 15.4386188 },
+    { "lat": 47.0720231, "lon": 15.4386166 },
+    { "lat": 47.0720118, "lon": 15.4386099 },
+    { "lat": 47.0719935, "lon": 15.4385986 },
+    { "lat": 47.0719910, "lon": 15.4385970 },
+    { "lat": 47.0719875, "lon": 15.4385949 },
+    { "lat": 47.0718869, "lon": 15.4384804 },
+    { "lat": 47.0718430, "lon": 15.4384341 },
+    { "lat": 47.0718191, "lon": 15.4384065 },
+    { "lat": 47.0717965, "lon": 15.4383805 },
+    { "lat": 47.0717513, "lon": 15.4383232 },
+    { "lat": 47.0717092, "lon": 15.4382698 },
+    { "lat": 47.0716568, "lon": 15.4381787 },
+    { "lat": 47.0716626, "lon": 15.4381668 },
+    { "lat": 47.0716685, "lon": 15.4381549 },
+    { "lat": 47.0716501, "lon": 15.4381246 },
+    { "lat": 47.0716318, "lon": 15.4380942 },
+    { "lat": 47.0716135, "lon": 15.4380638 },
+    { "lat": 47.0715952, "lon": 15.4380334 },
+    { "lat": 47.0715929, "lon": 15.4380299 },
+    { "lat": 47.0715858, "lon": 15.4380180 },
+    { "lat": 47.0715768, "lon": 15.4380031 },
+    { "lat": 47.0715682, "lon": 15.4379888 },
+    { "lat": 47.0715585, "lon": 15.4379727 },
+    { "lat": 47.0715735, "lon": 15.4378820 },
+    { "lat": 47.0716059, "lon": 15.4378363 }
+  ],
+  "tags": {
+    "area": "yes",
+    "bicycle": "no",
+    "highway": "pedestrian",
+    "lit": "yes",
+    "name": "Sporgasse",
+    "name:etymology": "Spornmacher",
+    "name:etymology:wikidata": "Q2312193",
+    "name:start_date": "1346",
+    "old_name": "Sporergasse",
+    "start_date": "1346",
+    "surface": "sett",
+    "wheelchair": "limited",
+    "wikidata": "Q1642718",
+    "wikipedia": "de:Sporgasse"
+  }
+},
+{
+  "type": "way",
+  "id": 87237417,
+  "bounds": {
+    "minlat": 47.0736599,
+    "minlon": 15.4401014,
+    "maxlat": 47.0736872,
+    "maxlon": 15.4412150
+  },
+  "nodes": [
+    910862522,
+    6746226710,
+    4291613530
+  ],
+  "geometry": [
+    { "lat": 47.0736599, "lon": 15.4412150 },
+    { "lat": 47.0736872, "lon": 15.4403577 },
+    { "lat": 47.0736829, "lon": 15.4401014 }
+  ],
+  "tags": {
+    "highway": "footway",
+    "lit": "yes",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 90115388,
+  "bounds": {
+    "minlat": 47.0734662,
+    "minlon": 15.4414317,
+    "maxlat": 47.0736915,
+    "maxlon": 15.4416020
+  },
+  "nodes": [
+    1858696873,
+    1858696890,
+    1858696909,
+    1044664201,
+    1044664281,
+    1044664217,
+    1044664282,
+    1044664211,
+    1044664240,
+    9105889988,
+    9105889981,
+    1858696873
+  ],
+  "geometry": [
+    { "lat": 47.0735249, "lon": 15.4414328 },
+    { "lat": 47.0735249, "lon": 15.4415134 },
+    { "lat": 47.0736277, "lon": 15.4415139 },
+    { "lat": 47.0736280, "lon": 15.4414347 },
+    { "lat": 47.0736915, "lon": 15.4414353 },
+    { "lat": 47.0736907, "lon": 15.4415919 },
+    { "lat": 47.0736740, "lon": 15.4415931 },
+    { "lat": 47.0736309, "lon": 15.4415961 },
+    { "lat": 47.0735578, "lon": 15.4415972 },
+    { "lat": 47.0734685, "lon": 15.4416020 },
+    { "lat": 47.0734662, "lon": 15.4414317 },
+    { "lat": 47.0735249, "lon": 15.4414328 }
+  ],
+  "tags": {
+    "addr:city": "Graz",
+    "addr:country": "AT",
+    "addr:housenumber": "4",
+    "addr:postcode": "8010",
+    "addr:street": "Hartiggasse",
+    "building": "yes",
+    "roof:material": "roof_tiles",
+    "roof:shape": "hipped",
+    "start_date": "1834",
+    "wikidata": "Q38002029"
+  }
+},
+{
+  "type": "way",
+  "id": 90115390,
+  "bounds": {
+    "minlat": 47.0735578,
+    "minlon": 15.4415931,
+    "maxlat": 47.0736751,
+    "maxlon": 15.4417552
+  },
+  "nodes": [
+    1044664282,
+    1044664287,
+    1044664267,
+    1044664276,
+    1044664234,
+    1044664240,
+    1044664211,
+    1044664282
+  ],
+  "geometry": [
+    { "lat": 47.0736740, "lon": 15.4415931 },
+    { "lat": 47.0736751, "lon": 15.4416739 },
+    { "lat": 47.0736227, "lon": 15.4416753 },
+    { "lat": 47.0736237, "lon": 15.4417534 },
+    { "lat": 47.0735598, "lon": 15.4417552 },
+    { "lat": 47.0735578, "lon": 15.4415972 },
+    { "lat": 47.0736309, "lon": 15.4415961 },
+    { "lat": 47.0736740, "lon": 15.4415931 }
+  ],
+  "tags": {
+    "addr:city": "Graz",
+    "addr:country": "AT",
+    "addr:housenumber": "4",
+    "addr:postcode": "8010",
+    "addr:street": "Hartiggasse",
+    "building": "yes",
+    "building:levels": "2",
+    "contact:email": "office@pfauengarten.at",
+    "fixme": "Website offline, what is the status of this?",
+    "name": "Pfauengarten",
+    "source": "survey",
+    "website": "http://www.pfauengarten.at",
+    "website:flash": "only",
+    "wheelchair": "limited"
+  }
+},
+{
+  "type": "way",
+  "id": 126228667,
+  "bounds": {
+    "minlat": 47.0741404,
+    "minlon": 15.4408182,
+    "maxlat": 47.0749172,
+    "maxlon": 15.4408592
+  },
+  "nodes": [
+    1399872519,
+    1399872520,
+    3983175278,
+    4291613602,
+    1399872521
+  ],
+  "geometry": [
+    { "lat": 47.0741404, "lon": 15.4408182 },
+    { "lat": 47.0746626, "lon": 15.4408445 },
+    { "lat": 47.0748850, "lon": 15.4408573 },
+    { "lat": 47.0748957, "lon": 15.4408587 },
+    { "lat": 47.0749172, "lon": 15.4408592 }
+  ],
+  "tags": {
+    "highway": "service",
+    "parking:both": "no",
+    "service": "driveway",
+    "surface": "concrete"
+  }
+},
+{
+  "type": "way",
+  "id": 126228668,
+  "bounds": {
+    "minlat": 47.0737220,
+    "minlon": 15.4401993,
+    "maxlat": 47.0738276,
+    "maxlon": 15.4403679
+  },
+  "nodes": [
+    1399872428,
+    1399872426,
+    1399872410,
+    1399872412,
+    1399872428
+  ],
+  "geometry": [
+    { "lat": 47.0738276, "lon": 15.4402004 },
+    { "lat": 47.0738267, "lon": 15.4403679 },
+    { "lat": 47.0737220, "lon": 15.4403668 },
+    { "lat": 47.0737228, "lon": 15.4401993 },
+    { "lat": 47.0738276, "lon": 15.4402004 }
+  ],
+  "tags": {
+    "amenity": "fountain",
+    "natural": "water",
+    "source": "geoimage.at",
+    "wikimedia_commons": "File:Austria Graz 2022-40.jpg"
+  }
+},
+{
+  "type": "way",
+  "id": 126228671,
+  "bounds": {
+    "minlat": 47.0737634,
+    "minlon": 15.4412358,
+    "maxlat": 47.0738194,
+    "maxlon": 15.4412925
+  },
+  "nodes": [
+    1399872425,
+    1399872424,
+    1399872414,
+    1399872416,
+    1399872425
+  ],
+  "geometry": [
+    { "lat": 47.0738194, "lon": 15.4412387 },
+    { "lat": 47.0738181, "lon": 15.4412925 },
+    { "lat": 47.0737634, "lon": 15.4412896 },
+    { "lat": 47.0737647, "lon": 15.4412358 },
+    { "lat": 47.0738194, "lon": 15.4412387 }
+  ],
+  "tags": {
+    "amenity": "fountain",
+    "natural": "water",
+    "source": "geoimage.at"
+  }
+},
+{
+  "type": "way",
+  "id": 131634530,
+  "bounds": {
+    "minlat": 47.0731813,
+    "minlon": 15.4402160,
+    "maxlat": 47.0733635,
+    "maxlon": 15.4405244
+  },
+  "nodes": [
+    1448524235,
+    1448524236,
+    1448524238,
+    987131339,
+    987131636,
+    2109923235,
+    2109923239,
+    2109923238,
+    2109923237,
+    2109923236,
+    2109923234,
+    987131693,
+    987131460,
+    2109923233,
+    1448524237,
+    1448524235
+  ],
+  "geometry": [
+    { "lat": 47.0731813, "lon": 15.4404901 },
+    { "lat": 47.0732174, "lon": 15.4402160 },
+    { "lat": 47.0733388, "lon": 15.4402505 },
+    { "lat": 47.0733303, "lon": 15.4403156 },
+    { "lat": 47.0733416, "lon": 15.4403188 },
+    { "lat": 47.0733382, "lon": 15.4403448 },
+    { "lat": 47.0733635, "lon": 15.4403520 },
+    { "lat": 47.0733548, "lon": 15.4404184 },
+    { "lat": 47.0733429, "lon": 15.4404150 },
+    { "lat": 47.0733408, "lon": 15.4404309 },
+    { "lat": 47.0733269, "lon": 15.4404269 },
+    { "lat": 47.0733256, "lon": 15.4404369 },
+    { "lat": 47.0733142, "lon": 15.4404337 },
+    { "lat": 47.0733023, "lon": 15.4405244 },
+    { "lat": 47.0732462, "lon": 15.4405085 },
+    { "lat": 47.0731813, "lon": 15.4404901 }
+  ],
+  "tags": {
+    "addr:city": "Graz",
+    "addr:country": "AT",
+    "addr:housenumber": "3",
+    "addr:postcode": "8010",
+    "addr:street": "Ballhausgasse",
+    "building": "apartments",
+    "building:levels": "4",
+    "roof:material": "roof_tiles",
+    "roof:shape": "gabled",
+    "source": "survey",
+    "start_date": "1850"
+  }
+},
+{
+  "type": "way",
+  "id": 131634531,
+  "bounds": {
+    "minlat": 47.0731380,
+    "minlon": 15.4404901,
+    "maxlat": 47.0732462,
+    "maxlon": 15.4408066
+  },
+  "nodes": [
+    1448524237,
+    1011763999,
+    1011763998,
+    987131559,
+    1448524235,
+    1448524237
+  ],
+  "geometry": [
+    { "lat": 47.0732462, "lon": 15.4405085 },
+    { "lat": 47.0732367, "lon": 15.4407035 },
+    { "lat": 47.0732425, "lon": 15.4408066 },
+    { "lat": 47.0731380, "lon": 15.4407845 },
+    { "lat": 47.0731813, "lon": 15.4404901 },
+    { "lat": 47.0732462, "lon": 15.4405085 }
+  ],
+  "tags": {
+    "addr:city": "Graz",
+    "addr:country": "AT",
+    "addr:housenumber": "5",
+    "addr:postcode": "8010",
+    "addr:street": "Ballhausgasse",
+    "building": "apartments",
+    "building:levels": "4",
+    "construction:start_date": "1848",
+    "roof:levels": "1",
+    "roof:material": "roof_tiles",
+    "roof:shape": "hipped",
+    "source": "survey"
+  }
+},
+{
+  "type": "way",
+  "id": 159512908,
+  "bounds": {
+    "minlat": 47.0738054,
+    "minlon": 15.4423535,
+    "maxlat": 47.0743178,
+    "maxlon": 15.4432573
+  },
+  "nodes": [
+    1716232525,
+    1716239148,
+    2102962221,
+    4251236041,
+    1716232560,
+    4251236042,
+    2102962230,
+    2102962241,
+    1716232599,
+    4251236046,
+    1716232569,
+    1716232567,
+    1716232562,
+    1716232553,
+    1716239144,
+    1716232523,
+    1716232522,
+    1716232518,
+    6960516851,
+    1716232525,
+    1766413016,
+    1716232528,
+    1716232557,
+    1716232559,
+    1766413017,
+    1716232597
+  ],
+  "geometry": [
+    { "lat": 47.0739124, "lon": 15.4429743 },
+    { "lat": 47.0740145, "lon": 15.4428806 },
+    { "lat": 47.0740982, "lon": 15.4427966 },
+    { "lat": 47.0741061, "lon": 15.4427899 },
+    { "lat": 47.0741393, "lon": 15.4427620 },
+    { "lat": 47.0741655, "lon": 15.4427389 },
+    { "lat": 47.0741787, "lon": 15.4427272 },
+    { "lat": 47.0741955, "lon": 15.4427124 },
+    { "lat": 47.0743178, "lon": 15.4426043 },
+    { "lat": 47.0742489, "lon": 15.4424218 },
+    { "lat": 47.0742331, "lon": 15.4423799 },
+    { "lat": 47.0741933, "lon": 15.4423535 },
+    { "lat": 47.0741534, "lon": 15.4423554 },
+    { "lat": 47.0740196, "lon": 15.4424764 },
+    { "lat": 47.0738929, "lon": 15.4426003 },
+    { "lat": 47.0738272, "lon": 15.4426571 },
+    { "lat": 47.0738067, "lon": 15.4426986 },
+    { "lat": 47.0738054, "lon": 15.4427514 },
+    { "lat": 47.0738872, "lon": 15.4429164 },
+    { "lat": 47.0739124, "lon": 15.4429743 },
+    { "lat": 47.0739713, "lon": 15.4431619 },
+    { "lat": 47.0739814, "lon": 15.4431945 },
+    { "lat": 47.0740265, "lon": 15.4432472 },
+    { "lat": 47.0740855, "lon": 15.4432573 },
+    { "lat": 47.0741479, "lon": 15.4432190 },
+    { "lat": 47.0742679, "lon": 15.4431666 }
+  ],
+  "tags": {
+    "disused:highway": "cycleway",
+    "highway": "footway",
+    "source": "bing",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 159512910,
+  "bounds": {
+    "minlat": 47.0746517,
+    "minlon": 15.4422973,
+    "maxlat": 47.0748832,
+    "maxlon": 15.4423252
+  },
+  "nodes": [
+    1716232662,
+    3983175274,
+    11574582360,
+    11574582375
+  ],
+  "geometry": [
+    { "lat": 47.0748832, "lon": 15.4422973 },
+    { "lat": 47.0748463, "lon": 15.4423016 },
+    { "lat": 47.0747570, "lon": 15.4423114 },
+    { "lat": 47.0746517, "lon": 15.4423252 }
+  ],
+  "tags": {
+    "access": "private",
+    "highway": "service",
+    "service": "driveway"
+  }
+},
+{
+  "type": "way",
+  "id": 159512911,
+  "bounds": {
+    "minlat": 47.0740196,
+    "minlon": 15.4424764,
+    "maxlat": 47.0742679,
+    "maxlon": 15.4431666
+  },
+  "nodes": [
+    1716232553,
+    1716232560,
+    2102962226,
+    1766413021,
+    1716232597
+  ],
+  "geometry": [
+    { "lat": 47.0740196, "lon": 15.4424764 },
+    { "lat": 47.0741393, "lon": 15.4427620 },
+    { "lat": 47.0741611, "lon": 15.4428120 },
+    { "lat": 47.0742250, "lon": 15.4429620 },
+    { "lat": 47.0742679, "lon": 15.4431666 }
+  ],
+  "tags": {
+    "disused:highway": "cycleway",
+    "highway": "footway",
+    "source": "bing",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 159513631,
+  "bounds": {
+    "minlat": 47.0738929,
+    "minlon": 15.4426003,
+    "maxlat": 47.0740145,
+    "maxlon": 15.4428806
+  },
+  "nodes": [
+    1716239144,
+    1716239148
+  ],
+  "geometry": [
+    { "lat": 47.0738929, "lon": 15.4426003 },
+    { "lat": 47.0740145, "lon": 15.4428806 }
+  ],
+  "tags": {
+    "disused:highway": "cycleway",
+    "highway": "footway",
+    "source": "bing",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 175244954,
+  "bounds": {
+    "minlat": 47.0731926,
+    "minlon": 15.4421329,
+    "maxlat": 47.0732028,
+    "maxlon": 15.4427688
+  },
+  "nodes": [
+    1858696853,
+    4251235853,
+    4251235854,
+    1756455070
+  ],
+  "geometry": [
+    { "lat": 47.0731926, "lon": 15.4421329 },
+    { "lat": 47.0731930, "lon": 15.4421560 },
+    { "lat": 47.0732018, "lon": 15.4427071 },
+    { "lat": 47.0732028, "lon": 15.4427688 }
+  ],
+  "tags": {
+    "access": "private",
+    "foot": "permissive",
+    "highway": "service",
+    "surface": "paved"
+  }
+},
+{
+  "type": "way",
+  "id": 175244957,
+  "bounds": {
+    "minlat": 47.0730423,
+    "minlon": 15.4413143,
+    "maxlat": 47.0730430,
+    "maxlon": 15.4414027
+  },
+  "nodes": [
+    21099807,
+    3983175224,
+    3983175223,
+    1858696840
+  ],
+  "geometry": [
+    { "lat": 47.0730430, "lon": 15.4413143 },
+    { "lat": 47.0730427, "lon": 15.4413545 },
+    { "lat": 47.0730424, "lon": 15.4413878 },
+    { "lat": 47.0730423, "lon": 15.4414027 }
+  ],
+  "tags": {
+    "foot": "yes",
+    "highway": "service",
+    "smoothness": "excellent",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 175244958,
+  "bounds": {
+    "minlat": 47.0731920,
+    "minlon": 15.4420229,
+    "maxlat": 47.0731926,
+    "maxlon": 15.4421329
+  },
+  "nodes": [
+    1858696850,
+    1858696853
+  ],
+  "geometry": [
+    { "lat": 47.0731920, "lon": 15.4420229 },
+    { "lat": 47.0731926, "lon": 15.4421329 }
+  ],
+  "tags": {
+    "access": "private",
+    "foot": "permissive",
+    "highway": "service",
+    "surface": "paved",
+    "tunnel": "building_passage"
+  }
+},
+{
+  "type": "way",
+  "id": 175244965,
+  "bounds": {
+    "minlat": 47.0730385,
+    "minlon": 15.4414027,
+    "maxlat": 47.0731920,
+    "maxlon": 15.4420229
+  },
+  "nodes": [
+    1858696840,
+    1858696835,
+    1858696843,
+    10901678166,
+    1858696846,
+    10901678165,
+    1858696850
+  ],
+  "geometry": [
+    { "lat": 47.0730423, "lon": 15.4414027 },
+    { "lat": 47.0730385, "lon": 15.4418707 },
+    { "lat": 47.0730433, "lon": 15.4419641 },
+    { "lat": 47.0731778, "lon": 15.4419695 },
+    { "lat": 47.0731872, "lon": 15.4419731 },
+    { "lat": 47.0731915, "lon": 15.4419832 },
+    { "lat": 47.0731920, "lon": 15.4420229 }
+  ],
+  "tags": {
+    "access": "private",
+    "foot": "permissive",
+    "highway": "service",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 245253712,
+  "bounds": {
+    "minlat": 47.0739938,
+    "minlon": 15.4416871,
+    "maxlat": 47.0748529,
+    "maxlon": 15.4422216
+  },
+  "nodes": [
+    4251236033,
+    21100330,
+    2524816074,
+    10901678167,
+    2685294829,
+    10901678168,
+    2524816076,
+    2123645866,
+    542034181,
+    11941675974,
+    2102962149,
+    11941675973,
+    2123645873,
+    5812568867,
+    5812568868,
+    5812568869,
+    11941647268,
+    5812568866,
+    10901678169,
+    5812444700,
+    10152499972,
+    4251236033
+  ],
+  "geometry": [
+    { "lat": 47.0739943, "lon": 15.4416871 },
+    { "lat": 47.0739938, "lon": 15.4417382 },
+    { "lat": 47.0740574, "lon": 15.4422016 },
+    { "lat": 47.0740566, "lon": 15.4422216 },
+    { "lat": 47.0742227, "lon": 15.4422023 },
+    { "lat": 47.0744872, "lon": 15.4421736 },
+    { "lat": 47.0747629, "lon": 15.4421501 },
+    { "lat": 47.0748432, "lon": 15.4421156 },
+    { "lat": 47.0748443, "lon": 15.4420713 },
+    { "lat": 47.0748494, "lon": 15.4418680 },
+    { "lat": 47.0748516, "lon": 15.4417800 },
+    { "lat": 47.0748519, "lon": 15.4417701 },
+    { "lat": 47.0748529, "lon": 15.4417307 },
+    { "lat": 47.0746642, "lon": 15.4417257 },
+    { "lat": 47.0746040, "lon": 15.4418103 },
+    { "lat": 47.0743636, "lon": 15.4418075 },
+    { "lat": 47.0743642, "lon": 15.4417350 },
+    { "lat": 47.0743194, "lon": 15.4417330 },
+    { "lat": 47.0742748, "lon": 15.4416937 },
+    { "lat": 47.0741797, "lon": 15.4416942 },
+    { "lat": 47.0740241, "lon": 15.4416896 },
+    { "lat": 47.0739943, "lon": 15.4416871 }
+  ],
+  "tags": {
+    "building": "hotel",
+    "building:levels": "1",
+    "roof:colour": "#CDC9C9",
+    "source": "survey"
+  }
+},
+{
+  "type": "way",
+  "id": 245254045,
+  "bounds": {
+    "minlat": 47.0741810,
+    "minlon": 15.4400711,
+    "maxlat": 47.0746940,
+    "maxlon": 15.4408131
+  },
+  "nodes": [
+    987131830,
+    2524817876,
+    987131428,
+    987131642,
+    987131990,
+    8140200712,
+    2524817874,
+    2524817875,
+    4291613587,
+    2524817873,
+    2524817872,
+    2524817871,
+    2524817870,
+    2524817869,
+    987131574,
+    987131796,
+    987131765,
+    987132142,
+    4291613578,
+    987131951,
+    4291613581,
+    4291613589,
+    4291613594,
+    8294998148,
+    4291613593,
+    987131830
+  ],
+  "geometry": [
+    { "lat": 47.0745797, "lon": 15.4408101 },
+    { "lat": 47.0745809, "lon": 15.4407394 },
+    { "lat": 47.0745831, "lon": 15.4406668 },
+    { "lat": 47.0745876, "lon": 15.4405855 },
+    { "lat": 47.0745964, "lon": 15.4404317 },
+    { "lat": 47.0745422, "lon": 15.4404207 },
+    { "lat": 47.0744349, "lon": 15.4403989 },
+    { "lat": 47.0744404, "lon": 15.4403516 },
+    { "lat": 47.0744335, "lon": 15.4403508 },
+    { "lat": 47.0744233, "lon": 15.4403495 },
+    { "lat": 47.0744146, "lon": 15.4404065 },
+    { "lat": 47.0742990, "lon": 15.4403962 },
+    { "lat": 47.0742958, "lon": 15.4403445 },
+    { "lat": 47.0742828, "lon": 15.4403455 },
+    { "lat": 47.0742800, "lon": 15.4403975 },
+    { "lat": 47.0741851, "lon": 15.4403711 },
+    { "lat": 47.0741810, "lon": 15.4403152 },
+    { "lat": 47.0741837, "lon": 15.4402684 },
+    { "lat": 47.0741897, "lon": 15.4400711 },
+    { "lat": 47.0742493, "lon": 15.4400893 },
+    { "lat": 47.0743102, "lon": 15.4401121 },
+    { "lat": 47.0744562, "lon": 15.4401667 },
+    { "lat": 47.0746940, "lon": 15.4402488 },
+    { "lat": 47.0746792, "lon": 15.4404868 },
+    { "lat": 47.0746679, "lon": 15.4408131 },
+    { "lat": 47.0745797, "lon": 15.4408101 }
+  ],
+  "tags": {
+    "addr:city": "Graz",
+    "addr:housenumber": "4",
+    "addr:postcode": "8010",
+    "addr:street": "Paulustorgasse",
+    "building": "yes",
+    "roof:material": "roof_tiles",
+    "roof:shape": "gabled",
+    "source": "geoimage.at",
+    "wikidata": "Q38044187"
+  }
+},
+{
+  "type": "way",
+  "id": 362733713,
+  "bounds": {
+    "minlat": 47.0737628,
+    "minlon": 15.4422639,
+    "maxlat": 47.0741796,
+    "maxlon": 15.4426593
+  },
+  "nodes": [
+    3669941947,
+    3669941951
+  ],
+  "geometry": [
+    { "lat": 47.0737628, "lon": 15.4426593 },
+    { "lat": 47.0741796, "lon": 15.4422639 }
+  ],
+  "tags": {
+    "barrier": "hedge"
+  }
+},
+{
+  "type": "way",
+  "id": 362733716,
+  "bounds": {
+    "minlat": 47.0742318,
+    "minlon": 15.4425741,
+    "maxlat": 47.0744360,
+    "maxlon": 15.4431936
+  },
+  "nodes": [
+    3669941955,
+    3669941956,
+    3669941952,
+    3669941953,
+    3669941958
+  ],
+  "geometry": [
+    { "lat": 47.0743229, "lon": 15.4431936 },
+    { "lat": 47.0743605, "lon": 15.4431623 },
+    { "lat": 47.0742318, "lon": 15.4428589 },
+    { "lat": 47.0742382, "lon": 15.4427533 },
+    { "lat": 47.0744360, "lon": 15.4425741 }
+  ],
+  "tags": {
+    "barrier": "hedge"
+  }
+},
+{
+  "type": "way",
+  "id": 395457892,
+  "bounds": {
+    "minlat": 47.0733037,
+    "minlon": 15.4414171,
+    "maxlat": 47.0738285,
+    "maxlon": 15.4414240
+  },
+  "nodes": [
+    4291613516,
+    6723796868,
+    3983175247,
+    6960516866,
+    3983175257,
+    8043309852
+  ],
+  "geometry": [
+    { "lat": 47.0733037, "lon": 15.4414209 },
+    { "lat": 47.0733874, "lon": 15.4414220 },
+    { "lat": 47.0735320, "lon": 15.4414240 },
+    { "lat": 47.0736625, "lon": 15.4414229 },
+    { "lat": 47.0737689, "lon": 15.4414171 },
+    { "lat": 47.0738285, "lon": 15.4414180 }
+  ],
+  "tags": {
+    "footway": "sidewalk",
+    "highway": "footway",
+    "incline": "4.4%",
+    "lit": "yes",
+    "smoothness": "excellent",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 395457894,
+  "bounds": {
+    "minlat": 47.0740391,
+    "minlon": 15.4400265,
+    "maxlat": 47.0748856,
+    "maxlon": 15.4403026
+  },
+  "nodes": [
+    3983175265,
+    287354777,
+    3983175267,
+    4291613582,
+    3983175269,
+    4291613590,
+    3983175271,
+    4291613597,
+    3983175280
+  ],
+  "geometry": [
+    { "lat": 47.0740391, "lon": 15.4400265 },
+    { "lat": 47.0741565, "lon": 15.4400514 },
+    { "lat": 47.0741937, "lon": 15.4400623 },
+    { "lat": 47.0743118, "lon": 15.4401042 },
+    { "lat": 47.0744431, "lon": 15.4401507 },
+    { "lat": 47.0744583, "lon": 15.4401562 },
+    { "lat": 47.0747101, "lon": 15.4402470 },
+    { "lat": 47.0747705, "lon": 15.4402661 },
+    { "lat": 47.0748856, "lon": 15.4403026 }
+  ],
+  "tags": {
+    "check_date:surface": "2026-02-09",
+    "footway": "sidewalk",
+    "highway": "footway",
+    "incline": "-0.5%",
+    "surface": "asphalt",
+    "width": "2.5"
+  }
+},
+{
+  "type": "way",
+  "id": 395457906,
+  "bounds": {
+    "minlat": 47.0731165,
+    "minlon": 15.4408059,
+    "maxlat": 47.0731292,
+    "maxlon": 15.4408086
+  },
+  "nodes": [
+    3983175237,
+    3983175236
+  ],
+  "geometry": [
+    { "lat": 47.0731292, "lon": 15.4408086 },
+    { "lat": 47.0731165, "lon": 15.4408059 }
+  ],
+  "tags": {
+    "footway": "sidewalk",
+    "highway": "footway",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 395457912,
+  "bounds": {
+    "minlat": 47.0732297,
+    "minlon": 15.4413153,
+    "maxlat": 47.0732317,
+    "maxlon": 15.4413285
+  },
+  "nodes": [
+    3983175245,
+    3983175242
+  ],
+  "geometry": [
+    { "lat": 47.0732317, "lon": 15.4413153 },
+    { "lat": 47.0732297, "lon": 15.4413285 }
+  ],
+  "tags": {
+    "footway": "sidewalk",
+    "highway": "footway",
+    "lit": "yes",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 395457914,
+  "bounds": {
+    "minlat": 47.0730630,
+    "minlon": 15.4407911,
+    "maxlat": 47.0731165,
+    "maxlon": 15.4408059
+  },
+  "nodes": [
+    3983175236,
+    3983175233,
+    3983175232
+  ],
+  "geometry": [
+    { "lat": 47.0731165, "lon": 15.4408059 },
+    { "lat": 47.0730869, "lon": 15.4407977 },
+    { "lat": 47.0730630, "lon": 15.4407911 }
+  ],
+  "tags": {
+    "footway": "crossing",
+    "highway": "footway",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 395457922,
+  "bounds": {
+    "minlat": 47.0730158,
+    "minlon": 15.4412372,
+    "maxlat": 47.0730466,
+    "maxlon": 15.4412548
+  },
+  "nodes": [
+    3983175226,
+    3983175220
+  ],
+  "geometry": [
+    { "lat": 47.0730466, "lon": 15.4412548 },
+    { "lat": 47.0730158, "lon": 15.4412372 }
+  ],
+  "tags": {
+    "footway": "crossing",
+    "highway": "footway",
+    "lit": "yes",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 395457939,
+  "bounds": {
+    "minlat": 47.0730497,
+    "minlon": 15.4396695,
+    "maxlat": 47.0732250,
+    "maxlon": 15.4407887
+  },
+  "nodes": [
+    3983175228,
+    3983175231,
+    3983175234,
+    3983175239,
+    3983175241,
+    4292786429,
+    10743671851
+  ],
+  "geometry": [
+    { "lat": 47.0730497, "lon": 15.4407887 },
+    { "lat": 47.0730575, "lon": 15.4407768 },
+    { "lat": 47.0730992, "lon": 15.4404897 },
+    { "lat": 47.0731381, "lon": 15.4402082 },
+    { "lat": 47.0732101, "lon": 15.4397514 },
+    { "lat": 47.0732109, "lon": 15.4397421 },
+    { "lat": 47.0732250, "lon": 15.4396695 }
+  ],
+  "tags": {
+    "footway": "sidewalk",
+    "highway": "footway",
+    "incline": "5%",
+    "incline:across": "-4.5%",
+    "lit": "yes",
+    "surface": "asphalt",
+    "width": "2"
+  }
+},
+{
+  "type": "way",
+  "id": 395457943,
+  "bounds": {
+    "minlat": 47.0726566,
+    "minlon": 15.4407138,
+    "maxlat": 47.0730497,
+    "maxlon": 15.4407921
+  },
+  "nodes": [
+    3983175228,
+    8043309858,
+    3983175222,
+    3983175216,
+    3983175215,
+    4304449310,
+    4304449306
+  ],
+  "geometry": [
+    { "lat": 47.0730497, "lon": 15.4407887 },
+    { "lat": 47.0730442, "lon": 15.4407899 },
+    { "lat": 47.0730346, "lon": 15.4407921 },
+    { "lat": 47.0729124, "lon": 15.4407638 },
+    { "lat": 47.0727737, "lon": 15.4407350 },
+    { "lat": 47.0727043, "lon": 15.4407230 },
+    { "lat": 47.0726566, "lon": 15.4407138 }
+  ],
+  "tags": {
+    "footway": "sidewalk",
+    "highway": "footway",
+    "incline": "-2%",
+    "lit": "yes",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 395457946,
+  "bounds": {
+    "minlat": 47.0731292,
+    "minlon": 15.4398003,
+    "maxlat": 47.0732694,
+    "maxlon": 15.4408086
+  },
+  "nodes": [
+    3983175237,
+    3983175238,
+    3983175240,
+    3983175246
+  ],
+  "geometry": [
+    { "lat": 47.0731292, "lon": 15.4408086 },
+    { "lat": 47.0731325, "lon": 15.4407491 },
+    { "lat": 47.0731697, "lon": 15.4404854 },
+    { "lat": 47.0732694, "lon": 15.4398003 }
+  ],
+  "tags": {
+    "check_date:surface": "2026-03-04",
+    "footway": "sidewalk",
+    "highway": "footway",
+    "incline": "5%",
+    "incline:across": "7.5%",
+    "surface": "asphalt",
+    "width": "2"
+  }
+},
+{
+  "type": "way",
+  "id": 423504565,
+  "bounds": {
+    "minlat": 47.0732317,
+    "minlon": 15.4413153,
+    "maxlat": 47.0738668,
+    "maxlon": 15.4413459
+  },
+  "nodes": [
+    963282069,
+    3983175259,
+    3983175250,
+    3983175248,
+    3983175245
+  ],
+  "geometry": [
+    { "lat": 47.0738668, "lon": 15.4413459 },
+    { "lat": 47.0738282, "lon": 15.4413259 },
+    { "lat": 47.0736608, "lon": 15.4413248 },
+    { "lat": 47.0736226, "lon": 15.4413231 },
+    { "lat": 47.0732317, "lon": 15.4413153 }
+  ],
+  "tags": {
+    "footway": "sidewalk",
+    "highway": "footway",
+    "incline": "-4.5%",
+    "lit": "yes",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 423504573,
+  "bounds": {
+    "minlat": 47.0730139,
+    "minlon": 15.4413823,
+    "maxlat": 47.0730892,
+    "maxlon": 15.4413972
+  },
+  "nodes": [
+    3983175219,
+    3983175223,
+    3983175235
+  ],
+  "geometry": [
+    { "lat": 47.0730139, "lon": 15.4413823 },
+    { "lat": 47.0730424, "lon": 15.4413878 },
+    { "lat": 47.0730892, "lon": 15.4413972 }
+  ],
+  "tags": {
+    "footway": "sidewalk",
+    "highway": "footway",
+    "incline": "4.9%",
+    "lit": "yes",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 425806716,
+  "bounds": {
+    "minlat": 47.0736052,
+    "minlon": 15.4415504,
+    "maxlat": 47.0738980,
+    "maxlon": 15.4425679
+  },
+  "nodes": [
+    4251235888,
+    4251236002,
+    11941647261,
+    11941647258,
+    4251236011,
+    11941647257,
+    11941647253,
+    4251236005,
+    4251236001,
+    1026564406,
+    4251235884,
+    4251235861,
+    4251235868,
+    4251235875,
+    4251235877,
+    4251235886,
+    4251235887,
+    4251236003,
+    4251235888
+  ],
+  "geometry": [
+    { "lat": 47.0738980, "lon": 15.4420264 },
+    { "lat": 47.0738899, "lon": 15.4419683 },
+    { "lat": 47.0738813, "lon": 15.4419064 },
+    { "lat": 47.0738762, "lon": 15.4418694 },
+    { "lat": 47.0738733, "lon": 15.4418487 },
+    { "lat": 47.0738703, "lon": 15.4418270 },
+    { "lat": 47.0738615, "lon": 15.4417637 },
+    { "lat": 47.0738566, "lon": 15.4417257 },
+    { "lat": 47.0738323, "lon": 15.4415531 },
+    { "lat": 47.0737683, "lon": 15.4415514 },
+    { "lat": 47.0737287, "lon": 15.4415504 },
+    { "lat": 47.0736052, "lon": 15.4419713 },
+    { "lat": 47.0736583, "lon": 15.4425067 },
+    { "lat": 47.0736769, "lon": 15.4424988 },
+    { "lat": 47.0736897, "lon": 15.4425679 },
+    { "lat": 47.0737424, "lon": 15.4425254 },
+    { "lat": 47.0737728, "lon": 15.4424673 },
+    { "lat": 47.0738377, "lon": 15.4423560 },
+    { "lat": 47.0738980, "lon": 15.4420264 }
+  ],
+  "tags": {
+    "building": "yes",
+    "building:levels": "7",
+    "roof:colour": "#CDC9C9"
+  }
+},
+{
+  "type": "way",
+  "id": 425806723,
+  "bounds": {
+    "minlat": 47.0737424,
+    "minlon": 15.4417257,
+    "maxlat": 47.0740574,
+    "maxlon": 15.4425883
+  },
+  "nodes": [
+    2123645824,
+    4251236034,
+    6960516864,
+    7942835679,
+    10901678167,
+    2524816074,
+    21100330,
+    4251236022,
+    11941647254,
+    4251236005,
+    11941647253,
+    11941647257,
+    4251236011,
+    11941647258,
+    11941647261,
+    4251236002,
+    4251235888,
+    4251236003,
+    4251235887,
+    4251235886,
+    7942835680,
+    2123645824
+  ],
+  "geometry": [
+    { "lat": 47.0737863, "lon": 15.4425883 },
+    { "lat": 47.0739872, "lon": 15.4424045 },
+    { "lat": 47.0740546, "lon": 15.4423428 },
+    { "lat": 47.0740564, "lon": 15.4422267 },
+    { "lat": 47.0740566, "lon": 15.4422216 },
+    { "lat": 47.0740574, "lon": 15.4422016 },
+    { "lat": 47.0739938, "lon": 15.4417382 },
+    { "lat": 47.0739542, "lon": 15.4417371 },
+    { "lat": 47.0738725, "lon": 15.4417264 },
+    { "lat": 47.0738566, "lon": 15.4417257 },
+    { "lat": 47.0738615, "lon": 15.4417637 },
+    { "lat": 47.0738703, "lon": 15.4418270 },
+    { "lat": 47.0738733, "lon": 15.4418487 },
+    { "lat": 47.0738762, "lon": 15.4418694 },
+    { "lat": 47.0738813, "lon": 15.4419064 },
+    { "lat": 47.0738899, "lon": 15.4419683 },
+    { "lat": 47.0738980, "lon": 15.4420264 },
+    { "lat": 47.0738377, "lon": 15.4423560 },
+    { "lat": 47.0737728, "lon": 15.4424673 },
+    { "lat": 47.0737424, "lon": 15.4425254 },
+    { "lat": 47.0737593, "lon": 15.4425497 },
+    { "lat": 47.0737863, "lon": 15.4425883 }
+  ],
+  "tags": {
+    "area": "yes",
+    "highway": "pedestrian",
+    "surface": "paving_stones"
+  }
+},
+{
+  "type": "way",
+  "id": 425806731,
+  "bounds": {
+    "minlat": 47.0740196,
+    "minlon": 15.4408100,
+    "maxlat": 47.0741404,
+    "maxlon": 15.4408182
+  },
+  "nodes": [
+    1399872516,
+    1399872519
+  ],
+  "geometry": [
+    { "lat": 47.0740196, "lon": 15.4408100 },
+    { "lat": 47.0741404, "lon": 15.4408182 }
+  ],
+  "tags": {
+    "highway": "service",
+    "incline": "12%",
+    "surface": "concrete"
+  }
+},
+{
+  "type": "way",
+  "id": 425806798,
+  "bounds": {
+    "minlat": 47.0736628,
+    "minlon": 15.4426049,
+    "maxlat": 47.0736893,
+    "maxlon": 15.4426765
+  },
+  "nodes": [
+    4251235867,
+    4251235869
+  ],
+  "geometry": [
+    { "lat": 47.0736628, "lon": 15.4426049 },
+    { "lat": 47.0736893, "lon": 15.4426765 }
+  ],
+  "tags": {
+    "handrail": "yes",
+    "highway": "steps",
+    "incline": "down",
+    "ramp": "no",
+    "step_count": "27",
+    "surface": "paving_stones",
+    "tactile_paving": "no"
+  }
+},
+{
+  "type": "way",
+  "id": 425806803,
+  "bounds": {
+    "minlat": 47.0736369,
+    "minlon": 15.4425491,
+    "maxlat": 47.0736628,
+    "maxlon": 15.4426049
+  },
+  "nodes": [
+    4251235866,
+    4251235867
+  ],
+  "geometry": [
+    { "lat": 47.0736369, "lon": 15.4425491 },
+    { "lat": 47.0736628, "lon": 15.4426049 }
+  ],
+  "tags": {
+    "check_date:surface": "2025-05-05",
+    "highway": "footway",
+    "surface": "paving_stones"
+  }
+},
+{
+  "type": "way",
+  "id": 425806834,
+  "bounds": {
+    "minlat": 47.0739565,
+    "minlon": 15.4421547,
+    "maxlat": 47.0748007,
+    "maxlon": 15.4422373
+  },
+  "nodes": [
+    6960516856,
+    7942835679,
+    4251236038
+  ],
+  "geometry": [
+    { "lat": 47.0748007, "lon": 15.4421547 },
+    { "lat": 47.0740564, "lon": 15.4422267 },
+    { "lat": 47.0739565, "lon": 15.4422373 }
+  ],
+  "tags": {
+    "highway": "footway",
+    "surface": "paving_stones"
+  }
+},
+{
+  "type": "way",
+  "id": 425806849,
+  "bounds": {
+    "minlat": 47.0739541,
+    "minlon": 15.4417371,
+    "maxlat": 47.0739542,
+    "maxlon": 15.4417669
+  },
+  "nodes": [
+    4251236022,
+    4251236024
+  ],
+  "geometry": [
+    { "lat": 47.0739542, "lon": 15.4417371 },
+    { "lat": 47.0739541, "lon": 15.4417669 }
+  ],
+  "tags": {
+    "highway": "footway",
+    "surface": "paving_stones"
+  }
+},
+{
+  "type": "way",
+  "id": 425806855,
+  "bounds": {
+    "minlat": 47.0739541,
+    "minlon": 15.4417669,
+    "maxlat": 47.0739586,
+    "maxlon": 15.4418709
+  },
+  "nodes": [
+    4251236024,
+    4251236029
+  ],
+  "geometry": [
+    { "lat": 47.0739541, "lon": 15.4417669 },
+    { "lat": 47.0739586, "lon": 15.4418709 }
+  ],
+  "tags": {
+    "handrail": "yes",
+    "highway": "steps",
+    "incline": "up",
+    "ramp": "separate",
+    "ramp:wheelchair": "separate",
+    "step_count": "14",
+    "surface": "paving_stones",
+    "tactile_paving": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 425806875,
+  "bounds": {
+    "minlat": 47.0731930,
+    "minlon": 15.4421560,
+    "maxlat": 47.0733315,
+    "maxlon": 15.4427071
+  },
+  "nodes": [
+    4251235854,
+    10901678164,
+    4251235857,
+    10901678163,
+    10901678162,
+    4251235856,
+    10901678161,
+    4251235853
+  ],
+  "geometry": [
+    { "lat": 47.0732018, "lon": 15.4427071 },
+    { "lat": 47.0733187, "lon": 15.4426876 },
+    { "lat": 47.0733274, "lon": 15.4426824 },
+    { "lat": 47.0733315, "lon": 15.4426701 },
+    { "lat": 47.0733299, "lon": 15.4421772 },
+    { "lat": 47.0733263, "lon": 15.4421656 },
+    { "lat": 47.0733165, "lon": 15.4421577 },
+    { "lat": 47.0731930, "lon": 15.4421560 }
+  ],
+  "tags": {
+    "access": "private",
+    "foot": "permissive",
+    "highway": "service",
+    "oneway": "yes",
+    "service": "parking_aisle"
+  }
+},
+{
+  "type": "way",
+  "id": 425854278,
+  "bounds": {
+    "minlat": 47.0725223,
+    "minlon": 15.4419564,
+    "maxlat": 47.0730392,
+    "maxlon": 15.4427057
+  },
+  "nodes": [
+    4251730912,
+    8140246994,
+    4251730913,
+    8140246992,
+    4251730926,
+    1756455067,
+    4251730925,
+    4251730924,
+    4251730923,
+    8140247002,
+    4251730922,
+    8140247003,
+    4251730921,
+    8140247004,
+    4251730920,
+    4251730919,
+    4251730918,
+    4251730916,
+    4251730917,
+    4251730914,
+    4251730915,
+    4251730912
+  ],
+  "geometry": [
+    { "lat": 47.0725223, "lon": 15.4420158 },
+    { "lat": 47.0725319, "lon": 15.4419795 },
+    { "lat": 47.0725402, "lon": 15.4419564 },
+    { "lat": 47.0729157, "lon": 15.4420660 },
+    { "lat": 47.0730138, "lon": 15.4420647 },
+    { "lat": 47.0730392, "lon": 15.4427012 },
+    { "lat": 47.0729526, "lon": 15.4427057 },
+    { "lat": 47.0729484, "lon": 15.4426536 },
+    { "lat": 47.0729289, "lon": 15.4425775 },
+    { "lat": 47.0729107, "lon": 15.4425361 },
+    { "lat": 47.0729030, "lon": 15.4425084 },
+    { "lat": 47.0728977, "lon": 15.4424861 },
+    { "lat": 47.0728936, "lon": 15.4424616 },
+    { "lat": 47.0728931, "lon": 15.4423507 },
+    { "lat": 47.0728883, "lon": 15.4423263 },
+    { "lat": 47.0728730, "lon": 15.4423043 },
+    { "lat": 47.0728551, "lon": 15.4422952 },
+    { "lat": 47.0727635, "lon": 15.4422692 },
+    { "lat": 47.0727721, "lon": 15.4422052 },
+    { "lat": 47.0726738, "lon": 15.4421198 },
+    { "lat": 47.0726797, "lon": 15.4420694 },
+    { "lat": 47.0725223, "lon": 15.4420158 }
+  ],
+  "tags": {
+    "landuse": "grass"
+  }
+},
+{
+  "type": "way",
+  "id": 426237529,
+  "bounds": {
+    "minlat": 47.0743840,
+    "minlon": 15.4416656,
+    "maxlat": 47.0748251,
+    "maxlon": 15.4416816
+  },
+  "nodes": [
+    10152499977,
+    4255447513
+  ],
+  "geometry": [
+    { "lat": 47.0748251, "lon": 15.4416816 },
+    { "lat": 47.0743840, "lon": 15.4416656 }
+  ],
+  "tags": {
+    "access": "private",
+    "highway": "service",
+    "service": "driveway"
+  }
+},
+{
+  "type": "way",
+  "id": 429957410,
+  "bounds": {
+    "minlat": 47.0746792,
+    "minlon": 15.4402488,
+    "maxlat": 47.0748828,
+    "maxlon": 15.4405526
+  },
+  "nodes": [
+    8294998148,
+    4291613594,
+    4291613596,
+    987131633,
+    8294998151,
+    8294998150,
+    987131889,
+    4291613595,
+    987132368,
+    8294998149,
+    8294998148
+  ],
+  "geometry": [
+    { "lat": 47.0746792, "lon": 15.4404868 },
+    { "lat": 47.0746940, "lon": 15.4402488 },
+    { "lat": 47.0747701, "lon": 15.4402750 },
+    { "lat": 47.0748828, "lon": 15.4403137 },
+    { "lat": 47.0748762, "lon": 15.4405526 },
+    { "lat": 47.0748195, "lon": 15.4405366 },
+    { "lat": 47.0748199, "lon": 15.4405196 },
+    { "lat": 47.0747560, "lon": 15.4405015 },
+    { "lat": 47.0747395, "lon": 15.4404977 },
+    { "lat": 47.0747392, "lon": 15.4405030 },
+    { "lat": 47.0746792, "lon": 15.4404868 }
+  ],
+  "tags": {
+    "addr:city": "Graz",
+    "addr:country": "AT",
+    "addr:housenumber": "6",
+    "addr:postcode": "8010",
+    "addr:street": "Paulustorgasse",
+    "building": "yes",
+    "roof:material": "roof_tiles",
+    "roof:shape": "gabled",
+    "wikidata": "Q38044197"
+  }
+},
+{
+  "type": "way",
+  "id": 429957419,
+  "bounds": {
+    "minlat": 47.0739036,
+    "minlon": 15.4399656,
+    "maxlat": 47.0749249,
+    "maxlon": 15.4402575
+  },
+  "nodes": [
+    331889958,
+    2123153625,
+    853831091,
+    4291613592,
+    4291613584,
+    4291613583,
+    4291613572,
+    300868636,
+    21100431,
+    4291613567,
+    301166866
+  ],
+  "geometry": [
+    { "lat": 47.0749249, "lon": 15.4402575 },
+    { "lat": 47.0748377, "lon": 15.4402211 },
+    { "lat": 47.0747740, "lon": 15.4401987 },
+    { "lat": 47.0744667, "lon": 15.4400976 },
+    { "lat": 47.0744225, "lon": 15.4400831 },
+    { "lat": 47.0743183, "lon": 15.4400488 },
+    { "lat": 47.0741638, "lon": 15.4399992 },
+    { "lat": 47.0741594, "lon": 15.4399966 },
+    { "lat": 47.0740460, "lon": 15.4399670 },
+    { "lat": 47.0740335, "lon": 15.4399669 },
+    { "lat": 47.0739036, "lon": 15.4399656 }
+  ],
+  "tags": {
+    "highway": "residential",
+    "lane_markings": "no",
+    "lit": "yes",
+    "maxspeed": "30",
+    "name": "Paulustorgasse",
+    "name:etymology": "Paulustor",
+    "name:etymology:wikidata": "Q2064349",
+    "name:start_date": "1785",
+    "parking:left": "no",
+    "parking:right": "street_side",
+    "parking:right:orientation": "parallel",
+    "sidewalk": "separate",
+    "source:maxspeed": "AT:city_limit30",
+    "surface": "asphalt",
+    "wikidata": "Q106635568"
+  }
+},
+{
+  "type": "way",
+  "id": 429957422,
+  "bounds": {
+    "minlat": 47.0742344,
+    "minlon": 15.4406179,
+    "maxlat": 47.0745809,
+    "maxlon": 15.4408101
+  },
+  "nodes": [
+    4291613580,
+    987132432,
+    8140213024,
+    8140200711,
+    2524817876,
+    987131830,
+    4291613579,
+    4291613580
+  ],
+  "geometry": [
+    { "lat": 47.0742367, "lon": 15.4406345 },
+    { "lat": 47.0743844, "lon": 15.4406179 },
+    { "lat": 47.0744676, "lon": 15.4406693 },
+    { "lat": 47.0745294, "lon": 15.4407076 },
+    { "lat": 47.0745809, "lon": 15.4407394 },
+    { "lat": 47.0745797, "lon": 15.4408101 },
+    { "lat": 47.0742344, "lon": 15.4407768 },
+    { "lat": 47.0742367, "lon": 15.4406345 }
+  ],
+  "tags": {
+    "building": "yes",
+    "roof:colour": "#CDC9C9",
+    "source": "geoimage.at"
+  }
+},
+{
+  "type": "way",
+  "id": 429957426,
+  "bounds": {
+    "minlat": 47.0730497,
+    "minlon": 15.4407887,
+    "maxlat": 47.0730630,
+    "maxlon": 15.4407911
+  },
+  "nodes": [
+    3983175232,
+    3983175228
+  ],
+  "geometry": [
+    { "lat": 47.0730630, "lon": 15.4407911 },
+    { "lat": 47.0730497, "lon": 15.4407887 }
+  ],
+  "tags": {
+    "footway": "sidewalk",
+    "highway": "footway",
+    "lit": "yes",
+    "surface": "paved"
+  }
+},
+{
+  "type": "way",
+  "id": 429957437,
+  "bounds": {
+    "minlat": 47.0736994,
+    "minlon": 15.4399867,
+    "maxlat": 47.0738352,
+    "maxlon": 15.4400035
+  },
+  "nodes": [
+    4291613541,
+    4291613554
+  ],
+  "geometry": [
+    { "lat": 47.0736994, "lon": 15.4399867 },
+    { "lat": 47.0738352, "lon": 15.4400035 }
+  ],
+  "tags": {
+    "footway": "sidewalk",
+    "highway": "footway",
+    "incline": "8.6%",
+    "lit": "yes",
+    "surface": "sett"
+  }
+},
+{
+  "type": "way",
+  "id": 429957439,
+  "bounds": {
+    "minlat": 47.0726805,
+    "minlon": 15.4413032,
+    "maxlat": 47.0730139,
+    "maxlon": 15.4413823
+  },
+  "nodes": [
+    3983175214,
+    3983175219
+  ],
+  "geometry": [
+    { "lat": 47.0726805, "lon": 15.4413032 },
+    { "lat": 47.0730139, "lon": 15.4413823 }
+  ],
+  "tags": {
+    "footway": "sidewalk",
+    "highway": "footway",
+    "incline": "3.7%",
+    "lit": "yes",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 429957443,
+  "bounds": {
+    "minlat": 47.0747560,
+    "minlon": 15.4402750,
+    "maxlat": 47.0747701,
+    "maxlon": 15.4405015
+  },
+  "nodes": [
+    4291613595,
+    4291613596
+  ],
+  "geometry": [
+    { "lat": 47.0747560, "lon": 15.4405015 },
+    { "lat": 47.0747701, "lon": 15.4402750 }
+  ],
+  "tags": {
+    "access": "private",
+    "highway": "service",
+    "service": "driveway",
+    "tunnel": "building_passage"
+  }
+},
+{
+  "type": "way",
+  "id": 429957446,
+  "bounds": {
+    "minlat": 47.0730627,
+    "minlon": 15.4410586,
+    "maxlat": 47.0731945,
+    "maxlon": 15.4410822
+  },
+  "nodes": [
+    4291613499,
+    4291613506
+  ],
+  "geometry": [
+    { "lat": 47.0730627, "lon": 15.4410586 },
+    { "lat": 47.0731945, "lon": 15.4410822 }
+  ],
+  "tags": {
+    "highway": "service",
+    "service": "parking_aisle",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 429957449,
+  "bounds": {
+    "minlat": 47.0732232,
+    "minlon": 15.4414198,
+    "maxlat": 47.0733037,
+    "maxlon": 15.4414209
+  },
+  "nodes": [
+    3983175243,
+    4291613516
+  ],
+  "geometry": [
+    { "lat": 47.0732232, "lon": 15.4414198 },
+    { "lat": 47.0733037, "lon": 15.4414209 }
+  ],
+  "tags": {
+    "footway": "sidewalk",
+    "highway": "footway",
+    "incline": "4.2%",
+    "lit": "yes",
+    "smoothness": "excellent",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 429957451,
+  "bounds": {
+    "minlat": 47.0744335,
+    "minlon": 15.4401667,
+    "maxlat": 47.0744562,
+    "maxlon": 15.4403508
+  },
+  "nodes": [
+    4291613587,
+    4291613589
+  ],
+  "geometry": [
+    { "lat": 47.0744335, "lon": 15.4403508 },
+    { "lat": 47.0744562, "lon": 15.4401667 }
+  ],
+  "tags": {
+    "access": "private",
+    "highway": "service",
+    "service": "driveway",
+    "tunnel": "building_passage"
+  }
+},
+{
+  "type": "way",
+  "id": 429957455,
+  "bounds": {
+    "minlat": 47.0732427,
+    "minlon": 15.4408734,
+    "maxlat": 47.0733576,
+    "maxlon": 15.4408760
+  },
+  "nodes": [
+    4291613514,
+    4291613521
+  ],
+  "geometry": [
+    { "lat": 47.0732427, "lon": 15.4408734 },
+    { "lat": 47.0733576, "lon": 15.4408760 }
+  ],
+  "tags": {
+    "access": "private",
+    "highway": "service",
+    "service": "driveway",
+    "tunnel": "building_passage"
+  }
+},
+{
+  "type": "way",
+  "id": 429957461,
+  "bounds": {
+    "minlat": 47.0732232,
+    "minlon": 15.4413285,
+    "maxlat": 47.0732297,
+    "maxlon": 15.4414198
+  },
+  "nodes": [
+    3983175242,
+    452486834,
+    8043309853,
+    3983175243
+  ],
+  "geometry": [
+    { "lat": 47.0732297, "lon": 15.4413285 },
+    { "lat": 47.0732263, "lon": 15.4413636 },
+    { "lat": 47.0732241, "lon": 15.4414028 },
+    { "lat": 47.0732232, "lon": 15.4414198 }
+  ],
+  "tags": {
+    "footway": "crossing",
+    "highway": "footway",
+    "lit": "yes",
+    "smoothness": "excellent",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 429957465,
+  "bounds": {
+    "minlat": 47.0736829,
+    "minlon": 15.4400416,
+    "maxlat": 47.0736834,
+    "maxlon": 15.4401014
+  },
+  "nodes": [
+    4291613531,
+    4291613530
+  ],
+  "geometry": [
+    { "lat": 47.0736834, "lon": 15.4400416 },
+    { "lat": 47.0736829, "lon": 15.4401014 }
+  ],
+  "tags": {
+    "handrail": "yes",
+    "highway": "steps",
+    "incline": "up",
+    "ramp": "no",
+    "step_count": "6",
+    "surface": "concrete:plates",
+    "tactile_paving": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 429957467,
+  "bounds": {
+    "minlat": 47.0739542,
+    "minlon": 15.4400033,
+    "maxlat": 47.0740308,
+    "maxlon": 15.4417371
+  },
+  "nodes": [
+    4251236022,
+    6858779022,
+    6723796860,
+    14080927014,
+    6723796861,
+    6723796862,
+    10743658409,
+    6723796863,
+    4291613565,
+    4291613566
+  ],
+  "geometry": [
+    { "lat": 47.0739542, "lon": 15.4417371 },
+    { "lat": 47.0739605, "lon": 15.4416372 },
+    { "lat": 47.0739795, "lon": 15.4414341 },
+    { "lat": 47.0739815, "lon": 15.4413123 },
+    { "lat": 47.0739888, "lon": 15.4408626 },
+    { "lat": 47.0740005, "lon": 15.4408036 },
+    { "lat": 47.0740043, "lon": 15.4406602 },
+    { "lat": 47.0740055, "lon": 15.4406128 },
+    { "lat": 47.0740287, "lon": 15.4400233 },
+    { "lat": 47.0740308, "lon": 15.4400033 }
+  ],
+  "tags": {
+    "footway": "sidewalk",
+    "highway": "footway",
+    "lit": "yes",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 429957477,
+  "bounds": {
+    "minlat": 47.0730892,
+    "minlon": 15.4413972,
+    "maxlat": 47.0732232,
+    "maxlon": 15.4414198
+  },
+  "nodes": [
+    3983175235,
+    3983175243
+  ],
+  "geometry": [
+    { "lat": 47.0730892, "lon": 15.4413972 },
+    { "lat": 47.0732232, "lon": 15.4414198 }
+  ],
+  "tags": {
+    "footway": "sidewalk",
+    "highway": "footway",
+    "incline": "3.1%",
+    "lit": "yes",
+    "smoothness": "excellent",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 429957481,
+  "bounds": {
+    "minlat": 47.0731292,
+    "minlon": 15.4408086,
+    "maxlat": 47.0732265,
+    "maxlon": 15.4408209
+  },
+  "nodes": [
+    3983175244,
+    3983175237
+  ],
+  "geometry": [
+    { "lat": 47.0732265, "lon": 15.4408209 },
+    { "lat": 47.0731292, "lon": 15.4408086 }
+  ],
+  "tags": {
+    "footway": "sidewalk",
+    "highway": "footway",
+    "incline": "-6.6%",
+    "lit": "yes",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 429957487,
+  "bounds": {
+    "minlat": 47.0730785,
+    "minlon": 15.4408632,
+    "maxlat": 47.0732077,
+    "maxlon": 15.4408727
+  },
+  "nodes": [
+    2042061517,
+    4291613508
+  ],
+  "geometry": [
+    { "lat": 47.0730785, "lon": 15.4408632 },
+    { "lat": 47.0732077, "lon": 15.4408727 }
+  ],
+  "tags": {
+    "highway": "service",
+    "incline": "6.6%",
+    "service": "parking_aisle",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 429957490,
+  "bounds": {
+    "minlat": 47.0744354,
+    "minlon": 15.4399455,
+    "maxlat": 47.0744493,
+    "maxlon": 15.4400132
+  },
+  "nodes": [
+    1404007696,
+    4291613588
+  ],
+  "geometry": [
+    { "lat": 47.0744493, "lon": 15.4399455 },
+    { "lat": 47.0744354, "lon": 15.4400132 }
+  ],
+  "tags": {
+    "highway": "service",
+    "incline": "down",
+    "service": "driveway"
+  }
+},
+{
+  "type": "way",
+  "id": 429957491,
+  "bounds": {
+    "minlat": 47.0743102,
+    "minlon": 15.4401042,
+    "maxlat": 47.0743118,
+    "maxlon": 15.4401121
+  },
+  "nodes": [
+    4291613582,
+    4291613581
+  ],
+  "geometry": [
+    { "lat": 47.0743118, "lon": 15.4401042 },
+    { "lat": 47.0743102, "lon": 15.4401121 }
+  ],
+  "tags": {
+    "footway": "sidewalk",
+    "highway": "footway",
+    "lit": "yes",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 429957506,
+  "bounds": {
+    "minlat": 47.0732265,
+    "minlon": 15.4408209,
+    "maxlat": 47.0732317,
+    "maxlon": 15.4413153
+  },
+  "nodes": [
+    3983175245,
+    4291613512,
+    3983175244
+  ],
+  "geometry": [
+    { "lat": 47.0732317, "lon": 15.4413153 },
+    { "lat": 47.0732271, "lon": 15.4408740 },
+    { "lat": 47.0732265, "lon": 15.4408209 }
+  ],
+  "tags": {
+    "footway": "sidewalk",
+    "highway": "footway",
+    "incline": "-2.3%",
+    "incline:across": "3%",
+    "lit": "yes",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 429957512,
+  "bounds": {
+    "minlat": 47.0738352,
+    "minlon": 15.4400035,
+    "maxlat": 47.0738645,
+    "maxlon": 15.4400350
+  },
+  "nodes": [
+    4291613554,
+    4291613556,
+    4291613557
+  ],
+  "geometry": [
+    { "lat": 47.0738352, "lon": 15.4400035 },
+    { "lat": 47.0738558, "lon": 15.4400119 },
+    { "lat": 47.0738645, "lon": 15.4400350 }
+  ],
+  "tags": {
+    "footway": "sidewalk",
+    "highway": "footway",
+    "lit": "yes",
+    "surface": "sett"
+  }
+},
+{
+  "type": "way",
+  "id": 429957514,
+  "bounds": {
+    "minlat": 47.0736834,
+    "minlon": 15.4399757,
+    "maxlat": 47.0736859,
+    "maxlon": 15.4400416
+  },
+  "nodes": [
+    4291613534,
+    4291613532,
+    4291613531
+  ],
+  "geometry": [
+    { "lat": 47.0736859, "lon": 15.4399757 },
+    { "lat": 47.0736847, "lon": 15.4399833 },
+    { "lat": 47.0736834, "lon": 15.4400416 }
+  ],
+  "tags": {
+    "footway": "sidewalk",
+    "highway": "footway",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 429957522,
+  "bounds": {
+    "minlat": 47.0740308,
+    "minlon": 15.4399208,
+    "maxlat": 47.0740367,
+    "maxlon": 15.4400033
+  },
+  "nodes": [
+    4291613566,
+    4291613567,
+    4291613568
+  ],
+  "geometry": [
+    { "lat": 47.0740308, "lon": 15.4400033 },
+    { "lat": 47.0740335, "lon": 15.4399669 },
+    { "lat": 47.0740367, "lon": 15.4399208 }
+  ],
+  "tags": {
+    "footway": "crossing",
+    "highway": "footway",
+    "lit": "yes",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 429957525,
+  "bounds": {
+    "minlat": 47.0732077,
+    "minlon": 15.4408727,
+    "maxlat": 47.0732427,
+    "maxlon": 15.4408740
+  },
+  "nodes": [
+    4291613508,
+    4291613512,
+    4291613514
+  ],
+  "geometry": [
+    { "lat": 47.0732077, "lon": 15.4408727 },
+    { "lat": 47.0732271, "lon": 15.4408740 },
+    { "lat": 47.0732427, "lon": 15.4408734 }
+  ],
+  "tags": {
+    "highway": "service",
+    "service": "driveway"
+  }
+},
+{
+  "type": "way",
+  "id": 429957540,
+  "bounds": {
+    "minlat": 47.0746695,
+    "minlon": 15.4401182,
+    "maxlat": 47.0748545,
+    "maxlon": 15.4401855
+  },
+  "nodes": [
+    3983175270,
+    3983175272,
+    3983175275
+  ],
+  "geometry": [
+    { "lat": 47.0746695, "lon": 15.4401182 },
+    { "lat": 47.0747750, "lon": 15.4401573 },
+    { "lat": 47.0748545, "lon": 15.4401855 }
+  ],
+  "tags": {
+    "footway": "sidewalk",
+    "highway": "footway",
+    "incline:across": "-12.8%",
+    "lit": "yes",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 429957563,
+  "bounds": {
+    "minlat": 47.0742094,
+    "minlon": 15.4399495,
+    "maxlat": 47.0746695,
+    "maxlon": 15.4401182
+  },
+  "nodes": [
+    3983175266,
+    3983175268,
+    4291613586,
+    3983175270
+  ],
+  "geometry": [
+    { "lat": 47.0742094, "lon": 15.4399495 },
+    { "lat": 47.0743997, "lon": 15.4400168 },
+    { "lat": 47.0744321, "lon": 15.4400290 },
+    { "lat": 47.0746695, "lon": 15.4401182 }
+  ],
+  "tags": {
+    "footway": "sidewalk",
+    "highway": "footway",
+    "incline": "-1.5%",
+    "incline:across": "-2.5%",
+    "lit": "yes",
+    "surface": "asphalt",
+    "width": "1.9"
+  }
+},
+{
+  "type": "way",
+  "id": 429957571,
+  "bounds": {
+    "minlat": 47.0744225,
+    "minlon": 15.4400132,
+    "maxlat": 47.0744354,
+    "maxlon": 15.4400831
+  },
+  "nodes": [
+    4291613588,
+    4291613586,
+    4291613585,
+    4291613584
+  ],
+  "geometry": [
+    { "lat": 47.0744354, "lon": 15.4400132 },
+    { "lat": 47.0744321, "lon": 15.4400290 },
+    { "lat": 47.0744310, "lon": 15.4400410 },
+    { "lat": 47.0744225, "lon": 15.4400831 }
+  ],
+  "tags": {
+    "highway": "service",
+    "service": "driveway"
+  }
+},
+{
+  "type": "way",
+  "id": 429957577,
+  "bounds": {
+    "minlat": 47.0744562,
+    "minlon": 15.4400976,
+    "maxlat": 47.0744667,
+    "maxlon": 15.4401667
+  },
+  "nodes": [
+    4291613589,
+    4291613590,
+    4291613591,
+    4291613592
+  ],
+  "geometry": [
+    { "lat": 47.0744562, "lon": 15.4401667 },
+    { "lat": 47.0744583, "lon": 15.4401562 },
+    { "lat": 47.0744605, "lon": 15.4401408 },
+    { "lat": 47.0744667, "lon": 15.4400976 }
+  ],
+  "tags": {
+    "highway": "service",
+    "service": "driveway"
+  }
+},
+{
+  "type": "way",
+  "id": 429957578,
+  "bounds": {
+    "minlat": 47.0747701,
+    "minlon": 15.4401987,
+    "maxlat": 47.0747740,
+    "maxlon": 15.4402750
+  },
+  "nodes": [
+    4291613596,
+    4291613597,
+    4291613598,
+    853831091
+  ],
+  "geometry": [
+    { "lat": 47.0747701, "lon": 15.4402750 },
+    { "lat": 47.0747705, "lon": 15.4402661 },
+    { "lat": 47.0747713, "lon": 15.4402458 },
+    { "lat": 47.0747740, "lon": 15.4401987 }
+  ],
+  "tags": {
+    "highway": "service",
+    "service": "driveway"
+  }
+},
+{
+  "type": "way",
+  "id": 429957579,
+  "bounds": {
+    "minlat": 47.0736753,
+    "minlon": 15.4399785,
+    "maxlat": 47.0736994,
+    "maxlon": 15.4399867
+  },
+  "nodes": [
+    4291613529,
+    4291613532,
+    4291613536,
+    4291613541
+  ],
+  "geometry": [
+    { "lat": 47.0736753, "lon": 15.4399785 },
+    { "lat": 47.0736847, "lon": 15.4399833 },
+    { "lat": 47.0736909, "lon": 15.4399864 },
+    { "lat": 47.0736994, "lon": 15.4399867 }
+  ],
+  "tags": {
+    "check_date:surface": "2025-05-05",
+    "footway": "sidewalk",
+    "highway": "footway",
+    "incline": "8.6%",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 429957580,
+  "bounds": {
+    "minlat": 47.0741638,
+    "minlon": 15.4399173,
+    "maxlat": 47.0741750,
+    "maxlon": 15.4399992
+  },
+  "nodes": [
+    4291613572,
+    4291613573,
+    4291613574,
+    4291613575
+  ],
+  "geometry": [
+    { "lat": 47.0741638, "lon": 15.4399992 },
+    { "lat": 47.0741705, "lon": 15.4399501 },
+    { "lat": 47.0741722, "lon": 15.4399384 },
+    { "lat": 47.0741750, "lon": 15.4399173 }
+  ],
+  "tags": {
+    "highway": "service",
+    "service": "driveway"
+  }
+},
+{
+  "type": "way",
+  "id": 431199021,
+  "bounds": {
+    "minlat": 47.0730305,
+    "minlon": 15.4419641,
+    "maxlat": 47.0730433,
+    "maxlon": 15.4419847
+  },
+  "nodes": [
+    1858696843,
+    4304449316
+  ],
+  "geometry": [
+    { "lat": 47.0730433, "lon": 15.4419641 },
+    { "lat": 47.0730305, "lon": 15.4419847 }
+  ],
+  "tags": {
+    "highway": "footway",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 431199050,
+  "bounds": {
+    "minlat": 47.0729892,
+    "minlon": 15.4419847,
+    "maxlat": 47.0730305,
+    "maxlon": 15.4420523
+  },
+  "nodes": [
+    4304449316,
+    8140246993,
+    4304449315,
+    4304449314,
+    4304449313
+  ],
+  "geometry": [
+    { "lat": 47.0730305, "lon": 15.4419847 },
+    { "lat": 47.0730068, "lon": 15.4419936 },
+    { "lat": 47.0730034, "lon": 15.4420281 },
+    { "lat": 47.0730025, "lon": 15.4420523 },
+    { "lat": 47.0729892, "lon": 15.4420509 }
+  ],
+  "tags": {
+    "highway": "footway",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 467173731,
+  "bounds": {
+    "minlat": 47.0734428,
+    "minlon": 15.4425539,
+    "maxlat": 47.0735086,
+    "maxlon": 15.4428520
+  },
+  "nodes": [
+    4618256653,
+    4618256654,
+    4618256655,
+    4618256656,
+    4618256653
+  ],
+  "geometry": [
+    { "lat": 47.0735011, "lon": 15.4425539 },
+    { "lat": 47.0735086, "lon": 15.4428488 },
+    { "lat": 47.0734503, "lon": 15.4428520 },
+    { "lat": 47.0734428, "lon": 15.4425571 },
+    { "lat": 47.0735011, "lon": 15.4425539 }
+  ],
+  "tags": {
+    "building": "greenhouse",
+    "building:material": "glass",
+    "roof:material": "glass",
+    "roof:shape": "round"
+  }
+},
+{
+  "type": "way",
+  "id": 467173732,
+  "bounds": {
+    "minlat": 47.0735290,
+    "minlon": 15.4425189,
+    "maxlat": 47.0735948,
+    "maxlon": 15.4431269
+  },
+  "nodes": [
+    4618256657,
+    4618256658,
+    4618256659,
+    4618256662,
+    4618256661,
+    4618256660,
+    4618256657
+  ],
+  "geometry": [
+    { "lat": 47.0735645, "lon": 15.4425189 },
+    { "lat": 47.0735948, "lon": 15.4431211 },
+    { "lat": 47.0735417, "lon": 15.4431269 },
+    { "lat": 47.0735290, "lon": 15.4428736 },
+    { "lat": 47.0735477, "lon": 15.4428715 },
+    { "lat": 47.0735301, "lon": 15.4425227 },
+    { "lat": 47.0735645, "lon": 15.4425189 }
+  ],
+  "tags": {
+    "building": "greenhouse"
+  }
+},
+{
+  "type": "way",
+  "id": 572848869,
+  "bounds": {
+    "minlat": 47.0747391,
+    "minlon": 15.4398642,
+    "maxlat": 47.0748473,
+    "maxlon": 15.4400936
+  },
+  "nodes": [
+    5503317167,
+    5503317168,
+    5503317169,
+    5503317170,
+    5503317167
+  ],
+  "geometry": [
+    { "lat": 47.0748473, "lon": 15.4398824 },
+    { "lat": 47.0748270, "lon": 15.4400936 },
+    { "lat": 47.0747391, "lon": 15.4400754 },
+    { "lat": 47.0747594, "lon": 15.4398642 },
+    { "lat": 47.0748473, "lon": 15.4398824 }
+  ],
+  "tags": {
+    "leisure": "park"
+  }
+},
+{
+  "type": "way",
+  "id": 703187651,
+  "bounds": {
+    "minlat": 47.0737268,
+    "minlon": 15.4422121,
+    "maxlat": 47.0744360,
+    "maxlon": 15.4434407
+  },
+  "nodes": [
+    6603677292,
+    3669941958,
+    3669941953,
+    3669941952,
+    3669941956,
+    3669941955,
+    6603677288,
+    3669941954,
+    3669941950,
+    6603635860,
+    3669941949,
+    3669941948,
+    6603635863,
+    10047913009,
+    6603635864,
+    6603677295,
+    6603677292
+  ],
+  "geometry": [
+    { "lat": 47.0744290, "lon": 15.4424743 },
+    { "lat": 47.0744360, "lon": 15.4425741 },
+    { "lat": 47.0742382, "lon": 15.4427533 },
+    { "lat": 47.0742318, "lon": 15.4428589 },
+    { "lat": 47.0743605, "lon": 15.4431623 },
+    { "lat": 47.0743229, "lon": 15.4431936 },
+    { "lat": 47.0742957, "lon": 15.4432162 },
+    { "lat": 47.0742592, "lon": 15.4432466 },
+    { "lat": 47.0740487, "lon": 15.4433978 },
+    { "lat": 47.0739730, "lon": 15.4434407 },
+    { "lat": 47.0739371, "lon": 15.4433604 },
+    { "lat": 47.0738166, "lon": 15.4429274 },
+    { "lat": 47.0737268, "lon": 15.4426568 },
+    { "lat": 47.0738475, "lon": 15.4425457 },
+    { "lat": 47.0741865, "lon": 15.4422342 },
+    { "lat": 47.0744090, "lon": 15.4422121 },
+    { "lat": 47.0744290, "lon": 15.4424743 }
+  ],
+  "tags": {
+    "disused:amenity": "traffic_park",
+    "end_date": "2015",
+    "landuse": "recreation_ground",
+    "name": "Ehemaliger Verkehrserziehungs-Park",
+    "note": "Anlage besteht, wird aber nicht mehr seinem Zweck gemäß genutzt. Umgestaltung startet im Jahr 2020. Die Fläche wird Teil des Stadtparks: https://www.graz.at/cms/beitrag/10349097/8106610/Umgestaltungsplaene_fuer_den_Grazer_Stadtpark.html",
+    "source": "https://www.graz.at/cms/beitrag/10349097/8106610/Umgestaltungsplaene_fuer_den_Grazer_Stadtpark.html;https://www.graz.at/cms/beitrag/10364277/8144923/Im_Wachsen_Neuer_Gruenraumstuetzpunkt_im_Stadtpark.html"
+  }
+},
+{
+  "type": "way",
+  "id": 703188990,
+  "bounds": {
+    "minlat": 47.0691544,
+    "minlon": 15.4400249,
+    "maxlat": 47.0783955,
+    "maxlon": 15.4477201
+  },
+  "nodes": [
+    6603676218,
+    13032095994,
+    11027822288,
+    13032097801,
+    13032097802,
+    6603676219,
+    6603676220,
+    6603676221,
+    13032095995,
+    6603676222,
+    6603676223,
+    6603676224,
+    6603676225,
+    6603676226,
+    13032097803,
+    6603676227,
+    6603676228,
+    6603676229,
+    6603676230,
+    6603676231,
+    6603676232,
+    6603676233,
+    6603676234,
+    6603676235,
+    6603676236,
+    6603676237,
+    6603676238,
+    6603676239,
+    6603676240,
+    6603676241,
+    6603676242,
+    6603676243,
+    6603676244,
+    6603676245,
+    6603676246,
+    446721187,
+    1097270996,
+    1097270998,
+    6603677296,
+    6603677298,
+    6603677300,
+    4251235871,
+    6603635863,
+    10047913009,
+    6603635864,
+    6603677295,
+    1716232657,
+    6603676248,
+    4532249626,
+    4532249625,
+    13032095996,
+    4532249619,
+    4532249618,
+    6603676249,
+    8490514377,
+    8490514378,
+    8490514379,
+    8490514380,
+    8490514366,
+    8490514375,
+    8490514376,
+    6743055840,
+    6603676250,
+    6603868538,
+    6603676251,
+    8490514383,
+    6603676252,
+    6603676253,
+    6603676254,
+    987131691,
+    1262291172,
+    3371722587,
+    968912883,
+    968913012,
+    968913127,
+    4253037594,
+    968912940,
+    968913060,
+    968912869,
+    968912925,
+    7061202717,
+    13032095997,
+    12314446136,
+    1372494325,
+    1487673922,
+    1462858817,
+    1372494324,
+    1372494323,
+    1372494322,
+    1372494321,
+    1326949389,
+    12314446147,
+    6603676257,
+    12314446182,
+    1326949402,
+    1487673933,
+    1487673936,
+    1326949368,
+    968913091,
+    12316065001,
+    12314446140,
+    6603676258,
+    6603676259,
+    13032095998,
+    6603676218
+  ],
+  "geometry": [
+    { "lat": 47.0783955, "lon": 15.4401741 },
+    { "lat": 47.0783388, "lon": 15.4404939 },
+    { "lat": 47.0782350, "lon": 15.4410721 },
+    { "lat": 47.0780079, "lon": 15.4423437 },
+    { "lat": 47.0779164, "lon": 15.4428556 },
+    { "lat": 47.0778477, "lon": 15.4432650 },
+    { "lat": 47.0775696, "lon": 15.4436624 },
+    { "lat": 47.0767314, "lon": 15.4444003 },
+    { "lat": 47.0758151, "lon": 15.4451979 },
+    { "lat": 47.0756130, "lon": 15.4453739 },
+    { "lat": 47.0748251, "lon": 15.4460548 },
+    { "lat": 47.0741662, "lon": 15.4466263 },
+    { "lat": 47.0740267, "lon": 15.4467064 },
+    { "lat": 47.0732219, "lon": 15.4469637 },
+    { "lat": 47.0726992, "lon": 15.4471164 },
+    { "lat": 47.0722619, "lon": 15.4472441 },
+    { "lat": 47.0706335, "lon": 15.4477201 },
+    { "lat": 47.0705342, "lon": 15.4477168 },
+    { "lat": 47.0703504, "lon": 15.4475894 },
+    { "lat": 47.0698657, "lon": 15.4472000 },
+    { "lat": 47.0691652, "lon": 15.4465087 },
+    { "lat": 47.0691544, "lon": 15.4463884 },
+    { "lat": 47.0695949, "lon": 15.4454088 },
+    { "lat": 47.0696665, "lon": 15.4454637 },
+    { "lat": 47.0700910, "lon": 15.4462911 },
+    { "lat": 47.0701760, "lon": 15.4464005 },
+    { "lat": 47.0702421, "lon": 15.4464359 },
+    { "lat": 47.0703009, "lon": 15.4464359 },
+    { "lat": 47.0703764, "lon": 15.4464051 },
+    { "lat": 47.0709935, "lon": 15.4457578 },
+    { "lat": 47.0706389, "lon": 15.4450569 },
+    { "lat": 47.0710827, "lon": 15.4445654 },
+    { "lat": 47.0716871, "lon": 15.4439292 },
+    { "lat": 47.0720880, "lon": 15.4434829 },
+    { "lat": 47.0722766, "lon": 15.4434802 },
+    { "lat": 47.0722838, "lon": 15.4440136 },
+    { "lat": 47.0723458, "lon": 15.4440115 },
+    { "lat": 47.0723510, "lon": 15.4443420 },
+    { "lat": 47.0724470, "lon": 15.4444185 },
+    { "lat": 47.0732791, "lon": 15.4447581 },
+    { "lat": 47.0736173, "lon": 15.4433382 },
+    { "lat": 47.0735909, "lon": 15.4427827 },
+    { "lat": 47.0737268, "lon": 15.4426568 },
+    { "lat": 47.0738475, "lon": 15.4425457 },
+    { "lat": 47.0741865, "lon": 15.4422342 },
+    { "lat": 47.0744090, "lon": 15.4422121 },
+    { "lat": 47.0748114, "lon": 15.4421672 },
+    { "lat": 47.0749468, "lon": 15.4421789 },
+    { "lat": 47.0749474, "lon": 15.4422482 },
+    { "lat": 47.0749501, "lon": 15.4425604 },
+    { "lat": 47.0750918, "lon": 15.4426002 },
+    { "lat": 47.0751991, "lon": 15.4426303 },
+    { "lat": 47.0755748, "lon": 15.4427046 },
+    { "lat": 47.0756899, "lon": 15.4427311 },
+    { "lat": 47.0758492, "lon": 15.4427570 },
+    { "lat": 47.0758627, "lon": 15.4427613 },
+    { "lat": 47.0758600, "lon": 15.4427891 },
+    { "lat": 47.0758667, "lon": 15.4428151 },
+    { "lat": 47.0758876, "lon": 15.4428341 },
+    { "lat": 47.0759177, "lon": 15.4428218 },
+    { "lat": 47.0759308, "lon": 15.4427898 },
+    { "lat": 47.0759350, "lon": 15.4427430 },
+    { "lat": 47.0759890, "lon": 15.4423056 },
+    { "lat": 47.0760215, "lon": 15.4423014 },
+    { "lat": 47.0760437, "lon": 15.4422678 },
+    { "lat": 47.0760534, "lon": 15.4421838 },
+    { "lat": 47.0761192, "lon": 15.4416123 },
+    { "lat": 47.0760735, "lon": 15.4415137 },
+    { "lat": 47.0759211, "lon": 15.4415168 },
+    { "lat": 47.0758632, "lon": 15.4413018 },
+    { "lat": 47.0758602, "lon": 15.4412862 },
+    { "lat": 47.0760299, "lon": 15.4409461 },
+    { "lat": 47.0761271, "lon": 15.4407309 },
+    { "lat": 47.0762424, "lon": 15.4405219 },
+    { "lat": 47.0763343, "lon": 15.4402871 },
+    { "lat": 47.0764033, "lon": 15.4403550 },
+    { "lat": 47.0764594, "lon": 15.4404459 },
+    { "lat": 47.0763533, "lon": 15.4406073 },
+    { "lat": 47.0764669, "lon": 15.4407840 },
+    { "lat": 47.0768301, "lon": 15.4405401 },
+    { "lat": 47.0768179, "lon": 15.4404559 },
+    { "lat": 47.0768537, "lon": 15.4404381 },
+    { "lat": 47.0768808, "lon": 15.4403990 },
+    { "lat": 47.0768821, "lon": 15.4404096 },
+    { "lat": 47.0768854, "lon": 15.4404859 },
+    { "lat": 47.0768879, "lon": 15.4405869 },
+    { "lat": 47.0768865, "lon": 15.4407657 },
+    { "lat": 47.0768447, "lon": 15.4410414 },
+    { "lat": 47.0768113, "lon": 15.4411377 },
+    { "lat": 47.0768289, "lon": 15.4411611 },
+    { "lat": 47.0770242, "lon": 15.4410344 },
+    { "lat": 47.0771691, "lon": 15.4409454 },
+    { "lat": 47.0775324, "lon": 15.4406787 },
+    { "lat": 47.0778680, "lon": 15.4404324 },
+    { "lat": 47.0779628, "lon": 15.4403628 },
+    { "lat": 47.0781570, "lon": 15.4401255 },
+    { "lat": 47.0781909, "lon": 15.4400818 },
+    { "lat": 47.0782353, "lon": 15.4400249 },
+    { "lat": 47.0782414, "lon": 15.4400354 },
+    { "lat": 47.0782440, "lon": 15.4400372 },
+    { "lat": 47.0782514, "lon": 15.4400422 },
+    { "lat": 47.0782762, "lon": 15.4400667 },
+    { "lat": 47.0783089, "lon": 15.4400760 },
+    { "lat": 47.0783924, "lon": 15.4401497 },
+    { "lat": 47.0783955, "lon": 15.4401741 }
+  ],
+  "tags": {
+    "addr:city": "Graz",
+    "addr:postcode": "8010",
+    "leisure": "park",
+    "name": "Stadtpark",
+    "opening_hours": "24/7",
+    "wikidata": "Q1489718",
+    "wikimedia_commons": "Category:Stadtpark Graz",
+    "wikipedia": "de:Grazer Stadtpark"
+  }
+},
+{
+  "type": "way",
+  "id": 718381710,
+  "bounds": {
+    "minlat": 47.0736599,
+    "minlon": 15.4412150,
+    "maxlat": 47.0736604,
+    "maxlon": 15.4413132
+  },
+  "nodes": [
+    1014378992,
+    910862522
+  ],
+  "geometry": [
+    { "lat": 47.0736604, "lon": 15.4413132 },
+    { "lat": 47.0736599, "lon": 15.4412150 }
+  ],
+  "tags": {
+    "handrail": "yes",
+    "highway": "steps",
+    "incline": "up",
+    "lit": "yes",
+    "ramp": "no",
+    "step_count": "9",
+    "surface": "concrete",
+    "tactile_paving": "partial"
+  }
+},
+{
+  "type": "way",
+  "id": 732451244,
+  "bounds": {
+    "minlat": 47.0739462,
+    "minlon": 15.4418709,
+    "maxlat": 47.0739593,
+    "maxlon": 15.4423502
+  },
+  "nodes": [
+    4251236029,
+    11941647267,
+    4251236038,
+    6960516865
+  ],
+  "geometry": [
+    { "lat": 47.0739586, "lon": 15.4418709 },
+    { "lat": 47.0739462, "lon": 15.4419649 },
+    { "lat": 47.0739565, "lon": 15.4422373 },
+    { "lat": 47.0739593, "lon": 15.4423502 }
+  ],
+  "tags": {
+    "highway": "footway",
+    "surface": "paving_stones"
+  }
+},
+{
+  "type": "way",
+  "id": 732451245,
+  "bounds": {
+    "minlat": 47.0739605,
+    "minlon": 15.4416372,
+    "maxlat": 47.0743840,
+    "maxlon": 15.4416656
+  },
+  "nodes": [
+    4255447513,
+    9134332528,
+    10152499978,
+    7942835678,
+    6858779022
+  ],
+  "geometry": [
+    { "lat": 47.0743840, "lon": 15.4416656 },
+    { "lat": 47.0741812, "lon": 15.4416603 },
+    { "lat": 47.0740129, "lon": 15.4416494 },
+    { "lat": 47.0739903, "lon": 15.4416464 },
+    { "lat": 47.0739605, "lon": 15.4416372 }
+  ],
+  "tags": {
+    "highway": "footway",
+    "surface": "paving_stones"
+  }
+},
+{
+  "type": "way",
+  "id": 743703642,
+  "bounds": {
+    "minlat": 47.0738668,
+    "minlon": 15.4413459,
+    "maxlat": 47.0739605,
+    "maxlon": 15.4416372
+  },
+  "nodes": [
+    963282069,
+    10152499975,
+    10152499976,
+    6858779022
+  ],
+  "geometry": [
+    { "lat": 47.0738668, "lon": 15.4413459 },
+    { "lat": 47.0738934, "lon": 15.4415975 },
+    { "lat": 47.0738949, "lon": 15.4416247 },
+    { "lat": 47.0739605, "lon": 15.4416372 }
+  ],
+  "tags": {
+    "highway": "footway",
+    "lit": "yes",
+    "surface": "paving_stones"
+  }
+},
+{
+  "type": "way",
+  "id": 743703643,
+  "bounds": {
+    "minlat": 47.0736369,
+    "minlon": 15.4423502,
+    "maxlat": 47.0739593,
+    "maxlon": 15.4426011
+  },
+  "nodes": [
+    6960516865,
+    6960516857,
+    7942835680,
+    6960516858,
+    6960516859,
+    4251235866
+  ],
+  "geometry": [
+    { "lat": 47.0739593, "lon": 15.4423502 },
+    { "lat": 47.0737878, "lon": 15.4425269 },
+    { "lat": 47.0737593, "lon": 15.4425497 },
+    { "lat": 47.0736950, "lon": 15.4426011 },
+    { "lat": 47.0736602, "lon": 15.4425229 },
+    { "lat": 47.0736369, "lon": 15.4425491 }
+  ],
+  "tags": {
+    "highway": "footway",
+    "surface": "paving_stones"
+  }
+},
+{
+  "type": "way",
+  "id": 863426018,
+  "bounds": {
+    "minlat": 47.0736608,
+    "minlon": 15.4413248,
+    "maxlat": 47.0736625,
+    "maxlon": 15.4414229
+  },
+  "nodes": [
+    6960516866,
+    300218959,
+    3983175250
+  ],
+  "geometry": [
+    { "lat": 47.0736625, "lon": 15.4414229 },
+    { "lat": 47.0736621, "lon": 15.4413878 },
+    { "lat": 47.0736608, "lon": 15.4413248 }
+  ],
+  "tags": {
+    "footway": "crossing",
+    "highway": "footway",
+    "lit": "yes",
+    "smoothness": "good",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 874438611,
+  "bounds": {
+    "minlat": 47.0739611,
+    "minlon": 15.4405641,
+    "maxlat": 47.0739933,
+    "maxlon": 15.4406510
+  },
+  "nodes": [
+    8140200676,
+    8140200675,
+    8140200674,
+    8140200673,
+    8140200676
+  ],
+  "geometry": [
+    { "lat": 47.0739612, "lon": 15.4405641 },
+    { "lat": 47.0739611, "lon": 15.4406509 },
+    { "lat": 47.0739932, "lon": 15.4406510 },
+    { "lat": 47.0739933, "lon": 15.4405642 },
+    { "lat": 47.0739612, "lon": 15.4405641 }
+  ],
+  "tags": {
+    "building": "roof"
+  }
+},
+{
+  "type": "way",
+  "id": 874438612,
+  "bounds": {
+    "minlat": 47.0741734,
+    "minlon": 15.4412550,
+    "maxlat": 47.0742695,
+    "maxlon": 15.4413405
+  },
+  "nodes": [
+    8140200703,
+    8140200702,
+    8140200701,
+    8140200700,
+    8140200699,
+    8140200698,
+    8140200697,
+    8140200696,
+    8140200695,
+    8140200694,
+    8140200693,
+    8140200692,
+    8140200691,
+    8140200690,
+    8140200689,
+    8140200688,
+    8140200687,
+    8140200686,
+    8140200685,
+    8140200684,
+    8140200683,
+    8140200682,
+    8140200703
+  ],
+  "geometry": [
+    { "lat": 47.0741734, "lon": 15.4413016 },
+    { "lat": 47.0741764, "lon": 15.4413110 },
+    { "lat": 47.0741876, "lon": 15.4413264 },
+    { "lat": 47.0742042, "lon": 15.4413375 },
+    { "lat": 47.0742177, "lon": 15.4413405 },
+    { "lat": 47.0742337, "lon": 15.4413395 },
+    { "lat": 47.0742460, "lon": 15.4413355 },
+    { "lat": 47.0742568, "lon": 15.4413278 },
+    { "lat": 47.0742654, "lon": 15.4413174 },
+    { "lat": 47.0742695, "lon": 15.4413053 },
+    { "lat": 47.0742693, "lon": 15.4412922 },
+    { "lat": 47.0742650, "lon": 15.4412792 },
+    { "lat": 47.0742565, "lon": 15.4412667 },
+    { "lat": 47.0742465, "lon": 15.4412600 },
+    { "lat": 47.0742355, "lon": 15.4412564 },
+    { "lat": 47.0742250, "lon": 15.4412550 },
+    { "lat": 47.0742106, "lon": 15.4412567 },
+    { "lat": 47.0741985, "lon": 15.4412597 },
+    { "lat": 47.0741889, "lon": 15.4412651 },
+    { "lat": 47.0741821, "lon": 15.4412738 },
+    { "lat": 47.0741759, "lon": 15.4412845 },
+    { "lat": 47.0741739, "lon": 15.4412932 },
+    { "lat": 47.0741734, "lon": 15.4413016 }
+  ],
+  "tags": {
+    "landuse": "grass"
+  }
+},
+{
+  "type": "way",
+  "id": 874438613,
+  "bounds": {
+    "minlat": 47.0744250,
+    "minlon": 15.4403508,
+    "maxlat": 47.0745175,
+    "maxlon": 15.4406555
+  },
+  "nodes": [
+    4291613587,
+    8140200706,
+    10914403667,
+    8140200705,
+    10914403668,
+    8140200710,
+    8140200704
+  ],
+  "geometry": [
+    { "lat": 47.0744335, "lon": 15.4403508 },
+    { "lat": 47.0744250, "lon": 15.4404222 },
+    { "lat": 47.0745009, "lon": 15.4404607 },
+    { "lat": 47.0745143, "lon": 15.4404714 },
+    { "lat": 47.0745175, "lon": 15.4404834 },
+    { "lat": 47.0745123, "lon": 15.4405811 },
+    { "lat": 47.0745098, "lon": 15.4406555 }
+  ],
+  "tags": {
+    "access": "private",
+    "highway": "service",
+    "service": "driveway"
+  }
+},
+{
+  "type": "way",
+  "id": 874438614,
+  "bounds": {
+    "minlat": 47.0741805,
+    "minlon": 15.4403970,
+    "maxlat": 47.0745123,
+    "maxlon": 15.4406156
+  },
+  "nodes": [
+    8140200710,
+    8140200709,
+    8140200708,
+    8140200707,
+    8140200706
+  ],
+  "geometry": [
+    { "lat": 47.0745123, "lon": 15.4405811 },
+    { "lat": 47.0743148, "lon": 15.4406156 },
+    { "lat": 47.0741805, "lon": 15.4405452 },
+    { "lat": 47.0741965, "lon": 15.4403970 },
+    { "lat": 47.0744250, "lon": 15.4404222 }
+  ],
+  "tags": {
+    "highway": "footway",
+    "surface": "concrete:plates"
+  }
+},
+{
+  "type": "way",
+  "id": 874438616,
+  "bounds": {
+    "minlat": 47.0741953,
+    "minlon": 15.4404115,
+    "maxlat": 47.0744922,
+    "maxlon": 15.4405881
+  },
+  "nodes": [
+    8140213022,
+    8140213021,
+    8140213020,
+    8140213019,
+    8140213018,
+    8140213017,
+    8140200716,
+    8140200715,
+    8140200714,
+    8140200713,
+    8140213022
+  ],
+  "geometry": [
+    { "lat": 47.0744846, "lon": 15.4405607 },
+    { "lat": 47.0744922, "lon": 15.4405124 },
+    { "lat": 47.0744303, "lon": 15.4404366 },
+    { "lat": 47.0742077, "lon": 15.4404115 },
+    { "lat": 47.0741953, "lon": 15.4405365 },
+    { "lat": 47.0742353, "lon": 15.4405650 },
+    { "lat": 47.0742732, "lon": 15.4405824 },
+    { "lat": 47.0743020, "lon": 15.4405234 },
+    { "lat": 47.0743543, "lon": 15.4405791 },
+    { "lat": 47.0743572, "lon": 15.4405881 },
+    { "lat": 47.0744846, "lon": 15.4405607 }
+  ],
+  "tags": {
+    "landuse": "grass"
+  }
+},
+{
+  "type": "way",
+  "id": 874438617,
+  "bounds": {
+    "minlat": 47.0743844,
+    "minlon": 15.4406039,
+    "maxlat": 47.0744783,
+    "maxlon": 15.4406693
+  },
+  "nodes": [
+    8140213024,
+    8140213023,
+    987132432,
+    8140213024
+  ],
+  "geometry": [
+    { "lat": 47.0744676, "lon": 15.4406693 },
+    { "lat": 47.0744783, "lon": 15.4406039 },
+    { "lat": 47.0743844, "lon": 15.4406179 },
+    { "lat": 47.0744676, "lon": 15.4406693 }
+  ],
+  "tags": {
+    "landuse": "grass"
+  }
+},
+{
+  "type": "way",
+  "id": 892477801,
+  "bounds": {
+    "minlat": 47.0746679,
+    "minlon": 15.4404868,
+    "maxlat": 47.0748762,
+    "maxlon": 15.4408205
+  },
+  "nodes": [
+    8294998151,
+    987131692,
+    4291613593,
+    8294998148,
+    8294998149,
+    987131963,
+    987131539,
+    8294998150,
+    8294998151
+  ],
+  "geometry": [
+    { "lat": 47.0748762, "lon": 15.4405526 },
+    { "lat": 47.0748721, "lon": 15.4408205 },
+    { "lat": 47.0746679, "lon": 15.4408131 },
+    { "lat": 47.0746792, "lon": 15.4404868 },
+    { "lat": 47.0747392, "lon": 15.4405030 },
+    { "lat": 47.0747321, "lon": 15.4406701 },
+    { "lat": 47.0748132, "lon": 15.4406740 },
+    { "lat": 47.0748195, "lon": 15.4405366 },
+    { "lat": 47.0748762, "lon": 15.4405526 }
+  ],
+  "tags": {
+    "building": "yes",
+    "roof:material": "roof_tiles",
+    "roof:shape": "gabled",
+    "source": "geoimage.at"
+  }
+},
+{
+  "type": "way",
+  "id": 984935017,
+  "bounds": {
+    "minlat": 47.0732560,
+    "minlon": 15.4414219,
+    "maxlat": 47.0734684,
+    "maxlon": 15.4416020
+  },
+  "nodes": [
+    9105889979,
+    327379987,
+    9105889982,
+    9134332537,
+    327379939,
+    9105889979
+  ],
+  "geometry": [
+    { "lat": 47.0732583, "lon": 15.4415990 },
+    { "lat": 47.0734684, "lon": 15.4416020 },
+    { "lat": 47.0734659, "lon": 15.4414317 },
+    { "lat": 47.0733873, "lon": 15.4414313 },
+    { "lat": 47.0732560, "lon": 15.4414219 },
+    { "lat": 47.0732583, "lon": 15.4415990 }
+  ],
+  "tags": {
+    "building": "yes",
+    "roof:material": "roof_tiles",
+    "roof:shape": "gabled"
+  }
+},
+{
+  "type": "way",
+  "id": 988215462,
+  "bounds": {
+    "minlat": 47.0741797,
+    "minlon": 15.4416603,
+    "maxlat": 47.0741812,
+    "maxlon": 15.4416942
+  },
+  "nodes": [
+    5812444700,
+    9134332528
+  ],
+  "geometry": [
+    { "lat": 47.0741797, "lon": 15.4416942 },
+    { "lat": 47.0741812, "lon": 15.4416603 }
+  ],
+  "tags": {
+    "highway": "footway"
+  }
+},
+{
+  "type": "way",
+  "id": 988215463,
+  "bounds": {
+    "minlat": 47.0736978,
+    "minlon": 15.4412259,
+    "maxlat": 47.0737496,
+    "maxlon": 15.4413061
+  },
+  "nodes": [
+    9134332531,
+    2119311511,
+    9134332532,
+    9134332533,
+    9134332534,
+    9134332531
+  ],
+  "geometry": [
+    { "lat": 47.0737493, "lon": 15.4412259 },
+    { "lat": 47.0737144, "lon": 15.4412262 },
+    { "lat": 47.0736978, "lon": 15.4412264 },
+    { "lat": 47.0736981, "lon": 15.4413061 },
+    { "lat": 47.0737496, "lon": 15.4413057 },
+    { "lat": 47.0737493, "lon": 15.4412259 }
+  ],
+  "tags": {
+    "building": "service",
+    "building:material": "glass",
+    "height": "3"
+  }
+},
+{
+  "type": "way",
+  "id": 988215464,
+  "bounds": {
+    "minlat": 47.0737683,
+    "minlon": 15.4413863,
+    "maxlat": 47.0737690,
+    "maxlon": 15.4415514
+  },
+  "nodes": [
+    1026564402,
+    3983175257,
+    2102962215,
+    1026564406
+  ],
+  "geometry": [
+    { "lat": 47.0737690, "lon": 15.4413863 },
+    { "lat": 47.0737689, "lon": 15.4414171 },
+    { "lat": 47.0737687, "lon": 15.4414445 },
+    { "lat": 47.0737683, "lon": 15.4415514 }
+  ],
+  "tags": {
+    "foot": "no",
+    "highway": "service",
+    "note": "Zufahrt Tiefgarage",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 988961427,
+  "bounds": {
+    "minlat": 47.0746484,
+    "minlon": 15.4423622,
+    "maxlat": 47.0747634,
+    "maxlon": 15.4424686
+  },
+  "nodes": [
+    9140727100,
+    9140727101,
+    10950130698,
+    9140727102,
+    9140727103,
+    9140727100
+  ],
+  "geometry": [
+    { "lat": 47.0747593, "lon": 15.4423622 },
+    { "lat": 47.0747634, "lon": 15.4424582 },
+    { "lat": 47.0747089, "lon": 15.4424633 },
+    { "lat": 47.0746525, "lon": 15.4424686 },
+    { "lat": 47.0746484, "lon": 15.4423726 },
+    { "lat": 47.0747593, "lon": 15.4423622 }
+  ],
+  "tags": {
+    "addr:city": "Graz",
+    "addr:country": "AT",
+    "addr:housenumber": "14",
+    "addr:postcode": "8010",
+    "addr:street": "Sauraugasse",
+    "building": "office",
+    "building:levels": "1",
+    "building:levels:underground": "1",
+    "check_date": "2022-04-05",
+    "layer": "-1",
+    "location": "underground",
+    "name": "Grünraumstützpunkt (neu) der Holding Graz",
+    "note": "mostly unterground located building",
+    "operator": "Holding Graz"
+  }
+},
+{
+  "type": "way",
+  "id": 1098646384,
+  "bounds": {
+    "minlat": 47.0742841,
+    "minlon": 15.4421839,
+    "maxlat": 47.0747674,
+    "maxlon": 15.4423807
+  },
+  "nodes": [
+    10059399406,
+    10059399407,
+    10059399408,
+    10059399409,
+    10059399410,
+    4255447527,
+    11574582354,
+    11574582359,
+    11574582358,
+    11574582357,
+    11574582356,
+    11574582355,
+    10059399411,
+    10059399406
+  ],
+  "geometry": [
+    { "lat": 47.0747665, "lon": 15.4421839 },
+    { "lat": 47.0747674, "lon": 15.4422151 },
+    { "lat": 47.0746462, "lon": 15.4422306 },
+    { "lat": 47.0746491, "lon": 15.4422959 },
+    { "lat": 47.0744969, "lon": 15.4423159 },
+    { "lat": 47.0744971, "lon": 15.4423453 },
+    { "lat": 47.0744988, "lon": 15.4423807 },
+    { "lat": 47.0744015, "lon": 15.4423753 },
+    { "lat": 47.0743788, "lon": 15.4423552 },
+    { "lat": 47.0743534, "lon": 15.4423243 },
+    { "lat": 47.0743265, "lon": 15.4422997 },
+    { "lat": 47.0743003, "lon": 15.4422682 },
+    { "lat": 47.0742841, "lon": 15.4422354 },
+    { "lat": 47.0747665, "lon": 15.4421839 }
+  ],
+  "tags": {
+    "landuse": "flowerbed",
+    "leisure": "garden"
+  }
+},
+{
+  "type": "way",
+  "id": 1109759670,
+  "bounds": {
+    "minlat": 47.0740129,
+    "minlon": 15.4416494,
+    "maxlat": 47.0740241,
+    "maxlon": 15.4416896
+  },
+  "nodes": [
+    10152499978,
+    10152499972
+  ],
+  "geometry": [
+    { "lat": 47.0740129, "lon": 15.4416494 },
+    { "lat": 47.0740241, "lon": 15.4416896 }
+  ],
+  "tags": {
+    "highway": "footway",
+    "surface": "paving_stones"
+  }
+},
+{
+  "type": "way",
+  "id": 1155272275,
+  "bounds": {
+    "minlat": 47.0740043,
+    "minlon": 15.4406601,
+    "maxlat": 47.0740185,
+    "maxlon": 15.4406602
+  },
+  "nodes": [
+    10743658409,
+    6723796864
+  ],
+  "geometry": [
+    { "lat": 47.0740043, "lon": 15.4406602 },
+    { "lat": 47.0740185, "lon": 15.4406601 }
+  ],
+  "tags": {
+    "highway": "footway",
+    "lit": "yes",
+    "surface": "concrete"
+  }
+},
+{
+  "type": "way",
+  "id": 1245064132,
+  "bounds": {
+    "minlat": 47.0746533,
+    "minlon": 15.4424701,
+    "maxlat": 47.0748447,
+    "maxlon": 15.4424865
+  },
+  "nodes": [
+    11574582361,
+    11574582363,
+    11574582362
+  ],
+  "geometry": [
+    { "lat": 47.0748447, "lon": 15.4424701 },
+    { "lat": 47.0747096, "lon": 15.4424817 },
+    { "lat": 47.0746533, "lon": 15.4424865 }
+  ],
+  "tags": {
+    "highway": "footway",
+    "surface": "fine_gravel"
+  }
+},
+{
+  "type": "way",
+  "id": 1245064133,
+  "bounds": {
+    "minlat": 47.0747089,
+    "minlon": 15.4424633,
+    "maxlat": 47.0747096,
+    "maxlon": 15.4424817
+  },
+  "nodes": [
+    11574582363,
+    10950130698
+  ],
+  "geometry": [
+    { "lat": 47.0747096, "lon": 15.4424817 },
+    { "lat": 47.0747089, "lon": 15.4424633 }
+  ],
+  "tags": {
+    "highway": "footway",
+    "surface": "fine_gravel"
+  }
+},
+{
+  "type": "way",
+  "id": 1245064141,
+  "bounds": {
+    "minlat": 47.0746462,
+    "minlon": 15.4422151,
+    "maxlat": 47.0747674,
+    "maxlon": 15.4422959
+  },
+  "nodes": [
+    10059399407,
+    11574582364,
+    11574582365,
+    10059399409,
+    10059399408,
+    10059399407
+  ],
+  "geometry": [
+    { "lat": 47.0747674, "lon": 15.4422151 },
+    { "lat": 47.0747672, "lon": 15.4422323 },
+    { "lat": 47.0747562, "lon": 15.4422846 },
+    { "lat": 47.0746491, "lon": 15.4422959 },
+    { "lat": 47.0746462, "lon": 15.4422306 },
+    { "lat": 47.0747674, "lon": 15.4422151 }
+  ],
+  "tags": {
+    "depot": "container",
+    "industrial": "depot",
+    "landuse": "industrial"
+  }
+},
+{
+  "type": "way",
+  "id": 1245064142,
+  "bounds": {
+    "minlat": 47.0744971,
+    "minlon": 15.4423252,
+    "maxlat": 47.0746517,
+    "maxlon": 15.4423453
+  },
+  "nodes": [
+    11574582375,
+    4255447527
+  ],
+  "geometry": [
+    { "lat": 47.0746517, "lon": 15.4423252 },
+    { "lat": 47.0744971, "lon": 15.4423453 }
+  ],
+  "tags": {
+    "access": "private",
+    "cutting": "yes",
+    "highway": "service",
+    "service": "driveway"
+  }
+},
+{
+  "type": "way",
+  "id": 1287607854,
+  "bounds": {
+    "minlat": 47.0738615,
+    "minlon": 15.4416247,
+    "maxlat": 47.0738949,
+    "maxlon": 15.4417637
+  },
+  "nodes": [
+    10152499976,
+    11941647254,
+    11941647253
+  ],
+  "geometry": [
+    { "lat": 47.0738949, "lon": 15.4416247 },
+    { "lat": 47.0738725, "lon": 15.4417264 },
+    { "lat": 47.0738615, "lon": 15.4417637 }
+  ],
+  "tags": {
+    "highway": "footway",
+    "surface": "paving_stones"
+  }
+},
+{
+  "type": "way",
+  "id": 1287607855,
+  "bounds": {
+    "minlat": 47.0738253,
+    "minlon": 15.4417637,
+    "maxlat": 47.0738703,
+    "maxlon": 15.4419011
+  },
+  "nodes": [
+    11941647253,
+    11941647255,
+    11941647256,
+    11941647257
+  ],
+  "geometry": [
+    { "lat": 47.0738615, "lon": 15.4417637 },
+    { "lat": 47.0738253, "lon": 15.4418863 },
+    { "lat": 47.0738484, "lon": 15.4419011 },
+    { "lat": 47.0738703, "lon": 15.4418270 }
+  ],
+  "tags": {
+    "highway": "footway",
+    "layer": "-1",
+    "surface": "paving_stones"
+  }
+},
+{
+  "type": "way",
+  "id": 1287607856,
+  "bounds": {
+    "minlat": 47.0738544,
+    "minlon": 15.4418694,
+    "maxlat": 47.0738813,
+    "maxlon": 15.4419539
+  },
+  "nodes": [
+    11941647258,
+    11941647259,
+    11941647260,
+    11941647261
+  ],
+  "geometry": [
+    { "lat": 47.0738762, "lon": 15.4418694 },
+    { "lat": 47.0738544, "lon": 15.4419457 },
+    { "lat": 47.0738678, "lon": 15.4419539 },
+    { "lat": 47.0738813, "lon": 15.4419064 }
+  ],
+  "tags": {
+    "highway": "footway",
+    "layer": "-1",
+    "surface": "paving_stones"
+  }
+},
+{
+  "type": "way",
+  "id": 1287607857,
+  "bounds": {
+    "minlat": 47.0738703,
+    "minlon": 15.4417636,
+    "maxlat": 47.0739030,
+    "maxlon": 15.4418694
+  },
+  "nodes": [
+    11941647257,
+    11941647262,
+    11941647263,
+    11941647258
+  ],
+  "geometry": [
+    { "lat": 47.0738703, "lon": 15.4418270 },
+    { "lat": 47.0738878, "lon": 15.4417636 },
+    { "lat": 47.0739030, "lon": 15.4417727 },
+    { "lat": 47.0738762, "lon": 15.4418694 }
+  ],
+  "tags": {
+    "highway": "footway",
+    "surface": "paving_stones"
+  }
+},
+{
+  "type": "way",
+  "id": 1287607858,
+  "bounds": {
+    "minlat": 47.0738813,
+    "minlon": 15.4418120,
+    "maxlat": 47.0739462,
+    "maxlon": 15.4419649
+  },
+  "nodes": [
+    11941647261,
+    11941647264,
+    11941647265,
+    11941647266,
+    11941647267
+  ],
+  "geometry": [
+    { "lat": 47.0738813, "lon": 15.4419064 },
+    { "lat": 47.0739081, "lon": 15.4418120 },
+    { "lat": 47.0739264, "lon": 15.4418224 },
+    { "lat": 47.0739277, "lon": 15.4418958 },
+    { "lat": 47.0739462, "lon": 15.4419649 }
+  ],
+  "tags": {
+    "highway": "footway",
+    "surface": "paving_stones"
+  }
+},
+{
+  "type": "way",
+  "id": 1548187516,
+  "bounds": {
+    "minlat": 47.0739815,
+    "minlon": 15.4412932,
+    "maxlat": 47.0741739,
+    "maxlon": 15.4413164
+  },
+  "nodes": [
+    14080927014,
+    14080927015,
+    8140200682
+  ],
+  "geometry": [
+    { "lat": 47.0739815, "lon": 15.4413123 },
+    { "lat": 47.0740897, "lon": 15.4413164 },
+    { "lat": 47.0741739, "lon": 15.4412932 }
+  ],
+  "tags": {
+    "highway": "footway",
+    "tunnel": "building_passage"
+  }
+},
+{
+  "type": "relation",
+  "id": 67523,
+  "bounds": {
+    "minlat": 47.0739926,
+    "minlon": 15.4408613,
+    "maxlat": 47.0748572,
+    "maxlon": 15.4416160
+  },
+  "members": [
+    {
+      "type": "way",
+      "ref": 30145872,
+      "role": "outer",
+      "geometry": [
+         { "lat": 47.0740967, "lon": 15.4415951 },
+         { "lat": 47.0740990, "lon": 15.4414947 },
+         { "lat": 47.0740518, "lon": 15.4414914 },
+         { "lat": 47.0740506, "lon": 15.4415479 },
+         { "lat": 47.0739926, "lon": 15.4415416 },
+         { "lat": 47.0740019, "lon": 15.4412030 },
+         { "lat": 47.0740112, "lon": 15.4408613 },
+         { "lat": 47.0740922, "lon": 15.4408631 },
+         { "lat": 47.0741100, "lon": 15.4408615 },
+         { "lat": 47.0741098, "lon": 15.4409153 },
+         { "lat": 47.0741686, "lon": 15.4409176 },
+         { "lat": 47.0741684, "lon": 15.4408619 },
+         { "lat": 47.0743006, "lon": 15.4408690 },
+         { "lat": 47.0743039, "lon": 15.4409215 },
+         { "lat": 47.0744570, "lon": 15.4409288 },
+         { "lat": 47.0744591, "lon": 15.4408794 },
+         { "lat": 47.0748519, "lon": 15.4409036 },
+         { "lat": 47.0748559, "lon": 15.4414803 },
+         { "lat": 47.0748572, "lon": 15.4416160 },
+         { "lat": 47.0740967, "lon": 15.4415951 }
+      ]
+    },
+    {
+      "type": "way",
+      "ref": 30145886,
+      "role": "inner",
+      "geometry": [
+         { "lat": 47.0743479, "lon": 15.4414298 },
+         { "lat": 47.0743540, "lon": 15.4411618 },
+         { "lat": 47.0741647, "lon": 15.4411502 },
+         { "lat": 47.0741630, "lon": 15.4411966 },
+         { "lat": 47.0740920, "lon": 15.4411927 },
+         { "lat": 47.0740897, "lon": 15.4413164 },
+         { "lat": 47.0740886, "lon": 15.4413757 },
+         { "lat": 47.0741482, "lon": 15.4413798 },
+         { "lat": 47.0741472, "lon": 15.4414185 },
+         { "lat": 47.0743479, "lon": 15.4414298 }
+      ]
+    }
+  ],
+  "tags": {
+    "addr:city": "Graz",
+    "addr:housenumber": "3",
+    "addr:postcode": "8010",
+    "addr:street": "Karmeliterplatz",
+    "air_conditioning": "yes",
+    "amenity": "library",
+    "building": "yes",
+    "contact:phone": "+43 316 877 4028",
+    "name": "Landesarchiv",
+    "official_name": "Steiermärkisches Landesarchiv",
+    "opening_hours": "Mo, Tu, Th 09:00-15:00; We 09:00-18:00; Fr 09:00-12:00",
+    "ref:isil": "AT-LAST",
+    "roof:material": "roof_tiles",
+    "roof:shape": "gabled",
+    "source": "geoimage.at",
+    "type": "multipolygon",
+    "website": "https://www.landesarchiv.steiermark.at/",
+    "wheelchair": "limited",
+    "wikidata": "Q2339154",
+    "wikimedia_commons": "Category:Steiermärkisches Landesarchiv, Graz",
+    "wikipedia": "de:Steiermärkisches Landesarchiv"
+  }
+},
+{
+  "type": "relation",
+  "id": 67773,
+  "bounds": {
+    "minlat": 47.0722052,
+    "minlon": 15.4414156,
+    "maxlat": 47.0735051,
+    "maxlon": 15.4432436
+  },
+  "members": [
+    {
+      "type": "way",
+      "ref": 29715115,
+      "role": "inner",
+      "geometry": [
+         { "lat": 47.0728871, "lon": 15.4427747 },
+         { "lat": 47.0728922, "lon": 15.4428114 },
+         { "lat": 47.0728980, "lon": 15.4428472 },
+         { "lat": 47.0730470, "lon": 15.4428186 },
+         { "lat": 47.0730457, "lon": 15.4427879 },
+         { "lat": 47.0730445, "lon": 15.4427575 },
+         { "lat": 47.0728871, "lon": 15.4427747 }
+      ]
+    },
+    {
+      "type": "way",
+      "ref": 984935018,
+      "role": "outer",
+      "geometry": [
+         { "lat": 47.0732546, "lon": 15.4414227 },
+         { "lat": 47.0730625, "lon": 15.4414156 },
+         { "lat": 47.0730687, "lon": 15.4418386 },
+         { "lat": 47.0730708, "lon": 15.4419119 },
+         { "lat": 47.0731823, "lon": 15.4419133 },
+         { "lat": 47.0731790, "lon": 15.4416400 },
+         { "lat": 47.0732574, "lon": 15.4416350 },
+         { "lat": 47.0732574, "lon": 15.4415966 },
+         { "lat": 47.0732546, "lon": 15.4414227 }
+      ]
+    },
+    {
+      "type": "way",
+      "ref": 163983629,
+      "role": "outer",
+      "geometry": [
+         { "lat": 47.0734722, "lon": 15.4416425 },
+         { "lat": 47.0734731, "lon": 15.4420070 },
+         { "lat": 47.0734838, "lon": 15.4420074 },
+         { "lat": 47.0734898, "lon": 15.4421599 },
+         { "lat": 47.0734939, "lon": 15.4421596 },
+         { "lat": 47.0735051, "lon": 15.4425019 },
+         { "lat": 47.0734177, "lon": 15.4425194 },
+         { "lat": 47.0734333, "lon": 15.4428091 },
+         { "lat": 47.0732727, "lon": 15.4428281 },
+         { "lat": 47.0732568, "lon": 15.4428980 },
+         { "lat": 47.0732198, "lon": 15.4428972 },
+         { "lat": 47.0732194, "lon": 15.4428701 },
+         { "lat": 47.0732035, "lon": 15.4428707 },
+         { "lat": 47.0731591, "lon": 15.4428683 },
+         { "lat": 47.0731580, "lon": 15.4428802 },
+         { "lat": 47.0731520, "lon": 15.4428932 },
+         { "lat": 47.0731310, "lon": 15.4428922 },
+         { "lat": 47.0731301, "lon": 15.4429426 },
+         { "lat": 47.0731381, "lon": 15.4429516 },
+         { "lat": 47.0731271, "lon": 15.4429676 },
+         { "lat": 47.0731201, "lon": 15.4429596 },
+         { "lat": 47.0729830, "lon": 15.4429897 },
+         { "lat": 47.0728330, "lon": 15.4430186 },
+         { "lat": 47.0728401, "lon": 15.4431118 },
+         { "lat": 47.0727828, "lon": 15.4431185 },
+         { "lat": 47.0727851, "lon": 15.4431933 },
+         { "lat": 47.0727759, "lon": 15.4431936 },
+         { "lat": 47.0727762, "lon": 15.4432177 },
+         { "lat": 47.0727700, "lon": 15.4432245 },
+         { "lat": 47.0727673, "lon": 15.4432275 },
+         { "lat": 47.0727531, "lon": 15.4432275 },
+         { "lat": 47.0727359, "lon": 15.4432274 },
+         { "lat": 47.0727309, "lon": 15.4432137 },
+         { "lat": 47.0727287, "lon": 15.4431936 },
+         { "lat": 47.0725425, "lon": 15.4432049 },
+         { "lat": 47.0725421, "lon": 15.4432431 },
+         { "lat": 47.0725145, "lon": 15.4432426 },
+         { "lat": 47.0724791, "lon": 15.4432436 },
+         { "lat": 47.0724786, "lon": 15.4432057 },
+         { "lat": 47.0722873, "lon": 15.4432147 },
+         { "lat": 47.0722329, "lon": 15.4432185 },
+         { "lat": 47.0722339, "lon": 15.4431319 },
+         { "lat": 47.0722294, "lon": 15.4430794 },
+         { "lat": 47.0722052, "lon": 15.4429621 },
+         { "lat": 47.0722065, "lon": 15.4429531 },
+         { "lat": 47.0722258, "lon": 15.4428099 },
+         { "lat": 47.0722208, "lon": 15.4428099 },
+         { "lat": 47.0722238, "lon": 15.4427642 },
+         { "lat": 47.0722258, "lon": 15.4427339 },
+         { "lat": 47.0722308, "lon": 15.4427349 },
+         { "lat": 47.0722428, "lon": 15.4426459 },
+         { "lat": 47.0722488, "lon": 15.4426489 },
+         { "lat": 47.0722468, "lon": 15.4426579 },
+         { "lat": 47.0722508, "lon": 15.4426599 },
+         { "lat": 47.0722438, "lon": 15.4427179 },
+         { "lat": 47.0722688, "lon": 15.4427239 },
+         { "lat": 47.0722678, "lon": 15.4427359 },
+         { "lat": 47.0723471, "lon": 15.4427484 },
+         { "lat": 47.0723440, "lon": 15.4427782 },
+         { "lat": 47.0723407, "lon": 15.4428107 },
+         { "lat": 47.0723460, "lon": 15.4428108 },
+         { "lat": 47.0723465, "lon": 15.4428890 },
+         { "lat": 47.0724223, "lon": 15.4428916 },
+         { "lat": 47.0727238, "lon": 15.4428784 },
+         { "lat": 47.0727213, "lon": 15.4428435 },
+         { "lat": 47.0727182, "lon": 15.4428002 },
+         { "lat": 47.0727103, "lon": 15.4427988 },
+         { "lat": 47.0727038, "lon": 15.4427977 },
+         { "lat": 47.0726934, "lon": 15.4427735 },
+         { "lat": 47.0726980, "lon": 15.4427388 },
+         { "lat": 47.0727113, "lon": 15.4427252 },
+         { "lat": 47.0727156, "lon": 15.4426422 },
+         { "lat": 47.0727229, "lon": 15.4425421 },
+         { "lat": 47.0724665, "lon": 15.4424602 },
+         { "lat": 47.0723212, "lon": 15.4424032 },
+         { "lat": 47.0723148, "lon": 15.4423999 },
+         { "lat": 47.0723999, "lon": 15.4419107 },
+         { "lat": 47.0725187, "lon": 15.4419511 },
+         { "lat": 47.0724663, "lon": 15.4422440 },
+         { "lat": 47.0728376, "lon": 15.4423767 },
+         { "lat": 47.0728107, "lon": 15.4425802 },
+         { "lat": 47.0728042, "lon": 15.4426496 },
+         { "lat": 47.0728015, "lon": 15.4426789 },
+         { "lat": 47.0727976, "lon": 15.4427219 },
+         { "lat": 47.0728655, "lon": 15.4427165 },
+         { "lat": 47.0728931, "lon": 15.4427124 },
+         { "lat": 47.0729301, "lon": 15.4427069 },
+         { "lat": 47.0729526, "lon": 15.4427057 },
+         { "lat": 47.0730392, "lon": 15.4427012 },
+         { "lat": 47.0730138, "lon": 15.4420647 },
+         { "lat": 47.0730136, "lon": 15.4420125 },
+         { "lat": 47.0731503, "lon": 15.4420118 },
+         { "lat": 47.0731519, "lon": 15.4420249 },
+         { "lat": 47.0731920, "lon": 15.4420229 },
+         { "lat": 47.0732111, "lon": 15.4420226 },
+         { "lat": 47.0732046, "lon": 15.4420117 },
+         { "lat": 47.0732068, "lon": 15.4419859 },
+         { "lat": 47.0732235, "lon": 15.4419745 },
+         { "lat": 47.0732349, "lon": 15.4419785 },
+         { "lat": 47.0732350, "lon": 15.4419007 },
+         { "lat": 47.0732555, "lon": 15.4419012 },
+         { "lat": 47.0732599, "lon": 15.4416615 },
+         { "lat": 47.0734722, "lon": 15.4416425 }
+      ]
+    },
+    {
+      "type": "way",
+      "ref": 30168156,
+      "role": "inner",
+      "geometry": [
+         { "lat": 47.0732361, "lon": 15.4428156 },
+         { "lat": 47.0732432, "lon": 15.4427165 },
+         { "lat": 47.0733980, "lon": 15.4427096 },
+         { "lat": 47.0733606, "lon": 15.4421295 },
+         { "lat": 47.0731926, "lon": 15.4421329 },
+         { "lat": 47.0731585, "lon": 15.4421336 },
+         { "lat": 47.0731534, "lon": 15.4427157 },
+         { "lat": 47.0731529, "lon": 15.4427745 },
+         { "lat": 47.0731526, "lon": 15.4428050 },
+         { "lat": 47.0731516, "lon": 15.4428157 },
+         { "lat": 47.0732015, "lon": 15.4428156 },
+         { "lat": 47.0732361, "lon": 15.4428156 }
+      ]
+    }
+  ],
+  "tags": {
+    "building": "yes",
+    "building:levels": "3",
+    "castle_type": "defensive;stately",
+    "castle_type:de": "burg;schloss",
+    "description": "Burg - Sitz der Landesregierung",
+    "historic": "castle",
+    "name": "Grazer Burg",
+    "name:zh": "格拉茨堡",
+    "office": "government",
+    "roof:material": "roof_tiles",
+    "roof:shape": "hipped",
+    "source": "plan.at 2009",
+    "type": "multipolygon",
+    "wikidata": "Q874547",
+    "wikimedia_commons": "Category:Grazer Burg",
+    "wikipedia": "de:Grazer Burg"
+  }
+},
+{
+  "type": "relation",
+  "id": 1270087,
+  "bounds": {
+    "minlat": 47.0728844,
+    "minlon": 15.4396097,
+    "maxlat": 47.0732034,
+    "maxlon": 15.4402023
+  },
+  "members": [
+    {
+      "type": "way",
+      "ref": 85081178,
+      "role": "inner",
+      "geometry": [
+         { "lat": 47.0729936, "lon": 15.4400046 },
+         { "lat": 47.0730655, "lon": 15.4400242 },
+         { "lat": 47.0730905, "lon": 15.4398453 },
+         { "lat": 47.0730571, "lon": 15.4398336 },
+         { "lat": 47.0730272, "lon": 15.4398231 },
+         { "lat": 47.0729936, "lon": 15.4400046 }
+      ]
+    },
+    {
+      "type": "way",
+      "ref": 85081189,
+      "role": "outer",
+      "geometry": [
+         { "lat": 47.0732034, "lon": 15.4397465 },
+         { "lat": 47.0731359, "lon": 15.4401513 },
+         { "lat": 47.0731274, "lon": 15.4402023 },
+         { "lat": 47.0730293, "lon": 15.4401603 },
+         { "lat": 47.0728844, "lon": 15.4401105 },
+         { "lat": 47.0728963, "lon": 15.4400408 },
+         { "lat": 47.0729474, "lon": 15.4397235 },
+         { "lat": 47.0729143, "lon": 15.4397085 },
+         { "lat": 47.0729330, "lon": 15.4396097 },
+         { "lat": 47.0730818, "lon": 15.4396850 },
+         { "lat": 47.0731838, "lon": 15.4397364 },
+         { "lat": 47.0731990, "lon": 15.4397436 },
+         { "lat": 47.0732034, "lon": 15.4397465 }
+      ]
+    }
+  ],
+  "tags": {
+    "addr:city": "Graz",
+    "addr:country": "AT",
+    "addr:housenumber": "32",
+    "addr:postcode": "8010",
+    "addr:street": "Sporgasse",
+    "building": "apartments",
+    "building:levels": "4",
+    "heritage": "2",
+    "heritage:operator": "bda",
+    "ref:at:bda": "36110",
+    "roof:levels": "1",
+    "roof:material": "roof_tiles",
+    "roof:shape": "gabled",
+    "source": "geoimage.at",
+    "start_date": "1568",
+    "type": "multipolygon",
+    "wikidata": "Q37973682"
+  }
+},
+{
+  "type": "relation",
+  "id": 1270091,
+  "bounds": {
+    "minlat": 47.0734456,
+    "minlon": 15.4407782,
+    "maxlat": 47.0736534,
+    "maxlon": 15.4413119
+  },
+  "members": [
+    {
+      "type": "way",
+      "ref": 85081268,
+      "role": "inner",
+      "geometry": [
+         { "lat": 47.0735569, "lon": 15.4409359 },
+         { "lat": 47.0735591, "lon": 15.4411850 },
+         { "lat": 47.0735366, "lon": 15.4411854 },
+         { "lat": 47.0735344, "lon": 15.4409362 },
+         { "lat": 47.0735569, "lon": 15.4409359 }
+      ]
+    },
+    {
+      "type": "way",
+      "ref": 85081246,
+      "role": "outer",
+      "geometry": [
+         { "lat": 47.0734523, "lon": 15.4413061 },
+         { "lat": 47.0734481, "lon": 15.4411132 },
+         { "lat": 47.0734456, "lon": 15.4407782 },
+         { "lat": 47.0735076, "lon": 15.4407824 },
+         { "lat": 47.0736336, "lon": 15.4408092 },
+         { "lat": 47.0736336, "lon": 15.4408924 },
+         { "lat": 47.0736534, "lon": 15.4408916 },
+         { "lat": 47.0736501, "lon": 15.4412125 },
+         { "lat": 47.0736509, "lon": 15.4413119 },
+         { "lat": 47.0734523, "lon": 15.4413061 }
+      ]
+    }
+  ],
+  "tags": {
+    "building": "office",
+    "building:levels": "3",
+    "name": "Palais Galler",
+    "roof:material": "roof_tiles",
+    "roof:shape": "gabled",
+    "source": "geoimage.at",
+    "start_date": "1835",
+    "type": "multipolygon",
+    "wikidata": "Q1432996",
+    "wikipedia": "de:Palais Galler"
+  }
+}
+
+  ]
+}

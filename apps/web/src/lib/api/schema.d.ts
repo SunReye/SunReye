@@ -14,8 +14,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Backs up the store and the car bodies into a new file under `/share`, readable by the core's
-         *     user alone; the secrets only when asked.
+         * Backs up the store, the car bodies and the imported surroundings into a new file under
+         *     `/share`, readable by the core's user alone; the secrets only when asked.
          */
         post: operations["back_up"];
         delete?: never;
@@ -849,6 +849,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/surroundings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** How the last load went. */
+        get: operations["status"];
+        put?: never;
+        /**
+         * Fetches the surroundings of the plant's location, or of a more exact centre, from the open
+         *     Terrain Tiles and OpenStreetMap into a new document. The answer comes at once; the status
+         *     tells when the document is ready. Loading again fetches again.
+         */
+        post: operations["load"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/surroundings/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A fetched document: everything in metres east and north of its centre. */
+        get: operations["document"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tariff": {
         parameters: {
             query?: never;
@@ -1122,6 +1161,25 @@ export interface components {
             /** @description Why the last attempt or session failed; kept after a reconnect. */
             lastError?: string | null;
         };
+        /** @description A neighbouring building: walls up from its outline under one roof. */
+        Building: {
+            /**
+             * Format: double
+             * @description The walls' height.
+             */
+            eave: number;
+            /**
+             * Format: int32
+             * @description Its number in this document, which a scene hides it by.
+             */
+            id: number;
+            /**
+             * @description Counter-clockwise seen from above; under a pitched roof a rectangle whose first side is
+             *     a long one.
+             */
+            outline: number[][];
+            roof: components["schemas"]["Roofing"];
+        };
         /**
          * @description The usable capacity inferred from the state of charge over each unbroken discharge of at
          *     least 20 points; no vendor register reports it.
@@ -1202,25 +1260,6 @@ export interface components {
         Catalogue: {
             profiles: components["schemas"]["Listing"][];
         };
-        /** @description A module in one cell: rows count up the slope, columns across it, both from 0. */
-        Cell: {
-            /** Format: int32 */
-            column: number;
-            optimized?: boolean;
-            /**
-             * Format: int32
-             * @description Its place along its string's wiring, which runs through the string's modules from the
-             *     lowest; a module without one follows them.
-             */
-            order?: number | null;
-            /** Format: int32 */
-            row: number;
-            /**
-             * Format: int32
-             * @description The string it is painted into; unassigned, it produces nothing.
-             */
-            string?: number | null;
-        };
         /** @description A topology change: every point, applying from an instant on. */
         Change: {
             /** @description RFC 3339. */
@@ -1271,7 +1310,7 @@ export interface components {
          * @description Every stable machine code the core answers with; the SPA maps each to text (ADR 11).
          * @enum {string}
          */
-        Code: "request.route" | "request.method" | "request.path" | "request.query" | "request.body" | "auth.setup" | "auth.required" | "auth.credentials" | "auth.backoff" | "auth.configured" | "auth.password" | "auth.forbidden" | "viewer.none" | "viewer.name" | "viewer.value" | "token.none" | "token.value" | "history.range" | "history.counter" | "forecast.range" | "role.none" | "layout.none" | "layout.device" | "layout.input" | "layout.string" | "layout.module-type" | "layout.value" | "layout.scene" | "layout.setback" | "layout.overlap" | "car.size" | "car.file" | "car.uri" | "car.none" | "topology.none" | "topology.tree" | "topology.point" | "topology.claim" | "topology.role" | "topology.device" | "tariff.none" | "tariff.band" | "tariff.past" | "tariff.retention" | "investment.value" | "location.none" | "location.value" | "retention.value" | "zone.value" | "connection.none" | "connection.value" | "connection.poll-seconds" | "connection.in-use" | "device.none" | "device.connection" | "device.transport" | "device.profile" | "device.profile-change" | "device.address" | "deadband.role" | "deadband.kind" | "deadband.step" | "scan.subnet" | "scan.busy" | "setting.none" | "setting.read-only" | "setting.value" | "setting.writes-off" | "setting.interval" | "setting.precondition" | "setting.community" | "setting.no-snapshot" | "setting.not-enabled" | "secret.missing" | "secret.value" | "index.value" | "update.none" | "import.busy" | "import.path" | "import.size" | "import.file" | "import.device" | "import.profile" | "backup.name" | "backup.exists" | "clock.unsynced" | "storage.full" | "internal";
+        Code: "request.route" | "request.method" | "request.path" | "request.query" | "request.body" | "auth.setup" | "auth.required" | "auth.credentials" | "auth.backoff" | "auth.configured" | "auth.password" | "auth.forbidden" | "viewer.none" | "viewer.name" | "viewer.value" | "token.none" | "token.value" | "history.range" | "history.counter" | "forecast.range" | "role.none" | "layout.none" | "layout.device" | "layout.input" | "layout.string" | "layout.module-type" | "layout.value" | "layout.scene" | "layout.setback" | "layout.overlap" | "layout.covered" | "car.size" | "car.file" | "car.uri" | "car.none" | "surroundings.radius" | "surroundings.location" | "surroundings.busy" | "surroundings.none" | "topology.none" | "topology.tree" | "topology.point" | "topology.claim" | "topology.role" | "topology.device" | "tariff.none" | "tariff.band" | "tariff.past" | "tariff.retention" | "investment.value" | "location.none" | "location.value" | "retention.value" | "zone.value" | "connection.none" | "connection.value" | "connection.poll-seconds" | "connection.in-use" | "device.none" | "device.connection" | "device.transport" | "device.profile" | "device.profile-change" | "device.address" | "deadband.role" | "deadband.kind" | "deadband.step" | "scan.subnet" | "scan.busy" | "setting.none" | "setting.read-only" | "setting.value" | "setting.writes-off" | "setting.interval" | "setting.precondition" | "setting.community" | "setting.no-snapshot" | "setting.not-enabled" | "secret.missing" | "secret.value" | "index.value" | "update.none" | "import.busy" | "import.path" | "import.size" | "import.file" | "import.device" | "import.profile" | "backup.name" | "backup.exists" | "clock.unsynced" | "storage.full" | "internal";
         Condition: {
             /** @description A stable machine code, such as `clock.unsynced`. */
             code: components["schemas"]["Code"];
@@ -1634,6 +1673,30 @@ export interface components {
                 };
             };
         };
+        /** @description A module on a roof face. */
+        GridModule: {
+            /**
+             * Format: double
+             * @description Its lower left corner across and up the face's outline, in metres, seen from the front.
+             */
+            across: number;
+            /** @description Long side across the slope. */
+            landscape: boolean;
+            optimized?: boolean;
+            /**
+             * Format: int32
+             * @description Its place along its string's wiring, which runs through the string's modules from the
+             *     lowest; a module without one follows them.
+             */
+            order?: number | null;
+            /**
+             * Format: int32
+             * @description The string it is painted into; unassigned, it produces nothing.
+             */
+            string?: number | null;
+            /** Format: double */
+            up: number;
+        };
         /** @enum {string} */
         GroundFinish: "lawn" | "paving" | "driveway" | "gravel" | "path";
         /**
@@ -1656,6 +1719,14 @@ export interface components {
             /** Format: double */
             z: number;
         };
+        /** @description A hedge along a line. */
+        Hedge: {
+            /** Format: double */
+            height: number;
+            points: number[][];
+            /** Format: double */
+            width: number;
+        };
         /** @description Time-weighted means of one series over a range, at the tier the server picked. */
         History: {
             /** @description In time order; a gap has no point. */
@@ -1666,6 +1737,25 @@ export interface components {
              * @description A `bucket`'s width in seconds.
              */
             width?: number | null;
+        };
+        /** @description The imported surroundings a scene draws (ADR 20): the document and where it lies. */
+        Import: {
+            /** @description The document's SHA-256 in hex. */
+            document: string;
+            /** @description The ids of the buildings left out. */
+            hidden?: number[];
+            /**
+             * Format: double
+             * @description Degrees clockwise seen from above, from where true north puts it.
+             */
+            turn: number;
+            /**
+             * Format: double
+             * @description Where the document's centre lies in the scene's frame.
+             */
+            x: number;
+            /** Format: double */
+            z: number;
         };
         /** @description The v3 devices an archive holds. */
         ImportArchive: {
@@ -1712,6 +1802,22 @@ export interface components {
             state: components["schemas"]["ImportPhase"];
             /** @description Series the archive feeds; 0 until it is read. */
             total: number;
+        };
+        /** @description The surroundings of one place: everything in metres east and north of it. */
+        Imported: {
+            buildings: components["schemas"]["Building"][];
+            /** @description Who the data is owed to, shown wherever it is drawn. */
+            credits: string[];
+            /** @description Drawn in order, each over the last. They never shade. */
+            grounds: components["schemas"]["Patch"][];
+            hedges: components["schemas"]["Hedge"][];
+            /**
+             * Format: double
+             * @description Metres the area reaches from its centre, east, west, north and south.
+             */
+            radius: number;
+            terrain: components["schemas"]["Terrain"];
+            trees: components["schemas"]["Tree"][];
         };
         /**
          * @description Why an index could not be read.
@@ -1855,20 +1961,20 @@ export interface components {
         ModuleCatalogue: {
             sheets: components["schemas"]["Sheet"][];
         };
-        /** @description The modules on one roof face. */
+        /** @description The modules on one roof face, all of one module type. */
         ModuleGrid: {
             /** @description The block's index in the scene. */
             block: number;
             /** @description The roof face's index in its block, in the order the `pv` crate lists a block's roof faces. */
             face: number;
-            /** @description Long side across the slope. */
+            /** @description The orientation a new module takes: its long side across the slope. */
             landscape: boolean;
             /**
              * Format: int32
-             * @description The id of the module type, which sizes the cells.
+             * @description The id of the module type, which sizes the modules.
              */
             moduleType: number;
-            modules: components["schemas"]["Cell"][];
+            modules: components["schemas"]["GridModule"][];
             /**
              * Format: double
              * @description Metres kept free along every edge of the face.
@@ -2015,6 +2121,18 @@ export interface components {
         Password: {
             password: string;
         };
+        /** @description A piece of ground: an area inside its outline, or with a `width` a line through it. */
+        Patch: {
+            finish: components["schemas"]["PatchFinish"];
+            outline: number[][];
+            /** Format: double */
+            width?: number | null;
+        };
+        /**
+         * @description In the order they are drawn, each over the last.
+         * @enum {string}
+         */
+        PatchFinish: "field" | "grass" | "wood" | "water" | "path" | "road";
         /** @description The savings so far against the investment, in EUR to the cent, and when they reach it. */
         Payback: {
             /**
@@ -2249,6 +2367,45 @@ export interface components {
             /** Format: double */
             pitch: number;
         };
+        /**
+         * @description A window lying flush in a block's roof face, placed in the face's outline like a chimney:
+         *     metres across the slope and up it from the face's lowest corner on the left.
+         */
+        RoofWindow: {
+            /**
+             * Format: double
+             * @description Its centre on the face.
+             */
+            across: number;
+            /** @description The block's index in the scene. */
+            block: number;
+            /** @description The roof face's index in its block, as module grids name it. */
+            face: number;
+            /** Format: double */
+            length: number;
+            /** Format: double */
+            up: number;
+            /**
+             * Format: double
+             * @description Its size: across the slope, and up it.
+             */
+            width: number;
+        };
+        /** @description A building's roof; `rise` is the ridge's height over the eaves. */
+        Roofing: {
+            /** @enum {string} */
+            kind: "flat";
+        } | {
+            /** @enum {string} */
+            kind: "gable";
+            /** Format: double */
+            rise: number;
+        } | {
+            /** @enum {string} */
+            kind: "hipped";
+            /** Format: double */
+            rise: number;
+        };
         /** @description What a scan found. */
         ScanReport: {
             /** @description Every endpoint that took a connection, by address. */
@@ -2276,6 +2433,7 @@ export interface components {
             fences?: components["schemas"]["Fence"][];
             /** @description At most one per roof face. */
             grids?: components["schemas"]["ModuleGrid"][];
+            imported?: components["schemas"]["Import"] | null;
             /**
              * Format: double
              * @description The compass bearing, in degrees clockwise from true north, of the scene's forward axis, −z.
@@ -2284,6 +2442,8 @@ export interface components {
             obstacles: components["schemas"]["Obstacle"][];
             /** @description Windows and doors on the blocks' walls. Drawn only; they never shade. */
             openings?: components["schemas"]["Opening"][];
+            /** @description Windows lying flush in roof faces. Drawn only; they never shade. */
+            roofWindows?: components["schemas"]["RoofWindow"][];
             /** @description Drawn in order, each over the last; without any the plot is lawn. They never shade. */
             surfaces?: components["schemas"]["GroundSurface"][];
         };
@@ -2410,6 +2570,32 @@ export interface components {
             /** @description The core's version. */
             version: string;
         };
+        /** @description What to load: the area's radius, and a more exact centre than the plant's location. */
+        SurroundingsLoad: {
+            /**
+             * Format: double
+             * @description With `longitude`, where the area is centred instead of the plant's location, which is
+             *     stored to 0.01° only. It is sent to the sources and kept nowhere.
+             */
+            latitude?: number | null;
+            /** Format: double */
+            longitude?: number | null;
+            /**
+             * Format: int32
+             * @description 100, 200 or 300 m.
+             */
+            radius: number;
+        };
+        /** @enum {string} */
+        SurroundingsPhase: "idle" | "fetching" | "ready" | "failed";
+        /** @description The last load. */
+        SurroundingsStatus: {
+            /** @description The SHA-256 of the last document fetched; a failed load keeps it. */
+            document?: string | null;
+            /** @description Why the last load failed. */
+            error?: string | null;
+            state: components["schemas"]["SurroundingsPhase"];
+        };
         /** @description One tariff version, as the API reads it. */
         Tariff: {
             /** @description RFC 3339, UTC. */
@@ -2425,6 +2611,17 @@ export interface components {
             appliesFrom?: string | null;
             export: components["schemas"]["ScheduleView"];
             import: components["schemas"]["ScheduleView"];
+        };
+        /**
+         * @description Heights in metres above the centre's, on a square grid of `side` nodes a side, `step` apart,
+         *     row by row toward the north from the south-west corner.
+         */
+        Terrain: {
+            heights: number[];
+            /** Format: int32 */
+            side: number;
+            /** Format: double */
+            step: number;
         };
         /**
          * @description `raw` intervals between change points, UTC-aligned buckets of them, or `hour` (UTC) or
@@ -2465,6 +2662,18 @@ export interface components {
          * @enum {string}
          */
         Transport: "modbus-tcp" | "rtu-over-tcp" | "solarman-v5" | "mqtt" | "http";
+        /** @description A single tree, like a tree obstacle. */
+        Tree: {
+            at: number[];
+            crown: components["schemas"]["Crown"];
+            /** Format: double */
+            height: number;
+            /**
+             * Format: double
+             * @description Its crown's.
+             */
+            radius: number;
+        };
         /** @description A served profile and the update waiting for it, as the admin reviews it. */
         Update: {
             /** @description The version served. */
@@ -4408,6 +4617,94 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SunTint"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SurroundingsStatus"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    load: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SurroundingsLoad"];
+            };
+        };
+        responses: {
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SurroundingsStatus"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    document: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The document's SHA-256 in hex */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Imported"];
                 };
             };
             "4XX": {

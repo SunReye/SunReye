@@ -12,13 +12,7 @@ pub fn derive(
     strings: &mut [StringDraft],
     module_types: &[ModuleType],
 ) -> Result<(), Refusal> {
-    let size = |id| {
-        let datasheet = &module_types.iter().find(|m| m.id == id)?.datasheet;
-        Some(Size {
-            width: datasheet.width,
-            height: datasheet.height,
-        })
-    };
+    let size = sizes(module_types);
     scene.mounts().map_err(|_| Refusal::Scene)?;
     scene.stands().map_err(|_| Refusal::Scene)?;
     scene.ground().map_err(|_| Refusal::Scene)?;
@@ -26,11 +20,13 @@ pub fn derive(
     scene.fitted().map_err(|_| Refusal::Scene)?;
     scene.check_blocks().map_err(|_| Refusal::Scene)?;
     scene.check_chimneys().map_err(|_| Refusal::Scene)?;
+    scene.panes().map_err(|_| Refusal::Scene)?;
     let placed = scene.modules(size).map_err(|misplaced| match misplaced {
         Misplaced::Face { .. } => Refusal::Scene,
         Misplaced::ModuleType { .. } => Refusal::ModuleType,
         Misplaced::Setback { .. } => Refusal::Setback,
         Misplaced::Overlap { .. } => Refusal::Overlap,
+        Misplaced::Chimney { .. } | Misplaced::Window { .. } => Refusal::Covered,
     })?;
     let painted = scene.grids.iter().flat_map(|grid| {
         let module_type = grid.module_type;
@@ -60,6 +56,17 @@ pub fn derive(
         }
     }
     Ok(())
+}
+
+/// Each module type's size, by id.
+pub fn sizes(module_types: &[ModuleType]) -> impl Fn(u32) -> Option<Size> {
+    |id| {
+        let datasheet = &module_types.iter().find(|m| m.id == id)?.datasheet;
+        Some(Size {
+            width: datasheet.width,
+            height: datasheet.height,
+        })
+    }
 }
 
 /// The scene with each module's string mapped; one `map` has no answer for is unassigned.

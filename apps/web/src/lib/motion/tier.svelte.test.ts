@@ -3,6 +3,7 @@ import { cdp } from "vitest/browser";
 import { LOW_POWER } from "./tier.ts";
 import { JANK_FRAME_MS } from "./tier.ts";
 import { MotionStore } from "./tier.svelte.ts";
+import { QualityStore } from "../scene/quality.svelte.ts";
 
 afterEach(async () => {
   vi.useRealTimers();
@@ -45,10 +46,10 @@ test("reduced motion forces still", async () => {
   expect(new MotionStore().tier).toBe("still");
 });
 
-test("a strain the frame watch records survives a reload and starts the device on lite", async () => {
-  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+/** Every frame janky, delivered as fast as the test can run them; returns the frames' clock. */
+function jank(): () => number {
   let now = 0;
-  // Every frame janky, delivered as fast as the test can run them.
+
   vi.stubGlobal("requestAnimationFrame", (frame: FrameRequestCallback) => {
     now += JANK_FRAME_MS + 8;
     queueMicrotask(() => {
@@ -58,11 +59,17 @@ test("a strain the frame watch records survives a reload and starts the device o
     return now;
   });
 
+  return () => now;
+}
+
+test("a strain the frame watch records survives a reload and starts the device on lite", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const now = jank();
   const motion = new MotionStore();
   const release = motion.watch();
   // The watch waits for the page to settle.
   vi.advanceTimersByTime(3900);
-  expect(now).toBe(0);
+  expect(now()).toBe(0);
   vi.advanceTimersByTime(100);
   vi.useRealTimers();
 
@@ -70,4 +77,31 @@ test("a strain the frame watch records survives a reload and starts the device o
   release();
 
   expect(new MotionStore().tier).toBe("lite");
+});
+
+test("a strain over a scene drawn on Auto's Hoch lowers the drawing first, then the tier, then the drawing again", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  jank();
+  const quality = new QualityStore();
+
+  quality.see("ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)");
+  quality.show();
+
+  const motion = new MotionStore(quality);
+  const release = motion.watch();
+  const levels = [`${motion.tier} ${quality.look(motion.tier).level}`];
+
+  // Each strain is judged after the page has settled again.
+  for (let strain = 0; strain < 3; strain++) {
+    vi.advanceTimersByTime(4000);
+    // oxlint-disable-next-line eslint/no-await-in-loop -- one strain after the other.
+    await vi.waitFor(() => {
+      expect(`${motion.tier} ${quality.look(motion.tier).level}`).not.toBe(levels.at(-1));
+    });
+    levels.push(`${motion.tier} ${quality.look(motion.tier).level}`);
+  }
+
+  release();
+
+  expect(levels).toEqual(["full high", "full medium", "lite medium", "lite low"]);
 });

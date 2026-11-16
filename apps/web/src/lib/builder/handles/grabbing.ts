@@ -27,8 +27,14 @@ export interface Editing {
   readonly target: Target;
   /** The crate, which keeps a chimney on its face and an opening on its wall and finds the
    * chimney a press strikes; and what it laid out for `scene`, which their handles stand on. */
-  readonly pv: Pick<Pv, "refit" | "glide" | "chimneyAt">;
+  readonly pv: Pick<
+    Pv,
+    "refit" | "glide" | "glideWindow" | "chimneyAt" | "roofWindowAt" | "gridAt"
+  >;
   readonly laid: Laid;
+  /** The turns the imported surroundings' ring snaps to: those that line a hidden building up
+   * with a block. */
+  readonly rests?: readonly number[] | undefined;
   /** Each step of a drag, shown at once. */
   readonly ondrag: (scene: Scene) => void;
   /** The drag let go: one undo step. */

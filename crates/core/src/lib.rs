@@ -34,6 +34,7 @@ pub mod startup;
 pub mod storage;
 pub mod subscriber;
 pub mod sunspec;
+pub mod surroundings;
 pub mod tariff;
 pub mod topology;
 pub mod transport;

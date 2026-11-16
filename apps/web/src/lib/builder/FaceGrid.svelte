@@ -11,13 +11,13 @@
   import type { Checks } from "./checks.ts";
   import GridSettings from "./GridSettings.svelte";
   import { clearGrid, editGrid, fillGrid, removeGrid, type Draft } from "./modules.ts";
-  import type { CellPlace, ModuleGrid } from "./pv.ts";
+  import type { ModuleGrid } from "./pv.ts";
 
   let {
     draft,
     index,
     grid,
-    cells,
+    free,
     checks,
     moduleTypes,
     onchange,
@@ -26,8 +26,8 @@
     /** The grid's position in the scene. */
     index: number;
     grid: ModuleGrid;
-    /** Every cell the setback holds, as the crate lays them out. */
-    cells: readonly CellPlace[];
+    /** The places "Fläche füllen" adds, as the crate finds them on the free roof. */
+    free: readonly (readonly [number, number])[];
     checks: Checks;
     moduleTypes: readonly ModuleType[];
     onchange: (draft: Draft) => void;
@@ -35,7 +35,7 @@
 
   /** The strings painted here that are too high in the cold. */
   const coldHere = $derived(
-    checks.cold.filter(({ string }) => grid.modules.some((cell) => cell.string === string)),
+    checks.cold.filter(({ string }) => grid.modules.some((module) => module.string === string)),
   );
 </script>
 
@@ -49,16 +49,16 @@
 
 <div class="flex flex-col gap-2 border-t border-border/60 p-3">
   <p role="status" class="text-sm tabular-nums">
-    {m.builder_face_count({ placed: grid.modules.length, cells: cells.length })}
+    {m.builder_face_count({ placed: grid.modules.length })}
   </p>
   <p class="text-sm text-muted-foreground">{m.builder_face_hint()}</p>
   <div class="grid grid-cols-2 gap-2">
     <Button
       variant="outline"
       size="sm"
-      disabled={cells.length === 0}
+      disabled={free.length === 0}
       onclick={() => {
-        onchange({ ...draft, scene: fillGrid(draft.scene, index, cells) });
+        onchange({ ...draft, scene: fillGrid(draft.scene, index, free) });
       }}
     >
       <Grid2x2Plus data-icon="inline-start" />

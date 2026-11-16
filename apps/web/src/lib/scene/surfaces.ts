@@ -1,20 +1,24 @@
 // Surfaces as the scene draws them (ADR 20 Look): faces' texture coordinates in metres, a module's
 // on its cells, and a tree's crown of leaves. Pure: no DOM.
 import {
+  BufferGeometry,
   Color,
   ConeGeometry,
+  DoubleSide,
   Euler,
+  Float32BufferAttribute,
   IcosahedronGeometry,
   InstancedMesh,
   Matrix4,
   Mesh,
+  type MeshStandardMaterial,
   Quaternion,
   SRGBColorSpace,
   Vector3,
 } from "three";
 import type { Face, Point } from "../builder/pv.ts";
 import { cross, dot, normal, unit } from "../builder/vector.ts";
-import { hedge, leaves } from "./materials.ts";
+import { hedge, leaves, REPEAT } from "./materials.ts";
 
 /** A convex polygon's corners as a fan of triangles, three corners each. */
 export function fan([first, ...rest]: readonly Point[]): Point[] {
@@ -67,21 +71,21 @@ export function moduleUvs([a, b, , d]: readonly Point[]): number[] {
 }
 
 /** Lehmer's generator: the same leaves on every build. */
-function seeded(seed: number): () => number {
+export function seeded(seed: number): () => number {
   let state = seed;
 
   return () => (state = (state * 16807) % 2147483647) / 2147483647;
 }
 
 /** One cluster of leaves: where it sits, how big it is, and its hue, saturation and lightness. */
-interface Cluster {
+export interface Cluster {
   readonly at: readonly [number, number, number];
   readonly size: number;
   readonly hsl: readonly [number, number, number];
 }
 
 /** Leaf clusters as one instanced mesh of the prototype's icosahedra, each turned at random. */
-function clusters(made: readonly Cluster[], random: () => number): InstancedMesh {
+export function clusters(made: readonly Cluster[], random: () => number): InstancedMesh {
   const mesh = new InstancedMesh(new IcosahedronGeometry(0.5, 1), leaves(), made.length);
 
   const [matrix, turn, at, size, colour] = [
@@ -106,36 +110,42 @@ function clusters(made: readonly Cluster[], random: () => number): InstancedMesh
   return mesh;
 }
 
+/** One cluster of a broadleaf crown of `radius`, about its centre: in a shell of the sphere,
+ * lighter high and outside. */
+export function leaf(radius: number, random: () => number): Cluster {
+  // Points in a shell, denser outside so the crown reads as clusters.
+  const [u, phi, shell] = [
+    random() * 2 - 1,
+    random() * Math.PI * 2,
+    0.55 + 0.45 * Math.cbrt(random()),
+  ];
+
+  const ring = Math.sqrt(1 - u * u);
+
+  return {
+    at: [
+      radius * shell * ring * Math.cos(phi),
+      radius * shell * u,
+      radius * shell * ring * Math.sin(phi),
+    ],
+    size: (0.6 + random() * 0.65) * Math.min(1, radius / 2.7 + 0.3),
+    // Deep inside and low, where the crown shades itself; sunlit and yellower outside.
+    hsl: [
+      0.22 + random() * 0.08,
+      0.4 + random() * 0.16,
+      0.07 + shell * 0.08 + u * shell * 0.05 + random() * 0.07,
+    ],
+  };
+}
+
+/** How many clusters a broadleaf crown of `radius` holds. */
+export const leafCount = (radius: number): number =>
+  Math.max(12, Math.round(260 * (radius / 2.7) ** 2));
+
 /** A tree's crown: clusters of leaves in a shell of the sphere, lighter high and outside. */
 export function crown(radius: number, seed: number): InstancedMesh {
-  const count = Math.max(12, Math.round(260 * (radius / 2.7) ** 2));
   const random = seeded(seed);
-
-  const made = Array.from({ length: count }, (): Cluster => {
-    // Points in a shell, denser outside so the crown reads as clusters.
-    const [u, phi, shell] = [
-      random() * 2 - 1,
-      random() * Math.PI * 2,
-      0.55 + 0.45 * Math.cbrt(random()),
-    ];
-
-    const ring = Math.sqrt(1 - u * u);
-
-    return {
-      at: [
-        radius * shell * ring * Math.cos(phi),
-        radius * shell * u,
-        radius * shell * ring * Math.sin(phi),
-      ],
-      size: (0.6 + random() * 0.65) * Math.min(1, radius / 2.7 + 0.3),
-      // Deep inside and low, where the crown shades itself; sunlit and yellower outside.
-      hsl: [
-        0.22 + random() * 0.08,
-        0.4 + random() * 0.16,
-        0.07 + shell * 0.08 + u * shell * 0.05 + random() * 0.07,
-      ],
-    };
-  });
+  const made = Array.from({ length: leafCount(radius) }, () => leaf(radius, random));
 
   return clusters(made, random);
 }
@@ -143,30 +153,35 @@ export function crown(radius: number, seed: number): InstancedMesh {
 /** Leaf clusters per square metre of a crown's surface: the broadleaf crown's density. */
 const DENSITY = 2.8;
 
-/**
- * A conifer's crown: clusters in a shell of the cone from its base up `height`, smaller and
- * darker blue-green than a broadleaf's, lighter toward the tip.
- */
-export function conifer(radius: number, height: number, seed: number): InstancedMesh {
-  const count = Math.min(
+/** How many clusters a conifer's crown of `radius` and `height` holds. */
+export const needleCount = (radius: number, height: number): number =>
+  Math.min(
     1500,
     Math.max(24, Math.round(3 * DENSITY * Math.PI * radius * Math.hypot(radius, height))),
   );
 
+/** One cluster of a conifer's crown, from its base up: in a shell of the cone, smaller and
+ * darker blue-green than a broadleaf's, lighter toward the tip. */
+export function needle(radius: number, height: number, random: () => number): Cluster {
+  // Up the cone by area: more clusters low, where it is wide.
+  const up = 1 - Math.sqrt(random());
+  const [phi, shell] = [random() * Math.PI * 2, 0.6 + 0.4 * Math.cbrt(random())];
+  const reach = radius * (1 - up) * shell;
+
+  return {
+    at: [reach * Math.cos(phi), height * up, reach * Math.sin(phi)],
+    size: (0.45 + random() * 0.45) * Math.min(1, radius / 2 + 0.4) * (1 - up * 0.6),
+    hsl: [0.3 + random() * 0.05, 0.3 + random() * 0.12, 0.12 + up * 0.05 + random() * 0.05],
+  };
+}
+
+/** A conifer's crown: clusters in a shell of the cone from its base up `height`. */
+export function conifer(radius: number, height: number, seed: number): InstancedMesh {
   const random = seeded(seed);
 
-  const made = Array.from({ length: count }, (): Cluster => {
-    // Up the cone by area: more clusters low, where it is wide.
-    const up = 1 - Math.sqrt(random());
-    const [phi, shell] = [random() * Math.PI * 2, 0.6 + 0.4 * Math.cbrt(random())];
-    const reach = radius * (1 - up) * shell;
-
-    return {
-      at: [reach * Math.cos(phi), height * up, reach * Math.sin(phi)],
-      size: (0.45 + random() * 0.45) * Math.min(1, radius / 2 + 0.4) * (1 - up * 0.6),
-      hsl: [0.3 + random() * 0.05, 0.3 + random() * 0.12, 0.12 + up * 0.05 + random() * 0.05],
-    };
-  });
+  const made = Array.from({ length: needleCount(radius, height) }, () =>
+    needle(radius, height, random),
+  );
 
   const mesh = clusters(made, random);
   // A dark body, so the gaps between the clusters read as depth, not sky.
@@ -182,7 +197,7 @@ export function conifer(radius: number, height: number, seed: number): Instanced
 const HEDGE = 14;
 
 /** A hedge's leaves: small clusters spread over its faces, in three.js's frame. */
-export function foliage(faces: readonly Face[], seed: number): InstancedMesh {
+function foliage(faces: readonly Face[], seed: number): InstancedMesh {
   const random = seeded(seed);
 
   const made = faces.flatMap(({ corners }) => {
@@ -216,3 +231,46 @@ export function foliage(faces: readonly Face[], seed: number): InstancedMesh {
 }
 
 const sub = (a: Point, b: Point): Point => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+
+/** East, north, up to three.js: x east, y up, z south. */
+const toThree = ([east, north, up]: Point): [number, number, number] => [east, up, 0 - north];
+
+/** Each convex face as a fan of triangles. */
+function triangles(faces: readonly Face[]): number[] {
+  return faces.flatMap(({ corners }) => fan(corners).flatMap((point) => toThree(point)));
+}
+
+export function surface(
+  name: Face["surface"] | "flat",
+  faces: readonly Face[],
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- set up, then drawn.
+  material: MeshStandardMaterial,
+  repeat: readonly [number, number],
+): Mesh {
+  const geometry = new BufferGeometry();
+
+  geometry.setAttribute("position", new Float32BufferAttribute(triangles(faces), 3));
+  geometry.setAttribute("uv", new Float32BufferAttribute(uvs(faces, repeat), 2));
+  geometry.computeVertexNormals();
+
+  // Double-sided: the crate does not promise a winding.
+  material.side = DoubleSide;
+  material.flatShading = true;
+
+  const mesh = new Mesh(geometry, material);
+
+  mesh.name = name;
+
+  return mesh;
+}
+
+/** Hedges: a dark body under clusters of leaves. */
+export function hedges(faces: readonly Face[]): Mesh[] {
+  if (faces.length === 0) return [];
+
+  const body = surface("hedge", faces, hedge(), REPEAT.render);
+
+  body.add(foliage(faces, 13));
+
+  return [body];
+}

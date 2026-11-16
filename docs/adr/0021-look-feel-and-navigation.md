@@ -1,6 +1,6 @@
 # 21. Look, feel and navigation
 
-Status: accepted (2026-11-10), amended (2026-11-12, 2026-11-13)
+Status: accepted (2026-11-10), amended (2026-11-12, 2026-11-13, 2026-11-15)
 
 ## Context
 
@@ -117,7 +117,7 @@ The first integration build rendered browser defaults: plain links for navigatio
 - **Route changes** slide by the navigation's order (Dashboard · History · Forecast, then More's list): a later screen comes in from the right while the old one leaves to the left, an earlier one the other way, so back slides the way back. Both stay in one grid cell, the leaving screen keeps its scroll position, and a second change mid-slide goes on from where the screens are. A route outside that order fades in place.
 - **Jank rules:** animate only `transform` and `opacity`. The one exception is the lite tier's dashed flow cable, which moves its SVG `stroke-dashoffset`. Never animate `backdrop-filter` or layout properties. Numbers use tabular figures. Charts tween between data sets. Sizes are reserved before data arrives.
 - **Live ticks:** numbers, gauges and flow-line thickness ease to each tick for slightly longer than the tick interval, so values glide. 3D tints ease over about 400 ms (ADR 20), then rendering stops. When the stream stalls they stop, flow lines go still, and the connection chip shows the stall. The stream counts as stalled after about 30 s without any message, keep-alives included, as the core sends one every 15 s.
-- **Tiers:** v3's full, lite and still. A device starts on full. About 4 s after the page settles, a frame watch measures strain and drops a struggling device to lite. On lite, each flow rail is one travelling dashed cable instead of a comet chain, and the 3D ambient-occlusion pass is off. The measured strain is kept per device, so a slow wall tablet starts lean the next day. There is no motion setting.
+- **Tiers:** v3's full, lite and still. A device starts on full. About 4 s after the page settles, a frame watch measures strain and drops a struggling device to lite. On lite, each flow rail is one travelling dashed cable instead of a comet chain, and the 3D ambient-occlusion pass is off. The measured strain is kept per device, so a slow wall tablet starts lean the next day. There is no motion setting; the 3D quality is a drawing setting (ADR 20).
 - **Off switches:** reduced motion and the low-power switch force still: all of it is instant and nothing moves.
 
 **Transient feedback.** What an action did and needs no answer ("Gespeichert", "Entfernt", a confirmed write) is a toast, not a line added under the form: shadcn-svelte's Sonner, one toaster in the shell, in the bottom bar's ambient glass, ring and elevation at the radius token, bottom right beside the rail and above the bottom bar on the phone. A toast's status shows in its icon, never in a coloured fill. It comes in success and error, with the haptics of the table below, and without animation on the still tier. An error the user fixes in a field, a refusal included, stays inline beside that field.
@@ -151,7 +151,7 @@ The first integration build rendered browser defaults: plain links for navigatio
 - **A lock switch on the controls page.** Rejected: it duplicates ADR 7's writes switch.
 - **Sliders and a separate confirmation sheet for writes.** Rejected: a slider is imprecise on touch and has no feel. The value editor shows old → new and applies in one step.
 - **A new 2D flow or new live charts.** Rejected: v3's encode magnitude against a remembered plant peak, glide at sample cadence, and survive slow devices. They took long tuning and are kept.
-- **v3's per-device motion setting (auto, full, lite, still).** Rejected: the frame watch decides, and the low-power switch is the manual override.
+- **v3's per-device motion setting (auto, full, lite, still).** Rejected: the frame watch decides, and the low-power switch is the manual override. The 3D quality (ADR 20) is a setting because capable devices draw far more than the full tier needs, which the frame watch cannot discover by stepping down.
 - **Moving particles in the 3D scene.** Rejected: they need a continuous render loop (ADR 20). Particles stay in the 2D flow.
 - **Snap points on drawers** (a peeking half-open drawer). Rejected by the owner: a drawer is open or closed.
 - **Our own draggable bottom sheet.** Rejected for shadcn-svelte's responsive `Drawer`/`Dialog` pattern, which the registry maintains.

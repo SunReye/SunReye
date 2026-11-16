@@ -252,6 +252,44 @@
         ],
         "type": "object"
       },
+      "Building": {
+        "additionalProperties": false,
+        "description": "A neighbouring building: walls up from its outline under one roof.",
+        "properties": {
+          "eave": {
+            "description": "The walls' height.",
+            "format": "double",
+            "type": "number"
+          },
+          "id": {
+            "description": "Its number in this document, which a scene hides it by.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "outline": {
+            "description": "Counter-clockwise seen from above; under a pitched roof a rectangle whose first side is\na long one.",
+            "items": {
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array"
+          },
+          "roof": {
+            "$ref": "#/components/schemas/Roofing"
+          }
+        },
+        "required": [
+          "id",
+          "outline",
+          "eave",
+          "roof"
+        ],
+        "type": "object"
+      },
       "Capacity": {
         "description": "The usable capacity inferred from the state of charge over each unbroken discharge of at\nleast 20 points; no vendor register reports it.",
         "properties": {
@@ -409,48 +447,6 @@
         ],
         "type": "object"
       },
-      "Cell": {
-        "additionalProperties": false,
-        "description": "A module in one cell: rows count up the slope, columns across it, both from 0.",
-        "properties": {
-          "column": {
-            "format": "int32",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "optimized": {
-            "type": "boolean"
-          },
-          "order": {
-            "description": "Its place along its string's wiring, which runs through the string's modules from the\nlowest; a module without one follows them.",
-            "format": "int32",
-            "minimum": 0,
-            "type": [
-              "integer",
-              "null"
-            ]
-          },
-          "row": {
-            "format": "int32",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "string": {
-            "description": "The string it is painted into; unassigned, it produces nothing.",
-            "format": "int32",
-            "minimum": 0,
-            "type": [
-              "integer",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "row",
-          "column"
-        ],
-        "type": "object"
-      },
       "Change": {
         "description": "A topology change: every point, applying from an instant on.",
         "properties": {
@@ -574,10 +570,15 @@
           "layout.scene",
           "layout.setback",
           "layout.overlap",
+          "layout.covered",
           "car.size",
           "car.file",
           "car.uri",
           "car.none",
+          "surroundings.radius",
+          "surroundings.location",
+          "surroundings.busy",
+          "surroundings.none",
           "topology.none",
           "topology.tree",
           "topology.point",
@@ -1548,6 +1549,52 @@
         ],
         "type": "object"
       },
+      "GridModule": {
+        "additionalProperties": false,
+        "description": "A module on a roof face.",
+        "properties": {
+          "across": {
+            "description": "Its lower left corner across and up the face's outline, in metres, seen from the front.",
+            "format": "double",
+            "type": "number"
+          },
+          "landscape": {
+            "description": "Long side across the slope.",
+            "type": "boolean"
+          },
+          "optimized": {
+            "type": "boolean"
+          },
+          "order": {
+            "description": "Its place along its string's wiring, which runs through the string's modules from the\nlowest; a module without one follows them.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "string": {
+            "description": "The string it is painted into; unassigned, it produces nothing.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "up": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "across",
+          "up",
+          "landscape"
+        ],
+        "type": "object"
+      },
       "GroundFinish": {
         "enum": [
           "lawn",
@@ -1597,6 +1644,36 @@
         ],
         "type": "object"
       },
+      "Hedge": {
+        "additionalProperties": false,
+        "description": "A hedge along a line.",
+        "properties": {
+          "height": {
+            "format": "double",
+            "type": "number"
+          },
+          "points": {
+            "items": {
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array"
+          },
+          "width": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "points",
+          "height",
+          "width"
+        ],
+        "type": "object"
+      },
       "History": {
         "description": "Time-weighted means of one series over a range, at the tier the server picked.",
         "properties": {
@@ -1623,6 +1700,46 @@
         "required": [
           "tier",
           "points"
+        ],
+        "type": "object"
+      },
+      "Import": {
+        "additionalProperties": false,
+        "description": "The imported surroundings a scene draws (ADR 20): the document and where it lies.",
+        "properties": {
+          "document": {
+            "description": "The document's SHA-256 in hex.",
+            "type": "string"
+          },
+          "hidden": {
+            "description": "The ids of the buildings left out.",
+            "items": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "turn": {
+            "description": "Degrees clockwise seen from above, from where true north puts it.",
+            "format": "double",
+            "type": "number"
+          },
+          "x": {
+            "description": "Where the document's centre lies in the scene's frame.",
+            "format": "double",
+            "type": "number"
+          },
+          "z": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "document",
+          "x",
+          "z",
+          "turn"
         ],
         "type": "object"
       },
@@ -1784,6 +1901,62 @@
           "state",
           "done",
           "total"
+        ],
+        "type": "object"
+      },
+      "Imported": {
+        "additionalProperties": false,
+        "description": "The surroundings of one place: everything in metres east and north of it.",
+        "properties": {
+          "buildings": {
+            "items": {
+              "$ref": "#/components/schemas/Building"
+            },
+            "type": "array"
+          },
+          "credits": {
+            "description": "Who the data is owed to, shown wherever it is drawn.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "grounds": {
+            "description": "Drawn in order, each over the last. They never shade.",
+            "items": {
+              "$ref": "#/components/schemas/Patch"
+            },
+            "type": "array"
+          },
+          "hedges": {
+            "items": {
+              "$ref": "#/components/schemas/Hedge"
+            },
+            "type": "array"
+          },
+          "radius": {
+            "description": "Metres the area reaches from its centre, east, west, north and south.",
+            "format": "double",
+            "type": "number"
+          },
+          "terrain": {
+            "$ref": "#/components/schemas/Terrain"
+          },
+          "trees": {
+            "items": {
+              "$ref": "#/components/schemas/Tree"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "radius",
+          "buildings",
+          "trees",
+          "hedges",
+          "grounds",
+          "terrain",
+          "credits"
         ],
         "type": "object"
       },
@@ -2167,7 +2340,7 @@
       },
       "ModuleGrid": {
         "additionalProperties": false,
-        "description": "The modules on one roof face.",
+        "description": "The modules on one roof face, all of one module type.",
         "properties": {
           "block": {
             "description": "The block's index in the scene.",
@@ -2180,18 +2353,18 @@
             "type": "integer"
           },
           "landscape": {
-            "description": "Long side across the slope.",
+            "description": "The orientation a new module takes: its long side across the slope.",
             "type": "boolean"
           },
           "moduleType": {
-            "description": "The id of the module type, which sizes the cells.",
+            "description": "The id of the module type, which sizes the modules.",
             "format": "int32",
             "minimum": 0,
             "type": "integer"
           },
           "modules": {
             "items": {
-              "$ref": "#/components/schemas/Cell"
+              "$ref": "#/components/schemas/GridModule"
             },
             "type": "array"
           },
@@ -2580,6 +2753,49 @@
           "password"
         ],
         "type": "object"
+      },
+      "Patch": {
+        "additionalProperties": false,
+        "description": "A piece of ground: an area inside its outline, or with a `width` a line through it.",
+        "properties": {
+          "finish": {
+            "$ref": "#/components/schemas/PatchFinish"
+          },
+          "outline": {
+            "items": {
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array"
+          },
+          "width": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "finish",
+          "outline"
+        ],
+        "type": "object"
+      },
+      "PatchFinish": {
+        "description": "In the order they are drawn, each over the last.",
+        "enum": [
+          "field",
+          "grass",
+          "wood",
+          "water",
+          "path",
+          "road"
+        ],
+        "type": "string"
       },
       "Payback": {
         "description": "The savings so far against the investment, in EUR to the cent, and when they reach it.",
@@ -3188,6 +3404,107 @@
           }
         ]
       },
+      "RoofWindow": {
+        "additionalProperties": false,
+        "description": "A window lying flush in a block's roof face, placed in the face's outline like a chimney:\nmetres across the slope and up it from the face's lowest corner on the left.",
+        "properties": {
+          "across": {
+            "description": "Its centre on the face.",
+            "format": "double",
+            "type": "number"
+          },
+          "block": {
+            "description": "The block's index in the scene.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "face": {
+            "description": "The roof face's index in its block, as module grids name it.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "length": {
+            "format": "double",
+            "type": "number"
+          },
+          "up": {
+            "format": "double",
+            "type": "number"
+          },
+          "width": {
+            "description": "Its size: across the slope, and up it.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "block",
+          "face",
+          "across",
+          "up",
+          "width",
+          "length"
+        ],
+        "type": "object"
+      },
+      "Roofing": {
+        "description": "A building's roof; `rise` is the ridge's height over the eaves.",
+        "oneOf": [
+          {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "flat"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "Its ridge runs along the long sides.",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "gable"
+                ],
+                "type": "string"
+              },
+              "rise": {
+                "format": "double",
+                "type": "number"
+              }
+            },
+            "required": [
+              "rise",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "hipped"
+                ],
+                "type": "string"
+              },
+              "rise": {
+                "format": "double",
+                "type": "number"
+              }
+            },
+            "required": [
+              "rise",
+              "kind"
+            ],
+            "type": "object"
+          }
+        ]
+      },
       "ScanReport": {
         "description": "What a scan found.",
         "properties": {
@@ -3267,6 +3584,17 @@
             },
             "type": "array"
           },
+          "imported": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Import",
+                "description": "The imported surroundings drawn around the blocks; a scene stored without has none."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "north": {
             "description": "The compass bearing, in degrees clockwise from true north, of the scene's forward axis, −z.",
             "format": "double",
@@ -3282,6 +3610,13 @@
             "description": "Windows and doors on the blocks' walls. Drawn only; they never shade.",
             "items": {
               "$ref": "#/components/schemas/Opening"
+            },
+            "type": "array"
+          },
+          "roofWindows": {
+            "description": "Windows lying flush in roof faces. Drawn only; they never shade.",
+            "items": {
+              "$ref": "#/components/schemas/RoofWindow"
             },
             "type": "array"
           },
@@ -3671,6 +4006,72 @@
         ],
         "type": "object"
       },
+      "SurroundingsLoad": {
+        "additionalProperties": false,
+        "description": "What to load: the area's radius, and a more exact centre than the plant's location.",
+        "properties": {
+          "latitude": {
+            "description": "With `longitude`, where the area is centred instead of the plant's location, which is\nstored to 0.01° only. It is sent to the sources and kept nowhere.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "longitude": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "radius": {
+            "description": "100, 200 or 300 m.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "radius"
+        ],
+        "type": "object"
+      },
+      "SurroundingsPhase": {
+        "enum": [
+          "idle",
+          "fetching",
+          "ready",
+          "failed"
+        ],
+        "type": "string"
+      },
+      "SurroundingsStatus": {
+        "description": "The last load.",
+        "properties": {
+          "document": {
+            "description": "The SHA-256 of the last document fetched; a failed load keeps it.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "error": {
+            "description": "Why the last load failed.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/SurroundingsPhase"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "type": "object"
+      },
       "Tariff": {
         "description": "One tariff version, as the API reads it.",
         "properties": {
@@ -3714,6 +4115,34 @@
         "required": [
           "import",
           "export"
+        ],
+        "type": "object"
+      },
+      "Terrain": {
+        "additionalProperties": false,
+        "description": "Heights in metres above the centre's, on a square grid of `side` nodes a side, `step` apart,\nrow by row toward the north from the south-west corner.",
+        "properties": {
+          "heights": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "side": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "step": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "step",
+          "side",
+          "heights"
         ],
         "type": "object"
       },
@@ -3821,6 +4250,38 @@
           "http"
         ],
         "type": "string"
+      },
+      "Tree": {
+        "additionalProperties": false,
+        "description": "A single tree, like a tree obstacle.",
+        "properties": {
+          "at": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "crown": {
+            "$ref": "#/components/schemas/Crown"
+          },
+          "height": {
+            "format": "double",
+            "type": "number"
+          },
+          "radius": {
+            "description": "Its crown's.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "at",
+          "height",
+          "radius",
+          "crown"
+        ],
+        "type": "object"
       },
       "Update": {
         "description": "A served profile and the update waiting for it, as the admin reviews it.",
@@ -4141,7 +4602,7 @@
             }
           }
         },
-        "summary": "Backs up the store and the car bodies into a new file under `/share`, readable by the core's\nuser alone; the secrets only when asked."
+        "summary": "Backs up the store, the car bodies and the imported surroundings into a new file under\n`/share`, readable by the core's user alone; the secrets only when asked."
       }
     },
     "/api/v1/balance": {
@@ -6261,6 +6722,103 @@
           }
         },
         "summary": "The backdrop's tint for the sun over the plant now; viewers read it, never the location."
+      }
+    },
+    "/api/v1/surroundings": {
+      "get": {
+        "operationId": "status",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SurroundingsStatus"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "How the last load went."
+      },
+      "post": {
+        "operationId": "load",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SurroundingsLoad"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SurroundingsStatus"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Fetches the surroundings of the plant's location, or of a more exact centre, from the open\nTerrain Tiles and OpenStreetMap into a new document. The answer comes at once; the status\ntells when the document is ready. Loading again fetches again."
+      }
+    },
+    "/api/v1/surroundings/{id}": {
+      "get": {
+        "operationId": "document",
+        "parameters": [
+          {
+            "description": "The document's SHA-256 in hex",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Imported"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "A fetched document: everything in metres east and north of its centre."
       }
     },
     "/api/v1/tariff": {

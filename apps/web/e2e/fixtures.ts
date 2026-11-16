@@ -24,10 +24,12 @@ const MODULE = {
   bypassDiodes: 3,
 } satisfies Schemas["ModuleType"];
 
+/** Portrait modules in rows and columns from the 0.3 m setback, 2 cm apart. */
 const cells = (rows: number, columns: number, string: number) =>
   Array.from({ length: rows * columns }, (_, i) => ({
-    row: Math.floor(i / columns),
-    column: i % columns,
+    across: Math.round((0.3 + (i % columns) * 1.154) * 1000) / 1000,
+    up: Math.round((0.3 + Math.floor(i / columns) * 1.742) * 1000) / 1000,
+    landscape: false,
     string,
     optimized: false,
   }));

@@ -1,6 +1,5 @@
 // The studio's light for a sun and a theme (ADR 20 Look). Pure: the studio applies it.
 import type { Point } from "../builder/pv.ts";
-import type { MotionTier } from "../motion/tier.ts";
 import { blend, linear, luma, mix, smoothstep, type Rgb } from "./colour.ts";
 import { CLEAR, CLOSED, skylight } from "./skylight.ts";
 
@@ -101,6 +100,9 @@ const THROUGH = { sun: 0.06, sky: 0.45 };
 
 /** The shadow's blur radius under a clear sky and a closed one. */
 const SHADOW = { clear: 3.5, closed: 9 };
+
+/** The radius under a clear sky: what a shadow's spread under cloud is measured against. */
+export const CLEAR_SHADOW = SHADOW.clear;
 
 /** The diffuse fractions where cloud starts to show and where the sky is closed: the dashboard
  * calls 0.45 partly cloudy and 0.8 cloudy. */
@@ -263,11 +265,6 @@ export function theme(dark: boolean): Theme {
   return dark
     ? { dark, exposure: EXPOSURE * 0.82, environment: 0.75 }
     : { dark, exposure: EXPOSURE, environment: 1 };
-}
-
-/** One ambient-occlusion pass, off on the lite and still tiers (ADR 21). */
-export function occlusion(tier: MotionTier): boolean {
-  return tier === "full";
 }
 
 /** ACES's curve as three applies it. */

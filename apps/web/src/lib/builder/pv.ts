@@ -1,7 +1,9 @@
 // The `pv` crate in the browser through its glue crate, crates/pv-wasm (ADR 2, 20).
 import type { ModuleType, StringDraft } from "../api/core.ts";
 import type { Fence, Fencing, Ground, GroundSurface, Obstacle } from "./obstacles.ts";
-import type { Chimney, Overhang } from "./roofing.ts";
+import { surrounding, type Import, type Surrounding } from "./imported.ts";
+import { roofCalls } from "./roof-calls.ts";
+import type { Chimney, Overhang, RoofWindow } from "./roofing.ts";
 import type { Equipment, Fitted, Opening, OpeningKind, Unfit } from "./walls.ts";
 
 export type { Equipment, Fitted, Opening, OpeningKind, Unfit, Wall, WallFrame } from "./walls.ts";
@@ -32,11 +34,14 @@ export type {
   Obstacle,
 } from "./obstacles.ts";
 
-export type { Chimney, Footing, Overhang } from "./roofing.ts";
+export type { Chimney, Footing, Overhang, RoofWindow } from "./roofing.ts";
 
-import type { Modules } from "./laid.ts";
+import type { ModuleGrid, OnGrid, Sizes } from "./grids.ts";
+import type { Ghost, Modules } from "./laid.ts";
 
-export type { CellPlace, Misplaced, Modules, RoofFace } from "./laid.ts";
+export type { GridModule, ModuleGrid, OnGrid, Sizes, Spot } from "./grids.ts";
+
+export type { Footprint, Ghost, LaidGrid, Misplaced, Modules, RoofFace } from "./laid.ts";
 
 /** A string as the core's API wires it. */
 export type Wiring = Readonly<Omit<StringDraft, "id">>;
@@ -67,30 +72,6 @@ export interface Block {
   readonly wallColour?: string | null;
 }
 
-/** A module in one cell: rows count up the slope, columns across it, from 0. */
-export interface Cell {
-  readonly row: number;
-  readonly column: number;
-  /** The string it is painted into; unassigned, it produces nothing. */
-  readonly string?: number | null;
-  readonly optimized?: boolean;
-  /** Its place along its string's wiring, from the lowest; one without follows them. */
-  readonly order?: number | null;
-}
-
-/** The modules on one roof face; cells are the module type's size plus a gap. */
-export interface ModuleGrid {
-  readonly block: number;
-  /** The roof face's index in its block, as `roofs` lists them. */
-  readonly face: number;
-  readonly moduleType: number;
-  /** Long side across the slope. */
-  readonly landscape: boolean;
-  /** Metres kept free along every edge. */
-  readonly setback: number;
-  readonly modules: readonly Cell[];
-}
-
 /** A parking footprint linked to an EVCC loadpoint; width along x, length along z. */
 export interface CarPlace {
   readonly device: number;
@@ -119,12 +100,9 @@ export interface Scene {
   readonly surfaces?: readonly GroundSurface[];
   readonly fences?: readonly Fence[];
   readonly openings?: readonly Opening[];
-}
-
-/** A module's outline in metres; `height` is its long side. */
-export interface Size {
-  readonly width: number;
-  readonly height: number;
+  /** The imported surroundings it draws and shades with; none, none. */
+  readonly imported?: Import | null;
+  readonly roofWindows?: readonly RoofWindow[];
 }
 
 export interface Face {
@@ -167,6 +145,8 @@ export interface Geometry {
   readonly fences?: readonly Fencing[] | null;
   /** By opening, fitted on its wall; null while one is refused. */
   readonly openings?: readonly Fitted[] | null;
+  /** By roof window, its pane's corners from the lower left; null while one is refused. */
+  readonly roofWindows?: readonly (readonly Point[])[] | null;
 }
 
 /** North and east positive, in degrees. */
@@ -191,11 +171,11 @@ export interface ClearRun {
   readonly times: readonly number[];
 }
 
-export interface Pv {
+export interface Pv extends Surrounding {
   /** The scene's faces and solids; throws the crate's reason for a scene it cannot read. */
   readonly geometry: (scene: Scene) => Geometry;
   /** The scene's module grids laid out, with module sizes by module type id. */
-  readonly modules: (scene: Scene, sizes: Readonly<Record<number, Size>>) => Modules;
+  readonly modules: (scene: Scene, sizes: Sizes) => Modules;
   /** Where the sun stands at `unix` seconds over `location`. */
   readonly sun: (unix: number, location: Location) => Sun;
   /** Each string's watts under a clear sky, by time, then string position (ADR 20). */
@@ -223,6 +203,33 @@ export interface Pv {
   readonly glide: (scene: Scene, index: number, shift: readonly [number, number]) => Chimney | null;
   /** The index of the chimney a strike at `point` lands on; null for none. */
   readonly chimneyAt: (scene: Scene, point: Point) => number | null;
+  /** The index of the grid whose face a strike at `point` lands on, inside its setback. */
+  readonly gridAt: (scene: Scene, point: Point) => number | null;
+  /** What a press on a grid's face at `from`, dragged to `to`, would lay: the ghost module under
+   * the pointer, snapped, and with a drag the row along it; null for a press off the face. */
+  readonly lay: (on: OnGrid, from: Point, to: Point) => Ghost[] | null;
+  /** Module `module` of a grid dragged from `from` to `to`: where it would lie, snapped like a
+   * ghost, and whether it fits there; null without it. */
+  readonly slide: (on: OnGrid, module: number, from: Point, to: Point) => Ghost | null;
+  /** The places "Fill face" adds to a grid: across and up its face. */
+  readonly fillFace: (on: OnGrid) => (readonly [number, number])[];
+  /** The modules a roof chimney or roof window covers: each its grid's index and its own in it. */
+  readonly covered: (scene: Scene, sizes: Sizes) => (readonly [number, number])[];
+  /** Roof window `index` moved like a chimney, stopped at a chimney or another roof window too. */
+  readonly glideWindow: (
+    scene: Scene,
+    index: number,
+    shift: readonly [number, number],
+  ) => RoofWindow | null;
+  /** The index of the roof window a strike at `point` lands on; null for none. */
+  readonly roofWindowAt: (scene: Scene, point: Point) => number | null;
+  /** A new roof window, `size` across and up, in the free place nearest the middle of the first
+   * roof face with room, off its modules; null where none has. */
+  readonly placeWindow: (
+    scene: Scene,
+    sizes: Sizes,
+    size: readonly [number, number],
+  ) => RoofWindow | null;
 }
 
 /** Instantiates the glue crate's release build. */
@@ -266,6 +273,8 @@ export async function loadPv(bytes: Uint8Array<ArrayBuffer>): Promise<Pv> {
       unwrap(call("glide", JSON.stringify({ scene, index, shift })), isChimney),
     chimneyAt: (scene, point) =>
       unwrap(call("chimney_at", JSON.stringify({ scene, point })), isIndex),
+    ...roofCalls(call),
+    ...surrounding(call),
   };
 }
 

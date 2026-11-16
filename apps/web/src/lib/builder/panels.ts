@@ -26,9 +26,8 @@ export interface Panel {
   readonly string?: number | null;
   /** The grid it lies in, by position in the scene; a click on it opens that face. */
   readonly grid?: number;
-  /** Its cell in that grid. */
-  readonly row?: number;
-  readonly column?: number;
+  /** Its position in that grid. */
+  readonly module?: number;
 }
 
 /** The string glow: the solar colour, and how far the light it stands for shows (`daylight`). */

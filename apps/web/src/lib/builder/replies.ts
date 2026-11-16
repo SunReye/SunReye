@@ -1,6 +1,7 @@
 // The pv glue crate's exports and its JSON replies, `{"ok": …}` or `{"error": "…"}`, checked
 // at the boundary.
-import type { Chimney, Geometry, Modules, Opening, Sun, Unfit } from "./pv.ts";
+import type { Around, Import } from "./imported.ts";
+import type { Chimney, Geometry, Ghost, Modules, Opening, RoofWindow, Sun, Unfit } from "./pv.ts";
 
 export type Reply<T> = { readonly ok: T } | { readonly error: string };
 
@@ -33,7 +34,7 @@ export function isGeometry(value: unknown): value is Reply<Geometry> {
   );
 }
 
-/** The grids' layout: the roof faces and each grid's cells. */
+/** The grids' layout: the roof faces and each grid on its face. */
 const isGridded = (laid: unknown): laid is Pick<Modules, "roofs" | "grids"> =>
   laid instanceof Object &&
   "roofs" in laid &&
@@ -107,6 +108,22 @@ export const isOpening: (value: unknown) => value is Reply<Opening | null> = isA
 
 export const isChimney: (value: unknown) => value is Reply<Chimney | null> = isAnswer;
 
+export const isAround: (value: unknown) => value is Reply<Around | null> = isAnswer;
+
+export const isImport: (value: unknown) => value is Reply<Import> = isAnswer;
+
+export const isRoofWindow: (value: unknown) => value is Reply<RoofWindow | null> = isAnswer;
+
+export const isGhost: (value: unknown) => value is Reply<Ghost | null> = isAnswer;
+
+/** A list, or null where the crate has none; its items are the glue crate's own. */
+export function isList<T>(value: unknown): value is Reply<T[] | null> {
+  return (
+    isFailure(value) ||
+    (isRecord(value) && "ok" in value && (value.ok === null || Array.isArray(value.ok)))
+  );
+}
+
 export function isIndex(value: unknown): value is Reply<number | null> {
   return (
     isFailure(value) ||
@@ -128,6 +145,16 @@ export interface Exports {
   readonly place: (input: number, inputLen: number) => bigint;
   readonly glide: (input: number, inputLen: number) => bigint;
   readonly chimney_at: (input: number, inputLen: number) => bigint;
+  readonly grid_at: (input: number, inputLen: number) => bigint;
+  readonly lay: (input: number, inputLen: number) => bigint;
+  readonly slide: (input: number, inputLen: number) => bigint;
+  readonly fill: (input: number, inputLen: number) => bigint;
+  readonly covered: (input: number, inputLen: number) => bigint;
+  readonly around: (input: number, inputLen: number) => bigint;
+  readonly load_import: (input: number, inputLen: number) => bigint;
+  readonly glide_window: (input: number, inputLen: number) => bigint;
+  readonly roof_window_at: (input: number, inputLen: number) => bigint;
+  readonly place_window: (input: number, inputLen: number) => bigint;
 }
 
 const functions = [
@@ -142,6 +169,16 @@ const functions = [
   "place",
   "glide",
   "chimney_at",
+  "grid_at",
+  "lay",
+  "slide",
+  "fill",
+  "covered",
+  "around",
+  "load_import",
+  "glide_window",
+  "roof_window_at",
+  "place_window",
 ] as const;
 
 export function isExports(

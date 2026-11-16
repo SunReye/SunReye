@@ -14,7 +14,7 @@ import {
   ROOFS,
   WALL_NAMES,
 } from "./names.ts";
-import type { Fence, Modules, Pv } from "./pv.ts";
+import type { Fence, Modules, Pv, Sizes } from "./pv.ts";
 
 export { FENCE_FINISHES, GROUND_FINISHES, OPENING_KINDS, ROOFS, WALL_NAMES } from "./names.ts";
 
@@ -23,8 +23,11 @@ export interface Plan {
   readonly draft: Draft;
   /** The crate's layout of the draft's grids. */
   readonly laid: Modules;
-  /** The crate, which places a new opening and keeps a changed one on its wall. */
-  readonly pv: Pick<Pv, "place" | "refit">;
+  /** The crate, which places a new opening or roof window, keeps a changed opening on its wall and
+   * fills a face. */
+  readonly pv: Pick<Pv, "place" | "refit" | "fillFace" | "placeWindow">;
+  /** Each module type's size, by its id, as the crate lays modules out. */
+  readonly sizes: Sizes;
   readonly devices: readonly Readonly<Device>[];
   /** The strings over their inverter's limit in the cold, as the crate reckons them. */
   readonly cold: readonly Cold[];
@@ -115,6 +118,17 @@ function buildings({ draft }: Plan): Entry[] {
     }),
   }));
 
+  const windows = (draft.scene.roofWindows ?? []).map((item, index): Entry => ({
+    level: { kind: "roofWindow", index },
+    label: m.builder_item({ name: m.roof_window(), number: index + 1 }),
+    summary: m.builder_roof_window_summary({
+      block: item.block + 1,
+      face: item.face + 1,
+      width: number.format(item.width),
+      length: number.format(item.length),
+    }),
+  }));
+
   const openings = (draft.scene.openings ?? []).map((item, index): Entry => ({
     level: { kind: "opening", index },
     label: m.builder_item({ name: named(OPENING_KINDS, item.kind), number: index + 1 }),
@@ -136,7 +150,7 @@ function buildings({ draft }: Plan): Entry[] {
     }),
   }));
 
-  return [...blocks, ...chimneys, ...openings];
+  return [...blocks, ...chimneys, ...windows, ...openings];
 }
 
 function surroundings({ draft }: Plan): Entry[] {
@@ -171,7 +185,18 @@ function surroundings({ draft }: Plan): Entry[] {
     }),
   }));
 
-  return [...obstacles, ...surfaces, ...fences];
+  return [imported(draft), ...obstacles, ...surfaces, ...fences];
+}
+
+/** The imported surroundings' row: always there, as it is where they are loaded. */
+function imported({ scene }: Draft): Entry {
+  return {
+    level: { kind: "import" },
+    label: m.builder_import(),
+    summary: scene.imported
+      ? m.builder_import_summary({ hidden: scene.imported.hidden?.length ?? 0 })
+      : m.builder_import_none(),
+  };
 }
 
 function equipment({ draft, devices }: Plan): Entry[] {
@@ -231,8 +256,7 @@ export function title(level: Level, plan: Plan): string {
 
   if (level.kind === "section") return SECTIONS[level.section]();
 
-  if (level.kind === "module")
-    return m.builder_cell({ row: level.row + 1, column: level.column + 1 });
+  if (level.kind === "module") return m.builder_cell({ number: level.module + 1 });
 
   const up = parent(level);
   const key = JSON.stringify(level);
@@ -244,25 +268,13 @@ export function title(level: Level, plan: Plan): string {
 /** How many objects of each kind the plan holds, by level kind. */
 function counts({
   draft,
-}: Plan): Readonly<
-  Record<
-    | "block"
-    | "chimney"
-    | "opening"
-    | "obstacle"
-    | "surface"
-    | "fence"
-    | "marker"
-    | "place"
-    | "string",
-    number
-  >
-> {
+}: Plan): Readonly<Record<Extract<Level, { readonly index: number }>["kind"], number>> {
   const { scene } = draft;
 
   return {
     block: scene.blocks.length,
     chimney: many(scene.chimneys),
+    roofWindow: many(scene.roofWindows),
     opening: many(scene.openings),
     obstacle: scene.obstacles.length,
     surface: many(scene.surfaces),
@@ -275,7 +287,7 @@ function counts({
 
 /** Whether a level's object is still in the plan: an undo or a removal can take it away. */
 export function exists(level: Level, plan: Plan): boolean {
-  if (level.kind === "root" || level.kind === "section") return true;
+  if (level.kind === "root" || level.kind === "section" || level.kind === "import") return true;
 
   if (level.kind === "face") {
     return plan.laid.roofs.some(({ block, face }) => block === level.block && face === level.face);

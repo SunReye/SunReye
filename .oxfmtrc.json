@@ -9,6 +9,7 @@
     "apps/web/src/lib/api/schema.d.ts",
     "packages/sdk/src/generated.ts",
     "profiles/*.json",
+    "crates/pv/fixtures/surroundings/*.json",
     "**/*.svelte",
     "**/*.md"
   ]

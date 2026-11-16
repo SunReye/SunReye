@@ -1,36 +1,37 @@
-<!-- A roof chimney's level in the inspector: the face it stands on, where, and how big. -->
-<script lang="ts">
+<!-- A roof chimney's or a roof window's level in the inspector: the face it is on, where, and how
+  big. -->
+<script lang="ts" generics="T extends OnRoof">
   import * as Item from "#lib/components/ui/item/index.js";
   import type { Editable } from "../components/value-editor/editable.ts";
   import { m } from "../paraglide/messages.js";
   import { centred } from "./draft.ts";
   import { choices, metres } from "./fields.ts";
-  import type { Chimney, RoofFace } from "./pv.ts";
+  import type { RoofFace } from "./pv.ts";
   import RemoveButton from "./RemoveButton.svelte";
+  import type { OnRoof } from "./roofing.ts";
   import ValueRow from "./ValueRow.svelte";
 
   let {
     item,
+    sizes,
     roofs,
     onchange,
     onremove,
   }: {
-    item: Chimney;
-    /** Every roof face it may stand on. */
+    item: T;
+    /** Its sizes' rows, each the key of a number of `item`. */
+    sizes: readonly (readonly [keyof T & string, Editable])[];
+    /** Every roof face it may be on. */
     roofs: readonly RoofFace[];
-    onchange: (item: Chimney) => void;
+    onchange: (item: T) => void;
     onremove: () => void;
   } = $props();
 
-  type Numeric = "across" | "up" | "width" | "depth" | "height";
-
-  const fields = [
-    ["across", metres(m.field_from_left(), 0, 60)],
-    ["up", metres(m.field_from_eave(), 0, 30)],
-    ["width", metres(m.field_width(), 0.2, 3)],
-    ["depth", metres(m.field_depth(), 0.2, 3)],
-    ["height", metres(m.field_height(), 0.1, 5)],
-  ] as const satisfies readonly (readonly [Numeric, Editable])[];
+  const fields = $derived([
+    ["across", metres(m.field_from_left(), 0, 60)] as const,
+    ["up", metres(m.field_from_eave(), 0, 30)] as const,
+    ...sizes,
+  ]);
 
   const face = $derived(
     choices(
@@ -56,7 +57,7 @@
   {#each fields as [key, edit] (key)}
     <ValueRow
       {edit}
-      value={item[key]}
+      value={Number(item[key])}
       onchange={(value) => {
         onchange({ ...item, [key]: value });
       }}
