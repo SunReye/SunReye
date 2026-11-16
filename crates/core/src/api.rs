@@ -405,6 +405,14 @@ pub fn internal(cause: impl std::fmt::Display) -> Problem {
     INTERNAL
 }
 
+/// An instant as the API writes it: RFC 3339, UTC.
+#[must_use]
+pub fn rfc3339(time: std::time::SystemTime) -> String {
+    jiff::Timestamp::try_from(time)
+        .map(|t| t.to_string())
+        .unwrap_or_default()
+}
+
 /// A refusal as `application/problem+json` (RFC 9457): a stable code and no localised text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Problem {

@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
 use super::{Code, Problem, ProblemDetails};
-use crate::api::internal;
+use crate::api::{internal, rfc3339};
 use crate::bus::{DeviceId, Series};
 use crate::storage::{Forecast, Reader};
 
@@ -119,10 +119,4 @@ fn latest(stored: &[Forecast], before: Option<SystemTime>) -> Vec<ForecastPoint>
 fn instant(text: &str) -> Result<SystemTime, Problem> {
     let instant: jiff::Timestamp = text.parse().map_err(|_| QUERY)?;
     Ok(instant.into())
-}
-
-fn rfc3339(time: SystemTime) -> String {
-    jiff::Timestamp::try_from(time)
-        .map(|t| t.to_string())
-        .unwrap_or_default()
 }

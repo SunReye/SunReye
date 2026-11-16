@@ -2,7 +2,6 @@
 //! its stored series.
 
 use std::collections::BTreeMap;
-use std::time::SystemTime;
 
 use axum::Json;
 use axum::extract::State;
@@ -10,7 +9,7 @@ use serde::Serialize;
 use sunreye_profile::RoleKind;
 use utoipa::ToSchema;
 
-use super::{Problem, ProblemDetails, internal};
+use super::{Problem, ProblemDetails, internal, rfc3339};
 use crate::bus::DeviceId;
 use crate::devices::Devices;
 use crate::storage::{Catalogued, Reader};
@@ -122,10 +121,4 @@ fn view(stored: Catalogued) -> CatalogSeries {
         first: rfc3339(stored.first),
         last: rfc3339(stored.last),
     }
-}
-
-fn rfc3339(time: SystemTime) -> String {
-    jiff::Timestamp::try_from(time)
-        .map(|t| t.to_string())
-        .unwrap_or_default()
 }

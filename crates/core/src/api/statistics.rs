@@ -18,7 +18,7 @@ use utoipa::{IntoParams, ToSchema};
 
 use super::history::{DAY_SPAN, HOUR_SPAN};
 use super::{Code, Problem, ProblemDetails};
-use crate::api::internal;
+use crate::api::{internal, rfc3339};
 use crate::bus::{DeviceId, Series};
 use crate::storage::{Aggregate, Reader, Rollup, Tier};
 
@@ -309,10 +309,4 @@ fn figures(date: Date, bounds: &Range<SystemTime>, aggregate: Aggregate) -> Figu
 fn instant(text: &str) -> Result<SystemTime, Problem> {
     let instant: Timestamp = text.parse().map_err(|_| QUERY)?;
     Ok(instant.into())
-}
-
-fn rfc3339(time: SystemTime) -> String {
-    Timestamp::try_from(time)
-        .map(|t| t.to_string())
-        .unwrap_or_default()
 }
