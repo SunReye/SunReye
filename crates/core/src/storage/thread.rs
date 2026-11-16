@@ -450,9 +450,7 @@ impl Store {
             }
             Request::Rewriting(request) => self.rewriting(request),
             Request::Forecasting(request) => self.forecasting(request),
-            Request::Catalog(reply) => {
-                reply.send(catalog::catalog(&self.db)).ok();
-            }
+            Request::Catalog(reply) => _ = reply.send(catalog::catalog(&self.db)),
             Request::Problems(reply) => {
                 let unsynced = self.unsynced.then_some(Problem::ClockUnsynced);
                 let full = self.full.then_some(Problem::StorageFull);
