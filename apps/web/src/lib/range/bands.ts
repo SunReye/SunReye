@@ -214,9 +214,18 @@ export interface Tick {
 const axis = (v: number): string =>
   new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 1 }).format(v);
 
-/** Gridlines at the top, the half and the baseline, and the lower side's depth. */
+/** The multiples of `step` up to `depth`, from the first. */
+const steps = (depth: number, step: number): number[] =>
+  Array.from({ length: Math.floor(depth / step + 1e-9) }, (_, i) => (i + 1) * step);
+
+/**
+ * Gridlines at the baseline and at each half of the taller side; the other side mirrors that step
+ * as far as it reaches, so both read on one scale and no lone figure marks the plot's foot.
+ */
 export function ticksOf(s: Scale, format: (v: number) => string = axis): Tick[] {
-  const values = [s.upMax, s.upMax / 2, 0, ...(s.downMax > 0 ? [-s.downMax] : [])];
+  const step = Math.max(s.upMax, s.downMax) / 2;
+  const below = steps(s.downMax, step).map((v) => -v);
+  const values = [...steps(s.upMax, step).toReversed(), 0, ...below];
 
   return values.map((v) => ({
     key: String(v),
