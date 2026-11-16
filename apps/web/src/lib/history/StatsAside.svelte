@@ -2,21 +2,24 @@
 <script lang="ts">
   import type { Payback } from "../api/tariff.ts";
   import BreakdownCard from "./BreakdownCard.svelte";
-  import type { Row } from "./breakdown.ts";
   import Filling from "./Filling.svelte";
   import type { Note } from "./notes.ts";
   import NotesCard from "./NotesCard.svelte";
   import PaybackCard from "./PaybackCard.svelte";
-  import type { Peak } from "./peaks.ts";
   import PeaksCard from "./PeaksCard.svelte";
   import type { Range } from "../range/range.ts";
+  import type { Summary } from "./summary.ts";
+
+  const NOTHING: Pick<Summary, "breakdown" | "against" | "peaks" | "notes"> = {
+    breakdown: [],
+    against: "",
+    peaks: [],
+    notes: [],
+  };
 
   let {
     label,
-    rows,
-    against,
-    peaks,
-    notes,
+    summary,
     loading,
     fresh,
     since,
@@ -29,11 +32,8 @@
   }: {
     /** The range's label. */
     label: string;
-    rows: readonly Row[];
-    /** What the breakdown's changes are against. */
-    against: string;
-    peaks: readonly Peak[];
-    notes: readonly Note[];
+    /** Null before the first range is read: the breakdown stands empty. */
+    summary: Summary | null;
     loading: boolean;
     /** Recording began days ago: what fills in replaces payback. */
     fresh: boolean;
@@ -47,17 +47,19 @@
     onrange: (range: Range) => void;
     onpayback: () => void;
   } = $props();
+
+  const shown = $derived(summary ?? NOTHING);
 </script>
 
 <aside class="grid content-start gap-4 sm:max-lg:grid-cols-2">
-  <BreakdownCard {label} {rows} {against} {loading} />
+  <BreakdownCard {label} rows={shown.breakdown} against={shown.against} {loading} />
 
-  {#if peaks.length > 0 && !loading}
-    <PeaksCard {label} {peaks} onopen={onrange} />
+  {#if shown.peaks.length > 0 && !loading}
+    <PeaksCard {label} peaks={shown.peaks} onopen={onrange} />
   {/if}
 
-  {#if notes.length > 0 && !loading}
-    <NotesCard {notes} {onnote} />
+  {#if shown.notes.length > 0 && !loading}
+    <NotesCard notes={shown.notes} {onnote} />
   {/if}
 
   {#if fresh}

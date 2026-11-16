@@ -115,6 +115,20 @@ export class Statistics {
     }),
   );
 
+  /** Null for a viewer, and until the facts are read. */
+  get payback(): Facts["payback"] {
+    return this.facts?.payback ?? null;
+  }
+
+  /** The payback tab is open, so the card beside the chart steps back. */
+  get paybackOpen(): boolean {
+    return this.view.metric === "money" && this.view.tab === "payback";
+  }
+
+  openPayback = (): void => {
+    this.open({ metric: "money", tab: "payback" });
+  };
+
   get tabs(): StatsView["tab"][] {
     return tabsOf(this.view.metric, this.facts?.battery ?? false);
   }

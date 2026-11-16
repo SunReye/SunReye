@@ -42,21 +42,16 @@
     {#if !s.data.failed}
       <StatsAside
         label={s.route.label}
-        rows={summary?.breakdown ?? []}
-        against={summary?.against ?? ""}
-        peaks={summary?.peaks ?? []}
-        onrange={s.route.open}
-        notes={summary?.notes ?? []}
+        {summary}
         loading={s.data.loading}
         fresh={s.fresh}
         since={s.since}
         today={s.today}
-        payback={s.facts?.payback ?? null}
-        tucked={s.view.metric === "money" && s.view.tab === "payback"}
+        payback={s.payback}
+        tucked={s.paybackOpen}
         onnote={s.follow}
-        onpayback={() => {
-          s.open({ metric: "money", tab: "payback" });
-        }}
+        onrange={s.route.open}
+        onpayback={s.openPayback}
       />
     {/if}
   </div>

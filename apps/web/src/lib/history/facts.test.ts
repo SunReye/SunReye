@@ -24,37 +24,46 @@ const DAY_SPAN = 1498 * 23 * 3_600_000;
 /** The year each statistics read began in. */
 const asked: number[] = [];
 
+const PROBLEM = { "content-type": "application/problem+json" };
+
+const refusal = (status: number, code: string) =>
+  Response.json({ status, code }, { status, headers: PROBLEM });
+
+/** Reads a request's query parameter. */
+type Query = (name: string) => string;
+
+/** A statistics read: refused past the core's cap, else answered by its period. */
+function statistics(q: Query, answer: (key: string) => object): Response {
+  const span = Date.parse(q("to")) - Date.parse(q("from"));
+
+  if (!(span <= DAY_SPAN)) return refusal(422, "history.range");
+
+  asked.push(new Date(q("from")).getUTCFullYear());
+
+  return Response.json(answer(q("period")));
+}
+
 /** The core answering by the path's last part, statistics by period; a viewer is refused payback. */
 function core(viewer = false, rolledUp = true) {
   const answers = new Map<string, object>(Object.entries(ANSWERS));
 
   if (!rolledUp) answers.set("records", { years: [] });
 
+  const answer = (key: string) => answers.get(key) ?? {};
+
+  const reads = new Map<string, (q: Query) => Response>([
+    ["statistics", (q) => statistics(q, answer)],
+    ...(viewer ? [["payback", () => refusal(403, "auth.forbidden")] as const] : []),
+  ]);
+
   return connect({
     base: "http://core.test/",
     fetch: (request) => {
       const url = new URL(request.url);
-      const last = url.pathname.split("/").at(-1);
-      const key = last === "statistics" ? url.searchParams.get("period") : last;
-      const problem = { status: 403, headers: { "content-type": "application/problem+json" } };
+      const last = url.pathname.split("/").at(-1) ?? "";
+      const read = reads.get(last) ?? (() => Response.json(answer(last)));
 
-      const span =
-        Date.parse(url.searchParams.get("to") ?? "") -
-        Date.parse(url.searchParams.get("from") ?? "");
-
-      if (last === "statistics" && !(span <= DAY_SPAN))
-        return Promise.resolve(
-          Response.json({ status: 422, code: "history.range" }, { ...problem, status: 422 }),
-        );
-
-      if (last === "statistics")
-        asked.push(new Date(url.searchParams.get("from")!).getUTCFullYear());
-
-      return Promise.resolve(
-        viewer && key === "payback"
-          ? Response.json({ status: 403, code: "auth.forbidden" }, problem)
-          : Response.json(answers.get(key ?? "") ?? {}),
-      );
+      return Promise.resolve(read((name) => url.searchParams.get(name) ?? ""));
     },
   });
 }
