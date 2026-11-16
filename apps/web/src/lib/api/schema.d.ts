@@ -191,7 +191,8 @@ export interface paths {
         };
         /**
          * What the plant paid, earned and saved per plant-local day, from the daily rollups of the
-         *     `cost.*` rates; the current day runs to the latest reading.
+         *     `cost.*` rates; the current day runs to the latest reading. Each day also owes its share of the
+         *     month's standing charge, today up to now, with or without a reading.
          */
         get: operations["costs"];
         put?: never;
@@ -1252,7 +1253,7 @@ export interface components {
          * @description Every stable machine code the core answers with; the SPA maps each to text (ADR 11).
          * @enum {string}
          */
-        Code: "request.route" | "request.method" | "request.path" | "request.query" | "request.body" | "auth.setup" | "auth.required" | "auth.credentials" | "auth.backoff" | "auth.configured" | "auth.password" | "auth.forbidden" | "viewer.none" | "viewer.name" | "viewer.value" | "token.none" | "token.value" | "history.range" | "history.counter" | "forecast.range" | "role.none" | "layout.none" | "layout.device" | "layout.input" | "layout.string" | "layout.module-type" | "layout.value" | "layout.scene" | "layout.setback" | "layout.overlap" | "layout.covered" | "car.size" | "car.file" | "car.uri" | "car.none" | "topology.none" | "topology.tree" | "topology.point" | "topology.claim" | "topology.role" | "topology.device" | "tariff.none" | "tariff.band" | "tariff.past" | "tariff.retention" | "investment.value" | "location.none" | "location.value" | "retention.value" | "zone.value" | "connection.none" | "connection.value" | "connection.poll-seconds" | "connection.in-use" | "device.none" | "device.connection" | "device.transport" | "device.profile" | "device.profile-change" | "device.address" | "deadband.role" | "deadband.kind" | "deadband.step" | "scan.subnet" | "scan.busy" | "setting.none" | "setting.read-only" | "setting.value" | "setting.writes-off" | "setting.interval" | "setting.precondition" | "setting.community" | "setting.no-snapshot" | "setting.not-enabled" | "secret.missing" | "secret.value" | "index.value" | "update.none" | "import.busy" | "import.path" | "import.size" | "import.file" | "import.device" | "import.profile" | "backup.name" | "backup.exists" | "clock.unsynced" | "storage.full" | "internal";
+        Code: "request.route" | "request.method" | "request.path" | "request.query" | "request.body" | "auth.setup" | "auth.required" | "auth.credentials" | "auth.backoff" | "auth.configured" | "auth.password" | "auth.forbidden" | "viewer.none" | "viewer.name" | "viewer.value" | "token.none" | "token.value" | "history.range" | "history.counter" | "forecast.range" | "role.none" | "layout.none" | "layout.device" | "layout.input" | "layout.string" | "layout.module-type" | "layout.value" | "layout.scene" | "layout.setback" | "layout.overlap" | "layout.covered" | "car.size" | "car.file" | "car.uri" | "car.none" | "topology.none" | "topology.tree" | "topology.point" | "topology.claim" | "topology.role" | "topology.device" | "tariff.none" | "tariff.band" | "tariff.charge" | "tariff.past" | "tariff.retention" | "investment.value" | "location.none" | "location.value" | "retention.value" | "zone.value" | "connection.none" | "connection.value" | "connection.poll-seconds" | "connection.in-use" | "device.none" | "device.connection" | "device.transport" | "device.profile" | "device.profile-change" | "device.address" | "deadband.role" | "deadband.kind" | "deadband.step" | "scan.subnet" | "scan.busy" | "setting.none" | "setting.read-only" | "setting.value" | "setting.writes-off" | "setting.interval" | "setting.precondition" | "setting.community" | "setting.no-snapshot" | "setting.not-enabled" | "secret.missing" | "secret.value" | "index.value" | "update.none" | "import.busy" | "import.path" | "import.size" | "import.file" | "import.device" | "import.profile" | "backup.name" | "backup.exists" | "clock.unsynced" | "storage.full" | "internal";
         Condition: {
             /** @description A stable machine code, such as `clock.unsynced`. */
             code: components["schemas"]["Code"];
@@ -1907,6 +1908,11 @@ export interface components {
              * @description The bill without the plant less the bill with it.
              */
             saved: number;
+            /**
+             * Format: double
+             * @description The standing charge owed, in no other figure.
+             */
+            standing: number;
         };
         NewIndex: {
             /** @description The `index.json` URL. */
@@ -2223,6 +2229,11 @@ export interface components {
             appliesFrom: string;
             export: components["schemas"]["ScheduleView"];
             import: components["schemas"]["ScheduleView"];
+            /**
+             * Format: double
+             * @description EUR a month, from 0 up; none when absent.
+             */
+            standingCharge?: number;
         };
         /** @description The deadband a role of a device is stored with. */
         RoleDeadband: {
@@ -2449,6 +2460,11 @@ export interface components {
             export: components["schemas"]["ScheduleView"];
             /** @description What a kWh bought from the grid costs. */
             import: components["schemas"]["ScheduleView"];
+            /**
+             * Format: double
+             * @description EUR a month, owed whatever is bought; none is 0.
+             */
+            standingCharge: number;
         };
         /** @description A tariff change, applying from an instant on. */
         TariffChange: {
@@ -2456,6 +2472,11 @@ export interface components {
             appliesFrom?: string | null;
             export: components["schemas"]["ScheduleView"];
             import: components["schemas"]["ScheduleView"];
+            /**
+             * Format: double
+             * @description EUR a month, from 0 up; none when absent.
+             */
+            standingCharge?: number;
         };
         /**
          * @description `raw` intervals between change points, UTC-aligned buckets of them, or `hour` (UTC) or

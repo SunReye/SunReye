@@ -9,6 +9,7 @@ const TARIFF = {
   appliesFrom: "2026-11-13T12:00:00Z",
   import: { price: 0.3, bands: [] },
   export: { price: 0.08, bands: [] },
+  standingCharge: 0,
 };
 
 afterEach(() => {

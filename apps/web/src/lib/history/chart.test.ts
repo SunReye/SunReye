@@ -150,7 +150,7 @@ test("autarky: where each band's house load came from, in shares to 100 %", () =
 });
 
 test("money comes by the day: savings above zero, the bill below", () => {
-  const days = [{ start: at(0), end: at(24), paid: 3, earned: 1, saved: 4 }];
+  const days = [{ start: at(0), end: at(24), paid: 3, earned: 1, saved: 4, standing: 0 }];
 
   const chart = chartOf("money", loaded(PLANT, days));
 
@@ -168,12 +168,16 @@ test("each bar carries the same band of the period before as its mark", () => {
 });
 
 test("money marks the savings of the day before; autarky has no mark", () => {
-  const before = [{ start: at(-24), end: at(0), paid: 1, earned: 1, saved: 2.5 }];
+  const before = [{ start: at(-24), end: at(0), paid: 1, earned: 1, saved: 2.5, standing: 0 }];
 
-  const got = loaded(PLANT, [{ start: at(0), end: at(24), paid: 3, earned: 1, saved: 4 }], {
-    plant: BEFORE,
-    days: before,
-  });
+  const got = loaded(
+    PLANT,
+    [{ start: at(0), end: at(24), paid: 3, earned: 1, saved: 4, standing: 0 }],
+    {
+      plant: BEFORE,
+      days: before,
+    },
+  );
 
   expect(chartOf("money", got).bands[0]!.mark).toBe(2.5);
 

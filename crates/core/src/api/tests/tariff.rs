@@ -69,6 +69,7 @@ pub(super) fn weeknights(applies_from: &str) -> Value {
             "bands": [{ "days": [1, 2, 3, 4, 5], "from": "22:00", "to": "24:00", "price": 0.20 }],
         },
         "export": { "price": 0.08, "bands": [] },
+        "standingCharge": 0.0,
     })
 }
 
@@ -345,14 +346,108 @@ async fn costs_are_served_per_plant_local_day_with_their_total() {
             "days": [
                 {
                     "start": "2026-11-01T00:00:00Z", "end": "2026-11-02T00:00:00Z",
-                    "paid": 0.0, "earned": 0.32, "saved": 0.62,
+                    "paid": 0.0, "earned": 0.32, "saved": 0.62, "standing": 0.0,
                 },
                 {
                     "start": "2026-11-02T00:00:00Z", "end": "2026-11-03T00:00:00Z",
-                    "paid": 0.3, "earned": 0.0, "saved": 0.15,
+                    "paid": 0.3, "earned": 0.0, "saved": 0.15, "standing": 0.0,
                 },
             ],
-            "total": { "paid": 0.3, "earned": 0.32, "saved": 0.77 },
+            "total": { "paid": 0.3, "earned": 0.32, "saved": 0.77, "standing": 0.0 },
+        })
+    );
+}
+
+#[tokio::test]
+async fn a_tariff_carries_a_standing_charge_none_unless_given() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::on_2026_11_09(&dir.path().join("core.sqlite")).await;
+    let mut charged = weeknights("2026-12-01T00:00:00Z");
+    charged["standingCharge"] = json!(16.0);
+    let (status, set) = core.put_tariff(&set_cookie, &charged).await;
+    assert_eq!((status, &set), (StatusCode::OK, &charged));
+    assert_eq!(
+        core.tariff_at(&set_cookie, "2026-12-24T00:00:00Z").await,
+        (StatusCode::OK, charged)
+    );
+
+    let mut bare = weeknights("2027-01-01T00:00:00Z");
+    bare.as_object_mut().unwrap().remove("standingCharge");
+    let (status, set) = core.put_tariff(&set_cookie, &bare).await;
+    assert_eq!(
+        (status, &set["standingCharge"]),
+        (StatusCode::OK, &json!(0.0))
+    );
+}
+
+#[tokio::test]
+async fn a_negative_standing_charge_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::on_2026_11_09(&dir.path().join("core.sqlite")).await;
+    let mut tariff = weeknights("2026-12-01T00:00:00Z");
+    tariff["standingCharge"] = json!(-1.0);
+
+    let (status, body) = core.put_tariff(&set_cookie, &tariff).await;
+    assert_eq!(
+        (status, &body["code"]),
+        (StatusCode::UNPROCESSABLE_ENTITY, &json!("tariff.charge"))
+    );
+    let reprice = send("POST", "/api/v1/tariff/reprice", &tariff);
+    let (status, body) = core.ask(&set_cookie, reprice).await;
+    assert_eq!(
+        (status, &body["code"]),
+        (StatusCode::UNPROCESSABLE_ENTITY, &json!("tariff.charge"))
+    );
+}
+
+#[tokio::test]
+async fn each_day_owes_its_share_of_the_standing_charge_reading_or_not() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::on_2026_11_09(&dir.path().join("core.sqlite")).await;
+    // 1 kW bought for an hour on the 7th while the house uses 1.5 kW; the 6th and 8th are silent.
+    core.flows(
+        "2026-11-07T00:00:00Z",
+        &[(0, Some((1000.0, 1500.0))), (3600, None)],
+    )
+    .await;
+    let fixed = json!({
+        "appliesFrom": "2026-11-06T00:00:00Z",
+        "import": { "price": 0.30, "bands": [] },
+        "export": { "price": 0.08, "bands": [] },
+        "standingCharge": 15.0,
+    });
+    let (status, _) = core
+        .ask(&set_cookie, send("POST", "/api/v1/tariff/reprice", &fixed))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    // Now is 2026-11-09 12:00: half of today.
+    core.set_clock(UNIX_EPOCH + Duration::from_hours(498_384 + 12));
+
+    let uri = "/api/v1/costs?from=2026-11-05T00:00:00Z&to=2026-11-30T00:00:00Z";
+    let (status, costs) = core.ask(&set_cookie, get(uri)).await;
+
+    assert_eq!(status, StatusCode::OK, "{costs}");
+    // 15 EUR over November's 30 days is 0.50 a day; the savings stay 1.5 kWh × 0.30 less the
+    // 0.30 paid.
+    let silent = |start: &str, end: &str, standing: f64| {
+        json!({
+            "start": start, "end": end,
+            "paid": 0.0, "earned": 0.0, "saved": 0.0, "standing": standing,
+        })
+    };
+    assert_eq!(
+        costs,
+        json!({
+            "days": [
+                silent("2026-11-06T00:00:00Z", "2026-11-07T00:00:00Z", 0.5),
+                {
+                    "start": "2026-11-07T00:00:00Z", "end": "2026-11-08T00:00:00Z",
+                    "paid": 0.3, "earned": 0.0, "saved": 0.15, "standing": 0.5,
+                },
+                silent("2026-11-08T00:00:00Z", "2026-11-09T00:00:00Z", 0.5),
+                silent("2026-11-09T00:00:00Z", "2026-11-10T00:00:00Z", 0.25),
+            ],
+            "total": { "paid": 0.3, "earned": 0.0, "saved": 0.15, "standing": 1.75 },
         })
     );
 }

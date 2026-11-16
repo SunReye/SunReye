@@ -39,6 +39,7 @@
   "problem_topology_device": "Ein Messpunkt nennt ein unbekanntes Gerät.",
   "problem_tariff_none": "Zu diesem Zeitpunkt gilt kein Tarif.",
   "problem_tariff_band": "Ein Zeitfenster braucht Wochentage von 1 bis 7 und eine Spanne eines Tages von HH:MM bis zu einem späteren HH:MM, ohne ein anderes Zeitfenster derselben Richtung zu überschneiden.",
+  "problem_tariff_charge": "Ein Grundpreis ist ein Betrag ab 0.",
   "problem_tariff_past": "Eine Tarifänderung gilt ab jetzt oder später; bereits geltende Preise bleiben unverändert.",
   "problem_tariff_retention": "Eine Neuberechnung reicht nur so weit zurück, wie der Verlauf gespeichert ist.",
   "problem_investment_value": "Eine Investition ist ein Betrag in EUR über null.",

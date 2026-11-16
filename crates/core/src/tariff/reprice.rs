@@ -7,7 +7,7 @@ use axum::http::StatusCode;
 
 use super::cost::replay;
 use super::device::{self, DEVICE};
-use super::{BAND, Tariffs, Version, in_force, store, wake};
+use super::{Tariffs, Version, in_force, store, wake};
 use crate::api::{Code, Problem, internal};
 use crate::bus::Series;
 use crate::changes::Action;
@@ -29,14 +29,12 @@ impl Tariffs {
     ///
     /// # Errors
     /// It applies from before change-point retention, a band is not one span of a day or overlaps
-    /// another of its flow, or the file cannot be written.
+    /// another of its flow, the standing charge is negative, or the file cannot be written.
     pub async fn reprice(&self, version: Version, now: SystemTime) -> Result<Version, Problem> {
         if version.applies_from + self.retention.get() < now {
             return Err(RETAINED);
         }
-        if !(version.import.valid() && version.export.valid()) {
-            return Err(BAND);
-        }
+        version.check()?;
         let stored = self
             .database
             .run(move |db| store::insert(db, version, now, Action::Reprice))
