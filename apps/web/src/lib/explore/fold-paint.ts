@@ -1,7 +1,7 @@
 // The fold chart's one canvas (ADR 22): a bar per period on the time axis, with its min–max
 // whisker. A month of hours is 744 bars, too many to mount as elements; redrawn when the bars, the
 // size or the theme change.
-import { repainted } from "../analytics/paint.ts";
+import { redrawn } from "../canvas-redraw.ts";
 import { place, type Scale } from "../range/bands.ts";
 
 /** A bar: its span as shares of the plot's width, its value, and its whisker's ends. */
@@ -110,7 +110,7 @@ export function paintFold(canvas: HTMLCanvasElement, what: FoldPainting): () => 
 
   const { solve, stop } = solver(canvas);
 
-  const still = repainted(canvas, () => {
+  const still = redrawn(canvas, () => {
     draw(canvas, ctx, solve, what);
   });
 

@@ -5,19 +5,22 @@
   import * as Collapsible from "#lib/components/ui/collapsible/index.js";
   import { Pressable } from "#lib/components/ui/pressable/index.js";
   import { haptics } from "../haptics.ts";
-  import type { PickerGroup } from "./picker.ts";
+  import type { PickerGroup, PickerSeries } from "./picker.ts";
   import type { SeriesRef } from "./view.ts";
 
   let {
     group,
     untitled = false,
     chosen,
+    full,
     onpick,
   }: {
     group: PickerGroup;
     /** The device's heading already says the group's title. */
     untitled?: boolean;
     chosen: (ref: SeriesRef) => boolean;
+    /** Whether the chart has no room for a series that is not chosen (ADR 22). */
+    full: (series: PickerSeries) => boolean;
     onpick: (ref: SeriesRef) => void;
   } = $props();
 
@@ -28,10 +31,12 @@
   <ul class="divide-y divide-border/40">
     {#each group.series as each (each.ref.series)}
       {@const on = chosen(each.ref)}
+      {@const off = !on && full(each)}
       <li>
         <Pressable
           feedback
           aria-pressed={on}
+          disabled={off}
           class={[
             "flex min-h-10 w-full items-center gap-2 px-4 py-1.5 text-left touch:min-h-12",
             on && "bg-foreground/[0.05]",
