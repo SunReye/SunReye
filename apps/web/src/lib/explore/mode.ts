@@ -1,5 +1,5 @@
 // What each mode's chart is given (ADR 22): the chosen series as the catalog knows them, the range
-// and the overlay's periods. Series (#793), Overlay (#794) and Fold (#795) each fill their pane.
+// and the overlay's periods.
 import type { RangeRoute } from "../range/route.svelte.ts";
 import type { Table } from "./csv.ts";
 import type { CatalogState, ExploreCore } from "./explore.svelte.ts";
