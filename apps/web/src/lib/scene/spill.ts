@@ -3,7 +3,7 @@
 import { BufferGeometry, Float32BufferAttribute, Mesh } from "three";
 import type { Face, Fitted, Point } from "../builder/pv.ts";
 import { clipped, landingUnder, type Landing, type Plan } from "./landing.ts";
-import { spilled } from "./materials.ts";
+import { spilled } from "./decals.ts";
 
 /** In metres and metres per metre of sill height. Light leaves through the opening and falls at
  * an angle, so its patch begins `start` out from the wall and `slope` further per metre of sill,

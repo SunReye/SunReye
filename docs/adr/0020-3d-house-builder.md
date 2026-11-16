@@ -80,10 +80,14 @@ The PV layout (ADR 17) is entered as numbers: planes, module counts, MPPT inputs
 - **Theme:** the page background, fog and exposure follow light or dark mode.
 - **Rendering quality:** antialiasing is on, and tone mapping is filmic. A per-browser *3D quality* under Settings › Display chooses Auto, Niedrig, Mittel, Hoch or Ultra; it governs only how the scene is drawn, while the motion tiers (ADR 21) keep governing what moves.
   - *Niedrig:* the pixel ratio at 1, a 1024 shadow map, no ambient occlusion, no weathering.
-  - *Mittel:* what the full tier drew before: a 2048 shadow map, ambient occlusion, weathering, the pixel ratio up to 1.5.
+  - *Mittel:* a 2048 shadow map, ambient occlusion at up to its own pixel ratio, weathering and variation, the pixel ratio up to 1.5.
   - *Hoch:* also soft contact-hardening shadows from a 4096 map, a relief normal on every finish (tile courses, plaster, bark, the lawn's blades), the sky model as the reflections on glass and module covers, and a faint bloom on the sun's glints; the pixel ratio up to 2.
   - *Ultra:* also temporal antialiasing, ambient occlusion at full resolution, instanced grass blades on the lawn near the blocks, and the pixel ratio of the device.
   - *Auto* starts at Hoch where WebGL2 reports a discrete or capable GPU and at Mittel elsewhere, and steps down a level each time the frame watch measures strain, remembered per browser like the tier. A chosen level stays where it is. The lite and still tiers cap Auto at Mittel. Nothing ships as a texture file at any level.
+    - A strain counts against the drawing only while a scene is on show. Above Mittel it takes a level off the drawing and leaves the motion tier; at Mittel the tier drops to lite first, and only a strain on lite takes Auto to Niedrig.
+    - On the lite and still tiers Auto draws Mittel without its ambient-occlusion pass (ADR 21) and keeps its variation. A chosen level draws all it lists on any tier.
+    - Ultra's temporal antialiasing is a burst of 16 frames after the picture settles, each begun once the GPU has drawn the last; a frame over 50 ms ends the burst, and any change starts it over.
+    - Moss takes the north-facing slope for the shaded side: a plant south of the equator is not told apart yet.
 
 **Motion.** There is still no continuous loop. Short ease-in-out tweens run, then rendering stops:
 - the camera flies to a preset in about 600 ms;

@@ -1,15 +1,13 @@
 // The studio the scene is drawn in (ADR 20 Look): renderer, sun and moon, sky environment, a
-// backdrop in the page colour, a lawn that fades into it, and one ambient-occlusion pass. It draws
-// only when asked: never in a loop.
+// backdrop in the page colour, a lawn that fades into it, and the passes its 3D quality asks for.
+// It draws only when asked: never in a loop.
 import {
   ACESFilmicToneMapping,
   Color,
   DirectionalLight,
   Fog,
-  HalfFloatType,
   HemisphereLight,
   type Object3D,
-  PCFShadowMap,
   type PerspectiveCamera,
   PMREMGenerator,
   Scene,
@@ -18,61 +16,24 @@ import {
   Vector2,
   Vector3,
   WebGLRenderer,
-  WebGLRenderTarget,
+  type WebGLRenderTarget,
 } from "three";
-import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
-import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
-import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
-import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { toThree } from "../builder/scene.ts";
-import type { MotionTier } from "../motion/tier.ts";
 import { aim, backdrop, ground, sky } from "./backdrop.ts";
-import { occlusion, untone, type Daylight, type Theme } from "./light.ts";
-import { weatherFinishes } from "./weather.ts";
-
-/** Soft shadows: PCF with a radius, as r187 dropped PCFSoftShadowMap. */
-// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js sets it up in place.
-function soften(sun: DirectionalLight): void {
-  const shadow = sun.shadow;
-
-  sun.castShadow = true;
-  shadow.mapSize.set(2048, 2048);
-  shadow.bias = -0.00025;
-  shadow.normalBias = 0.035;
-  shadow.blurSamples = 16;
-}
-
-/** One ambient-occlusion pass, as the prototype tuned it. */
-// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js reads them.
-function ambientOcclusion(scene: Scene, camera: PerspectiveCamera): GTAOPass {
-  const pass = new GTAOPass(scene, camera, 1, 1);
-
-  pass.blendIntensity = 0.9;
-  pass.updateGtaoMaterial({
-    radius: 0.7,
-    distanceExponent: 1.5,
-    thickness: 1.5,
-    scale: 1,
-    samples: 12,
-  });
-  pass.updatePdMaterial({
-    lumaPhi: 10,
-    depthPhi: 2,
-    normalPhi: 3,
-    radius: 6,
-    rings: 2,
-    samples: 12,
-  });
-
-  return pass;
-}
+import { finishIn, refinish } from "./finishes.ts";
+import { CLEAR_SHADOW, untone, type Daylight, type Theme } from "./light.ts";
+import { Passes } from "./passes.ts";
+import { gpuOf, type Look } from "./quality.ts";
+import { shade, shadowFor, soften } from "./sun-shadow.ts";
 
 export class Studio {
   readonly renderer: WebGLRenderer;
   readonly scene = new Scene();
 
-  readonly #composer: EffectComposer;
-  readonly #occlusion: GTAOPass;
+  readonly #passes: Passes;
+  #look: Look;
+  /** The shadow's spread under the sky last lit: 1 when clear. */
+  #spread = 1;
   readonly #sun = new DirectionalLight(0xffffff, 3);
   /** A faint sky and ground bounce on top of the image-based light; at night, the sky itself. */
   readonly #fill = new HemisphereLight();
@@ -94,17 +55,22 @@ export class Studio {
   #held: readonly [Daylight, Theme] | null | undefined = null;
   #size: readonly [number, number] = [1, 1];
 
-  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws on them.
-  constructor(canvas: HTMLCanvasElement, camera: PerspectiveCamera, tier: MotionTier) {
+  /** `look` is asked once, with the GPU this canvas draws on, where the browser tells. */
+  constructor(
+    // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws on it.
+    canvas: HTMLCanvasElement,
+    // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws with it.
+    camera: PerspectiveCamera,
+    look: (gpu: string | null) => Look,
+  ) {
     this.camera = camera;
     this.renderer = new WebGLRenderer({
       canvas,
       antialias: true,
       powerPreference: "high-performance",
     });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.#look = look(gpuOf(this.renderer.getContext()));
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = PCFShadowMap;
     this.renderer.toneMapping = ACESFilmicToneMapping;
     this.renderer.outputColorSpace = SRGBColorSpace;
     this.#pmrem = new PMREMGenerator(this.renderer);
@@ -112,28 +78,47 @@ export class Studio {
     soften(this.#sun);
     this.scene.add(this.#sun, this.#sun.target, this.#fill, ground(this.#fade));
 
-    // Multisampled HDR, then ambient occlusion, then tone mapping and sRGB.
-    this.#composer = new EffectComposer(
-      this.renderer,
-      new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples: 4 }),
-    );
-    this.#occlusion = ambientOcclusion(this.scene, camera);
-    this.#composer.addPass(new RenderPass(this.scene, camera));
-    this.#composer.addPass(this.#occlusion);
-    this.#composer.addPass(new OutputPass());
-    // Before the first frame: a finish is compiled for the tier it is first drawn on.
-    this.follow(tier);
+    this.#passes = new Passes(this.renderer, this.scene, camera);
+    // Before the first frame: a finish is compiled for the look it is first drawn in.
+    this.#apply();
+  }
+
+  /** What is drawn: the 3D quality's look. */
+  get look(): Look {
+    return this.#look;
   }
 
   /** Whether the ambient-occlusion pass runs. */
   get occlusion(): boolean {
-    return this.#occlusion.enabled;
+    return this.#passes.occlusion;
   }
 
-  /** Ambient occlusion and the finishes' extras run on the full motion tier only (ADR 21). */
-  follow(tier: MotionTier): void {
-    this.#occlusion.enabled = occlusion(tier);
-    weatherFinishes(tier === "full");
+  /** Device pixels drawn per CSS pixel. */
+  get pixelRatio(): number {
+    return Math.min(window.devicePixelRatio, this.#look.pixelRatio);
+  }
+
+  /** The sun's shadow map, in texels a side. */
+  get shadowMap(): number {
+    return this.#sun.shadow.mapSize.x;
+  }
+
+  /** Draws in `look` from the next frame on (ADR 20 Rendering quality). */
+  follow(look: Look): void {
+    if (look === this.#look) return;
+
+    const before = this.#look;
+
+    this.#look = look;
+    this.#apply();
+    this.setSize(...this.#size);
+    refinish(this.scene, before, look);
+  }
+
+  /** Hoch's reflections and relief on `part`, a build newly on show, or none below Hoch. */
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own.
+  dress(part: Object3D): void {
+    finishIn(part, this.#look);
   }
 
   /** Fits the sun's shadow and the lawn's fade to the plot: `centre` in three.js's frame. */
@@ -151,6 +136,7 @@ export class Studio {
     camera.far = this.#distance() * 2;
     camera.updateProjectionMatrix();
     this.#place();
+    this.#shade();
   }
 
   /** Sun or moon, sky, environment, backdrop, fog and exposure for the time and the theme. */
@@ -158,7 +144,8 @@ export class Studio {
     this.#toward.set(...toThree(day.toward));
     this.#sun.color.setRGB(day.colour.r, day.colour.g, day.colour.b);
     this.#sun.intensity = day.intensity;
-    this.#sun.shadow.radius = day.shadow;
+    this.#spread = day.shadow / CLEAR_SHADOW;
+    this.#shade();
     this.#fill.color.setRGB(day.fill.sky.r, day.fill.sky.g, day.fill.sky.b);
     this.#fill.groundColor.setRGB(day.fill.ground.r, day.fill.ground.g, day.fill.ground.b);
     this.#fill.intensity = day.fill.intensity;
@@ -176,6 +163,7 @@ export class Studio {
     const backdropped = JSON.stringify([page.r, page.g, page.b, look]);
 
     this.renderer.toneMappingExposure = look.exposure;
+    this.#passes.glint(Math.max(page.r, page.g, page.b), look.exposure);
 
     if (backdropped !== this.#backdropped) {
       this.#backdropped = backdropped;
@@ -190,19 +178,25 @@ export class Studio {
 
   setSize(width: number, height: number): void {
     this.#size = [width, height];
+    this.renderer.setPixelRatio(this.pixelRatio);
     this.renderer.setSize(width, height, false);
-    this.#composer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.#composer.setSize(width, height);
+    this.#passes.setSize(width, height, this.pixelRatio);
   }
 
+  /** Draws the scene as it is now. */
   render(): void {
-    this.#composer.render();
+    this.#passes.render();
+  }
+
+  /** Ultra's burst: one more frame into the settled picture; true while more are due. */
+  refine(): boolean {
+    return this.#passes.refine();
   }
 
   /** Compiles what `part` needs for the target the scene pass draws into: a program differs by it. */
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js compiles it.
   compile(part: Object3D, scene: Scene = this.scene): void {
-    this.renderer.setRenderTarget(this.#composer.readBuffer);
+    this.renderer.setRenderTarget(this.#passes.target);
     this.renderer.compile(part, this.camera, scene);
     this.renderer.setRenderTarget(null);
   }
@@ -210,7 +204,7 @@ export class Studio {
   /** The same for the whole scene, compiled in parallel; resolves once ready. */
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js compiles it.
   async compileAsync(scene: Scene = this.scene): Promise<void> {
-    this.renderer.setRenderTarget(this.#composer.readBuffer);
+    this.renderer.setRenderTarget(this.#passes.target);
 
     const ready = this.renderer.compileAsync(scene, this.camera, scene);
 
@@ -240,8 +234,7 @@ export class Studio {
   }
 
   dispose(): void {
-    this.#composer.dispose();
-    this.#occlusion.dispose();
+    this.#passes.dispose();
     this.#environment?.dispose();
     this.#backdrop?.dispose();
     this.#pmrem.dispose();
@@ -273,6 +266,18 @@ export class Studio {
     this.#environment?.dispose();
     this.#environment = this.#pmrem.fromScene(this.#skyScene, 0, 0.1, 2000);
     this.scene.environment = this.#environment.texture;
+  }
+
+  /** The look's passes, shadow map and finishes. */
+  #apply(): void {
+    this.#passes.follow(this.#look);
+    finishIn(this.scene, this.#look);
+    shadowFor(this.renderer, this.#sun, this.#look);
+    this.#shade();
+  }
+
+  #shade(): void {
+    shade(this.#sun, this.#look, this.#spread);
   }
 
   #distance(): number {

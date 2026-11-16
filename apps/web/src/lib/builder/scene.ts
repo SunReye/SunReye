@@ -179,6 +179,7 @@ const FLAT: ReadonlySet<string> = new Set([
   "trim",
   "opening",
   "spill",
+  "soil",
   "roofWindow",
 ]);
 
