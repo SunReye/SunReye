@@ -716,6 +716,7 @@
   "detail_live": "Live · letzte 2 Minuten",
   "detail_live_none": "Keine Werte in den letzten 2 Minuten",
   "detail_history": "Im Verlauf öffnen · {range}",
+  "detail_explore": "{label} in Erkunden öffnen",
   "detail_prices": "Spotpreise heute",
   "detail_no_prices": "Noch keine Preise für heute",
   "detail_analytics": "Verlauf",

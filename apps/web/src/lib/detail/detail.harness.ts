@@ -5,9 +5,9 @@ import { render } from "vitest-browser-svelte";
 import { connect, type Transport } from "../api/core.ts";
 import Dashboard from "../dashboard/Dashboard.svelte";
 
-const PLANT = "4294967294";
+export const PLANT = "4294967294";
 const SPOT = "4294967292";
-const INVERTER = "1";
+export const INVERTER = "1";
 export const BATTERY = "2";
 
 /** Midday: the plant's totals, an inverter with two inputs and a battery. */
@@ -49,9 +49,34 @@ export interface Served {
   tick: boolean;
   /** The stream breaks after its snapshot and the core is not heard from again. */
   breaks: boolean;
+  /** Per device, the series with stored history (ADR 22). */
+  stored: Readonly<Record<string, readonly string[]>>;
 }
 
-export const served: Served = { live: LIVE, stale: undefined, tick: false, breaks: false };
+export const served: Served = {
+  live: LIVE,
+  stale: undefined,
+  tick: false,
+  breaks: false,
+  stored: {},
+};
+
+/** The series catalog: each stored series a measurement since the month began. */
+function catalog(): Response {
+  const devices = Object.keys(served.stored).map((id) => ({
+    id: Number(id),
+    name: null,
+    removed: false,
+    series: (served.stored[id] ?? []).map((series) => ({
+      series,
+      kind: "measurement",
+      first: "2026-11-01T00:00:00Z",
+      last: "2026-11-12T12:00:00Z",
+    })),
+  }));
+
+  return Response.json({ devices });
+}
 
 const IMPORTING = { [PLANT]: { "grid.power": 800 } };
 
@@ -154,6 +179,7 @@ const TOPOLOGY = {
 const ROUTES = new Map<string, () => Response>([
   ["/api/v1/topology", () => Response.json(TOPOLOGY)],
   ["/api/v1/live", stream],
+  ["/api/v1/series", catalog],
   ["/api/v1/timezone", () => Response.json({ name: "UTC" })],
   [
     "/api/v1/layout",
@@ -211,6 +237,7 @@ export async function prepare(): Promise<void> {
   asked.length = 0;
   served.tick = false;
   served.breaks = false;
+  served.stored = {};
   ROUTES.set("/api/v1/live", stream);
   vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-12T12:20:00Z") });
   await cdp().send("Emulation.setEmulatedMedia", {
