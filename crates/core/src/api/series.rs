@@ -11,7 +11,7 @@ use utoipa::ToSchema;
 
 use super::{Problem, ProblemDetails, internal, rfc3339};
 use crate::bus::DeviceId;
-use crate::devices::Devices;
+use crate::devices::{Devices, Named};
 use crate::storage::{Catalogued, Reader};
 use crate::{plant, spot, tariff, weather};
 
@@ -89,7 +89,7 @@ pub async fn catalog(
         .await
         .map_err(internal)?
         .into_iter()
-        .map(|(id, name, removed)| (id, (name, removed)))
+        .map(|Named { id, name, removed }| (id, (name, removed)))
         .collect();
     let mut listed: Vec<CatalogDevice> = Vec::new();
     for series in stored {
