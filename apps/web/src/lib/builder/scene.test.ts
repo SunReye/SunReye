@@ -153,11 +153,14 @@ test("only a module carries maps, generated in code: all else is plain clay", ()
   expect(mapped.get("module")?.every((map) => map instanceof DataTexture)).toBe(true);
 });
 
-test("a crown is drawn at its centre and a pole stands on its base", () => {
+test("a crown is drawn at its centre; a pole stands on its base, its radius short of its height", () => {
   const [crown, pole] = buildScene(house).getObjectsByProperty("name", "solid");
+  const bounds = new Box3().setFromObject(pole ?? new Mesh());
 
   expect(crown?.position.toArray()).toEqual([-4, 8, 0]);
-  expect(pole?.position.toArray()).toEqual([3, 4.5, 2]);
+  expect(bounds.min.y).toBeCloseTo(0, 5);
+  expect(bounds.max.y).toBeCloseTo(8.7, 5);
+  expect([pole?.position.x, pole?.position.z]).toEqual([3, 2]);
 });
 
 test("a crown is one soft ball and the trunk beneath it a tone of its own; a lone pole is clay", () => {

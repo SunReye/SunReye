@@ -8,6 +8,8 @@ import {
   PlaneGeometry,
   Vector3,
 } from "three";
+import type { Face, Point } from "../builder/pv.ts";
+import { buildScene } from "../builder/scene.ts";
 import { daylight, theme } from "./light.ts";
 import * as finish from "./materials.ts";
 import { drawn, type Level } from "./quality.ts";
@@ -182,6 +184,69 @@ test("Hoch and Ultra draw every finish in Mittel's colours: a level adds sharpne
 
   // Niedrig, as a control: it draws without the occlusion that sets the sheets on the floor.
   expect(apart(sheets("low"), medium)).toBeGreaterThan(3);
+});
+
+/** A level roof 12 m square at 3 m as the scene builds it, filling the picture from above and
+ * in front under a high sun, wound toward the camera or away from it; with `wall`, a wall stands
+ * under its middle, up to the roof itself. */
+function roofed(level: Level, toward: boolean, wall: boolean): number[] {
+  // From afar through a long lens, as the dashboard sees a house: the depth buffer is coarse
+  // there, and what lies in one plane fights over it.
+  const camera = new PerspectiveCamera(8, 1, 0.1, 5000);
+
+  const square: Point[] = [
+    [-6, -6, 3],
+    [6, -6, 3],
+    [6, 6, 3],
+    [-6, 6, 3],
+  ];
+
+  const under: Face = {
+    surface: "wall",
+    corners: [
+      [-6, 0, 0],
+      [6, 0, 0],
+      [6, 0, 3],
+      [-6, 0, 3],
+    ],
+  };
+
+  camera.position.set(12, 48, 36);
+  camera.lookAt(0, 3, 0);
+  studio?.dispose();
+  studio = new Studio(document.createElement("canvas"), camera, () => look(level));
+  studio.setSize(SIDE, SIDE);
+  studio.scene.add(
+    buildScene({
+      faces: [
+        // Dark, so a pale wall showing through it tells.
+        { surface: "roof", corners: toward ? square : square.toReversed(), colour: "#203040" },
+        ...(wall ? [under] : []),
+      ],
+      solids: [],
+    }),
+  );
+  studio.frame(new Vector3(), 10);
+  studio.light(daylight([0.3, -0.4, 0.86]), theme(false), new Color(0.95, 0.95, 0.96));
+  studio.render();
+
+  return picture(studio);
+}
+
+test.each(["low", "medium", "high"] as const)(
+  "at %s a wall behind a roof changes none of the roof's pixels, however the roof is wound",
+  (level) => {
+    for (const toward of [true, false]) {
+      const bare = roofed(level, toward, false);
+
+      expect([toward, apart(roofed(level, toward, true), bare) < 1]).toEqual([toward, true]);
+    }
+  },
+);
+
+test("a face wound away from the camera is lit as one wound toward it", () => {
+  expect(apart(roofed("high", false, false), roofed("high", true, false))).toBeLessThan(1);
+  expect(apart(roofed("medium", false, false), roofed("medium", true, false))).toBeLessThan(1);
 });
 
 test("white clay in full sun stays under white, and its shade lies well apart from it", () => {

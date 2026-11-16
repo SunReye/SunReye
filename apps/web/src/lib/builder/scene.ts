@@ -6,6 +6,7 @@ import {
   DoubleSide,
   Float32BufferAttribute,
   Group,
+  Material,
   Mesh,
   type Object3D,
   type MeshStandardMaterial,
@@ -47,6 +48,23 @@ function surface(
   return mesh;
 }
 
+/**
+ * Pushes a wall a hair back in depth. Its top edge lies in its roof's plane: from afar the two
+ * share a depth there, and the wall would show through the roof as a broken line.
+ */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own objects.
+function behind(wall: Mesh): Mesh {
+  const material: unknown = wall.material;
+
+  if (material instanceof Material) {
+    material.polygonOffset = true;
+    material.polygonOffsetFactor = 1;
+    material.polygonOffsetUnits = 4;
+  }
+
+  return wall;
+}
+
 /** Whether a cylinder carries a crown straight above it: a trunk. */
 function trunk(
   { base, radius }: Readonly<Solid & { kind: "cylinder" | "cone" }>,
@@ -76,7 +94,10 @@ function solid(obstacle: Solid, solids: readonly Solid[]): Mesh {
     return top;
   }
 
-  const { base, radius, height } = obstacle;
+  const { base, radius } = obstacle;
+  // Drawn its radius short: a carport's post reaches its roof's highest corner over it, and
+  // would stand through the roof's slope.
+  const height = Math.max(obstacle.height - radius, 0);
 
   const upright = new Mesh(
     // A trunk tapers toward its crown.
@@ -131,7 +152,9 @@ function sections(geometry: Geometry, panels: readonly Panel[]): (() => Object3D
 
   return [
     () =>
-      painted(faces("wall")).map(([colour, walls]) => surface("wall", walls, finish.clay(colour))),
+      painted(faces("wall")).map(([colour, walls]) =>
+        behind(surface("wall", walls, finish.clay(colour))),
+      ),
     () => [
       ...painted(roofs.filter((face) => !level(face))).map(([colour, pitched]) =>
         surface("roof", pitched, finish.roofing(colour)),

@@ -39,7 +39,7 @@ vec2 softSlope( vec3 coord ) {
 	float det = dx.x * dy.y - dx.y * dy.x;
 	if ( abs( det ) < 1e-12 ) return vec2( 0.0 );
 	vec2 slope = vec2( dy.y * dx.z - dx.y * dy.z, dx.x * dy.z - dy.x * dx.z ) / det;
-	return clamp( slope, vec2( -2.0 ), vec2( 2.0 ) );
+	return clamp( slope, vec2( -8.0 ), vec2( 8.0 ) );
 }
 
 float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowIntensity, float shadowBias, float shadowRadius, vec4 shadowCoord ) {
@@ -98,12 +98,34 @@ export function softened(chunk: string): string {
   return `${chunk.slice(0, from)}${SAMPLING.trim()}${chunk.slice(from + close.index + close[0].length)}`;
 }
 
+/** How three.js's vertex chunk finds the normal it offsets a shadow lookup along. */
+const NORMAL =
+  "vec3 shadowWorldNormal = transformNormalByInverseViewMatrix( transformedNormal, viewMatrix );";
+
+/**
+ * The shadow vertex chunk with that normal turned toward the camera. The crate promises no
+ * winding, so a face's normal may point into its wall: the offset then pushes the lookup behind
+ * the face, which shadows itself. A matte white wall shows that as speckle; the side seen is
+ * the side shaded, so the offset belongs on it.
+ */
+export function faced(chunk: string): string {
+  if (!chunk.includes(NORMAL)) throw new Error("three.js's shadow normal offset has moved");
+
+  return chunk.replace(
+    NORMAL,
+    `${NORMAL}
+		if ( dot( shadowWorldNormal, cameraPosition - worldPosition.xyz ) < 0.0 ) shadowWorldNormal = - shadowWorldNormal;`,
+  );
+}
+
 let installed = false;
 
-/** Programs made from here on sample a basic shadow map softly. */
+/** Programs made from here on sample a basic shadow map softly, and offset every shadow lookup
+ * toward the camera's side of its face. */
 export function softShadows(): void {
   if (installed) return;
 
   installed = true;
   ShaderChunk.shadowmap_pars_fragment = softened(ShaderChunk.shadowmap_pars_fragment);
+  ShaderChunk.shadowmap_vertex = faced(ShaderChunk.shadowmap_vertex);
 }
