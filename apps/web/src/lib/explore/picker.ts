@@ -3,7 +3,7 @@
 import { PLANT, registered, SPOT, TARIFF, WEATHER } from "../api/computed-devices.ts";
 import type { CatalogDevice } from "../api/core.ts";
 import { m } from "../paraglide/messages.js";
-import { describe, EXTRA, namespaceOrder, namespaceTitle } from "./labels.ts";
+import { describe, EXTRA, namespaceOrder, namespaceTitle, seriesName } from "../roles.ts";
 import { same, type SeriesRef } from "./view.ts";
 
 /** A catalog device, read-only through and through. */
@@ -186,13 +186,12 @@ function listed(row: PickerSeries | undefined) {
 
 /** A chosen series; it is named before the catalog is read, and without it. */
 export function chosenOf(ref: SeriesRef, devices: readonly PickerDevice[]): Chosen {
-  const { namespace, label } = describe(ref.series);
   const device = devices.find((d) => d.id === ref.device);
   const row = device?.groups.flatMap((g) => g.series).find((s) => same(s.ref, ref));
 
   return {
     ref,
-    label: namespace === EXTRA ? label : `${namespaceTitle(namespace)} · ${label}`,
+    label: seriesName(ref.series),
     device: device?.name ?? nameOf(ref.device, null),
     removed: device?.removed ?? false,
     ...listed(row),

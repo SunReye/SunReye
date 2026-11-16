@@ -37,6 +37,31 @@ test("today's production overlays the inverters' forecast as a dashed curve; ano
   await expect.poll(curve).toBeNull();
 });
 
+test("a battery's overview names its charge and discharge sides, never its series id", async () => {
+  const { screen } = await show("battery");
+  const overview = screen.getByRole("dialog", { name: "Batterie" });
+
+  await expect.element(overview.getByRole("term").filter({ hasText: "Geladen" })).toBeVisible();
+  await expect.element(overview.getByRole("term").filter({ hasText: "Entladen" })).toBeVisible();
+  await expect.element(overview.getByText("3,0 kWh")).toBeVisible();
+  await expect.element(overview.getByText("2,0 kWh")).toBeVisible();
+  expect(overview.element().textContent).not.toContain("battery.power");
+  expect(
+    [...overview.element().querySelectorAll("[aria-label]")].map((e) =>
+      e.getAttribute("aria-label"),
+    ),
+  ).not.toContainEqual(expect.stringContaining("battery.power"));
+});
+
+test("a grid that only imported keys its upper side as imported, in the import colour", async () => {
+  const { screen } = await show("grid");
+  const sheet = screen.getByRole("dialog", { name: "Netz" });
+  const key = sheet.getByRole("term").filter({ hasText: "Bezogen" });
+
+  await expect.element(key).toBeVisible();
+  expect(key.element().previousElementSibling?.getAttribute("style")).toContain("var(--e-import)");
+});
+
 test("the heat tab reads the range's hours and draws them on one canvas", async () => {
   const { screen } = await show("production", "range=month&at=2026-10-01");
   const sheet = screen.getByRole("dialog", { name: "Produktion" });
