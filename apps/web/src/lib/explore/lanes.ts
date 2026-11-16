@@ -1,6 +1,6 @@
 // Series mode's lanes (ADR 22): series of one unit share a lane, and a chart holds at most six
 // series in four lanes. Pure: the picker asks what may still be added, the pane what to draw.
-import { flowColour, FLOWS, roleFlow } from "../energy-colours.ts";
+import { flowColour, roleFlow } from "../energy-colours.ts";
 import type { Chosen } from "./picker.ts";
 
 /** More cannot be read against each other, and bounds the reads to about six (ADR 22). */
@@ -45,13 +45,14 @@ export function blocked(chosen: readonly Placed[], candidate: Placed): "series" 
   return keys.size >= MAX_LANES && !keys.has(keyOf(candidate)) ? "lanes" : null;
 }
 
-/** A role's flow colour (ADR 21) while it is free, else the first flow colour that is. */
+/** For a further series of a flow: a flow's colour is that flow's alone (ADR 21). */
+const NEUTRAL = [1, 4, 5, 2, 3].map((n) => `var(--chart-${n})`);
+
+/** A role's flow colour while it is free, else the first neutral colour that is. */
 function colourOf(series: string, isTaken: (colour: string) => boolean): string {
   const own = flowColour(roleFlow(series));
 
-  return isTaken(own)
-    ? (FLOWS.map((flow) => flowColour(flow)).find((c) => !isTaken(c)) ?? own)
-    : own;
+  return isTaken(own) ? (NEUTRAL.find((c) => !isTaken(c)) ?? own) : own;
 }
 
 /** The chosen series in their lanes, in the order chosen, up to the caps. */

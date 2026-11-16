@@ -45,10 +45,13 @@ test("every drawn series has a colour of its own, a role's flow colour first", (
   const { lanes } = lanesOf([W(1), W(2), chosen("battery.soc", "%"), chosen("load.power", "W")]);
   const colours = lanes.flatMap((l) => l.series.map((s) => s.colour));
 
-  expect(colours[0]).toBe("var(--e-solar)");
-  expect(colours).toContain("var(--e-battery)");
-  expect(colours).toContain("var(--e-house)");
-  expect(new Set(colours).size).toBe(4);
+  // A second PV series never borrows another flow's colour (ADR 21): it takes a neutral one.
+  expect(colours).toEqual([
+    "var(--e-solar)",
+    "var(--chart-1)",
+    "var(--e-house)",
+    "var(--e-battery)",
+  ]);
 });
 
 test("a 7th series cannot be added", () => {

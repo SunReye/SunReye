@@ -178,6 +178,12 @@ test("a status with more changes than a read holds says so", async () => {
   expect(got.curve.samples).toEqual([]);
 });
 
+test("a range the statistics refuse is no status with too many changes", async () => {
+  const { reads } = core({ statistics: { problem: "history.range" } });
+
+  expect((await readSeries(reads, series("measurement"), ...QUARTER)).trouble).toBe("failed");
+});
+
 test("a refused or unreachable read fails that series alone", async () => {
   const refused = core({ statistics: { problem: "auth.required" } });
 
