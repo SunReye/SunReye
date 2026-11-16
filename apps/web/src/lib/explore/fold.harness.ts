@@ -95,6 +95,7 @@ export async function fold(series: string, query = "range=month&at=2026-10-15") 
     go: (patch: Readonly<Record<string, string | null>>) => {
       went.push(patch);
     },
+    back: () => {},
   });
 
   return { screen, went };

@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "vitest";
-import { cdp, page } from "vitest/browser";
+import { cdp, page, userEvent } from "vitest/browser";
 // The screen is laid out by the SPA's utilities.
 import "../../app.css";
 import { plant, reset, show } from "./explore.harness.ts";
@@ -178,6 +178,25 @@ test("with a mouse below 1024 px the picker is a dialog", async () => {
   await expect
     .element(dialog.getByRole("button", { name: /^Eingang 2 · Leistung/u }))
     .toBeVisible();
+});
+
+test("a drawer closed without a pick goes back over its own step", async () => {
+  await page.viewport(390, 844);
+
+  const { screen, entries } = await show("s=5:battery.soc");
+
+  await screen.getByRole("button", { name: "Reihe hinzufügen" }).click();
+
+  const drawer = page.getByRole("dialog", { name: "Reihen wählen" });
+
+  await expect.element(drawer).toBeVisible();
+  await expect.poll(() => entries.length).toBe(2);
+
+  await userEvent.keyboard("{Escape}");
+
+  await expect.element(drawer).not.toBeInTheDocument();
+  // One more back leaves Explore: no entry of the closed drawer is left behind.
+  await expect.poll(() => entries.map(String)).toEqual(["s=5%3Abattery.soc"]);
 });
 
 // Last: touch emulation cannot be undone (pointer stays `none`).

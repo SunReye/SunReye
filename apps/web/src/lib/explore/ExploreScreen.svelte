@@ -13,9 +13,14 @@
   import PickerShell from "./PickerShell.svelte";
   import SeriesChips from "./SeriesChips.svelte";
 
-  let { core, params, go }: { core: ExploreCore; params: URLSearchParams; go: Go } = $props();
+  let {
+    core,
+    params,
+    go,
+    back,
+  }: { core: ExploreCore; params: URLSearchParams; go: Go; back: () => void } = $props();
 
-  const x = new Explore(() => ({ core, params, go }));
+  const x = new Explore(() => ({ core, params, go, back }));
 
   // The pane needs the width, whatever the input (ADR 22).
   const paned = new MediaQuery("(min-width: 1024px)");

@@ -27,10 +27,15 @@ export interface ExploreInput {
   /** The hash route's query. */
   readonly params: URLSearchParams;
   readonly go: Go;
+  /** Steps back one history entry, as the browser's back does. */
+  readonly back: () => void;
 }
 
 export class Explore {
   readonly #input: () => ExploreInput;
+
+  /** Whether the open picker is a step this screen pushed: closing it then goes back over it. */
+  #opened = false;
 
   /** Undefined while the core answers, and after it refused. */
   #catalog = $state.raw<readonly PickerDevice[]>();
@@ -140,6 +145,7 @@ export class Explore {
 
   /** A pick in the drawer: it closes on its own entry, so back undoes the pick and the opening. */
   choose = (ref: SeriesRef): void => {
+    this.#opened = false;
     this.route.patch({ s: seriesParam(toggled(this.view.series, ref)), pick: null });
   };
 
@@ -155,10 +161,20 @@ export class Explore {
 
   /** Opens the picker as a step of its own: back closes it. */
   pick = (): void => {
+    this.#opened = true;
     this.route.patch({ pick: "1" }, true);
   };
 
+  /** Closed without a pick: back over the step that opened it, or, opened by address, in place. */
   closePicker = (): void => {
-    if (this.view.picking) this.route.patch({ pick: null });
+    if (!this.view.picking) return;
+
+    const { params, back } = this.#input();
+    const pushed = this.#opened && params.get("pick") === "1";
+
+    this.#opened = false;
+
+    if (pushed) back();
+    else this.route.patch({ pick: null });
   };
 }

@@ -150,17 +150,40 @@ function transport(): Transport {
   };
 }
 
-/** The screen at `query`, and every route change it makes. */
+type Patch = Readonly<Record<string, string | null>>;
+
+/**
+ * The screen at `query`, every route change it makes, and its history: each entry's query, the
+ * last the one shown, as the router would keep them.
+ */
 export async function show(query = "") {
-  const went: Readonly<{ patch: Readonly<Record<string, string | null>>; push: boolean }>[] = [];
+  const went: Readonly<{ patch: Patch; push: boolean }>[] = [];
+  const entries = [new URLSearchParams(query)];
 
   const screen = await render(ExploreScreen, {
     core: connect(transport()),
-    params: new URLSearchParams(query),
-    go: (patch: Readonly<Record<string, string | null>>, push: boolean) => {
+    params: entries[0]!,
+    go: (patch: Patch, push: boolean) => {
       went.push({ patch, push });
+
+      const next = new URLSearchParams(entries.at(-1));
+
+      for (const [k, v] of Object.entries(patch)) {
+        if (v === null) next.delete(k);
+        else next.set(k, v);
+      }
+
+      if (push) entries.push(next);
+      else entries[entries.length - 1] = next;
+
+      void screen.rerender({ params: next });
+    },
+    back: () => {
+      entries.pop();
+
+      void screen.rerender({ params: entries.at(-1) ?? new URLSearchParams() });
     },
   });
 
-  return { screen, went };
+  return { screen, went, entries };
 }
