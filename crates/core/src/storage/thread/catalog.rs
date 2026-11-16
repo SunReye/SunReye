@@ -1,7 +1,7 @@
 //! The series catalog's read (ADR 22): each stored series with its bounds.
 
 use rusqlite::{Connection, OptionalExtension, params};
-use sunreye_profile::{RoleKind, Unit};
+use sunreye_profile::RoleKind;
 
 use super::{HOUR, Tick, block_before, decode_blocks, time};
 use crate::bus::DeviceId;
@@ -33,21 +33,13 @@ pub fn catalog(db: &Connection) -> Result<Vec<Catalogued>, Error> {
                 device: DeviceId(device),
                 series: name,
                 kind: kind.as_deref().and_then(kind_of),
-                unit: unit.and_then(|u| serde_json::from_value(u.into()).ok()),
+                unit,
                 first: time(first),
                 last: time(last),
             });
         }
     }
     Ok(stored)
-}
-
-/// A unit as the `step` table spells it: its symbol.
-pub fn unit_name(unit: Unit) -> String {
-    serde_json::to_value(unit)
-        .ok()
-        .and_then(|v| v.as_str().map(str::to_owned))
-        .unwrap_or_default()
 }
 
 fn kind_of(name: &str) -> Option<RoleKind> {

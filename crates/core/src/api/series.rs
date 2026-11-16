@@ -7,7 +7,7 @@ use std::time::SystemTime;
 use axum::Json;
 use axum::extract::State;
 use serde::Serialize;
-use sunreye_profile::{RoleKind, Unit};
+use sunreye_profile::RoleKind;
 use utoipa::ToSchema;
 
 use super::{Problem, ProblemDetails, internal};
@@ -40,8 +40,7 @@ struct CatalogSeries {
     /// `null` for a series last declared before kinds were stored.
     kind: Option<SeriesKind>,
     /// Its symbol, such as `W`, as stored with its history (ADR 3); `null` when it has none.
-    #[schema(value_type = Option<String>)]
-    unit: Option<Unit>,
+    unit: Option<String>,
     /// The first stored instant, of a change point or a rollup's start, RFC 3339, UTC.
     first: String,
     /// The last stored instant, a gap's included, RFC 3339, UTC.

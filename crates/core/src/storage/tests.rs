@@ -599,3 +599,25 @@ async fn a_device_removed_before_tombstones_gets_one_from_the_change_log() {
         .unwrap();
     assert_eq!(tombstones, [(3, "Garage".to_owned(), 300)]);
 }
+
+/// A profile unit is stored as profiles spell it.
+#[test]
+fn a_profile_units_symbol_is_its_profile_spelling() {
+    use sunreye_profile::Unit;
+    for unit in [
+        Unit::Watt,
+        Unit::KilowattHour,
+        Unit::Volt,
+        Unit::Ampere,
+        Unit::Hertz,
+        Unit::Percent,
+        Unit::Celsius,
+        Unit::Hour,
+        Unit::Dimensionless,
+    ] {
+        assert_eq!(
+            serde_json::json!(super::symbol(unit)),
+            serde_json::json!(unit)
+        );
+    }
+}

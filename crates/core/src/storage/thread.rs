@@ -678,12 +678,7 @@ impl Store {
         self.step(device, series, policy.step)?;
         self.db.execute(
             "UPDATE step SET kind = ?3, unit = ?4 WHERE device = ?1 AND series = ?2",
-            params![
-                device.0,
-                series,
-                kind_name(policy.kind),
-                policy.unit.map(catalog::unit_name)
-            ],
+            params![device.0, series, kind_name(policy.kind), policy.unit],
         )?;
         Ok(())
     }

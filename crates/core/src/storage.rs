@@ -30,8 +30,8 @@ const RETENTION: Duration = Duration::from_hours(24 * 1827);
 pub struct Policy {
     /// What its values are: decides the rollup.
     pub kind: RoleKind,
-    /// The unit of its values, kept beside its step for the series catalog (ADR 22).
-    pub unit: Option<Unit>,
+    /// The symbol of its values' unit, kept beside its step for the series catalog (ADR 22).
+    pub unit: Option<&'static str>,
     /// The quantisation step, in the role's unit: stored values are integer multiples of it.
     pub step: f64,
     /// The smallest stored change, in the role's unit; zero stores every change.
@@ -41,6 +41,15 @@ pub struct Policy {
 }
 
 impl Policy {
+    /// Stores its values' unit as `symbol`, one outside the profile table (ADR 4) such as `EUR/h`.
+    #[must_use]
+    pub const fn in_unit(self, symbol: &'static str) -> Self {
+        Self {
+            unit: Some(symbol),
+            ..self
+        }
+    }
+
     /// Counters and enums get no deadband; a measurement gets its unit's default (ADR 4).
     #[must_use]
     pub const fn new(kind: RoleKind, unit: Option<Unit>, step: f64, cadence: Duration) -> Self {
@@ -54,11 +63,30 @@ impl Policy {
         };
         Self {
             kind,
-            unit,
+            unit: match unit {
+                Some(unit) => Some(symbol(unit)),
+                None => None,
+            },
             step,
             deadband,
             cadence,
         }
+    }
+}
+
+/// A profile unit's symbol, as profiles spell it.
+#[must_use]
+pub const fn symbol(unit: Unit) -> &'static str {
+    match unit {
+        Unit::Watt => "W",
+        Unit::KilowattHour => "kWh",
+        Unit::Volt => "V",
+        Unit::Ampere => "A",
+        Unit::Hertz => "Hz",
+        Unit::Percent => "%",
+        Unit::Celsius => "°C",
+        Unit::Hour => "h",
+        Unit::Dimensionless => "none",
     }
 }
 
@@ -115,7 +143,8 @@ pub struct Catalogued {
     pub series: String,
     /// `None` for a series last declared before kinds were stored.
     pub kind: Option<RoleKind>,
-    pub unit: Option<Unit>,
+    /// Its symbol, such as `W` or `EUR/h`.
+    pub unit: Option<String>,
     /// The first and last stored instant, of a change point or a rollup's start.
     pub first: SystemTime,
     pub last: SystemTime,

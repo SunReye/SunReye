@@ -87,9 +87,11 @@ impl From<storage::Error> for Error {
     }
 }
 
-/// One stored quantity: its role, the step it is stored in and its value in a slot.
+/// One stored quantity: its role, its unit's symbol, the step it is stored in and its value in a
+/// slot.
 struct Quantity {
     role: &'static str,
+    unit: &'static str,
     step: f64,
     value: fn(&Slot) -> Option<f64>,
 }
@@ -97,26 +99,31 @@ struct Quantity {
 const QUANTITIES: [Quantity; 5] = [
     Quantity {
         role: "weather.ghi",
+        unit: "W/m²",
         step: 0.1,
         value: |s| Some(s.ghi),
     },
     Quantity {
         role: "weather.dni",
+        unit: "W/m²",
         step: 0.1,
         value: |s| Some(s.dni),
     },
     Quantity {
         role: "weather.dhi",
+        unit: "W/m²",
         step: 0.1,
         value: |s| Some(s.dhi),
     },
     Quantity {
         role: "weather.temperature",
+        unit: "°C",
         step: 0.1,
         value: |s| Some(s.temperature),
     },
     Quantity {
         role: "weather.wind",
+        unit: "m/s",
         step: 0.01,
         value: |s| s.wind,
     },
@@ -255,7 +262,8 @@ impl<A: Archive> Past<A> {
         };
         let hours: Vec<SystemTime> = hours(first.target, last.target + HOUR).collect();
         for (quantity, series) in QUANTITIES.iter().zip(self.series) {
-            let policy = Policy::new(RoleKind::Measurement, None, quantity.step, HOUR);
+            let policy = Policy::new(RoleKind::Measurement, None, quantity.step, HOUR)
+                .in_unit(quantity.unit);
             storage.declare(self.device, series, policy).await?;
             let mut points: Vec<ChangePoint> = hours
                 .iter()

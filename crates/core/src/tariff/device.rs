@@ -76,8 +76,9 @@ impl TariffDevice {
 /// # Errors
 /// A series is stored in another step, or storage has stopped.
 pub async fn declare(tariffs: &Tariffs) -> Result<(), Error> {
-    let prices = Policy::new(RoleKind::Measurement, None, STEP, CADENCE);
-    let costs = Policy::new(RoleKind::Measurement, None, STEP, endpoint::CADENCE);
+    let prices = Policy::new(RoleKind::Measurement, None, STEP, CADENCE).in_unit("EUR/kWh");
+    // A rate integrates to EUR in its rollups (ADR 12).
+    let costs = Policy::new(RoleKind::Measurement, None, STEP, endpoint::CADENCE).in_unit("EUR/h");
     let all = tariffs.prices.map(|s| (s, prices));
     for (series, policy) in all.into_iter().chain(tariffs.costs.map(|s| (s, costs))) {
         tariffs.declarer.declare(DEVICE, series, policy).await?;
