@@ -1,20 +1,24 @@
 // Surfaces as the scene draws them (ADR 20 Look): faces' texture coordinates in metres, a module's
 // on its cells, and a tree's crown of leaves. Pure: no DOM.
 import {
+  BufferGeometry,
   Color,
   ConeGeometry,
+  DoubleSide,
   Euler,
+  Float32BufferAttribute,
   IcosahedronGeometry,
   InstancedMesh,
   Matrix4,
   Mesh,
+  type MeshStandardMaterial,
   Quaternion,
   SRGBColorSpace,
   Vector3,
 } from "three";
 import type { Face, Point } from "../builder/pv.ts";
 import { cross, dot, normal, unit } from "../builder/vector.ts";
-import { hedge, leaves } from "./materials.ts";
+import { hedge, leaves, REPEAT } from "./materials.ts";
 
 /** A convex polygon's corners as a fan of triangles, three corners each. */
 export function fan([first, ...rest]: readonly Point[]): Point[] {
@@ -193,7 +197,7 @@ export function conifer(radius: number, height: number, seed: number): Instanced
 const HEDGE = 14;
 
 /** A hedge's leaves: small clusters spread over its faces, in three.js's frame. */
-export function foliage(faces: readonly Face[], seed: number): InstancedMesh {
+function foliage(faces: readonly Face[], seed: number): InstancedMesh {
   const random = seeded(seed);
 
   const made = faces.flatMap(({ corners }) => {
@@ -227,3 +231,46 @@ export function foliage(faces: readonly Face[], seed: number): InstancedMesh {
 }
 
 const sub = (a: Point, b: Point): Point => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+
+/** East, north, up to three.js: x east, y up, z south. */
+const toThree = ([east, north, up]: Point): [number, number, number] => [east, up, 0 - north];
+
+/** Each convex face as a fan of triangles. */
+function triangles(faces: readonly Face[]): number[] {
+  return faces.flatMap(({ corners }) => fan(corners).flatMap((point) => toThree(point)));
+}
+
+export function surface(
+  name: Face["surface"] | "flat",
+  faces: readonly Face[],
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- set up, then drawn.
+  material: MeshStandardMaterial,
+  repeat: readonly [number, number],
+): Mesh {
+  const geometry = new BufferGeometry();
+
+  geometry.setAttribute("position", new Float32BufferAttribute(triangles(faces), 3));
+  geometry.setAttribute("uv", new Float32BufferAttribute(uvs(faces, repeat), 2));
+  geometry.computeVertexNormals();
+
+  // Double-sided: the crate does not promise a winding.
+  material.side = DoubleSide;
+  material.flatShading = true;
+
+  const mesh = new Mesh(geometry, material);
+
+  mesh.name = name;
+
+  return mesh;
+}
+
+/** Hedges: a dark body under clusters of leaves. */
+export function hedges(faces: readonly Face[]): Mesh[] {
+  if (faces.length === 0) return [];
+
+  const body = surface("hedge", faces, hedge(), REPEAT.render);
+
+  body.add(foliage(faces, 13));
+
+  return [body];
+}

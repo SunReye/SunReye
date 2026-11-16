@@ -7,9 +7,11 @@ import { HAPTICS } from "../haptics.ts";
 import { language } from "../i18n/language.svelte.ts";
 import { LOW_POWER } from "../motion/tier.ts";
 import { motion } from "../motion/tier.svelte.ts";
+import { QUALITY, quality } from "../scene/quality.svelte.ts";
 import DisplaySettings from "./DisplaySettings.svelte";
 
 afterEach(async () => {
+  quality.choice = "auto";
   motion.lowPower = false;
   await language.choose("de");
   localStorage.clear();
@@ -82,4 +84,47 @@ test("low power and reduced motion force haptics off and say why", async () => {
 
   await expect.element(haptics).toBeDisabled();
   await expect.element(screen.getByText("Aus, weil das System Bewegung reduziert.")).toBeVisible();
+});
+
+test("the 3D quality offers Auto and four levels, and the choice is kept per browser", async () => {
+  const screen = await display();
+  const levels = screen.getByRole("group", { name: "3D-Qualität" });
+
+  for (const name of ["Auto", "Niedrig", "Mittel", "Hoch", "Ultra"]) {
+    // oxlint-disable-next-line eslint/no-await-in-loop -- one after the other.
+    await expect.element(levels.getByRole("radio", { name })).toBeVisible();
+  }
+
+  await expect.element(levels.getByRole("radio", { name: "Auto" })).toBeChecked();
+
+  await userEvent.click(levels.getByRole("radio", { name: "Ultra" }));
+
+  expect(quality.choice).toBe("ultra");
+  expect(localStorage.getItem(QUALITY)).toBe("ultra");
+  await expect.element(levels.getByRole("radio", { name: "Ultra" })).toBeChecked();
+});
+
+test("on Auto the row says which level this device draws; a chosen level needs no saying", async () => {
+  const screen = await display();
+
+  // No capable GPU seen here: Auto starts at Mittel.
+  await expect
+    .element(screen.getByText("Auto zeichnet auf diesem Gerät derzeit Mittel."))
+    .toBeVisible();
+
+  await userEvent.click(
+    screen.getByRole("group", { name: "3D-Qualität" }).getByRole("radio", { name: "Hoch" }),
+  );
+
+  await expect
+    .element(screen.getByText("Wie detailreich das 3D-Haus gezeichnet wird."))
+    .toBeVisible();
+});
+
+test("with low power on, the row says the 3D scene is not shown", async () => {
+  const screen = await display();
+
+  await userEvent.click(screen.getByRole("switch", { name: /^Stromsparen/u }));
+
+  await expect.element(screen.getByText("Stromsparen zeigt 2D statt 3D.")).toBeVisible();
 });

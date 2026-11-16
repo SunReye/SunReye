@@ -1,5 +1,5 @@
-//! The builder's edits of openings, chimneys and modules (ADR 20), each one call: a drag asks once
-//! a step.
+//! The builder's edits of openings, chimneys, roof windows and modules (ADR 20), each one call: a
+//! drag asks once a step.
 
 use std::collections::HashMap;
 
@@ -45,7 +45,7 @@ impl Place {
     }
 }
 
-/// Chimney `index` of a scene, moved by a level east and north.
+/// Chimney or roof window `index` of a scene, moved by a level east and north.
 #[derive(Deserialize)]
 pub struct Glide {
     scene: Scene,
@@ -57,6 +57,11 @@ impl Glide {
     /// The chimney where the move leaves it on its face; null without it or its face.
     pub fn reply(&self) -> Value {
         json!(self.scene.glide(self.index, self.shift))
+    }
+
+    /// The roof window where the move leaves it on its face; null without it or its face.
+    pub fn window(&self) -> Value {
+        json!(self.scene.glide_window(self.index, self.shift))
     }
 }
 
@@ -75,6 +80,11 @@ impl Strike {
 }
 
 impl Strike {
+    /// The index of the roof window the strike lands on; null for none.
+    pub fn window(&self) -> Value {
+        json!(self.scene.roof_window_at(self.point))
+    }
+
     /// The index of the grid whose face the strike lands on, inside its setback; null for none.
     pub fn grid(&self) -> Value {
         json!(self.scene.grid_at(self.point))
@@ -99,6 +109,26 @@ impl Laid {
     /// The modules a roof chimney stands on, each its grid's index and its own in it.
     pub fn covered(&self) -> Value {
         json!(self.scene.covered(sized(&self.sizes)))
+    }
+}
+
+/// A new roof window for a scene, `width` across and `length` up its face.
+#[derive(Deserialize)]
+pub struct Glazed {
+    scene: Scene,
+    sizes: HashMap<u32, Size>,
+    width: f64,
+    length: f64,
+}
+
+impl Glazed {
+    /// The roof window in the free place nearest the middle of the first roof face with room;
+    /// null where none has.
+    pub fn reply(&self) -> Value {
+        json!(
+            self.scene
+                .place_window(sized(&self.sizes), [self.width, self.length])
+        )
     }
 }
 

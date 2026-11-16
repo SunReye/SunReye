@@ -13,10 +13,12 @@ const HANDLED: ReadonlySet<string> = new Set([
   "fence",
   "place",
   "chimney",
+  "roofWindow",
   "opening",
 ]);
 
-/** A selected block, obstacle, ground surface, fence, car place, chimney or opening's handles,
+/** A selected block, obstacle, ground surface, fence, car place, chimney, roof window or
+ * opening's handles,
  * or the imported surroundings' knob and ring with the turns `rests` gives the ring; none for
  * any other level, or without an import. */
 export function editingOf(

@@ -1,11 +1,15 @@
 import { afterEach, expect, test } from "vitest";
 import {
+  BasicShadowMap,
+  BoxGeometry,
   Color,
   CubeCamera,
   DirectionalLight,
   FloatType,
   Fog,
+  Mesh,
   MeshStandardMaterial,
+  PCFShadowMap,
   PerspectiveCamera,
   Scene,
   Texture,
@@ -17,18 +21,22 @@ import {
 import { aim, sky } from "./backdrop.ts";
 import { daylight, theme } from "./light.ts";
 import { skylight } from "./skylight.ts";
-import type { MotionTier } from "../motion/tier.ts";
+import { drawn, type Level } from "./quality.ts";
+import { SAMPLES } from "./refine.ts";
 import { Studio } from "./studio.ts";
 import { weathered } from "./weather.ts";
 
 let studio: Studio | undefined;
 
-function open(tier: MotionTier = "full"): Studio {
+/** What a level draws, on any device. */
+const look = (level: Level) => drawn(level, { capable: false, steps: 0, tier: "full" });
+
+function open(level: Level = "medium"): Studio {
   const canvas = document.createElement("canvas");
 
   document.body.append(canvas);
   studio?.dispose();
-  studio = new Studio(canvas, new PerspectiveCamera(40, 1, 0.1, 5000), tier);
+  studio = new Studio(canvas, new PerspectiveCamera(40, 1, 0.1, 5000), () => look(level));
   studio.setSize(64, 64);
 
   return studio;
@@ -39,15 +47,106 @@ afterEach(() => {
   studio = undefined;
 });
 
-test("the ambient-occlusion pass runs on the full motion tier only", () => {
-  const opened = open();
+test("a studio is handed the GPU its canvas draws on, where the browser tells", () => {
+  const canvas = document.createElement("canvas");
+  let told: string | null | undefined;
 
-  opened.follow("full");
-  expect(opened.occlusion).toBe(true);
-  opened.follow("lite");
-  expect(opened.occlusion).toBe(false);
-  opened.follow("still");
-  expect(opened.occlusion).toBe(false);
+  studio = new Studio(canvas, new PerspectiveCamera(40, 1, 0.1, 5000), (gpu) => {
+    told = gpu;
+
+    return look("medium");
+  });
+
+  // This host draws in software, and says so.
+  expect(told).toMatch(/swiftshader|llvmpipe|angle/iu);
+});
+
+test("each level draws from its shadow map, with its occlusion and at its pixel ratio", () => {
+  const opened = open("low");
+  const device = window.devicePixelRatio;
+  const facts = () => [opened.shadowMap, opened.occlusion, opened.pixelRatio];
+
+  expect(facts()).toEqual([1024, false, Math.min(device, 1)]);
+  opened.follow(look("medium"));
+  expect(facts()).toEqual([2048, true, Math.min(device, 1.5)]);
+  opened.follow(look("high"));
+  expect(facts()).toEqual([4096, true, Math.min(device, 2)]);
+  opened.follow(look("ultra"));
+  expect(facts()).toEqual([4096, true, device]);
+});
+
+test("Mittel's shadow blurs by one radius; Hoch's widens with the caster's distance", () => {
+  const opened = open("medium");
+  const page = new Color(0.95, 0.95, 0.96);
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own objects.
+  const sun = () => opened.scene.children.find((child) => child instanceof DirectionalLight);
+
+  opened.frame(new Vector3(), 10);
+  opened.light(daylight([0, -0.5, 0.866]), theme(false), page);
+  // The radius the full tier drew with, in texels.
+  expect(sun()?.shadow.radius).toBe(3.5);
+  expect(opened.renderer.shadowMap.type).toBe(PCFShadowMap);
+
+  opened.follow(look("high"));
+  // Raw depths, for the sampling that looks for the caster; the radius is per unit of depth.
+  expect(opened.renderer.shadowMap.type).toBe(BasicShadowMap);
+  expect(sun()?.shadow.radius).toBeGreaterThan(100);
+});
+
+test("a frame draws at every level, its programs sound", () => {
+  for (const level of ["low", "medium", "high", "ultra"] as const) {
+    const opened = open(level);
+    const failed: string[] = [];
+
+    const box = new Mesh(
+      new BoxGeometry(4, 3, 4),
+      weathered(new MeshStandardMaterial(), { colour: 0.2, rough: 0.1, relief: 0.01 }),
+    );
+
+    box.castShadow = box.receiveShadow = true;
+
+    opened.renderer.debug.onShaderError = () => {
+      failed.push(level);
+    };
+
+    opened.frame(new Vector3(), 10);
+    opened.light(daylight([0, -0.5, 0.866]), theme(false), new Color(0.95, 0.95, 0.96));
+    opened.scene.add(box);
+    opened.render();
+    opened.refine();
+
+    expect(failed).toEqual([]);
+    expect([level, opened.renderer.getContext().getError()]).toEqual([level, 0]);
+  }
+});
+
+test("Ultra refines a settled picture in a burst of frames, then stops; a draw starts it over", () => {
+  const opened = open("ultra");
+
+  const burst = () => {
+    let frames = 0;
+
+    while (opened.refine()) frames += 1;
+
+    return frames + 1;
+  };
+
+  opened.light(daylight([0, -0.5, 0.866]), theme(false), new Color(0.95, 0.95, 0.96));
+  opened.render();
+  expect(burst()).toBe(SAMPLES);
+  expect(opened.refine()).toBe(false);
+
+  opened.render();
+  expect(burst()).toBe(SAMPLES);
+  expect(opened.renderer.getContext().getError()).toBe(0);
+});
+
+test("below Ultra a settled picture is left as drawn", () => {
+  const opened = open("high");
+
+  opened.render();
+
+  expect(opened.refine()).toBe(false);
 });
 
 type Sources = Pick<WebGLProgramParametersWithUniforms, "fragmentShader">;
@@ -72,10 +171,9 @@ function weathers(opened: Studio): boolean {
   return shader.fragmentShader.includes("weatherNoise");
 }
 
-test("a studio is made on its motion tier, so its first frame already draws the finishes for it", () => {
-  expect(weathers(open("lite"))).toBe(false);
-  expect(weathers(open("still"))).toBe(false);
-  expect(weathers(open("full"))).toBe(true);
+test("a studio is made in its look, so its first frame already draws the finishes for it", () => {
+  expect(weathers(open("low"))).toBe(false);
+  expect(weathers(open("medium"))).toBe(true);
 });
 
 test("light and dark themes change the background, the fog and the exposure", () => {
@@ -195,30 +293,4 @@ test("the light's table of the sky model's light holds for the model, clear and 
     target.dispose();
     renderer.dispose();
   }
-});
-
-test("imported surroundings take the lawn's place and push the fog out past them", () => {
-  const opened = open();
-
-  opened.frame(new Vector3(), 10);
-  opened.light(daylight([0, -0.5, 0.86]), theme(false), new Color(1, 1, 1));
-
-  const fog = opened.scene.fog instanceof Fog ? opened.scene.fog : new Fog(0);
-  // The lawn is the studio's one mesh until a scene is drawn.
-  const lawn = opened.scene.getObjectByProperty("isMesh", true);
-
-  expect([fog.near, fog.far, lawn?.visible]).toEqual([80, 320, true]);
-
-  opened.surround(200);
-
-  expect([fog.near, fog.far, lawn?.visible]).toEqual([840, 3360, false]);
-
-  // A new light keeps them.
-  opened.light(daylight([0, -0.5, 0.86]), theme(true), new Color(0, 0, 0));
-  expect(opened.scene.fog).toBe(fog);
-  expect([fog.near, fog.far]).toEqual([840, 3360]);
-
-  opened.surround(0);
-
-  expect([fog.near, fog.far, lawn?.visible]).toEqual([80, 320, true]);
 });

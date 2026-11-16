@@ -167,13 +167,15 @@ export class Session {
     return exists(this.#level, this.plan) ? this.#level : parent(this.#level);
   }
 
-  /** The scene without the modules a roof chimney stands on: a chimney added or moved onto modules
-   * removes them in the same undo step (ADR 20). */
+  /** The scene without the modules a roof chimney or roof window covers: one added or moved onto
+   * modules removes them in the same undo step (ADR 20). */
   #cleared(scene: Scene): Scene {
     const lain = (scene.grids ?? []).some(({ modules }) => modules.length > 0);
 
-    // No chimney or no module, no question to the crate.
-    return lain && (scene.chimneys?.length ?? 0) > 0
+    const covering = (scene.chimneys?.length ?? 0) + (scene.roofWindows?.length ?? 0);
+
+    // No chimney and no roof window, or no module: no question to the crate.
+    return lain && covering > 0
       ? uncovered(scene, this.#opening().pv.covered(scene, this.#sizes))
       : scene;
   }
@@ -207,14 +209,7 @@ export class Session {
   }
 
   /** Where a drag's steps go, and its end. */
-  readonly #steps = {
-    ondrag: (scene: Scene): void => {
-      this.drag(scene);
-    },
-    ondrop: (): void => {
-      this.drop();
-    },
-  };
+  readonly #steps = { ondrag: this.drag.bind(this), ondrop: this.drop.bind(this) };
 
   /** The selected object's handles, or the imported surroundings', and where their drags go. */
   get editing(): Editing | undefined {

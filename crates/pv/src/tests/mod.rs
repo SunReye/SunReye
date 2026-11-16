@@ -12,6 +12,7 @@ mod lint;
 mod opening;
 mod parking;
 mod perez;
+mod roof_window;
 mod roofing;
 mod scene;
 mod shade;

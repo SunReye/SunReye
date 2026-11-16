@@ -4,7 +4,8 @@
 import { untrack } from "svelte";
 import type { Group } from "three";
 import { buildAround, settle, type Drawn, type Lie, type Stood } from "../scene/around.ts";
-import { free, type Lit } from "../scene/stage.svelte.ts";
+import type { Lit } from "../scene/stage.svelte.ts";
+import { free } from "../scene/staged.ts";
 
 export type { Lie, Stood } from "../scene/around.ts";
 
@@ -83,7 +84,11 @@ export class Surrounded {
         ? undefined
         : { drawn: buildAround(stood.around, stood.key, ghosts), stood };
 
-    if (this.#shown !== undefined) studio.scene.add(this.#shown.drawn.group);
+    if (this.#shown !== undefined) {
+      // In the studio's 3D quality, as the scene itself.
+      studio.dress(this.#shown.drawn.group);
+      studio.scene.add(this.#shown.drawn.group);
+    }
 
     studio.surround(this.#shown?.drawn.fade.value.z ?? 0);
   }

@@ -14,9 +14,30 @@ export interface Addition {
   readonly level: Level;
 }
 
+/** Metres: a common roof window, 78 cm across and 118 cm up the slope. */
+const ROOF_WINDOW = [0.78, 1.18] as const;
+
+/** A roof window goes where the crate finds room for it on a roof face; without room, none is
+ * added. */
+function onRoofs({ draft, pv, sizes }: Plan): Addition[] {
+  const windows = draft.scene.roofWindows ?? [];
+  const made = pv.placeWindow(draft.scene, sizes, ROOF_WINDOW);
+
+  return made === null
+    ? []
+    : [
+        {
+          label: m.builder_add_roof_window(),
+          draft: { ...draft, scene: { ...draft.scene, roofWindows: [...windows, made] } },
+          level: { kind: "roofWindow", index: windows.length },
+        },
+      ];
+}
+
 /** A chimney goes on the first roof face; without a roof, none is added. Windows and doors go
  * on the walls. */
-function buildings({ draft, laid, pv }: Plan): Addition[] {
+function buildings(plan: Plan): Addition[] {
+  const { draft, laid, pv } = plan;
   const { blocks, chimneys = [] } = draft.scene;
   const [face] = laid.roofs;
 
@@ -37,7 +58,7 @@ function buildings({ draft, laid, pv }: Plan): Addition[] {
           },
         ];
 
-  return [block, ...onRoof, ...onWalls(draft, pv)];
+  return [block, ...onRoof, ...onRoofs(plan), ...onWalls(draft, pv)];
 }
 
 const OPENINGS: readonly (readonly [OpeningKind, () => string])[] = [

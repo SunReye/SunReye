@@ -1,25 +1,15 @@
-// The studio kept lit for a canvas (ADR 20 Look): the sun, the theme and the motion tier, each
+// The studio kept lit for a canvas (ADR 20 Look): the sun, the theme and the 3D quality, each
 // change drawn once. Call during a component's set-up.
 import { createSubscriber } from "svelte/reactivity";
-import {
-  Box3,
-  BufferGeometry,
-  Material,
-  Mesh,
-  Sphere,
-  Vector3,
-  type Group,
-  type Object3D,
-  type PerspectiveCamera,
-} from "three";
+import type { Group, PerspectiveCamera } from "three";
 import type { Glow } from "../builder/scene.ts";
 import { motion } from "../motion/tier.svelte.ts";
 import { cssColour, flowRgb } from "./backdrop.ts";
 import { daylight, theme } from "./light.ts";
 import { easeGlow } from "./live-glow.svelte.ts";
 import { Opening } from "./opening.svelte.ts";
-import { lamps } from "./wall-openings.ts";
-import { Studio } from "./studio.ts";
+import { stage, type Staged } from "./staged.ts";
+import { openStudio, type Opened } from "./studio-look.svelte.ts";
 
 /** Follows mode-watcher's class on the root element. */
 const themed = createSubscriber((update) => {
@@ -53,7 +43,7 @@ export class Ghost {
 }
 
 export interface Lit {
-  readonly studio: Studio;
+  readonly studio: Opened["studio"];
   /** The camera's flight to a new view; it lands at once on the still tier. */
   readonly flight: Opening["flight"];
   /** The string glow now: read in an effect, it follows the sun and the theme. */
@@ -64,59 +54,11 @@ export interface Lit {
     shares: () => readonly (number | null)[] | undefined,
   ) => void;
   /** Draws `group` in place of the last, which it frees; the sun's shadow and the lawn fit it. */
-  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws it.
-  readonly show: (group: Group) => void;
+  readonly show: Staged["show"];
   /** When it draws: nothing before `opening.open` has prepared it. */
   readonly opening: Opening;
   /** Frees the drawn group and the studio. */
   readonly dispose: () => void;
-}
-
-/** Frees a drawn part's meshes; textures are shared and stay. */
-// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js frees in place.
-export function free(part: Object3D): void {
-  if (part instanceof Mesh) {
-    if (part.geometry instanceof BufferGeometry) part.geometry.dispose();
-
-    if (part.material instanceof Material) part.material.dispose();
-  }
-
-  for (const child of part.children) free(child);
-}
-
-/** Draws one group at a time in `studio`, freeing the last. */
-// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws in it.
-function stage(studio: Studio): Pick<Lit, "show" | "dispose"> & { lamp: (level: number) => void } {
-  let drawn: Group | undefined;
-  let lamplight = 0;
-
-  return {
-    lamp(level) {
-      lamplight = level;
-
-      if (drawn !== undefined) lamps(drawn, level);
-    },
-    // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws it.
-    show(group) {
-      if (drawn !== undefined) {
-        studio.scene.remove(drawn);
-        free(drawn);
-      }
-
-      lamps(group, lamplight);
-      studio.scene.add(group);
-      drawn = group;
-
-      const bounds = new Box3().setFromObject(group).getBoundingSphere(new Sphere());
-
-      studio.frame(bounds.isEmpty() ? new Vector3() : bounds.center, bounds.radius);
-    },
-    dispose() {
-      if (drawn !== undefined) free(drawn);
-
-      studio.dispose();
-    },
-  };
 }
 
 /** A studio on `canvas`, lit by `sky`, drawn after each change; `drawn` follows each draw. The
@@ -129,11 +71,11 @@ export function lit(
   sky: () => Readonly<{ sun: Parameters<typeof daylight>[0]; diffuse: number | null }>,
   drawn: () => void,
 ): Lit {
-  const studio = new Studio(canvas, camera, motion.tier);
+  const { studio, look, close } = openStudio(canvas, camera);
   const opened = new Opening(studio, drawn);
   const { flight } = opened;
   const { render } = opened;
-  const shown = stage(studio);
+  const shown = stage(studio, render);
   const day = $derived(daylight(sky().sun, sky().diffuse));
   let colour = $state(0);
 
@@ -145,7 +87,8 @@ export function lit(
   });
 
   $effect(() => {
-    studio.follow(motion.tier);
+    studio.follow(look());
+    shown.dress();
     render();
   });
 
@@ -161,6 +104,7 @@ export function lit(
     opening: opened,
     show: shown.show,
     dispose() {
+      close();
       opened.dispose();
       shown.dispose();
     },

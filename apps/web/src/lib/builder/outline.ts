@@ -23,8 +23,9 @@ export interface Plan {
   readonly draft: Draft;
   /** The crate's layout of the draft's grids. */
   readonly laid: Modules;
-  /** The crate, which places a new opening, keeps a changed one on its wall and fills a face. */
-  readonly pv: Pick<Pv, "place" | "refit" | "fillFace">;
+  /** The crate, which places a new opening or roof window, keeps a changed opening on its wall and
+   * fills a face. */
+  readonly pv: Pick<Pv, "place" | "refit" | "fillFace" | "placeWindow">;
   /** Each module type's size, by its id, as the crate lays modules out. */
   readonly sizes: Sizes;
   readonly devices: readonly Readonly<Device>[];
@@ -117,6 +118,17 @@ function buildings({ draft }: Plan): Entry[] {
     }),
   }));
 
+  const windows = (draft.scene.roofWindows ?? []).map((item, index): Entry => ({
+    level: { kind: "roofWindow", index },
+    label: m.builder_item({ name: m.roof_window(), number: index + 1 }),
+    summary: m.builder_roof_window_summary({
+      block: item.block + 1,
+      face: item.face + 1,
+      width: number.format(item.width),
+      length: number.format(item.length),
+    }),
+  }));
+
   const openings = (draft.scene.openings ?? []).map((item, index): Entry => ({
     level: { kind: "opening", index },
     label: m.builder_item({ name: named(OPENING_KINDS, item.kind), number: index + 1 }),
@@ -138,7 +150,7 @@ function buildings({ draft }: Plan): Entry[] {
     }),
   }));
 
-  return [...blocks, ...chimneys, ...openings];
+  return [...blocks, ...chimneys, ...windows, ...openings];
 }
 
 function surroundings({ draft }: Plan): Entry[] {
@@ -256,25 +268,13 @@ export function title(level: Level, plan: Plan): string {
 /** How many objects of each kind the plan holds, by level kind. */
 function counts({
   draft,
-}: Plan): Readonly<
-  Record<
-    | "block"
-    | "chimney"
-    | "opening"
-    | "obstacle"
-    | "surface"
-    | "fence"
-    | "marker"
-    | "place"
-    | "string",
-    number
-  >
-> {
+}: Plan): Readonly<Record<Extract<Level, { readonly index: number }>["kind"], number>> {
   const { scene } = draft;
 
   return {
     block: scene.blocks.length,
     chimney: many(scene.chimneys),
+    roofWindow: many(scene.roofWindows),
     opening: many(scene.openings),
     obstacle: scene.obstacles.length,
     surface: many(scene.surfaces),

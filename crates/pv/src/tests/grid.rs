@@ -41,6 +41,7 @@ fn house(north: f64, grids: Vec<ModuleGrid>) -> Scene {
         surfaces: vec![],
         fences: vec![],
         openings: vec![],
+        roof_windows: vec![],
         imported: None,
     }
 }

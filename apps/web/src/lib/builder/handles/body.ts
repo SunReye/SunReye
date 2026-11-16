@@ -13,6 +13,7 @@ export interface Target {
     | "fence"
     | "place"
     | "chimney"
+    | "roofWindow"
     | "opening"
     /** The imported surroundings, whole: index 0. */
     | "import";
@@ -121,8 +122,8 @@ function blockIn(scene: Scene, index: number): Body | undefined {
   );
 }
 
-/** Each kind's footprint the handles drag; fences, chimneys, openings and the imported
- * surroundings have none. */
+/** Each kind's footprint the handles drag; fences, chimneys, roof windows, openings and the
+ * imported surroundings have none. */
 const BODIES: Readonly<
   Record<Target["kind"], ((scene: Scene, index: number) => Body | undefined) | undefined>
 > = {
@@ -136,6 +137,7 @@ const BODIES: Readonly<
   block: blockIn,
   fence: undefined,
   chimney: undefined,
+  roofWindow: undefined,
   opening: undefined,
   import: undefined,
 };

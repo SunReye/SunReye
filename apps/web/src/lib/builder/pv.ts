@@ -2,7 +2,8 @@
 import type { ModuleType, StringDraft } from "../api/core.ts";
 import type { Fence, Fencing, Ground, GroundSurface, Obstacle } from "./obstacles.ts";
 import { surrounding, type Import, type Surrounding } from "./imported.ts";
-import type { Chimney, Overhang } from "./roofing.ts";
+import { roofCalls } from "./roof-calls.ts";
+import type { Chimney, Overhang, RoofWindow } from "./roofing.ts";
 import type { Equipment, Fitted, Opening, OpeningKind, Unfit } from "./walls.ts";
 
 export type { Equipment, Fitted, Opening, OpeningKind, Unfit, Wall, WallFrame } from "./walls.ts";
@@ -11,9 +12,7 @@ import {
   isChimney,
   isExports,
   isGeometry,
-  isGhost,
   isIndex,
-  isList,
   isModules,
   isOpening,
   isRefit,
@@ -35,7 +34,7 @@ export type {
   Obstacle,
 } from "./obstacles.ts";
 
-export type { Chimney, Footing, Overhang } from "./roofing.ts";
+export type { Chimney, Footing, Overhang, RoofWindow } from "./roofing.ts";
 
 import type { ModuleGrid, OnGrid, Sizes } from "./grids.ts";
 import type { Ghost, Modules } from "./laid.ts";
@@ -103,6 +102,7 @@ export interface Scene {
   readonly openings?: readonly Opening[];
   /** The imported surroundings it draws and shades with; none, none. */
   readonly imported?: Import | null;
+  readonly roofWindows?: readonly RoofWindow[];
 }
 
 export interface Face {
@@ -145,6 +145,8 @@ export interface Geometry {
   readonly fences?: readonly Fencing[] | null;
   /** By opening, fitted on its wall; null while one is refused. */
   readonly openings?: readonly Fitted[] | null;
+  /** By roof window, its pane's corners from the lower left; null while one is refused. */
+  readonly roofWindows?: readonly (readonly Point[])[] | null;
 }
 
 /** North and east positive, in degrees. */
@@ -211,28 +213,23 @@ export interface Pv extends Surrounding {
   readonly slide: (on: OnGrid, module: number, from: Point, to: Point) => Ghost | null;
   /** The places "Fill face" adds to a grid: across and up its face. */
   readonly fillFace: (on: OnGrid) => (readonly [number, number])[];
-  /** The modules a roof chimney stands on: each its grid's index and its own in it. */
+  /** The modules a roof chimney or roof window covers: each its grid's index and its own in it. */
   readonly covered: (scene: Scene, sizes: Sizes) => (readonly [number, number])[];
-}
-
-/** The reply of a glue crate's export to its JSON input. */
-type Call = (name: Exported, input: string) => string;
-
-/** What the crate answers while modules are laid (ADR 20 Modules). */
-function laying(call: Call): Pick<Pv, "gridAt" | "lay" | "slide" | "fillFace" | "covered"> {
-  return {
-    gridAt: (scene, point) => unwrap(call("grid_at", JSON.stringify({ scene, point })), isIndex),
-    lay: (on, from, to) => unwrap(call("lay", JSON.stringify({ ...on, from, to })), isList<Ghost>),
-    slide: (on, module, from, to) =>
-      unwrap(call("slide", JSON.stringify({ ...on, module, from, to })), isGhost),
-    fillFace: (on) =>
-      unwrap(call("fill", JSON.stringify(on)), isList<readonly [number, number]>) ?? [],
-    covered: (scene, sizes) =>
-      unwrap(
-        call("covered", JSON.stringify({ scene, sizes })),
-        isList<readonly [number, number]>,
-      ) ?? [],
-  };
+  /** Roof window `index` moved like a chimney, stopped at a chimney or another roof window too. */
+  readonly glideWindow: (
+    scene: Scene,
+    index: number,
+    shift: readonly [number, number],
+  ) => RoofWindow | null;
+  /** The index of the roof window a strike at `point` lands on; null for none. */
+  readonly roofWindowAt: (scene: Scene, point: Point) => number | null;
+  /** A new roof window, `size` across and up, in the free place nearest the middle of the first
+   * roof face with room, off its modules; null where none has. */
+  readonly placeWindow: (
+    scene: Scene,
+    sizes: Sizes,
+    size: readonly [number, number],
+  ) => RoofWindow | null;
 }
 
 /** Instantiates the glue crate's release build. */
@@ -243,7 +240,7 @@ export async function loadPv(bytes: Uint8Array<ArrayBuffer>): Promise<Pv> {
   if (!isExports(wasm)) throw new TypeError("pv WASM lacks an export");
 
   /** The reply of export `name` to the JSON `input`. */
-  const call: Call = (name, input) => {
+  const call = (name: Exported, input: string): string => {
     const encoded = new TextEncoder().encode(input);
     const at = wasm.reserve(encoded.length);
 
@@ -276,7 +273,7 @@ export async function loadPv(bytes: Uint8Array<ArrayBuffer>): Promise<Pv> {
       unwrap(call("glide", JSON.stringify({ scene, index, shift })), isChimney),
     chimneyAt: (scene, point) =>
       unwrap(call("chimney_at", JSON.stringify({ scene, point })), isIndex),
-    ...laying(call),
+    ...roofCalls(call),
     ...surrounding(call),
   };
 }

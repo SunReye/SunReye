@@ -7,9 +7,8 @@ import type { Face } from "../builder/pv.ts";
 import { BAND, fadeAll, LEAST, reach, type Fade } from "./around-fade.ts";
 import { terrain } from "./around-ground.ts";
 import { grove } from "./around-trees.ts";
-import { hedges, surface } from "./faces.ts";
 import * as finish from "./materials.ts";
-import { level } from "./surfaces.ts";
+import { hedges, level, surface } from "./surfaces.ts";
 
 export { masks } from "./around-ground.ts";
 

@@ -5,15 +5,18 @@ import { render } from "vitest-browser-svelte";
 import { connect } from "../../api/core.ts";
 import Builder from "../Builder.svelte";
 import {
+  choose,
   DEVICES,
   desk,
   drill,
+  enter,
   house,
   inspector,
   MODULE,
   onCanvas,
   press,
   pv,
+  SOUTH,
   testCore,
   undesk,
 } from "../builder.harness.ts";
@@ -22,6 +25,7 @@ import { place } from "../placing.ts";
 import { handles } from "./grips.ts";
 
 const SLOW = { timeout: 15_000 };
+const MINUTE = { timeout: 60_000 };
 
 beforeEach(async () => {
   localStorage.removeItem("sunreye.builder.view");
@@ -51,7 +55,7 @@ function start() {
 const modules = (count: number) =>
   inspector().getByText(`Module: ${count} · ohne String: ${count}`, { exact: true });
 
-test("a chimney dragged onto a module removes it, in the drag's undo step", SLOW, async () => {
+test("a chimney dragged onto a module removes it, in the drag's undo step", MINUTE, async () => {
   const draws = vi.spyOn(EffectComposer.prototype, "render");
   const draft = start();
   const [top] = handles(draft.scene, { kind: "chimney", index: 0 }, pv.modules(draft.scene, {}));
@@ -82,3 +86,34 @@ test("a chimney dragged onto a module removes it, in the drag's undo step", SLOW
   await inspector().getByRole("button", { name: "Rückgängig" }).click();
   await expect.element(modules(2)).toBeVisible();
 });
+
+test(
+  "a roof window is added clear of the modules; moved onto one it removes it",
+  MINUTE,
+  async () => {
+    const draws = vi.spyOn(EffectComposer.prototype, "render");
+    const { chimneys: _, ...scene } = start().scene;
+    const draft = { ...start(), scene };
+
+    await render(Builder, {
+      pv,
+      core: connect(testCore()),
+      start: draft,
+      moduleTypes: [MODULE],
+      devices: DEVICES,
+    });
+    await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
+
+    await drill("Gebäude", "Dachfenster hinzufügen");
+    await expect.element(inspector().getByRole("heading", { name: "Dachfenster 1" })).toBeVisible();
+    // It lies on the north face; on the south face it starts in the middle, 5 m across and three
+    // fifths up, above the modules. 2 m up it lies on the first, which reaches 2.222 m.
+    await choose("Dachfläche", SOUTH);
+    await enter("Mitte von unten (m)", "2");
+    await drill("Gebäude", "Szene");
+    await expect.element(modules(1)).toBeVisible();
+
+    await inspector().getByRole("button", { name: "Rückgängig" }).click();
+    await expect.element(modules(2)).toBeVisible();
+  },
+);

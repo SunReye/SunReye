@@ -1,7 +1,7 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
 import { ambientOf, lightOf, luma, skyOf, south } from "./light.harness.ts";
-import { daylight, occlusion, theme } from "./light.ts";
+import { daylight, theme } from "./light.ts";
 import { skylight } from "./skylight.ts";
 
 test("the light shines from the given sun and lights the day", () => {
@@ -50,12 +50,6 @@ test("the dark theme is exposed lower and dims the sky light", () => {
 
   expect(dark.exposure).toBeLessThan(light.exposure);
   expect(dark.environment).toBeLessThan(light.environment);
-});
-
-test("ambient occlusion runs on the full motion tier only", () => {
-  expect(occlusion("full")).toBe(true);
-  expect(occlusion("lite")).toBe(false);
-  expect(occlusion("still")).toBe(false);
 });
 
 test("a moonlit night keeps at least a third of a low sun's light, cool and soft", () => {

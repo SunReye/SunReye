@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::parking::colour;
 use crate::{
     CarPlace, Chimney, Equipment, Fence, GroundSurface, Import, ModuleGrid, Occluder, Opening,
-    Point,
+    Point, RoofWindow,
 };
 
 /// A trunk's radius as a share of its crown's.
@@ -50,6 +50,9 @@ pub struct Scene {
     /// Windows and doors on the blocks' walls. Drawn only; they never shade.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub openings: Vec<Opening>,
+    /// Windows lying flush in roof faces. Drawn only; they never shade.
+    #[serde(default, rename = "roofWindows", skip_serializing_if = "Vec::is_empty")]
+    pub roof_windows: Vec<RoofWindow>,
     /// The imported surroundings drawn around the blocks; a scene stored without has none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub imported: Option<Import>,
