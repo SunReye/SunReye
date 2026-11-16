@@ -13,7 +13,7 @@ test("the range's answer: production against the day before, and a breakdown tha
 
   await expect
     .element(
-      screen.getByText(/^Gestern hat die Anlage 6,0 kWh erzeugt, 50 % mehr als am Vortag\./u),
+      screen.getByText(/^Gestern hat die Anlage 6,0 kWh erzeugt, 50\u00A0% mehr als am Vortag\./u),
     )
     .toBeVisible();
 
