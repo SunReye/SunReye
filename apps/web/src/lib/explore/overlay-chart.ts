@@ -1,7 +1,8 @@
 // Overlay mode's chart as its pane shows it (ADR 22): one lane with a curve per period, the
 // legend's row per period, and what the chart says of its reads. Pure.
 import { m } from "../paraglide/messages.js";
-import { rangeLabel, type Calendar } from "../range/range.ts";
+import { rangeLabel, type Calendar, type Range } from "../range/range.ts";
+import { overlayTable, type Table } from "./csv.ts";
 import { sampleAt, type Curve } from "./curve.ts";
 import { tintOf, type OverlayPeriod } from "./overlay.ts";
 import type { Chosen } from "./picker.ts";
@@ -99,4 +100,17 @@ export function overlayNotes(rows: readonly PeriodRow[]): string[] {
   ];
 
   return said.flatMap(([names, text]) => (names === "" ? [] : [text(names)]));
+}
+
+/** Each period's points, the range first, for the export. */
+export function periodsTable(
+  range: Range,
+  chosen: Chosen,
+  rows: readonly PeriodRow[],
+): Table | null {
+  return overlayTable(
+    range,
+    chosen,
+    rows.map((r: PeriodRow) => ({ key: r.period.key, curve: r.reading.curve })),
+  );
 }

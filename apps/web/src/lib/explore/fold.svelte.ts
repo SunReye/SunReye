@@ -2,12 +2,13 @@
 // statistics read for the range, one call per fold.
 import type { Period } from "../api/core.ts";
 import { RangeData } from "../range/range-data.svelte.ts";
+import { foldTable } from "./csv.ts";
 import { FOLD_PARAM, foldOf, isCounter, periodOf, periodsOf, rowsOf } from "./fold.ts";
 import type { ModeProps } from "./mode.ts";
 import { same } from "./view.ts";
 
 /** What the fold reads of its mode's contract. */
-export type FoldInput = Pick<ModeProps, "core" | "route" | "series" | "catalog">;
+export type FoldInput = Pick<ModeProps, "core" | "route" | "series" | "catalog" | "plots">;
 
 export class Fold {
   readonly #input: () => FoldInput;
@@ -37,6 +38,15 @@ export class Fold {
     return read && same(read.ref, this.chosen.ref) && read.period === this.period ? read : null;
   });
 
+  /** The bars, under the range they were read for. */
+  readonly table = $derived.by(() => {
+    const [range, got] = [this.#data.current?.range, this.got];
+
+    if (!range || !got || got.failed) return null;
+
+    return foldTable(range, this.chosen, got.period, got.counter, got.rows);
+  });
+
   constructor(input: () => FoldInput) {
     this.#input = input;
 
@@ -44,6 +54,9 @@ export class Fold {
       () => input().route,
       (from, to) => this.#read(from, to),
     );
+
+    // The export reads the plot while this pane stands.
+    $effect(() => input().plots(() => this.table));
   }
 
   async #read(from: Readonly<Date>, to: Readonly<Date>) {

@@ -92,6 +92,21 @@ test("a measurement up to a day is a line of its history", async () => {
   });
 });
 
+test("minute means keep their bucket's width, as the export names its tier", async () => {
+  const { reads } = core({
+    history: { tier: "bucket", width: 60, points: [{ start: H(0), end: H(1), mean: 5 }] },
+  });
+
+  const got = await readSeries(reads, series("measurement"), ...DAY);
+
+  expect(got.curve).toEqual({
+    draw: "line",
+    tier: "bucket",
+    width: 60,
+    samples: [{ t0: ms(0), t1: ms(1), v: 5 }],
+  });
+});
+
 test("past a day a measurement is its hourly statistics: the mean with its extremes", async () => {
   const { reads, asked } = core({ statistics: MEANS });
   const { curve } = await readSeries(reads, series("measurement"), ...WEEK);

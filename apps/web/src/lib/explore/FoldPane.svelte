@@ -14,9 +14,9 @@
   import { Fold } from "./fold.svelte.ts";
   import type { ModeProps } from "./mode.ts";
 
-  let { core, route, series, catalog, height }: ModeProps = $props();
+  let { core, route, series, catalog, height, plots }: ModeProps = $props();
 
-  const fold = new Fold(() => ({ core, route, series, catalog }));
+  const fold = new Fold(() => ({ core, route, series, catalog, plots }));
   const chosen = $derived(fold.chosen);
   const got = $derived(fold.got);
 </script>

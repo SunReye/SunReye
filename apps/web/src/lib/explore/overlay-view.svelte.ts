@@ -9,6 +9,7 @@ import type { ModeProps } from "./mode.ts";
 import {
   laneOf,
   overlayNotes,
+  periodsTable,
   periodFigures,
   shownOf,
   type PeriodRow,
@@ -139,6 +140,13 @@ export class OverlayView {
     };
   });
 
+  /** Each shown period's points, on the range's clock. */
+  readonly table = $derived.by(() => {
+    const [got, rows] = [this.#data.current, this.#rows];
+
+    return got && rows ? periodsTable(got.range, this.chosen, rows) : null;
+  });
+
   /** Writes an instant of the range as the plant's clock reads it; a week names its day. */
   readonly #clock = $derived.by(() => {
     const { route } = this.#input();
@@ -160,6 +168,9 @@ export class OverlayView {
       () => input().route,
       () => this.#load(),
     );
+
+    // The export reads the plot while this pane stands.
+    $effect(() => input().plots(() => this.table));
   }
 
   async #load(): Promise<Loaded | null> {
