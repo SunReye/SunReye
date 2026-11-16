@@ -74,6 +74,26 @@ test("one series is read once per period, and the legend names each with its val
   await expect.element(chart.getByText("PV · Leistung · 06:00")).toBeVisible();
 });
 
+test("a status overlaid names each period's state, as the sheet's Readings do", async () => {
+  await desk();
+  // The tenth reads normal, the ninth a fault.
+  plant.history = ({ from, to }) => ({
+    tier: "raw",
+    points: [{ start: iso(from), end: iso(to), mean: new Date(from).getUTCDate() === 10 ? 1 : 2 }],
+  });
+
+  const { screen } = await show(
+    "mode=overlay&s=1:inverter.status&range=day&at=2026-11-10&vs=2026-11-09",
+  );
+  const rows = screen
+    .getByRole("region", { name: "Überlagern" })
+    .getByRole("list", { name: /über die Zeiträume$/u })
+    .getByRole("listitem");
+
+  await expect.element(rows.nth(0)).toHaveTextContent("Di., 10. November Normal");
+  await expect.element(rows.nth(1)).toHaveTextContent("Mo., 9. November Fehler");
+});
+
 test("a quick pick adds its period as a step back can undo, and its chip removes it", async () => {
   await desk();
 

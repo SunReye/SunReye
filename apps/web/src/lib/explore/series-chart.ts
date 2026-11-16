@@ -143,9 +143,12 @@ export interface Figure {
   readonly extremes: string | null;
 }
 
-/** A sample as the legend writes it, by its lane's axis and unit. */
-export function written(lane: LaneView, s: Sample | null) {
+/** A sample of `series` as the legend writes it: a status by its state's name, as the sheet's
+ * Readings do, any other value by its lane's axis and unit. */
+export function written(lane: LaneView, series: string, s: Sample | null) {
   if (!s) return { value: "–", extremes: null };
+
+  if (lane.lane.states) return { value: stateName(series, s.v), extremes: null };
 
   const digits = lane.axis ? valueDigits(lane.axis) : 0;
   const unit = lane.lane.unit === null ? "" : ` ${lane.lane.unit}`;
@@ -157,13 +160,6 @@ export function written(lane: LaneView, s: Sample | null) {
         ? null
         : `${num(s.lo, digits)} – ${num(s.hi, digits)}`,
   };
-}
-
-/** A status names its state, as the sheet's Readings do; any other sample is written. */
-function shown(lane: LaneView, series: string, s: Sample | null) {
-  if (!lane.lane.states || !s) return written(lane, s);
-
-  return { value: stateName(series, s.v), extremes: null };
 }
 
 /** The legend's rows at instant `at`; null reads each series' latest value. */
@@ -178,7 +174,7 @@ export function figuresOf(lanes: readonly LaneView[], at: number | null): Figure
         colour: row.colour,
         label: `${estimated ? "≈ " : ""}${label}`,
         device,
-        ...shown(
+        ...written(
           lane,
           ref.series,
           at === null ? (curve.samples.at(-1) ?? null) : sampleAt(curve, at),
