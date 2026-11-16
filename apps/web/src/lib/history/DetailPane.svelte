@@ -12,7 +12,7 @@
 
   let { core, got, view, route, facts, loading, height }: PaneProps = $props();
 
-  const span = $derived(recordedSpan(got, begunOf(facts, got.zone)));
+  const span = $derived(recordedSpan(got, begunOf(facts)));
   const payback = $derived(facts?.payback ?? null);
   const strings = $derived(facts?.strings ?? []);
   const since = $derived(facts?.since ?? null);

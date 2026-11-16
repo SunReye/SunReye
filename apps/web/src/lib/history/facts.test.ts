@@ -8,7 +8,11 @@ const ANSWERS = {
   // The core lists registered devices only, never the plant.
   capabilities: { devices: { "1": { series: ["pv.power", "battery.power"] } } },
   records: { years: [{ year: 2026 }, { year: 2025 }] },
-  day: { points: [{ date: "2025-11-05", start: "2025-11-04T23:00:00Z" }] },
+  day: {
+    points: [{ date: "2025-11-05", start: "2025-11-04T23:00:00Z", end: "2025-11-05T23:00:00Z" }],
+  },
+  // The first reading came at 07:00 UTC of the first day.
+  hour: { points: [{ date: "2025-11-05", start: "2025-11-05T07:00:00Z" }] },
   payback: { investment: 12_000, remaining: 9000, savings: 3000 },
   corrections: { inputs: [] },
   "module-types": { moduleTypes: [{ id: 1, pmax: 400 }] },
@@ -59,16 +63,17 @@ test("the plant's strings, its battery and EV, its first recorded day and paybac
     battery: true,
     ev: false,
     since: dayOf(2025, 10, 5),
+    begun: Date.parse("2025-11-05T07:00:00Z"),
     payback: { investment: 12_000, remaining: 9000, savings: 3000 },
     corrections: [],
     peaks: new Map([[1, 400]]),
   });
   // The first day is looked for in the oldest recorded year alone.
-  expect(asked).toEqual([2024]);
+  expect(asked).toEqual([2024, 2025]);
 });
 
 test("a viewer reads no payback, and a plant without rollups has no first day yet", async () => {
   const facts = await readFacts(core(true, false));
 
-  expect(facts).toMatchObject({ payback: null, since: null });
+  expect(facts).toMatchObject({ payback: null, since: null, begun: null });
 });

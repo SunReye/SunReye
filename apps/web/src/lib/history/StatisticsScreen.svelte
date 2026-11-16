@@ -25,7 +25,7 @@
           got,
           s.view,
           { rows: s.rows, learning: s.learning ? s.since : null },
-          begunOf(s.facts, got.zone),
+          begunOf(s.facts),
         )
       : null,
   );

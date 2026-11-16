@@ -18,7 +18,7 @@
     {got}
     metric={view.metric}
     {route}
-    begun={begunOf(facts, got.zone)}
+    begun={begunOf(facts)}
     {loading}
     {height}
   />
