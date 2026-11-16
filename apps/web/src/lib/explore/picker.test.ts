@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { CatalogDevice } from "../api/core.ts";
 import { PLANT, SPOT, TARIFF, WEATHER } from "../api/computed-devices.ts";
-import { chipOf, pickerOf, searched } from "./picker.ts";
+import { chosenOf, pickerOf, searched } from "./picker.ts";
 
 const SPAN = { first: "2026-01-01T00:00:00Z", last: "2026-11-15T12:00:00Z" };
 
@@ -32,7 +32,7 @@ const CATALOG: readonly CatalogDevice[] = [
   { id: PLANT, name: null, removed: false, series: [measured("pv.power"), measured("load.power")] },
 ];
 
-const ESTIMATED = { "1": ["pv.string.power[1]"] };
+const ESTIMATED = { "1": { estimated: ["pv.string.power[1]"] } };
 
 const picker = pickerOf(CATALOG, ESTIMATED);
 
@@ -102,31 +102,38 @@ test("search filters every device by label, and opens the Extras it finds in", (
 test("search filters by series id too", () => {
   const found = searched(picker, "MPPT.power");
 
-  expect(found.flatMap((d) => d.groups.flatMap((g) => g.series.map((s) => s.ref.series)))).toEqual(
-    ["pv.mppt.power[2]"],
-  );
+  expect(found.flatMap((d) => d.groups.flatMap((g) => g.series.map((s) => s.ref.series)))).toEqual([
+    "pv.mppt.power[2]",
+  ]);
 });
 
 test("no search leaves the picker as it is", () => {
   expect(searched(picker, "  ")).toBe(picker);
 });
 
-test("a chip names its series and its device, without the catalog too", () => {
-  expect(chipOf({ device: PLANT, series: "pv.power" }, [])).toEqual({
+test("a chosen series names itself and its device without the catalog, and carries what the catalog knows", () => {
+  expect(chosenOf({ device: PLANT, series: "pv.power" }, [])).toEqual({
+    ref: { device: PLANT, series: "pv.power" },
     label: "PV · Leistung",
     device: "Anlage",
     estimated: false,
     removed: false,
     unit: null,
+    kind: null,
+    first: null,
+    last: null,
   });
-  expect(chipOf({ device: 5, series: "battery.soc" }, picker)).toEqual({
+  expect(chosenOf({ device: 5, series: "battery.soc" }, picker)).toEqual({
+    ref: { device: 5, series: "battery.soc" },
     label: "Batterie · Ladezustand",
     device: "Alter Speicher",
     estimated: false,
     removed: true,
     unit: "%",
+    kind: "measurement",
+    ...SPAN,
   });
-  expect(chipOf({ device: 9, series: "extra.fan" }, [])).toMatchObject({
+  expect(chosenOf({ device: 9, series: "extra.fan" }, [])).toMatchObject({
     label: "fan",
     device: "Gerät 9",
   });

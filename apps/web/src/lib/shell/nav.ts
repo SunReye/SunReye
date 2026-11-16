@@ -59,7 +59,15 @@ export const RAIL: readonly NavItem[] = [...BAR, TARIFF, CONTROLS, EXPLORE, BUIL
 export const SETTINGS: NavItem = { route: "/settings", label: m.nav_settings, icon: Settings };
 
 /** The phone's More sheet, in order; Controls is the admin's. */
-export const MORE: readonly NavItem[] = [CONTROLS, EXPLORE, TARIFF, SETTINGS, DEVICES, BUILDER, STATUS];
+export const MORE: readonly NavItem[] = [
+  CONTROLS,
+  EXPLORE,
+  TARIFF,
+  SETTINGS,
+  DEVICES,
+  BUILDER,
+  STATUS,
+];
 
 /** The hash link to a route. */
 export function href(route: string): string {

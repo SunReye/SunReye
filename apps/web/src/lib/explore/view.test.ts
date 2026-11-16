@@ -18,7 +18,9 @@ test("a route that names nothing shows the plant's PV power and house load as se
 
 test("devices, series, mode and overlay periods are read from the route", () => {
   const view = viewOf(
-    params("mode=overlay&s=3:pv.mppt.power[2],4294967294:load.power&vs=2026-11-14,2025-11-15&pick=1"),
+    params(
+      "mode=overlay&s=3:pv.mppt.power[2],4294967294:load.power&vs=2026-11-14,2025-11-15&pick=1",
+    ),
   );
 
   expect(view).toEqual({
@@ -47,7 +49,9 @@ test("the default series leave the route bare; none chosen is an empty list, not
 });
 
 test("what the route cannot mean is dropped: an unknown mode, a broken series, a repeat, a date", () => {
-  const view = viewOf(params("mode=pie&s=x:pv.power,3:,3:pv.power,3:pv.power&vs=tomorrow,2026-11-14"));
+  const view = viewOf(
+    params("mode=pie&s=x:pv.power,3:,3:pv.power,3:pv.power&vs=tomorrow,2026-11-14"),
+  );
 
   expect(view.mode).toBe("series");
   expect(view.series).toEqual([{ device: 3, series: "pv.power" }]);

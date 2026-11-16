@@ -156,3 +156,12 @@ export function namespaceTitle(namespace: string): string {
 
   return NAMESPACES.find(([id]) => id === namespace)?.[1]() ?? namespace;
 }
+
+const MODE_LABELS = {
+  series: m.explore_series,
+  overlay: m.explore_overlay,
+  fold: m.explore_fold,
+} as const;
+
+/** A mode's name on the switch and on its pane. */
+export const modeLabel = (mode: keyof typeof MODE_LABELS): string => MODE_LABELS[mode]();

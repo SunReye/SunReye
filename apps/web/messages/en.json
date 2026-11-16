@@ -1150,5 +1150,22 @@
   "explore_price_export": "Feed-in price",
   "explore_cost_import": "Import cost",
   "explore_cost_export": "Feed-in earnings",
-  "explore_cost_savings": "Savings"
+  "explore_cost_savings": "Savings",
+  "explore_title": "Explore",
+  "explore_add": "Add series",
+  "explore_picker": "Choose series",
+  "explore_search": "Search series",
+  "explore_removed": "removed",
+  "explore_mode_kind": "View",
+  "explore_series": "Series",
+  "explore_overlay": "Overlay",
+  "explore_fold": "Fold",
+  "explore_remove": "Remove {name}",
+  "explore_chosen": "Chosen series",
+  "explore_none_title": "No series chosen",
+  "explore_none_text": "Choose a series to see it over time.",
+  "explore_no_match": "No series matches “{query}”.",
+  "explore_catalog_error": "The series could not be loaded.",
+  "explore_catalog_empty": "No series has been recorded yet.",
+  "explore_pending": "This view's chart is on its way."
 }

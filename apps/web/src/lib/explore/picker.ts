@@ -6,7 +6,10 @@ import { m } from "../paraglide/messages.js";
 import { describe, EXTRA, namespaceOrder, namespaceTitle } from "./labels.ts";
 import { same, type SeriesRef } from "./view.ts";
 
-type CatalogSeries = CatalogDevice["series"][number];
+/** A catalog device, read-only through and through. */
+export type Listed = Readonly<Omit<CatalogDevice, "series">> & {
+  readonly series: readonly Readonly<CatalogDevice["series"][number]>[];
+};
 
 export interface PickerSeries {
   readonly ref: SeriesRef;
@@ -14,7 +17,7 @@ export interface PickerSeries {
   /** Its symbol; null without one. */
   readonly unit: string | null;
   /** Null for an extra stored before kinds. */
-  readonly kind: CatalogSeries["kind"] | null;
+  readonly kind: CatalogDevice["series"][number]["kind"] | null;
   /** An estimate (ADR 17): written with "≈". */
   readonly estimated: boolean;
   /** The first and last stored instant, RFC 3339. */
@@ -61,60 +64,75 @@ function rank(id: number): number {
   return registered(id) ? 1 : 2 + LAST.indexOf(id);
 }
 
-const byOrder = (a: readonly number[], b: readonly number[]): number =>
-  a.map((n, i) => n - b[i]!).find((d) => d !== 0) ?? 0;
+/** A series and where it stands in its group. */
+interface Placed {
+  readonly order: readonly number[];
+  readonly row: PickerSeries;
+}
+
+function byOrder(a: Placed, b: Placed): number {
+  const apart = a.order.map((n, i) => n - b.order[i]!).find((d) => d !== 0);
+
+  return apart ?? a.row.label.localeCompare(b.row.label);
+}
 
 /** A dimensionless series (ADR 4) is written without a unit. */
 const unitOf = (unit: string | null | undefined): string | null =>
   unit === undefined || unit === null || unit === "none" ? null : unit;
 
-function groupsOf(device: CatalogDevice, estimated: ReadonlySet<string>): PickerGroup[] {
-  const groups = new Map<string, { order: readonly number[]; row: PickerSeries }[]>();
+function placed(device: number, stored: Listed["series"][number], estimated: boolean) {
+  const { namespace, label, order } = describe(stored.series);
+
+  const row: PickerSeries = {
+    ref: { device, series: stored.series },
+    label,
+    unit: unitOf(stored.unit),
+    kind: stored.kind ?? null,
+    estimated,
+    first: stored.first,
+    last: stored.last,
+  };
+
+  return { namespace, order, row };
+}
+
+function groupsOf(device: Listed, estimated: readonly string[]): PickerGroup[] {
+  const groups = new Map<string, Placed[]>();
 
   for (const stored of device.series) {
-    const { namespace, label, order } = describe(stored.series);
+    const { namespace, ...place } = placed(device.id, stored, estimated.includes(stored.series));
 
-    const row: PickerSeries = {
-      ref: { device: device.id, series: stored.series },
-      label,
-      unit: unitOf(stored.unit),
-      kind: stored.kind ?? null,
-      estimated: estimated.has(stored.series),
-      first: stored.first,
-      last: stored.last,
-    };
-
-    groups.set(namespace, [...(groups.get(namespace) ?? []), { order, row }]);
+    groups.set(namespace, [...(groups.get(namespace) ?? []), place]);
   }
 
-  return [...groups]
-    .toSorted(([a], [b]) => namespaceOrder(a) - namespaceOrder(b) || a.localeCompare(b))
-    .map(([id, rows]) => ({
+  return [...groups.keys()]
+    .toSorted((a, b) => namespaceOrder(a) - namespaceOrder(b) || a.localeCompare(b))
+    .map((id) => ({
       id,
       title: namespaceTitle(id),
       collapsed: id === EXTRA,
-      series: rows
-        .toSorted((a, b) => byOrder(a.order, b.order) || a.row.label.localeCompare(b.row.label))
-        .map(({ row }) => row),
+      series: (groups.get(id) ?? []).toSorted(byOrder).map(({ row }: Placed) => row),
     }));
 }
 
 /**
  * The picker's devices and series.
- * @param estimated per device id, the series that are estimates, from the capabilities
+ * @param capabilities per device id, the series that are estimates (ADR 17)
  */
 export function pickerOf(
-  catalog: readonly CatalogDevice[],
-  estimated: Readonly<Record<string, readonly string[] | undefined>>,
+  catalog: readonly Listed[],
+  capabilities: Readonly<Record<string, { readonly estimated: readonly string[] } | undefined>>,
 ): PickerDevice[] {
   return catalog
-    .map((device) => ({
+    .map((device: Listed) => ({
       id: device.id,
       name: nameOf(device.id, device.name),
       removed: device.removed,
-      groups: groupsOf(device, new Set(estimated[device.id])),
+      groups: groupsOf(device, capabilities[device.id]?.estimated ?? []),
     }))
-    .toSorted((a, b) => rank(a.id) - rank(b.id) || a.name.localeCompare(b.name));
+    .toSorted(
+      (a: PickerDevice, b: PickerDevice) => rank(a.id) - rank(b.id) || a.name.localeCompare(b.name),
+    );
 }
 
 /** What a search leaves: series whose label or series id holds `query`, with Extras opened. */
@@ -137,29 +155,46 @@ export function searched(devices: readonly PickerDevice[], query: string): reado
   });
 }
 
-export interface Chip {
+/** A chosen series: what its chip says, and what its chart needs of the catalog. */
+export interface Chosen {
+  readonly ref: SeriesRef;
   /** "PV · Leistung"; an extra's declared name. */
   readonly label: string;
   readonly device: string;
   readonly estimated: boolean;
   readonly removed: boolean;
+  /** These four are null until the catalog lists the series. */
   readonly unit: string | null;
+  readonly kind: PickerSeries["kind"];
+  readonly first: string | null;
+  readonly last: string | null;
 }
 
-/** A chosen series as its chip; it is named before the catalog is read, and without it. */
-export function chipOf(ref: SeriesRef, devices: readonly PickerDevice[]): Chip {
-  const { namespace, label } = describe(ref.series);
-  const device = devices.find((d) => d.id === ref.device);
-
-  const row = device?.groups
-    .flatMap((g) => g.series)
-    .find((s) => same(s.ref, ref));
+/** What the catalog knows of a series, and what stands in before it lists it. */
+function listed(row: PickerSeries | undefined) {
+  if (row === undefined)
+    return { estimated: false, unit: null, kind: null, first: null, last: null };
 
   return {
+    estimated: row.estimated,
+    unit: row.unit,
+    kind: row.kind,
+    first: row.first,
+    last: row.last,
+  };
+}
+
+/** A chosen series; it is named before the catalog is read, and without it. */
+export function chosenOf(ref: SeriesRef, devices: readonly PickerDevice[]): Chosen {
+  const { namespace, label } = describe(ref.series);
+  const device = devices.find((d) => d.id === ref.device);
+  const row = device?.groups.flatMap((g) => g.series).find((s) => same(s.ref, ref));
+
+  return {
+    ref,
     label: namespace === EXTRA ? label : `${namespaceTitle(namespace)} · ${label}`,
     device: device?.name ?? nameOf(ref.device, null),
-    estimated: row?.estimated ?? false,
     removed: device?.removed ?? false,
-    unit: row?.unit ?? null,
+    ...listed(row),
   };
 }

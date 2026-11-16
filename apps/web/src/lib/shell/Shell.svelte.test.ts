@@ -169,6 +169,7 @@ test("the rail lists Explore after Controls", async () => {
   const routes = rail
     .getByRole("link")
     .elements()
+    // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the DOM's own type.
     .map((link) => link.getAttribute("href"));
 
   expect(routes.indexOf("#/explore")).toBe(routes.indexOf("#/controls") + 1);

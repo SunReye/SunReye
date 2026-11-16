@@ -79,7 +79,7 @@ export function viewOf(p: Readonly<URLSearchParams>): ExploreView {
 export function seriesParam(refs: readonly SeriesRef[]): string | null {
   const isDefault = refs.length === DEFAULT.length && refs.every((r, i) => same(r, DEFAULT[i]!));
 
-  return isDefault ? null : refs.map(written).join(",");
+  return isDefault ? null : refs.map((ref) => written(ref)).join(",");
 }
 
 /** `refs` with `ref` added at the end, or without it when it was chosen. */
