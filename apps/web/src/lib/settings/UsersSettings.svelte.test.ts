@@ -1,10 +1,15 @@
-import { expect, test, vi } from "vitest";
+import { toast } from "svelte-sonner";
+import { afterEach, expect, test, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { connect, type Transport } from "../api/core.ts";
 import SettingsScreen from "./SettingsScreen.svelte";
 import { problem } from "./settings.harness.ts";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 interface Named {
   id: number;
@@ -126,14 +131,20 @@ test("a viewer is removed only once the admin confirms", async () => {
   const screen = await opened(accounts([{ id: 1, name: "Oma" }], []));
   const viewers = screen.getByRole("region", { name: "Betrachter" });
 
+  const success = vi.spyOn(toast, "success");
+  const confirm = page.getByRole("dialog", { name: "Oma entfernen" });
+
   await userEvent.click(viewers.getByRole("button", { name: "Oma entfernen" }));
+  await expect.element(confirm.getByText("Oma wird überall abgemeldet.")).toBeVisible();
   await expect.element(viewers.getByRole("list").getByText("Oma", { exact: true })).toBeVisible();
 
-  await userEvent.click(viewers.getByRole("button", { name: "Entfernen", exact: true }));
+  await userEvent.click(confirm.getByRole("button", { name: "Entfernen", exact: true }));
 
   await expect
     .element(viewers.getByRole("list").getByText("Oma", { exact: true }))
     .not.toBeInTheDocument();
+  await expect.element(confirm).not.toBeInTheDocument();
+  expect(success).toHaveBeenCalledExactlyOnceWith("Entfernt.");
 });
 
 test("a new token is shown once with a copy button, then only its name stays", async () => {
@@ -166,10 +177,18 @@ test("a token is revoked once the admin confirms", async () => {
   const screen = await opened(accounts([], [{ id: 2, name: "evcc", scope: "read" }]));
   const tokens = screen.getByRole("region", { name: "Zugangstokens" });
 
+  const success = vi.spyOn(toast, "success");
+  const confirm = page.getByRole("dialog", { name: "evcc widerrufen" });
+
   await userEvent.click(tokens.getByRole("button", { name: "evcc widerrufen" }));
-  await userEvent.click(tokens.getByRole("button", { name: "Widerrufen", exact: true }));
+  await expect
+    .element(confirm.getByText("Was evcc nutzt, verliert sofort den Zugang."))
+    .toBeVisible();
+  await userEvent.click(confirm.getByRole("button", { name: "Widerrufen", exact: true }));
 
   await expect
     .element(tokens.getByRole("list").getByText("evcc", { exact: true }))
     .not.toBeInTheDocument();
+  await expect.element(confirm).not.toBeInTheDocument();
+  expect(success).toHaveBeenCalledExactlyOnceWith("Widerrufen.");
 });

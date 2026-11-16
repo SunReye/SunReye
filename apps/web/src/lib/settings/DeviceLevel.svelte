@@ -43,6 +43,7 @@
   />
   <RemoveConfirm
     ask={m.settings_device_remove()}
+    name={device.name}
     note={m.settings_device_remove_note()}
     onremove={remove}
   />

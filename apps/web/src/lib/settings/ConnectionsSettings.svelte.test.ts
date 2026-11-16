@@ -119,15 +119,24 @@ test("a connection a device uses is kept with the reason; an unused one is remov
 
   await screen.getByRole("button", { name: /^Gateway/u }).click();
   await screen.getByRole("button", { name: "Verbindung entfernen" }).click();
-  await screen.getByRole("button", { name: "Entfernen", exact: true }).click();
+
+  // The refusal stays in the open confirm, beside the action.
+  const kept = page.getByRole("dialog", { name: "Gateway entfernen" });
+
+  await kept.getByRole("button", { name: "Entfernen", exact: true }).click();
   await expect
-    .element(screen.getByRole("alert"))
+    .element(kept.getByRole("alert"))
     .toHaveTextContent("Ein Gerät nutzt diese Verbindung noch.");
+  await kept.getByRole("button", { name: "Abbrechen" }).click();
+  await expect.element(kept).not.toBeInTheDocument();
 
   await screen.getByRole("button", { name: "Verbindungen" }).click();
   await screen.getByRole("button", { name: /^EVCC/u }).click();
   await screen.getByRole("button", { name: "Verbindung entfernen" }).click();
-  await screen.getByRole("button", { name: "Entfernen", exact: true }).click();
+  await page
+    .getByRole("dialog", { name: "EVCC entfernen" })
+    .getByRole("button", { name: "Entfernen", exact: true })
+    .click();
 
   await expect.element(screen.getByRole("button", { name: /^Gateway/u })).toBeVisible();
   expect(screen.getByRole("button", { name: /^EVCC/u }).query()).toBeNull();

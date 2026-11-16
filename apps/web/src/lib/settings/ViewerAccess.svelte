@@ -63,6 +63,7 @@
       ask={m.access_remove_viewer({ name: viewer.name })}
       note={m.access_remove_viewer_note({ name: viewer.name })}
       confirm={m.access_remove()}
+      done={m.settings_removed()}
       onremove={() => remove(viewer.id)}
     />
   {/snippet}

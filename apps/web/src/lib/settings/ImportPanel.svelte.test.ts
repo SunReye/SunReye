@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { userEvent } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect, type ImportStatus, type Transport } from "../api/core.ts";
 import ImportPanel from "./ImportPanel.svelte";
@@ -115,13 +115,13 @@ test("the import asks first, and cancelling sends nothing", async () => {
 
   await screen.getByRole("button", { name: "Importieren", exact: true }).click();
 
+  const confirm = page.getByRole("dialog", { name: "Verlauf aus SunReye 3 importieren" });
+
   await expect
-    .element(screen.getByText("Importierter Verlauf lässt sich nicht wieder entfernen."))
+    .element(confirm.getByText("Importierter Verlauf lässt sich nicht wieder entfernen."))
     .toBeVisible();
-  await screen.getByRole("button", { name: "Abbrechen" }).click();
-  await expect
-    .element(screen.getByRole("button", { name: "Jetzt importieren" }))
-    .not.toBeInTheDocument();
+  await confirm.getByRole("button", { name: "Abbrechen" }).click();
+  await expect.element(confirm).not.toBeInTheDocument();
   expect(transport.sent).toEqual([]);
 });
 
@@ -163,8 +163,9 @@ test("a refused or failed import shows why", async () => {
   await refused.getByRole("button", { name: "Importieren", exact: true }).click();
   await refused.getByRole("button", { name: "Jetzt importieren" }).click();
 
+  // The refusal stays in the open confirm, beside the action.
   await expect
-    .element(refused.getByRole("alert"))
+    .element(page.getByRole("dialog").getByRole("alert"))
     .toHaveTextContent("Es läuft bereits ein Import.");
   await refused.unmount();
 

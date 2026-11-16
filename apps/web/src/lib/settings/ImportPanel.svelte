@@ -69,7 +69,8 @@
     archive = devices;
   }
 
-  async function start(): Promise<void> {
+  /** A refused start is the confirm's to show, beside its action. */
+  async function start(): Promise<Problem | undefined> {
     const chosen = (archive ?? []).flatMap(({ slug }) => {
       const device = mapping[slug] ?? "";
 
@@ -79,12 +80,12 @@
     const answer = await core.startImport(source === UPLOAD ? undefined : source, chosen);
 
     // A status names a failed import's problem too: only a refusal lacks a state.
-    if ("state" in answer) {
-      refused = undefined;
-      status = answer;
-    } else {
-      refused = answer;
-    }
+    if (!("state" in answer)) return answer;
+
+    refused = undefined;
+    status = answer;
+
+    return undefined;
   }
 </script>
 
@@ -115,7 +116,7 @@
       </div>
     {/if}
     {#if archive !== undefined}
-      <ImportStart disabled={running} onstart={() => void start()} />
+      <ImportStart disabled={running} onstart={start} />
     {/if}
   </section>
 {/if}
