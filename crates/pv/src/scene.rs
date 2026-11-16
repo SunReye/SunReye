@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::parking::colour;
 use crate::{
-    CarPlace, Chimney, Equipment, Fence, GroundSurface, ModuleGrid, Occluder, Opening,
-    Point, RoofWindow,
+    CarPlace, Chimney, Equipment, Fence, GroundSurface, ModuleGrid, Occluder, Opening, Point,
+    RoofWindow,
 };
 
 /// A trunk's radius as a share of its crown's.
