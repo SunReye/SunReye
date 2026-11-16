@@ -29,6 +29,7 @@ fn at(seconds: f64) -> SystemTime {
 fn policy() -> Policy {
     Policy {
         kind: RoleKind::Measurement,
+        unit: None,
         step: 0.1,
         deadband: 0.0,
         cadence: Duration::from_secs(5),
@@ -561,4 +562,40 @@ async fn a_layout_keeps_its_newest_version_per_date() {
     assert_eq!(ids("layout", "id"), [4, 5]);
     assert_eq!(ids("layout_string", "layout"), [4, 5]);
     assert_eq!(ids("layout_scene", "layout"), [4, 5]);
+}
+
+/// A device removed before tombstones (ADR 22) is named by its last logged state; one the log
+/// never named gets none.
+#[tokio::test]
+async fn a_device_removed_before_tombstones_gets_one_from_the_change_log() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("core.sqlite");
+    let old = rusqlite::Connection::open(&path).unwrap();
+    for sql in &super::thread::MIGRATIONS[..31] {
+        old.execute_batch(sql).unwrap();
+    }
+    old.pragma_update(None, "user_version", 31).unwrap();
+    old.execute_batch(
+        "INSERT INTO change (changed, applies_from, actor, subject, subject_id, action, state)
+         VALUES
+           (100, 100, 'admin', 'device', 3, 'add', '{\"id\": 3, \"name\": \"Roof\"}'),
+           (200, 200, 'admin', 'device', 3, 'change', '{\"id\": 3, \"name\": \"Garage\"}'),
+           (250, 250, 'admin', 'device', 4, 'add', '{\"id\": 4, \"name\": \"Kept\"}'),
+           (300, 300, 'admin', 'device', 3, 'remove', NULL),
+           (400, 400, 'admin', 'device', 5, 'remove', NULL);",
+    )
+    .unwrap();
+    drop(old);
+
+    drop(Storage::open(&path, epoch(), "UTC", &Bus::default()).unwrap());
+
+    let tombstones: Vec<(u32, String, i64)> = rusqlite::Connection::open(&path)
+        .unwrap()
+        .prepare("SELECT id, name, removed FROM device_tombstone ORDER BY id")
+        .unwrap()
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(tombstones, [(3, "Garage".to_owned(), 300)]);
 }

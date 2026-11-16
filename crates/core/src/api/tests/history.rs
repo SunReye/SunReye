@@ -31,6 +31,7 @@ async fn core(kind: RoleKind, cadence: u64) -> (TempDir, Core, String) {
     let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
     let policy = Policy {
         kind,
+        unit: None,
         step: 0.1,
         deadband: 0.0,
         cadence: Duration::from_secs(cadence),

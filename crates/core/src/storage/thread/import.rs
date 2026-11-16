@@ -29,7 +29,7 @@ impl Store {
         backfill: &Backfill,
     ) -> Result<Backfilled, Error> {
         let id = self.series_id(name)?;
-        self.step(device, id, policy.step)?;
+        self.describe(device, id, policy)?;
         let cutoff = first(&self.db, device.0, id)?;
         let points = encode(policy, &backfill.raw, cutoff);
         let tx = self.db.unchecked_transaction()?;

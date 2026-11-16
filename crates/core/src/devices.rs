@@ -466,6 +466,15 @@ impl Devices {
         self.database.run(store::devices).await
     }
 
+    /// Every device's name, present or removed, by id: `(id, name, removed)`. A removed one is
+    /// named by its tombstone (ADR 3).
+    ///
+    /// # Errors
+    /// The file cannot be read.
+    pub async fn names(&self) -> Result<Vec<(u32, String, bool)>, storage::Error> {
+        self.database.run(store::names).await
+    }
+
     /// Every device with its series, its writes switch and its settings, by id.
     ///
     /// # Errors

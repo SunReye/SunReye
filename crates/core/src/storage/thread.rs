@@ -12,11 +12,12 @@ use tokio::sync::{mpsc, oneshot};
 
 use super::encode::{Point, Tick, Track, quantise, ticks};
 use super::{
-    Backfill, Backfilled, ChangePoint, Error, Forecast, Issue, Policy, Problem, RETENTION, Rollup,
-    Tier, block, forecast,
+    Backfill, Backfilled, Catalogued, ChangePoint, Error, Forecast, Issue, Policy, Problem,
+    RETENTION, Rollup, Tier, block, forecast,
 };
 use crate::bus::{DeviceId, Reading, SeriesId};
 
+mod catalog;
 mod import;
 mod rollups;
 
@@ -66,6 +67,7 @@ pub(super) const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0029.sql"),
     include_str!("migrations/0030.sql"),
     include_str!("migrations/0031.sql"),
+    include_str!("migrations/0032.sql"),
 ];
 
 /// The schema version this build writes: the number of migrations.
@@ -108,6 +110,7 @@ pub enum Request {
     },
     Rewriting(Rewriting),
     Forecasting(Forecasting),
+    Catalog(oneshot::Sender<Result<Vec<Catalogued>, Error>>),
     Problems(oneshot::Sender<Vec<Problem>>),
     /// Days from now on are cut in `zone` (ADR 3); `log` commits with it.
     Zone {
@@ -442,6 +445,9 @@ impl Store {
             }
             Request::Rewriting(request) => self.rewriting(request),
             Request::Forecasting(request) => self.forecasting(request),
+            Request::Catalog(reply) => {
+                reply.send(catalog::catalog(&self.db)).ok();
+            }
             Request::Problems(reply) => {
                 let unsynced = self.unsynced.then_some(Problem::ClockUnsynced);
                 let full = self.full.then_some(Problem::StorageFull);
@@ -648,11 +654,7 @@ impl Store {
         policy: &Policy,
     ) -> Result<(), Error> {
         let id = self.series_id(name)?;
-        self.step(device, id, policy.step)?;
-        self.db.execute(
-            "UPDATE step SET kind = ?3 WHERE device = ?1 AND series = ?2",
-            params![device.0, id, kind_name(policy.kind)],
-        )?;
+        self.describe(device, id, policy)?;
         let track = if let Some(declared) = self.tracks.get(&(device, series)) {
             let track = declared.track.retune(policy);
             // Points pending under the old policy are written before it changes.
@@ -665,6 +667,21 @@ impl Store {
         let kind = policy.kind;
         self.tracks
             .insert((device, series), Stored { id, kind, track });
+        Ok(())
+    }
+
+    /// Records the step, kind and unit `series` of `device` is stored in, refusing another step.
+    fn describe(&self, device: DeviceId, series: i64, policy: &Policy) -> Result<(), Error> {
+        self.step(device, series, policy.step)?;
+        self.db.execute(
+            "UPDATE step SET kind = ?3, unit = ?4 WHERE device = ?1 AND series = ?2",
+            params![
+                device.0,
+                series,
+                kind_name(policy.kind),
+                policy.unit.map(catalog::unit_name)
+            ],
+        )?;
         Ok(())
     }
 
