@@ -95,6 +95,20 @@ test("a measurement whose integral is no energy has no energy column", async () 
   expect(table.getByRole("columnheader", { name: /Energie/u }).query()).toBeNull();
 });
 
+test("a cost rate's integral is a sum of money, not energy", async () => {
+  await desk();
+
+  const { screen } = await fold("cost.import");
+  const table = screen.getByRole("table", { name: "Statistik je Zeitraum" });
+  const first = table.getByRole("row", { name: /^Do\., 1\. Oktober/u });
+
+  await expect.element(first.getByRole("cell").nth(3)).toHaveTextContent("2,4");
+  expect(table.getByRole("columnheader", { name: /Summe/u }).element().textContent).toContain(
+    "(EUR)",
+  );
+  expect(table.getByRole("columnheader", { name: /Energie/u }).query()).toBeNull();
+});
+
 test("a status has no fold: the pane says so and reads nothing", async () => {
   await desk();
 
@@ -103,7 +117,7 @@ test("a status has no fold: the pane says so and reads nothing", async () => {
   await expect.element(screen.getByText("Kein Falten")).toBeVisible();
   await expect.element(screen.getByText(/ist ein Zustand oder gehaltener Wert/u)).toBeVisible();
   expect(screen.getByRole("table").query()).toBeNull();
-  expect(screen.getByRole("radiogroup", { name: "Falten nach" }).query()).toBeNull();
+  expect(screen.getByRole("radio", { name: "Tagen", exact: true }).query()).toBeNull();
   expect(plant.asked).toEqual([]);
 });
 

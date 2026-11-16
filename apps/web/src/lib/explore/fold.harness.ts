@@ -14,6 +14,7 @@ const DEVICES: readonly CatalogDevice[] = [
     series: [
       { series: "pv.power", unit: "W", kind: "measurement", ...SPAN },
       { series: "battery.temperature", unit: "°C", kind: "measurement", ...SPAN },
+      { series: "cost.import", unit: "EUR/h", kind: "measurement", ...SPAN },
       { series: "grid.import.energy", unit: "kWh", kind: "counter", ...SPAN },
       { series: "inverter.status", unit: "none", kind: "status", ...SPAN },
     ],
@@ -42,6 +43,7 @@ const POINTS: ReadonlyMap<string, Statistics["points"]> = new Map([
     "battery.temperature",
     [{ ...bounds(1), mean: 21.5, min: 18, max: 26, integral: 516, hours: 24 }],
   ],
+  ["cost.import", [{ ...bounds(1), mean: 0.1, min: 0, max: 0.5, integral: 2.4, hours: 24 }]],
   [
     "grid.import.energy",
     [

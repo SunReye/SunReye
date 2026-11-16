@@ -1185,7 +1185,6 @@
   "explore_fold_delta": "Delta",
   "explore_fold_hours_valued": "Hours with a value",
   "explore_fold_sort": "Sort by {column}",
-  "explore_fold_whiskers": "Min–max",
   "explore_fold_no_fold_title": "No fold",
   "explore_fold_no_fold": "{name} is a status or a held value: it has no statistics per period. The Series view shows its course.",
   "explore_fold_unstored": "Nothing is recorded for {name}.",

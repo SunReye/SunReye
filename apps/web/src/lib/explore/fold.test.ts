@@ -19,6 +19,8 @@ import {
 
 const DAY = dayOfIso("2026-11-15");
 
+const custom = (days: number): Range => ({ kind: "custom", from: DAY - days, to: DAY });
+
 const by = (period: string | null) => new URLSearchParams(period === null ? "" : `by=${period}`);
 
 test("a day folds by hour, a week or month by day and a year by month", () => {
@@ -28,15 +30,15 @@ test("a day folds by hour, a week or month by day and a year by month", () => {
   expect(periodsOf(rangeFor("year", DAY)).initial).toBe("month");
 });
 
-test("a range offers the periods it holds several of, hours only while one read serves them", () => {
+test("a range offers the periods it holds several of, and hours up to eight days", () => {
   expect(periodsOf(rangeFor("day", DAY)).offered).toEqual(["hour"]);
   expect(periodsOf(rangeFor("week", DAY)).offered).toEqual(["hour", "day"]);
-  expect(periodsOf(rangeFor("month", DAY)).offered).toEqual(["hour", "day", "week"]);
-  // A year's hours are past the hour tier's cap (ADR 9).
+  // A month's hours are 744 rows.
+  expect(periodsOf(rangeFor("month", DAY)).offered).toEqual(["day", "week"]);
   expect(periodsOf(rangeFor("year", DAY)).offered).toEqual(["day", "week", "month"]);
+  expect(periodsOf(custom(8)).offered).toEqual(["hour", "day", "week"]);
+  expect(periodsOf(custom(9)).offered).toEqual(["day", "week"]);
 });
-
-const custom = (days: number): Range => ({ kind: "custom", from: DAY - days, to: DAY });
 
 test("a custom range folds by its grain, and three years by month", () => {
   expect(periodsOf(custom(30)).initial).toBe("day");
@@ -47,7 +49,7 @@ test("a custom range folds by its grain, and three years by month", () => {
 test("the route's period is taken while the range offers it", () => {
   expect(periodOf(rangeFor("month", DAY), by("week"))).toBe("week");
   expect(periodOf(rangeFor("month", DAY), by(null))).toBe("day");
-  // A day holds no weeks, and a year too many hours.
+  // A day holds no weeks, and a year is not folded by hour.
   expect(periodOf(rangeFor("day", DAY), by("week"))).toBe("hour");
   expect(periodOf(rangeFor("year", DAY), by("hour"))).toBe("month");
   expect(periodOf(rangeFor("year", DAY), by("decade"))).toBe("month");
@@ -114,9 +116,9 @@ test("a counter shows its delta alone; a measurement its energy only in a unit t
 });
 
 test("a power's energy is written in kWh and a cost rate's in EUR", () => {
-  expect(energyOf("W")).toEqual({ unit: "kWh", per: 1000 });
-  expect(energyOf("kW")).toEqual({ unit: "kWh", per: 1 });
-  expect(energyOf("EUR/h")).toEqual({ unit: "EUR", per: 1 });
+  expect(energyOf("W")).toEqual({ unit: "kWh", per: 1000, energy: true });
+  expect(energyOf("kW")).toEqual({ unit: "kWh", per: 1, energy: true });
+  expect(energyOf("EUR/h")).toEqual({ unit: "EUR", per: 1, energy: false });
   expect(energyOf("V")).toBeNull();
   expect(energyOf(null)).toBeNull();
 });

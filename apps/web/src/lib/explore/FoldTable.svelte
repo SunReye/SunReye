@@ -47,7 +47,8 @@
   const columns = $derived(
     columnsOf(counter, unit).map((id) => ({
       id,
-      name: NAMES[id](),
+      // A cost rate sums to money: its column is a sum, not energy.
+      name: id === "energy" && energy?.energy === false ? m.explore_fold_sum() : NAMES[id](),
       unit: id === "period" ? null : id === "hours" ? "h" : id === "energy" ? energy?.unit : unit,
     })),
   );
@@ -69,13 +70,44 @@
       ? figure(row.energy / (energy?.per ?? 1))
       : figure(row[column]);
 
-  const ordered = $derived(
-    sorted(rows, sort.column, sort.dir).map((row) => ({
+  const ordered = $derived(sorted(rows, sort.column, sort.dir));
+
+  /** Rows mounted per frame: a fold by hours has hundreds, too many for one (ADR 21). */
+  const BATCH = 40;
+
+  /** How many rows of which order are mounted so far. */
+  let grown = $state.raw<{ of: readonly FoldRow[]; count: number } | null>(null);
+
+  const mounted = $derived(grown?.of === ordered ? grown.count : BATCH);
+
+  const shown = $derived(
+    ordered.slice(0, mounted).map((row) => ({
       key: row.key,
       label: labelOf(row, period, zone),
       cells: figures.map((id) => ({ id, text: cell(row, id) })),
     })),
   );
+
+  /** Mounts a new order's rows a batch a frame, until all stand. */
+  function grow(): () => void {
+    const of = ordered;
+    let count = BATCH;
+    let frame = 0;
+
+    const more = () => {
+      if (count >= of.length) return;
+
+      count += BATCH;
+      grown = { of, count };
+      frame = requestAnimationFrame(more);
+    };
+
+    frame = requestAnimationFrame(more);
+
+    return () => {
+      cancelAnimationFrame(frame);
+    };
+  }
 
   function press(column: Column): void {
     haptics.selection();
@@ -102,14 +134,15 @@
       {/each}
     </Table.Row>
   </Table.Header>
-  <Table.Body>
-    {#each ordered as row (row.key)}
-      <Table.Row>
+  <Table.Body {@attach grow}>
+    {#each shown as row (row.key)}
+      <!-- Plain rows: a fold by hours mounts hundreds, each a component too many (ADR 21). -->
+      <tr class="border-b transition-colors hover:bg-muted/50">
         <th scope="row" class="px-2 py-2 text-left font-normal whitespace-nowrap">{row.label}</th>
         {#each row.cells as value (value.id)}
-          <Table.Cell class="px-2 py-2 pr-7.5 text-right">{value.text}</Table.Cell>
+          <td class="px-2 py-2 pr-7.5 text-right align-middle whitespace-nowrap">{value.text}</td>
         {/each}
-      </Table.Row>
+      </tr>
     {/each}
   </Table.Body>
 </Table.Root>

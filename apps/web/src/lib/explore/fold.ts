@@ -15,8 +15,8 @@ const PERIODS: readonly Period[] = ["hour", "day", "week", "month"];
 /** The route's parameter the period is kept in; absent at the range's own. */
 export const FOLD_PARAM = "by";
 
-/** The hours one statistics read serves by the hour (ADR 9), less a margin. */
-const HOURS = 1488;
+/** The longest range folded by hour, in hours: past eight days its table is hundreds of rows. */
+const HOURS = 192;
 
 /** The fewest days a range holds several of each longer period in. */
 const DAYS: Readonly<Record<Exclude<Period, "hour">, number>> = { day: 2, week: 8, month: 32 };
@@ -87,14 +87,15 @@ export function isCounter(kind: string | null, points: readonly Readonly<Figures
 }
 
 /** What a unit's integral over hours is written in, and how many of the integral make one. */
-const ENERGY: ReadonlyMap<string, { unit: string; per: number }> = new Map([
-  ["W", { unit: "kWh", per: 1000 }],
-  ["kW", { unit: "kWh", per: 1 }],
-  ["EUR/h", { unit: "EUR", per: 1 }],
+const ENERGY: ReadonlyMap<string, { unit: string; per: number; energy: boolean }> = new Map([
+  ["W", { unit: "kWh", per: 1000, energy: true }],
+  ["kW", { unit: "kWh", per: 1, energy: true }],
+  // A cost rate sums to money, not energy.
+  ["EUR/h", { unit: "EUR", per: 1, energy: false }],
 ]);
 
-/** The unit a series' energy is written in; null where its integral has none. */
-export function energyOf(unit: string | null): { unit: string; per: number } | null {
+/** The unit a series' integral is written in, and whether it is energy; null where it has none. */
+export function energyOf(unit: string | null) {
   return unit === null ? null : (ENERGY.get(unit) ?? null);
 }
 
@@ -189,14 +190,23 @@ export function tickOf(row: FoldRow, period: Period, zone: string): string {
   return m.range_hour({ hour: plantNow(zone, new Date(row.start)).hour });
 }
 
+const formats = new Map<string, Intl.NumberFormat>();
+
 /** A figure as the table writes it: three significant places at most, none past the second decimal. */
 export function figure(v: number | null): string {
   if (v === null) return "–";
 
   const size = Math.abs(v);
   const digits = size >= 100 ? 0 : size >= 10 ? 1 : 2;
+  const key = `${getLocale()}:${digits}`;
+  let format = formats.get(key);
 
-  return new Intl.NumberFormat(getLocale(), { maximumFractionDigits: digits }).format(v);
+  if (!format) {
+    format = new Intl.NumberFormat(getLocale(), { maximumFractionDigits: digits });
+    formats.set(key, format);
+  }
+
+  return format.format(v);
 }
 
 /**

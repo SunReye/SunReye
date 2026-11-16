@@ -1185,7 +1185,6 @@
   "explore_fold_delta": "Zuwachs",
   "explore_fold_hours_valued": "Stunden mit Wert",
   "explore_fold_sort": "Nach {column} sortieren",
-  "explore_fold_whiskers": "Min–Max",
   "explore_fold_no_fold_title": "Kein Falten",
   "explore_fold_no_fold": "{name} ist ein Zustand oder gehaltener Wert: Dafür gibt es keine Statistik je Zeitraum. Die Ansicht „Reihen“ zeigt den Verlauf.",
   "explore_fold_unstored": "Für {name} ist nichts aufgezeichnet.",
