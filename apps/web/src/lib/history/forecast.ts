@@ -47,19 +47,23 @@ export interface Accuracy {
 
 export interface ForecastView {
   readonly bands: Band[];
-  readonly measured: number;
-  readonly forecast: number;
+  /** The range's sum: all that was measured, and the forecast of its every band, in kWh. */
+  readonly total: { readonly measured: number; readonly forecast: number };
   readonly accuracy: Accuracy;
 }
 
 export function forecastView(got: Loaded, targets: readonly Target[]): ForecastView {
   let [measured, forecast, error, days] = [0, 0, 0, 0];
+  const total = { measured: 0, forecast: 0 };
 
   const bands = bandsOf(got.list, (edge, i) => {
     const [a, b] = got.spans[i]!;
     const s = bandSum(got.plant, edge.t1 - edge.t0, a, b);
     const fc = expected(targets, a, b);
     const past = edge.state === "past" && s.covered > 0 && fc > 0;
+
+    total.measured += s.production;
+    total.forecast += fc;
 
     if (past) {
       [measured, forecast] = [measured + s.production, forecast + fc];
@@ -80,8 +84,7 @@ export function forecastView(got: Loaded, targets: readonly Target[]): ForecastV
 
   return {
     bands,
-    measured,
-    forecast,
+    total,
     accuracy: {
       error: days > 0 ? error / days : null,
       bias: forecast > 0 ? measured / forecast - 1 : null,
