@@ -29,6 +29,7 @@ use crate::profiles::{self, Profiles};
 use crate::solar::SolarForecast;
 use crate::spot::{self, SpotPrices, SpotZone};
 use crate::storage::{self, Storage};
+use crate::surroundings::{Documents, Source, Surroundings};
 use crate::tariff::{TariffDevice, Tariffs};
 use crate::topology::Topologies;
 use crate::weather::{self, Archive, Provider, Weather};
@@ -200,6 +201,8 @@ pub struct Boot<P, A, S> {
     pub archive: A,
     /// The spot-price device's provider.
     pub spot: S,
+    /// Where imported surroundings are fetched from (ADR 20).
+    pub sources: Vec<Box<dyn Source>>,
     /// Where profile indexes are fetched from.
     pub fetch: std::sync::Arc<dyn profiles::Fetch>,
     /// The compiled-in profile keys.
@@ -278,13 +281,14 @@ pub async fn serve(
     Identity::open(&storage.database()).await?;
     let (problems, watched) = problems(&storage).await?;
     let profiles = Profiles::open(storage.database(), boot.fetch, boot.keys).await?;
-    let (devices, layouts) = devices(&storage, &profiles, &bus).await?;
+    let location = PlantLocation::open(storage.database()).await?;
+    let surroundings = around(&boot.data_dir, boot.sources, &location);
+    let (devices, layouts) = devices(&storage, &profiles, &bus, surroundings.documents()).await?;
     let (topologies, tariffs) = (
         Topologies::new(storage.database()),
         Tariffs::new(&storage, &bus, storage.zones().watch()),
     );
     let _computed = Computed::spawn(&storage, (&layouts, &topologies, &tariffs), &bus);
-    let location = PlantLocation::open(storage.database()).await?;
     let spot = SpotZone::open(storage.database()).await?;
     // Boxed: four device tasks would make `serve`'s own future too large to move.
     let forecasting = Box::pin(forecast(
@@ -311,6 +315,7 @@ pub async fn serve(
         topologies,
         tariffs,
         cars,
+        surroundings,
         storage: storage.settings(),
         logs: boot.logs,
         clock: std::sync::Arc::new(SystemTime::now),
@@ -319,6 +324,16 @@ pub async fn serve(
     until(listener, api::router(api), background, shutdown).await?;
     storage.shutdown().await?;
     Ok(())
+}
+
+/// The imported surroundings (ADR 20), kept in the data directory and fetched around the plant's
+/// location.
+fn around(
+    data_dir: &std::path::Path,
+    sources: Vec<Box<dyn Source>>,
+    location: &PlantLocation,
+) -> Surroundings {
+    Surroundings::spawn(data_dir.join("surroundings"), sources, location.watch())
 }
 
 /// Ticks storage and runs `forecasting` until storage stops.
@@ -334,11 +349,13 @@ async fn background(
     }
 }
 
-/// The registered devices, and the PV layouts over their inverters.
+/// The registered devices, and the PV layouts over their inverters, whose scenes stand among
+/// the imported surroundings of `documents`.
 async fn devices(
     storage: &Storage,
     profiles: &Profiles,
     bus: &Bus,
+    documents: Documents,
 ) -> Result<(Devices, Layouts), Error> {
     let inverters = Inverters::default();
     let devices = Devices::start(
@@ -349,7 +366,8 @@ async fn devices(
         inverters.clone(),
     )
     .await?;
-    Ok((devices, Layouts::new(storage.database(), inverters)))
+    let layouts = Layouts::new(storage.database(), inverters).among(documents);
+    Ok((devices, layouts))
 }
 
 /// Serves `router` on `listener` until `background` ends or `shutdown` resolves, then lets open

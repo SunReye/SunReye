@@ -42,7 +42,7 @@ struct Inner {
 }
 
 impl Backups {
-    /// Backs up the store behind `database` and the car bodies of `data_dir` into `share`.
+    /// Backs up the store behind `database` and the kept files of `data_dir` into `share`.
     #[must_use]
     pub fn new(database: Database, data_dir: PathBuf, share: PathBuf) -> Self {
         Self(Arc::new(Inner {
@@ -78,8 +78,8 @@ struct BackupWritten {
     bytes: u64,
 }
 
-/// Backs up the store and the car bodies into a new file under `/share`, readable by the core's
-/// user alone; the secrets only when asked.
+/// Backs up the store, the car bodies and the imported surroundings into a new file under
+/// `/share`, readable by the core's user alone; the secrets only when asked.
 #[utoipa::path(post, path = "/api/v1/backups", request_body = BackupRequest, responses(
     (status = 201, body = BackupWritten),
     (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
