@@ -133,3 +133,60 @@ async fn a_path_that_is_no_asset_is_still_a_problem() {
         "application/problem+json"
     );
 }
+
+/// The `href` of the page's `<link rel="{rel}">`.
+fn link<'a>(page: &'a str, rel: &str) -> &'a str {
+    let tag = page
+        .split('<')
+        .find(|tag| tag.starts_with("link") && tag.contains(&format!("rel=\"{rel}\"")))
+        .unwrap_or_else(|| panic!("the page has no `{rel}` link"));
+    tag.split("href=\"")
+        .nth(1)
+        .and_then(|rest| rest.split('"').next())
+        .unwrap()
+}
+
+#[tokio::test]
+async fn the_screen_installs_from_a_manifest_that_works_under_a_prefix() {
+    let (_dir, core) = core().await;
+    let page = text(core.send(get("/")).await).await;
+    let href = link(&page, "manifest");
+    let path = href
+        .strip_prefix("./")
+        .unwrap_or_else(|| panic!("`{href}` is not relative to the page"));
+
+    let response = core.send(get(&format!("/{path}"))).await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers()[header::CONTENT_TYPE],
+        "application/manifest+json"
+    );
+    let manifest: serde_json::Value = serde_json::from_str(&text(response).await).unwrap();
+    for key in ["start_url", "scope", "id"] {
+        assert_eq!(manifest[key], "./", "{key}");
+    }
+    assert_eq!(manifest["display"], "standalone");
+    let icons = manifest["icons"].as_array().unwrap();
+    assert!(
+        icons.iter().any(|icon| icon["purpose"] == "maskable"),
+        "no maskable icon"
+    );
+    let touch = link(&page, "apple-touch-icon");
+    let sources = icons.iter().map(|icon| icon["src"].as_str().unwrap());
+    for source in sources.chain([touch]) {
+        assert!(
+            !source.starts_with('/') && !source.contains("://"),
+            "{source}"
+        );
+        let response = core
+            .send(get(&format!("/{}", source.trim_start_matches("./"))))
+            .await;
+        assert_eq!(response.status(), StatusCode::OK, "{source}");
+        assert_eq!(
+            response.headers()[header::CONTENT_TYPE],
+            "image/png",
+            "{source}"
+        );
+    }
+}
