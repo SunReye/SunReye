@@ -57,7 +57,10 @@
     <dt class="flex min-w-0 flex-1 items-baseline gap-2">
       <a {href} class={["flex min-w-0", COVER]}>{@render label()}</a>{@render age()}
     </dt>
-    <dd><ReadingValue {row} {loading} {dim} /></dd>
+    <!-- Underlined like every value that opens Explore: touch has no hover to say so. -->
+    <dd class="underline decoration-border underline-offset-4 group-hover:decoration-foreground">
+      <ReadingValue {row} {loading} {dim} />
+    </dd>
   </div>
 {:else if href === undefined}
   <Pressable

@@ -28,14 +28,19 @@ export async function estimatedSeries(
 
 /** The series with stored history, each `device/series` (ADR 22); none while the catalog cannot be read. */
 export async function storedSeries(core: Readonly<Pick<Core, "series">>): Promise<string[]> {
-  const catalog = await core.series().catch(() => null);
-
-  if (catalog === null || "problem" in catalog) return [];
-
   const found: string[] = [];
 
-  for (const device of catalog)
-    for (const stored of device.series) found.push(`${device.id}/${stored.series}`);
+  try {
+    const catalog = await core.series();
+
+    if ("problem" in catalog) return [];
+
+    for (const device of catalog)
+      for (const stored of device.series) found.push(`${device.id}/${stored.series}`);
+  } catch {
+    // An unreachable core, or an answer that is no catalog: no reading links.
+    return [];
+  }
 
   return found;
 }
