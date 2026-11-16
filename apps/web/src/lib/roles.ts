@@ -3,6 +3,7 @@
 // screen shows a role's series id. A role this table lacks keeps its series id.
 import { flowColour, roleFlow, type Flow } from "./energy-colours.ts";
 import { m } from "./paraglide/messages.js";
+import type { Locale } from "./paraglide/runtime.js";
 import type { SeriesMeta } from "./range/bands.ts";
 
 /** What an index counts, which names it: an MPPT input, a string, a phase, a measurement point. */
@@ -17,8 +18,14 @@ const INDEX: Readonly<Record<Family, (n: number) => string>> = {
 
 const FAMILIES: readonly Family[] = ["input", "string", "phase", "point"];
 
+/** A role's label in the locale in use, or in `locale`. */
+type Label = (
+  inputs?: Readonly<Record<string, never>>,
+  options?: Readonly<{ locale?: Locale }>,
+) => string;
+
 /** Every role in the order a group lists it, with its label and what its index counts. */
-export const ROLES: readonly (readonly [string, () => string, Family?])[] = [
+export const ROLES: readonly (readonly [string, Label, Family?])[] = [
   ["pv.power", m.rd_power],
   ["pv.energy.total", m.rd_pv_total],
   ["pv.mppt.power", m.rd_power, "input"],
@@ -65,7 +72,7 @@ export const ROLES: readonly (readonly [string, () => string, Family?])[] = [
   ["ev.vehicle.soc", m.rd_ev_soc],
   ["ev.limit.soc", m.rd_ev_limit],
   ["ev.session.energy", m.rd_session_energy],
-  ["ev.connected", m.rd_ev_plugged],
+  ["ev.connected", m.rd_ev_state],
   ["ev.charging", m.rd_ev_charging],
   ["ev.mode", m.rd_ev_mode],
   ["ev.battery.boost", m.rd_boost],
@@ -114,6 +121,11 @@ export interface Described {
   readonly label: string;
   /** Where it stands in its group: scalars by role, then each index family by index and role. */
   readonly order: readonly number[];
+}
+
+/** A role's label within its group, its index left out: "Spannung". */
+export function roleLabel(role: string, locale?: Locale): string {
+  return BY_ROLE.get(role)?.label({}, locale && { locale }) ?? role;
 }
 
 /** A series id as its namespace, label and place. */

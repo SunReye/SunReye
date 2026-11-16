@@ -37,16 +37,16 @@ export function inputs(read: Reader): Group {
   return tabled(
     m.rd_inputs(),
     table(read, (i) => m.rd_input({ n: i }), [
-      { role: "pv.mppt.voltage", label: m.rd_voltage(), unit: "V", digits: 0 },
-      { role: "pv.mppt.current", label: m.rd_current(), unit: "A", digits: 1 },
-      { role: "pv.mppt.power", label: m.rd_power(), ...POWER },
+      { role: "pv.mppt.voltage", unit: "V", digits: 0 },
+      { role: "pv.mppt.current", unit: "A", digits: 1 },
+      { role: "pv.mppt.power", ...POWER },
     ]),
   );
 }
 
 export const pvTotal = (read: Reader): Group => ({
   title: m.rd_counters(),
-  rows: kept([read.num("pv.energy.total", { label: m.rd_pv_total(), ...MWH, digits: 1 })]),
+  rows: kept([read.num("pv.energy.total", { ...MWH, digits: 1 })]),
 });
 
 /** The share of its input a parallel string's estimate takes, in %. */
@@ -81,9 +81,9 @@ export function string(read: Reader, strings: readonly PvString[], id: number): 
       title: m.rd_input_title({ n: i }),
       // A string alone on its input is the input: its power is the sheet's figure already.
       rows: kept([
-        alone ? null : read.num(`pv.mppt.power[${i}]`, { label: m.rd_power(), ...POWER }),
-        read.num(`pv.mppt.voltage[${i}]`, { label: m.rd_voltage(), unit: "V", digits: 0 }),
-        read.num(`pv.mppt.current[${i}]`, { label: m.rd_current(), unit: "A", digits: 1 }),
+        alone ? null : read.num(`pv.mppt.power[${i}]`, POWER),
+        read.num(`pv.mppt.voltage[${i}]`, { unit: "V", digits: 0 }),
+        read.num(`pv.mppt.current[${i}]`, { unit: "A", digits: 1 }),
       ]),
     },
     {
@@ -120,10 +120,8 @@ function conversion(read: Reader): Group {
     title: m.rd_now(),
     rows: kept([
       read.num("pv.power", { label: m.rd_dc_in(), ...POWER }),
-      through
-        ? read.num("inverter.efficiency", { label: m.rd_efficiency(), unit: "%", digits: 1 })
-        : null,
-      through ? read.num("inverter.loss.power", { label: m.rd_own_use(), ...POWER }) : null,
+      through ? read.num("inverter.efficiency", { unit: "%", digits: 1 }) : null,
+      through ? read.num("inverter.loss.power", POWER) : null,
     ]),
   };
 }
@@ -135,8 +133,8 @@ export function inverter(read: Reader): Group[] {
     {
       title: m.rd_state(),
       rows: kept([
-        read.text("inverter.status", m.rd_status(), (v) => STATUS.get(v)?.() ?? String(v)),
-        read.num("inverter.temperature", { label: m.rd_temperature(), unit: "°C", digits: 1 }),
+        read.text("inverter.status", (v) => STATUS.get(v)?.() ?? String(v)),
+        read.num("inverter.temperature", { unit: "°C", digits: 1 }),
       ]),
     },
     pvTotal(read),
@@ -147,36 +145,34 @@ export function battery(read: Reader): Group[] {
   return [
     {
       title: m.rd_now(),
-      rows: kept([read.num("battery.soc", { label: m.rd_soc(), unit: "%", digits: 0 })]),
+      rows: kept([read.num("battery.soc", { unit: "%", digits: 0 })]),
     },
     {
       title: m.rd_electrical(),
       rows: kept([
-        read.num("battery.voltage", { label: m.rd_voltage(), unit: "V", digits: 1 }),
-        read.num("battery.current", { label: m.rd_current(), unit: "A", digits: 1 }),
+        read.num("battery.voltage", { unit: "V", digits: 1 }),
+        read.num("battery.current", { unit: "A", digits: 1 }),
       ]),
     },
     {
       title: m.rd_state(),
       rows: kept([
-        read.num("battery.temperature", { label: m.rd_temperature(), unit: "°C", digits: 1 }),
-        read.num("battery.capacity", { label: m.rd_capacity(), unit: "kWh", digits: 1 }),
+        read.num("battery.temperature", { unit: "°C", digits: 1 }),
+        read.num("battery.capacity", { unit: "kWh", digits: 1 }),
       ]),
     },
     {
       title: m.rd_counters(),
       rows: kept([
         read.num("battery.energy.charged.total", {
-          label: m.rd_charged_total(),
           ...MWH,
           digits: 2,
         }),
         read.num("battery.energy.discharged.total", {
-          label: m.rd_discharged_total(),
           ...MWH,
           digits: 2,
         }),
-        read.num("battery.cycles", { label: m.rd_cycles(), unit: "", digits: 0 }),
+        read.num("battery.cycles", { unit: "", digits: 0 }),
       ]),
     },
   ];
@@ -186,21 +182,21 @@ export function grid(read: Reader): Group[] {
   return [
     {
       title: m.rd_now(),
-      rows: kept([read.num("grid.frequency", { label: m.rd_frequency(), unit: "Hz", digits: 2 })]),
+      rows: kept([read.num("grid.frequency", { unit: "Hz", digits: 2 })]),
     },
     tabled(
       m.rd_phases(),
       table(read, (p) => `L${p}`, [
-        { role: "grid.phase.voltage", label: m.rd_voltage(), unit: "V", digits: 0 },
-        { role: "grid.phase.current", label: m.rd_current(), unit: "A", digits: 1 },
-        { role: "grid.phase.power", label: m.rd_power(), ...POWER },
+        { role: "grid.phase.voltage", unit: "V", digits: 0 },
+        { role: "grid.phase.current", unit: "A", digits: 1 },
+        { role: "grid.phase.power", ...POWER },
       ]),
     ),
     {
       title: m.rd_counters(),
       rows: kept([
-        read.num("grid.energy.imported.total", { label: m.rd_imported_total(), ...MWH, digits: 2 }),
-        read.num("grid.energy.exported.total", { label: m.rd_exported_total(), ...MWH, digits: 2 }),
+        read.num("grid.energy.imported.total", { ...MWH, digits: 2 }),
+        read.num("grid.energy.exported.total", { ...MWH, digits: 2 }),
       ]),
     },
   ];
@@ -211,11 +207,11 @@ export function house(read: Reader, plant: Reader, points: readonly MeasurementP
     consumers(plant, points),
     tabled(
       m.rd_phases(),
-      table(read, (p) => `L${p}`, [{ role: "load.phase.power", label: m.rd_power(), ...POWER }]),
+      table(read, (p) => `L${p}`, [{ role: "load.phase.power", ...POWER }]),
     ),
     {
       title: m.rd_counters(),
-      rows: kept([read.num("load.energy.total", { label: m.rd_load_total(), ...MWH, digits: 1 })]),
+      rows: kept([read.num("load.energy.total", { ...MWH, digits: 1 })]),
     },
   ];
 }
@@ -231,9 +227,7 @@ export function generator(read: Reader): Group[] {
   return [
     {
       title: m.rd_counters(),
-      rows: kept([
-        read.num("generator.energy.total", { label: m.rd_generator_total(), ...MWH, digits: 1 }),
-      ]),
+      rows: kept([read.num("generator.energy.total", { ...MWH, digits: 1 })]),
     },
   ];
 }
@@ -251,17 +245,17 @@ export function ev(read: Reader): Group[] {
     {
       title: m.rd_now(),
       rows: kept([
-        read.text("ev.connected", m.rd_ev_state(), plugged),
-        read.num("ev.vehicle.soc", { label: m.rd_ev_soc(), unit: "%", digits: 0 }),
-        read.num("ev.limit.soc", { label: m.rd_ev_limit(), unit: "%", digits: 0 }),
+        read.text("ev.connected", plugged),
+        read.num("ev.vehicle.soc", { unit: "%", digits: 0 }),
+        read.num("ev.limit.soc", { unit: "%", digits: 0 }),
       ]),
     },
     {
       title: m.rd_session(),
       rows: kept([
-        read.num("ev.session.energy", { label: m.rd_session_energy(), unit: "kWh", digits: 1 }),
-        read.text("ev.mode", m.rd_ev_mode(), (v) => MODES.get(v)?.() ?? String(v)),
-        read.text("ev.battery.boost", m.rd_boost(), (v) => (v === 1 ? m.rd_on() : m.rd_off())),
+        read.num("ev.session.energy", { unit: "kWh", digits: 1 }),
+        read.text("ev.mode", (v) => MODES.get(v)?.() ?? String(v)),
+        read.text("ev.battery.boost", (v) => (v === 1 ? m.rd_on() : m.rd_off())),
       ]),
     },
   ];
