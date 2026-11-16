@@ -34,7 +34,9 @@ export interface Facts {
 async function series(core: FactsCore): Promise<readonly string[]> {
   const caps = await core.capabilities();
 
-  return "devices" in caps ? Object.values(caps.devices).flatMap((d) => d.series) : [];
+  return "devices" in caps
+    ? Object.keys(caps.devices).flatMap((d) => caps.devices[d]?.series ?? [])
+    : [];
 }
 
 /**

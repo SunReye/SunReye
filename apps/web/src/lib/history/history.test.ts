@@ -47,6 +47,7 @@ function fake() {
       asked.push({ period: q.get("period") ?? "", from, to });
 
       const start = new Date(from).toISOString();
+
       const point = {
         date: "2026-01-01",
         start,

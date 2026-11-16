@@ -37,6 +37,7 @@ function core(viewer = false, rolledUp = true) {
       const last = url.pathname.split("/").at(-1);
       const key = last === "statistics" ? url.searchParams.get("period") : last;
       const problem = { status: 403, headers: { "content-type": "application/problem+json" } };
+
       const span =
         Date.parse(url.searchParams.get("to") ?? "") -
         Date.parse(url.searchParams.get("from") ?? "");

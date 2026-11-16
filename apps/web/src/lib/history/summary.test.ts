@@ -62,7 +62,8 @@ test("the time before the record began is no gap", () => {
   const s = summaryOf(loaded(), VIEW, STRINGS, ms(10));
 
   expect(s.gapHours).toBe(2);
-  expect(s.notes.map((n) => n.text)).toEqual([expect.stringContaining("2 h")]);
+  expect(s.notes).toHaveLength(1);
+  expect(s.notes[0]?.text).toContain("2 h");
   // 12 of the 14 hours since the record began.
   expect(s.breakdown.at(-1)?.value).toBeCloseTo((12 / 14) * 100);
 });

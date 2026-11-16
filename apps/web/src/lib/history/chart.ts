@@ -145,12 +145,12 @@ function costs(got: Loaded): Chart {
 export function chartOf(metric: Metric, got: Loaded, begun = 0): Chart {
   const chart =
     metric === "money" ? costs(got) : flows(got, metric === "autarky" ? "autarky" : "energy");
+
   const end = (i: number) => hourInstant(got.zone, chart.drills[i]?.t1 ?? 0).getTime();
 
-  return {
-    ...chart,
-    bands: chart.bands.map((b, i) =>
-      b.state === "gap" && end(i) <= begun ? { ...b, state: "before" } : b,
-    ),
-  };
+  for (const [i, b] of chart.bands.entries()) {
+    if (b.state === "gap" && end(i) <= begun) b.state = "before";
+  }
+
+  return chart;
 }

@@ -9,6 +9,7 @@ import type { Loaded } from "./stats.svelte.ts";
 
 const ZONE = "UTC";
 /** A Monday; today is the Tuesday after it, at noon. */
+
 const MONDAY = dayOf(2026, 10, 2);
 const CAL: Calendar = { today: MONDAY + 1, hour: 12, last: MONDAY + 1 };
 const ms = (h: number) => hourInstant(ZONE, MONDAY * 24 + h).getTime();
