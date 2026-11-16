@@ -71,10 +71,10 @@ function statisticsCurve(counter: boolean, tier: Tier, got: Figured): Curve {
   return { draw: counter ? "bars" : "line", tier, samples };
 }
 
-const failed = (curve: Curve, code = ""): Reading => ({
+const failed = (curve: Curve, trouble: Reading["trouble"] = "failed"): Reading => ({
   curve,
   hourly: false,
-  trouble: code === "history.range" ? "many" : "failed",
+  trouble,
 });
 
 const fine = (curve: Curve, hourly = false): Reading => ({ curve, hourly, trouble: null });
@@ -95,7 +95,7 @@ async function figures(ask: Ask, period: Period & Tier, hourly: boolean): Promis
   const { device, series } = ask.s.ref;
   const got = await ask.core.statistics(device, series, period, ask.from, ask.to);
 
-  if ("problem" in got) return failed(ask.none, got.problem);
+  if ("problem" in got) return failed(ask.none);
 
   const curve = statisticsCurve(ask.kind === "counter", period, got);
 
@@ -107,7 +107,9 @@ async function history(ask: Ask, rolled: boolean): Promise<Reading> {
   const { device, series } = ask.s.ref;
   const got = await ask.core.history(device, series, ask.from, ask.to);
 
-  if ("problem" in got) return failed(ask.none, got.problem);
+  // Only a status or held value is refused for its changes (ADR 9): past 1,500 raw intervals.
+  if ("problem" in got)
+    return failed(ask.none, !rolled && got.problem === "history.range" ? "many" : "failed");
 
   if (rolled && got.points.length === 0) return figures(ask, "hour", true);
 
