@@ -148,9 +148,9 @@ export function chartOf(metric: Metric, got: Loaded, begun = 0): Chart {
 
   const end = (i: number) => hourInstant(got.zone, chart.drills[i]?.t1 ?? 0).getTime();
 
-  for (const [i, b] of chart.bands.entries()) {
-    if (b.state === "gap" && end(i) <= begun) b.state = "before";
-  }
+  const bands = chart.bands.map((b, i) =>
+    b.state === "gap" && end(i) <= begun ? Object.assign({}, b, { state: "before" as const }) : b,
+  );
 
-  return chart;
+  return Object.assign({}, chart, { bands });
 }
