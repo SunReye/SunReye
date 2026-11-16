@@ -6,6 +6,7 @@
 -->
 <script lang="ts">
   import type { Go } from "../range/route.svelte.ts";
+  import { begunOf } from "./facts.ts";
   import { Statistics, type StatisticsCore } from "./screen.svelte.ts";
   import StatsAside from "./StatsAside.svelte";
   import StatsCard from "./StatsCard.svelte";
@@ -19,7 +20,14 @@
   const got = $derived(s.data.current);
 
   const summary = $derived(
-    got ? summaryOf(got, s.view, { rows: s.rows, learning: s.learning ? s.since : null }) : null,
+    got
+      ? summaryOf(
+          got,
+          s.view,
+          { rows: s.rows, learning: s.learning ? s.since : null },
+          begunOf(s.facts),
+        )
+      : null,
   );
 </script>
 
@@ -34,18 +42,16 @@
     {#if !s.data.failed}
       <StatsAside
         label={s.route.label}
-        rows={summary?.breakdown ?? []}
-        notes={summary?.notes ?? []}
+        {summary}
         loading={s.data.loading}
         fresh={s.fresh}
         since={s.since}
         today={s.today}
-        payback={s.facts?.payback ?? null}
-        tucked={s.view.metric === "money" && s.view.tab === "payback"}
+        payback={s.payback}
+        tucked={s.paybackOpen}
         onnote={s.follow}
-        onpayback={() => {
-          s.open({ metric: "money", tab: "payback" });
-        }}
+        onrange={s.route.open}
+        onpayback={s.openPayback}
       />
     {/if}
   </div>

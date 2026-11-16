@@ -22,6 +22,7 @@ function hourly(...spans: readonly (readonly [number, number, number])[]): Rolle
       end: Date.parse(at(h0 + i + 1)),
       integral: mean,
       mean,
+      max: mean,
       covered: H,
     })),
   );
@@ -33,6 +34,7 @@ const day = (h: number, wh: number): Rolled[] => [
     end: Date.parse(at(h + 24)),
     integral: wh,
     mean: wh / 24,
+    max: null,
     covered: 24 * H,
   },
 ];
@@ -176,4 +178,16 @@ test("money marks the savings of the day before; autarky has no mark", () => {
   expect(chartOf("money", got).bands[0]!.mark).toBe(2.5);
 
   expect(chartOf("autarky", got).bands.every((b) => b.mark === null)).toBe(true);
+});
+
+test("the bands before the record began are before it, not gaps", () => {
+  const began = Date.parse(at(10));
+  const bands = chartOf("energy", loaded(PLANT), began).bands;
+
+  expect(bands.slice(0, 10).map((b) => b.state)).toEqual(
+    Array.from({ length: 10 }, () => "before"),
+  );
+  expect(bands[10]?.state).toBe("data");
+  // An hour without readings after the record began stays a gap.
+  expect(bands[12]?.state).toBe("gap");
 });

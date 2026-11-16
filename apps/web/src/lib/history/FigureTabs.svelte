@@ -113,6 +113,9 @@
       {:else if shown}
         <CircleCheck class="size-4 shrink-0 self-center text-success @[640px]:size-5" />
         {m.stats_plant_ok()}
+      {:else if !quiet && plant.learning}
+        <!-- Too few days to judge a string: said, where a dash read as a missing value. -->
+        {m.stats_plant_learning()}
       {:else}
         –
       {/if}

@@ -9,9 +9,9 @@ const DAY = 24 * H;
 test("a power series fills a band with the energy of the rollups starting in it", () => {
   // 2 kWh, then 1 kWh fed in, then 3 kWh; the third hour half read.
   const hours = [
-    { start: 0, end: H, integral: 2000, mean: 2000, covered: H },
-    { start: H, end: 2 * H, integral: -1000, mean: -1000, covered: H },
-    { start: 2 * H, end: 3 * H, integral: 3000, mean: 6000, covered: H / 2 },
+    { start: 0, end: H, integral: 2000, mean: 2000, max: null, covered: H },
+    { start: H, end: 2 * H, integral: -1000, mean: -1000, max: null, covered: H },
+    { start: 2 * H, end: 3 * H, integral: 3000, mean: 6000, max: null, covered: H / 2 },
   ];
 
   expect(bandFigure("grid.power", hours, H, 3 * H)).toEqual({ value: 2, covered: 1.5 * H });
@@ -19,8 +19,8 @@ test("a power series fills a band with the energy of the rollups starting in it"
 
 test("any other series fills a band with its mean, weighted by the time each rollup was read", () => {
   const hours = [
-    { start: 0, end: H, integral: 40, mean: 40, covered: H },
-    { start: H, end: 4 * H, integral: 240, mean: 80, covered: 3 * H },
+    { start: 0, end: H, integral: 40, mean: 40, max: null, covered: H },
+    { start: H, end: 4 * H, integral: 240, mean: 80, max: null, covered: 3 * H },
   ];
 
   expect(bandFigure("battery.soc", hours, 0, 4 * H)).toEqual({ value: 70, covered: 4 * H });
@@ -47,7 +47,16 @@ function fake() {
       asked.push({ period: q.get("period") ?? "", from, to });
 
       const start = new Date(from).toISOString();
-      const point = { date: "2026-01-01", start, end: start, integral: 5, mean: 5, hours: 0.5 };
+
+      const point = {
+        date: "2026-01-01",
+        start,
+        end: start,
+        integral: 5,
+        mean: 5,
+        max: 9,
+        hours: 0.5,
+      };
 
       return Promise.resolve(Response.json({ period: q.get("period"), points: [point] }));
     },
@@ -76,6 +85,6 @@ test("a long range is read in pieces each tier serves, end to end", async () => 
     expect(reads.slice(1).every((a, i) => a.from === reads[i]!.to)).toBe(true);
   }
 
-  expect(days[0]).toEqual({ start: T0, end: T0, integral: 5, mean: 5, covered: H / 2 });
+  expect(days[0]).toEqual({ start: T0, end: T0, integral: 5, mean: 5, max: 9, covered: H / 2 });
   expect(hours).toHaveLength(asked.length - days.length);
 });

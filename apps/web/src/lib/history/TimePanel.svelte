@@ -15,17 +15,20 @@
     got,
     metric,
     route,
+    begun,
     loading,
     height,
   }: {
     got: Loaded;
     metric: Metric;
     route: RangeRoute;
+    /** When the record began, in ms since the epoch. */
+    begun: number;
     loading: boolean;
     height: number;
   } = $props();
 
-  const chart = $derived(chartOf(metric, got));
+  const chart = $derived(chartOf(metric, got, begun));
 </script>
 
 <BandChart
