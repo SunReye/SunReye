@@ -14,7 +14,7 @@ History (ADR 21) answers four plant questions, and a detail sheet's analytics re
 
 - **Series:** up to 6 series, of any devices, on one time axis. Series of one unit share a **lane**; there are at most 4 lanes, stacked, with one pointer across them.
 - **Overlay:** one series over up to 5 periods: the range and those picked. Quick picks are the day before, the week before and the same day last year; any date can be picked. Days align on plant-local clock time: a 23-hour day ends early, and a 25-hour day plots its repeated hour twice, in order. Weeks align Monday to Sunday. Months and years are not overlaid; the fold answers them. In Overlay the range control offers day and week alone; switching in from a longer range opens today if it lies in the range, else the range's last day. Earlier periods are receding tints of the series' colour; the diverging pair stays for under and over (ADR 21). Switching to Overlay with several series chosen keeps the first.
-- **Fold:** one series' statistics per period (ADR 9): hour, day, week or month, defaulting to hours for a day, days for a week or month and months for a year. Bars of the mean with min–max whiskers for a measurement, or of the delta for a counter, above a sortable table of mean, min, max, energy or delta, and hours with a value. Statuses and held values have no fold.
+- **Fold:** one series' statistics per period (ADR 9): hour, day, week or month, defaulting to hours for a day, days for a week or month and months for a year. Hours are offered for a range of at most eight days: past that the table is hundreds of rows. Bars of the mean with min–max whiskers for a measurement, or of the delta for a counter, above a sortable table of mean, min, max, energy or delta, and hours with a value. Statuses and held values have no fold.
 
 **Drawing by kind** (ADR 4).
 
@@ -30,7 +30,7 @@ History (ADR 21) answers four plant questions, and a detail sheet's analytics re
 
 **Reads.** One history or statistics call per series and per overlay period, in parallel; the caps keep a view to about six. There is no batch route. A status or held series' history returns raw intervals at any range while they number at most 1,500 (ADR 9).
 
-**State.** The whole view is in the hash route: devices, series, range, mode and overlay periods, so a view can be bookmarked, sent to a viewer and stepped back through. Nothing is saved on the server or in the browser.
+**State.** The whole view is in the hash route: devices, series, range, mode, overlay periods and the fold's period where it is not the range's default, so a view can be bookmarked, sent to a viewer and stepped back through. Nothing is saved on the server or in the browser.
 
 **Reading the chart.** ADR 21's chart reading: the legend shows the values under the pointer, there are no tooltips, a mouse drag narrows the range, touch has no brushing. There is no pinch zoom. Lanes draw on a canvas: six series of 1,500 points are far past the band count at which SVG charts froze the page. Motion follows the tiers.
 

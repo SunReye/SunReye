@@ -3,7 +3,7 @@
 
 import type { CDPSession, Page } from "playwright";
 import { aim } from "./aim.ts";
-import { EXPLORE, EXPLORE_LANES } from "./explore.ts";
+import { EXPLORE, EXPLORE_LANES, FOLD } from "./explore.ts";
 import {
   back,
   builderShown,
@@ -212,6 +212,7 @@ const DESK: readonly Journey[] = [
   },
   EXPLORE,
   EXPLORE_LANES,
+  FOLD,
 ];
 
 const PHONE: readonly Journey[] = [
