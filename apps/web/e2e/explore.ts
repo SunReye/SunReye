@@ -1,5 +1,6 @@
 // Explore's journeys (ADR 22): a series added through the picker and the view kept over a reload;
-// two units charted in two lanes, read under the pointer and narrowed by a drag.
+// two units charted in two lanes, read under the pointer and narrowed by a drag; today laid over
+// yesterday.
 
 import { back, drag, inTurn, tap } from "./gestures.ts";
 import type { Journey } from "./journeys.ts";
@@ -57,6 +58,43 @@ export const EXPLORE_LANES: Journey = {
     await page.waitForFunction(() => location.hash.includes("range=custom"));
     await page.getByRole("img", { name: /^Bahn %/u }).waitFor();
     await back(page);
+  },
+};
+
+/** Overlay (ADR 22): today's PV power over yesterday's, each read under the pointer. */
+export const OVERLAY: Journey = {
+  name: "explore: overlay today with yesterday, read both, take it out",
+  route: "explore?mode=overlay",
+  ready: async (page) => {
+    await page.getByRole("img", { name: "Bahn W: Heute" }).waitFor();
+  },
+  act: async (page) => {
+    await tap(page, "Tag davor");
+    await page.getByRole("img", { name: "Bahn W: Heute, Gestern" }).waitFor();
+    await page.waitForFunction(() => /vs=\d{4}-\d{2}-\d{2}/u.test(location.hash));
+
+    const plot = page.getByRole("group", { name: /^PV · Leistung über die Zeiträume/u });
+    const legend = page.getByRole("list", { name: "PV · Leistung über die Zeiträume" });
+    const box = await plot.boundingBox();
+
+    if (!box) throw new Error("the overlay has no plot");
+
+    const at = (share: number) => [box.x + box.width * share, box.y + box.height / 2] as const;
+
+    // One pointer reads both days at the same time of day.
+    await page.mouse.move(...at(0.1));
+    await page.mouse.move(...at(0.9), { steps: 40 });
+    await page.mouse.move(...at(0.45), { steps: 20 });
+    await inTurn(["Heute", "Gestern"], async (name) => {
+      await legend
+        .getByRole("listitem")
+        .filter({ hasText: name })
+        .getByText(/\d\sW$/u)
+        .waitFor();
+    });
+    // Back takes the period out again.
+    await back(page);
+    await page.getByRole("img", { name: "Bahn W: Heute", exact: true }).waitFor();
   },
 };
 
