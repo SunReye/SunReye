@@ -90,6 +90,16 @@ The add-on runs under ingress: Home Assistant's login stands in for the core's, 
 
 Ingress was checked against an nginx stand-in for Supervisor, not yet on a real Supervisor, and the arm64 image has not yet run on arm64 hardware.
 
+## Install as an app
+
+The SPA installs as a web app from the browser's own menu; it has no install button. It needs the core reachable, as it keeps no copy offline.
+
+- **Behind a TLS reverse proxy** (or on `localhost`): the browser offers a real install with its own window and icon, at `/` or under the proxy's prefix.
+- **Plain HTTP on the LAN**: each browser does what it can. iOS Safari's Add to Home Screen opens it standalone; Android adds a shortcut that opens in the browser.
+- **Home Assistant add-on**: the SPA runs inside Home Assistant's frame and cannot install; use the Home Assistant Companion app.
+
+An installed iOS app keeps its own cookies apart from Safari, so it asks for the login once more.
+
 ## Startup options
 
 Every other setting lives in the core's database and changes in the SPA.
