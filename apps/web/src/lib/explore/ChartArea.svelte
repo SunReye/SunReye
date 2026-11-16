@@ -10,10 +10,20 @@
   import type { Explore, ExploreCore } from "./explore.svelte.ts";
   import FoldPane from "./FoldPane.svelte";
   import { modeLabel } from "./labels.ts";
+  import type { Table } from "./csv.ts";
   import OverlayPane from "./OverlayPane.svelte";
   import SeriesPane from "./SeriesPane.svelte";
 
-  let { core, x }: { core: ExploreCore; x: Explore } = $props();
+  let {
+    core,
+    x,
+    plotted = $bindable(),
+  }: {
+    core: ExploreCore;
+    x: Explore;
+    /** Set as the area is built: what the open mode plotted, null while nothing is drawn. */
+    plotted?: (() => Table | null) | undefined;
+  } = $props();
 
   const PANES = { series: SeriesPane, overlay: OverlayPane, fold: FoldPane };
 
@@ -21,6 +31,11 @@
   const height = $derived(wide.current ? 416 : 348);
 
   const Pane = $derived(PANES[x.view.mode]);
+
+  /** The open pane's plot; the pane sets it as it is built, so a switch of mode hands it over. */
+  let read = $state.raw<() => Table | null>();
+
+  plotted = () => (x.chosen.length === 0 ? null : (read?.() ?? null));
 </script>
 
 <section aria-label={modeLabel(x.view.mode)} style:min-height="{height}px">
@@ -40,7 +55,7 @@
       catalog={x.catalog}
       periods={x.view.periods}
       {height}
-      plots={x.plots}
+      bind:plotted={read}
     />
   {/if}
 </section>

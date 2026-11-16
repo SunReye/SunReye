@@ -7,16 +7,20 @@
   import { Skeleton } from "#lib/components/ui/skeleton/index.js";
   import { m } from "../paraglide/messages.js";
   import LanePlot from "./LanePlot.svelte";
-  import type { ModeProps } from "./mode.ts";
+  import type { PaneProps } from "./mode.ts";
   import { Pointer } from "./pointer.svelte.ts";
   import { figuresOf } from "./series-chart.ts";
   import SeriesLegend from "./SeriesLegend.svelte";
   import { SeriesView } from "./series-view.svelte.ts";
 
-  let props: ModeProps = $props();
+  let { plotted = $bindable(), ...props }: PaneProps = $props();
 
   const view = new SeriesView(() => props);
+
+  plotted = () => view.table;
+
   const chart = $derived(view.chart);
+
 
   let plot = $state<HTMLElement | null>(null);
 

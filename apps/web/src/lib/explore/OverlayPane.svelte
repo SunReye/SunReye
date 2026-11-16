@@ -10,19 +10,24 @@
   import { Skeleton } from "#lib/components/ui/skeleton/index.js";
   import { m } from "../paraglide/messages.js";
   import LanePlot from "./LanePlot.svelte";
-  import type { ModeProps } from "./mode.ts";
+  import type { PaneProps } from "./mode.ts";
   import { OverlayView } from "./overlay-view.svelte.ts";
   import OverlayPeriods from "./OverlayPeriods.svelte";
   import { Pointer } from "./pointer.svelte.ts";
   import SeriesLegend from "./SeriesLegend.svelte";
 
-  let props: ModeProps = $props();
+  let { plotted = $bindable(), ...props }: PaneProps = $props();
 
   const view = new OverlayView(() => props);
+
+  plotted = () => view.table;
+
   const chart = $derived(view.chart);
+
   const name = $derived(m.explore_overlay_chart({ name: view.chosen.label }));
 
   let plot = $state<HTMLElement | null>(null);
+
 
   const pointer = new Pointer(() => ({
     plot,

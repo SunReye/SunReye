@@ -12,13 +12,18 @@
   import FoldPeriods from "./FoldPeriods.svelte";
   import FoldTable from "./FoldTable.svelte";
   import { Fold } from "./fold.svelte.ts";
-  import type { ModeProps } from "./mode.ts";
+  import type { PaneProps } from "./mode.ts";
 
-  let { core, route, series, catalog, height, plots }: ModeProps = $props();
+  let { plotted = $bindable(), ...props }: PaneProps = $props();
 
-  const fold = new Fold(() => ({ core, route, series, catalog, plots }));
+  const fold = new Fold(() => props);
+
+  plotted = () => fold.table;
+
+  const { route, height } = $derived(props);
   const chosen = $derived(fold.chosen);
   const got = $derived(fold.got);
+
 </script>
 
 {#snippet said(title: string, text: string)}
