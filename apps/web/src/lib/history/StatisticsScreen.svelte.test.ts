@@ -50,6 +50,14 @@ test("over several days a peak names its day and opens it", async () => {
   await expect.poll(() => went.at(-1)?.patch).toMatchObject({ range: "day", at: YESTERDAY });
 });
 
+test("a plant too young to judge its strings says it is learning, not a dash", async () => {
+  plant.age = 10;
+
+  const { screen } = await show(DAY);
+
+  await expect.element(screen.getByRole("tab", { name: /^Anlage lernt/u })).toBeVisible();
+});
+
 test("a gap is hatched, never drawn as zero, and named in the verdict", async () => {
   const { screen } = await show(DAY);
 

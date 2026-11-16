@@ -807,6 +807,7 @@
   "stats_plant_sub_battery": "Strings, battery, data",
   "stats_plant_short": "State",
   "stats_plant_ok": "OK",
+  "stats_plant_learning": "learning",
   "stats_notices": "Notices",
   "stats_compare": "Compare with",
   "stats_compare_year_only": "Compared with last year",
