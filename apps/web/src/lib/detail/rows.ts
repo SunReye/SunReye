@@ -15,6 +15,8 @@ export interface Row {
   readonly age?: number;
   /** The detail this row opens. */
   readonly to?: string;
+  /** Explore on its series, when it has stored history (ADR 22). */
+  readonly href?: string;
 }
 
 /** Indexed readings side by side: one line per MPPT input or phase, one column per role. */
@@ -65,6 +67,8 @@ export interface Readings {
   readonly estimated: Readonly<Record<string, readonly string[]>>;
   /** The clock ages are counted against, epoch ms. */
   readonly now: number;
+  /** The Explore route of a device's series; null without stored history (ADR 22). */
+  readonly link: (device: number, series: string) => string | null;
 }
 
 const INDEXED = /^(?<role>.+)\[(?<index>\d+)\]$/u;
@@ -80,6 +84,12 @@ function indices(keys: readonly string[], roles: readonly string[]): number[] {
   }
 
   return [...found].toSorted((a, b) => a - b);
+}
+
+function linked(source: Readings, device: number, key: string): { href?: string } {
+  const href = source.link(device, key);
+
+  return href === null ? {} : { href };
 }
 
 /** Reads `device`'s values; `quiet` leaves ages to the one notice above the list. */
@@ -112,6 +122,7 @@ export function reader(source: Readings, device: number, quiet: boolean): Reader
         ...(estimated.has(key) && { est: true }),
         ...age(key),
         ...(to !== undefined && { to }),
+        ...linked(source, device, key),
       };
     },
     text: (key, label, say) => {
@@ -119,7 +130,9 @@ export function reader(source: Readings, device: number, quiet: boolean): Reader
 
       if (v === undefined) return null;
 
-      return { key, label, text: say(v), unit: "", digits: 0, ...age(key) };
+      const href = linked(source, device, key);
+
+      return { key, label, text: say(v), unit: "", digits: 0, ...age(key), ...href };
     },
   };
 }

@@ -30,7 +30,7 @@
           >{line.label}</Kit.Head
         >
         {#each line.cells as cell, i (i)}
-          <ReadingCell {cell} {loading} {silent} />
+          <ReadingCell {cell} line={line.label} {loading} {silent} />
         {/each}
       </Kit.Row>
     {/each}
