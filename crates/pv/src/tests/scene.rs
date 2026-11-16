@@ -32,6 +32,7 @@ fn scene(blocks: Vec<Block>, obstacles: Vec<Obstacle>) -> Scene {
         fences: vec![],
         openings: vec![],
         roof_windows: vec![],
+        imported: None,
     }
 }
 

@@ -807,3 +807,42 @@ async fn openings_are_saved_with_the_scene_and_one_off_its_wall_or_overlapping_i
         );
     }
 }
+
+#[tokio::test]
+async fn imported_surroundings_are_saved_with_the_scene_and_a_document_not_stored_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let module = core.module_type(&set_cookie).await;
+    let strings = [string(None, "south", &module, 1, 0.0)];
+    let exact = json!({ "radius": 100, "latitude": 47.0739, "longitude": 15.4413 });
+    core.ask(&set_cookie, super::surroundings::load(&exact))
+        .await;
+    let fetched = super::surroundings::settled(&core, &set_cookie).await;
+    let among = |document: &str| {
+        let mut scene = house(&module, &[cell(0, 0, Some(0), false)]);
+        scene["imported"] = json!({
+            "document": document, "x": 2.5, "z": -4.0, "turn": 3.0, "hidden": [25],
+        });
+        scene
+    };
+    let stored = among(fetched["document"].as_str().unwrap());
+
+    let (status, saved) = core.put_scene(&set_cookie, &strings, &stored).await;
+    let (_, read) = core.call(&set_cookie, get("/api/v1/layout")).await;
+    let (unknown, unknown_body) = core
+        .put_scene(&set_cookie, &strings, &among(&"0".repeat(64)))
+        .await;
+    let (outside, outside_body) = core
+        .put_scene(&set_cookie, &strings, &among("../core"))
+        .await;
+
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    assert_eq!(saved["scene"], stored);
+    assert_eq!(read["scene"], stored);
+    for (refused, body) in [(unknown, unknown_body), (outside, outside_body)] {
+        assert_eq!(
+            (refused, &body["code"]),
+            (StatusCode::UNPROCESSABLE_ENTITY, &json!("layout.scene"))
+        );
+    }
+}

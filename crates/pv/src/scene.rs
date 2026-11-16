@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::parking::colour;
 use crate::{
-    CarPlace, Chimney, Equipment, Fence, GroundSurface, ModuleGrid, Occluder, Opening, Point,
-    RoofWindow,
+    CarPlace, Chimney, Equipment, Fence, GroundSurface, Import, ModuleGrid, Occluder, Opening,
+    Point, RoofWindow,
 };
 
 /// A trunk's radius as a share of its crown's.
@@ -53,6 +53,9 @@ pub struct Scene {
     /// Windows lying flush in roof faces. Drawn only; they never shade.
     #[serde(default, rename = "roofWindows", skip_serializing_if = "Vec::is_empty")]
     pub roof_windows: Vec<RoofWindow>,
+    /// The imported surroundings drawn around the blocks; a scene stored without has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub imported: Option<Import>,
 }
 
 /// A rectangular footprint with one roof. Its width runs along x and its depth along z from its
@@ -215,7 +218,7 @@ impl Block {
 }
 
 /// Along the width, up, along the depth: a block's own frame.
-type Local = [f64; 3];
+pub type Local = [f64; 3];
 
 impl Scene {
     /// Every wall and roof of the blocks, every side of the boxes and hedges, and every side and
@@ -321,7 +324,7 @@ impl Scene {
                     radius,
                     height,
                     crown,
-                } => tree(&self.prism(x, z, 0.0), radius, height, crown),
+                } => tree(self.prism(x, z, 0.0).place([0.0; 3]), radius, height, crown),
             })
             .chain(posts)
             .collect()
@@ -378,10 +381,11 @@ impl Scene {
     }
 }
 
-/// A trunk under a sphere, or a cone from a fifth of the height.
-fn tree(foot: &Frame, radius: f64, height: f64, crown: Crown) -> Vec<Occluder> {
+/// A trunk standing on `foot` under a sphere, or a cone from a fifth of the height.
+pub fn tree(foot: Point, radius: f64, height: f64, crown: Crown) -> Vec<Occluder> {
+    let [east, north, ground] = foot;
     let trunk = |height| Occluder::Cylinder {
-        base: foot.place([0.0; 3]),
+        base: foot,
         radius: radius * TRUNK,
         height,
     };
@@ -389,7 +393,7 @@ fn tree(foot: &Frame, radius: f64, height: f64, crown: Crown) -> Vec<Occluder> {
         Crown::Broadleaf => vec![
             trunk(height - radius),
             Occluder::Sphere {
-                centre: foot.place([0.0, height - radius, 0.0]),
+                centre: [east, north, ground + height - radius],
                 radius,
             },
         ],
@@ -398,7 +402,7 @@ fn tree(foot: &Frame, radius: f64, height: f64, crown: Crown) -> Vec<Occluder> {
             vec![
                 trunk(base),
                 Occluder::Cone {
-                    base: foot.place([0.0, base, 0.0]),
+                    base: [east, north, ground + base],
                     radius,
                     height: height - base,
                 },
@@ -408,7 +412,7 @@ fn tree(foot: &Frame, radius: f64, height: f64, crown: Crown) -> Vec<Occluder> {
 }
 
 /// A convex polygon as triangles sharing its first corner.
-fn fan(corners: &[Point]) -> Vec<Occluder> {
+pub fn fan(corners: &[Point]) -> Vec<Occluder> {
     let Some((&first, rest)) = corners.split_first() else {
         return Vec::new();
     };
@@ -511,7 +515,7 @@ fn sheltering(block: &Block) -> Vec<Vec<Local>> {
         .collect()
 }
 
-fn pitched(width: f64, depth: f64, eave: f64, kind: Roof) -> Vec<Vec<Local>> {
+pub fn pitched(width: f64, depth: f64, eave: f64, kind: Roof) -> Vec<Vec<Local>> {
     let rise = |run: f64, pitch: f64| run.mul_add(pitch.to_radians().tan(), eave);
     match kind {
         Roof::Flat => vec![lid(width, depth, eave)],
@@ -556,7 +560,7 @@ fn pitched(width: f64, depth: f64, eave: f64, kind: Roof) -> Vec<Vec<Local>> {
 }
 
 /// The wall under each side of the footprint, up to the roof corners standing on that side.
-fn walls(width: f64, depth: f64, roofs: &[Vec<Local>]) -> Vec<Vec<Local>> {
+pub fn walls(width: f64, depth: f64, roofs: &[Vec<Local>]) -> Vec<Vec<Local>> {
     edges(width, depth)
         .map(|(a, b)| {
             let mut tops: Vec<Local> = Vec::new();

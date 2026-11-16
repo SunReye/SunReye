@@ -120,6 +120,7 @@ fn boot(
         weather: Fake::new(Vec::new(), &[]).0,
         archive: FakeArchive::new(Vec::new()).0,
         spot: spot::fake::Fake::new(Vec::new(), &[]).0,
+        sources: Vec::new(),
         fetch: crate::profiles::fake::Host::new(),
         keys: None,
         logs: crate::logs::Logs::default(),

@@ -10,6 +10,7 @@ mod estimate;
 mod fitting;
 mod gliding;
 mod grid;
+mod imported;
 mod laying;
 mod mppt;
 mod opening;
@@ -29,6 +30,11 @@ pub use equipment::{Equipment, EquipmentKind, Mount, Wall, WallFrame};
 pub use estimate::estimate;
 pub use fitting::Unfit;
 pub use grid::{Area, GAP, GridModule, Misplaced, ModuleGrid, Placed, RoofFace, Size, Spot};
+pub use imported::{
+    Around, Building, CREDITS, Coordinate, Draped, EastNorth, Element, Fetched, Hedge, Import,
+    Imported, MapData, Member, Patch, PatchFinish, Relief, Roofing, Standing, Terrain, Tile, Tree,
+    Vicinity,
+};
 pub use laying::Ghost;
 pub use mppt::{input_output, module_counts_differ};
 pub use opening::{Fitted, Opening, OpeningKind};
