@@ -150,13 +150,14 @@ test("autarky: where each band's house load came from, in shares to 100 %", () =
 });
 
 test("money comes by the day: savings above zero, the bill below", () => {
-  const days = [{ start: at(0), end: at(24), paid: 3, earned: 1, saved: 4, standing: 0 }];
+  const days = [{ start: at(0), end: at(24), paid: 3, earned: 1, saved: 4, standing: 0.5 }];
 
   const chart = chartOf("money", loaded(PLANT, days));
 
   expect(chart.bands).toHaveLength(1);
   expect(chart.bands[0]!.up).toEqual([3, 1]);
-  expect(chart.bands[0]!.down).toEqual([3]);
+  expect(chart.bands[0]!.down).toEqual([3, 0.5]);
+  expect(chart.down.map((s) => s.label)).toEqual(["Bezugskosten", "Grundpreis"]);
 });
 
 test("each bar carries the same band of the period before as its mark", () => {

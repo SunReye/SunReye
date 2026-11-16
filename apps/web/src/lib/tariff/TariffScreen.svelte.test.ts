@@ -27,6 +27,7 @@ const COSTS = {
       paid: 0,
       earned: 0.32,
       saved: 0.62,
+      standing: 0.5,
     },
     {
       start: "2026-11-02T00:00:00Z",
@@ -34,9 +35,10 @@ const COSTS = {
       paid: 0.3,
       earned: 0,
       saved: 0.15,
+      standing: 0.5,
     },
   ],
-  total: { paid: 0.3, earned: 0.32, saved: 0.77 },
+  total: { paid: 0.3, earned: 0.32, saved: 0.77, standing: 1 },
 };
 
 test("the range's savings and costs read in the chart's legend, as the core totals them", async () => {
@@ -53,6 +55,9 @@ test("the range's savings and costs read in the chart's legend, as the core tota
   await expect.element(screen.getByText("0,45 €")).toBeVisible();
   await expect.element(screen.getByText("0,32 €")).toBeVisible();
   await expect.element(screen.getByText("0,30 €")).toBeVisible();
+  // The standing charge is a cost of its own.
+  await expect.element(screen.getByText("Grundpreis", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("1,00 €")).toBeVisible();
   await expect
     .poll(() => core.sent.map((s) => s.route))
     .toContain(

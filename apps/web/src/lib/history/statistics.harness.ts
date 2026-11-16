@@ -96,6 +96,7 @@ function costs(q: Query): Response {
     paid: 3.3,
     earned: 0.32,
     saved: 1.2,
+    standing: 0,
   };
 
   const days = Date.parse(day.start) >= from && Date.parse(day.start) < to ? [day] : [];
@@ -105,7 +106,7 @@ function costs(q: Query): Response {
 
   return Response.json({
     days,
-    total: { paid: sum("paid"), earned: sum("earned"), saved: sum("saved") },
+    total: { paid: sum("paid"), earned: sum("earned"), saved: sum("saved"), standing: 0 },
   });
 }
 
