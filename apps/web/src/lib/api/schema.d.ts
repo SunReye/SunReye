@@ -1853,7 +1853,7 @@ export interface components {
             id: number;
             /** @description The subject after the change, as its own route reads it; `null` once removed. */
             state?: unknown;
-            /** @description `connection`, `device`, `index`, `location`, `viewer`, `token`, `topology`, `enable`, `profile`, `tariff` or `investment`. */
+            /** @description `connection`, `device`, `index`, `location`, `viewer`, `token`, `topology`, `enable`, `profile`, `tariff`, `layout` or `investment`. */
             subject: string;
         };
         /** @description The module catalogue's sheets, as the admin picks a datasheet to add as a module type. */
