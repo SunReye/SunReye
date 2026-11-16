@@ -129,3 +129,25 @@ async fn a_change_equal_to_the_version_in_force_stores_nothing() {
     assert_eq!(plant.layouts.versions().await.unwrap(), vec![first]);
     assert!(!changes.has_changed().unwrap(), "no change is announced");
 }
+
+/// A plane a scene derives may differ in its last bits from one an older build derived.
+#[tokio::test]
+async fn a_plane_within_rounding_of_the_version_in_force_stores_nothing() {
+    let plant = plant().await;
+    let first = plant
+        .layouts
+        .change(day(1), vec![plant.string(None, 1, 16)], None, day(1))
+        .await
+        .unwrap();
+    let mut same = plant.string(Some(first.strings[0].id), 1, 16);
+    same.wiring.azimuth = 15.0_f64.mul_add(1e-15, same.wiring.azimuth);
+    same.wiring.tilt -= 1e-13;
+
+    plant
+        .layouts
+        .change(day(1), vec![same], None, day(2))
+        .await
+        .unwrap();
+
+    assert_eq!(plant.layouts.versions().await.unwrap(), vec![first]);
+}

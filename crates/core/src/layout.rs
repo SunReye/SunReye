@@ -625,6 +625,10 @@ fn write_version(db: &Connection, version: &Version, changed: SystemTime) -> rus
     changes::append(db, &entry)
 }
 
+/// Degrees within which a derived plane is the same: a scene's planes may differ in their last
+/// bits from those an older build derived.
+const ROUNDING: f64 = 1e-9;
+
 /// Whether `version` has these strings, in any order, and this scene.
 fn same(version: &Version, strings: &[PvString], scene: Option<&Scene>) -> bool {
     let by_id = |strings: &[PvString]| {
@@ -632,7 +636,24 @@ fn same(version: &Version, strings: &[PvString], scene: Option<&Scene>) -> bool 
         sorted.sort_by_key(|s| s.id);
         sorted
     };
-    version.scene.as_ref() == scene && by_id(&version.strings) == by_id(strings)
+    let close = |a: f64, b: f64| (a - b).abs() < ROUNDING;
+    let alike = |a: &PvString, b: &PvString| {
+        let (x, y) = (&a.wiring, &b.wiring);
+        a.id == b.id
+            && close(x.tilt, y.tilt)
+            && close(x.azimuth, y.azimuth)
+            && Wiring {
+                tilt: y.tilt,
+                azimuth: y.azimuth,
+                ..x.clone()
+            } == *y
+    };
+    version.scene.as_ref() == scene
+        && version.strings.len() == strings.len()
+        && by_id(&version.strings)
+            .iter()
+            .zip(&by_id(strings))
+            .all(|(a, b)| alike(a, b))
 }
 
 /// The version applying from `applies_from`, emptied of its strings and scene, or a new one.
