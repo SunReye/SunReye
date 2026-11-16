@@ -716,6 +716,7 @@
   "detail_live": "Live · last 2 minutes",
   "detail_live_none": "No values in the last 2 minutes",
   "detail_history": "Open in history · {range}",
+  "detail_explore": "Open {label} in Explore",
   "detail_prices": "Today's spot prices",
   "detail_no_prices": "No prices for today yet",
   "detail_analytics": "History",
