@@ -43,11 +43,12 @@ export interface Daylight {
   readonly elevation: number;
 }
 
-/** The light's look at a low sun (5°) and a high one (42°); between, it blends. */
-const LOW = { colour: 0xff9c66, intensity: 2, environment: 0.65, glow: 0.25, elevation: 5 };
-const HIGH = { colour: 0xfff4e5, intensity: 3.4, environment: 1, glow: 1, elevation: 42 };
+/** The sun's own light at a low sun (5°) and a high one (42°); between, it blends. Warm: the
+ * model is white, so the sun's colour and the sky's are all the colour its faces have. */
+const LOW = { colour: 0xffb07a, intensity: 2.8, glow: 0.25, elevation: 5 };
+const HIGH = { colour: 0xffedd6, intensity: 3.6, glow: 1, elevation: 42 };
 
-const MOON = { colour: 0xb4c4ff, intensity: 2.3, environment: 0.35 };
+const MOON = { colour: 0xd0d9f5, intensity: 1.6, environment: 0.35 };
 
 /** A sky's shadowless fill: its colours. */
 interface Tint {
@@ -57,23 +58,24 @@ interface Tint {
 
 /** The fill's colours by sky. */
 const TINT = {
-  // A faint bounce under a high sun, where the sky model lights the day.
-  bounce: { sky: 0xcfe0ff, ground: 0x4b5b35 },
+  // Under a high sun: a room's worth of neutral bounce, a little cool from above and warm from
+  // the floor. The sky model alone would light a white model blue.
+  bounce: { sky: 0xeef2fa, ground: 0xb5b0a8 },
   // A low sun's sky, a little warm, and the horizon's, warmer.
   golden: { sky: 0xfff0e2, ground: 0x9a9082 },
   horizon: { sky: 0xffe4cc, ground: 0x8f8070 },
   // The blue hour, at the end of civil twilight.
-  civil: { sky: 0x9fb8f0, ground: 0x56628a },
+  civil: { sky: 0xbccbee, ground: 0x7a829c },
   // The night's own blue sky.
-  night: { sky: 0x93a5d8, ground: 0x4a5475 },
+  night: { sky: 0xb9c2dc, ground: 0x70778c },
   // A closed sky: grey.
   overcast: { sky: 0xd6d9dd, ground: 0x777a7c },
 } satisfies Record<string, Tint>;
 
 /** The fill's least light, by day and by night. */
 const FAINT = {
-  day: 0.15 * luma(linear(TINT.bounce.sky)),
-  night: 1.5 * luma(linear(TINT.night.sky)),
+  day: 1.3,
+  night: 0.8 * luma(linear(TINT.night.sky)),
 };
 
 /**
@@ -85,18 +87,20 @@ const FAINT = {
 const FLOOR = {
   night: MOON.intensity * luma(linear(MOON.colour)) + FAINT.night,
   civil: 3,
-  day: 4.5,
+  day: 3.6,
 };
 
 /**
- * The sky model is dim at a low sun and black under the horizon. Up to `most` times stronger, it
- * gives a low sun's day the sky light of a November noon, `light`: reflections and all.
+ * The sky model's light on a face turned up, whatever the sun's height and the clouds: it is dim
+ * at a low sun and black under the horizon, so it is strengthened up to `most` times. Kept well
+ * under the sun's own, so the sun models the faces and the sky only tints their shade and
+ * mirrors in the glass; the fill brings the rest.
  */
-const SKY = { light: 2.9, most: 10 };
+const SKY = { light: 0.45, most: 10 };
 
-/** The share of the sun's own light that gets through a closed sky, and of the sky model's:
- * its clouds are twice as bright as its clear sky. */
-const THROUGH = { sun: 0.06, sky: 0.45 };
+/** The share of the sun's own light that gets through a closed sky: a soft key light is left,
+ * so a white model keeps its form on a grey day. */
+const THROUGH = 0.35;
 
 /** The shadow's blur radius under a clear sky and a closed one. */
 const SHADOW = { clear: 3.5, closed: 9 };
@@ -173,16 +177,10 @@ function day(sky: Sky, cloud: number): Daylight {
 
   const direct = {
     colour: blend(linear(LOW.colour), linear(HIGH.colour), k),
-    intensity: mix(LOW.intensity, HIGH.intensity, k) * risen * mix(1, THROUGH.sun, veil),
+    intensity: mix(LOW.intensity, HIGH.intensity, k) * risen * mix(1, THROUGH, veil),
   };
 
-  const environment = Math.min(
-    SKY.most,
-    Math.max(
-      mix(LOW.environment, HIGH.environment, k) * mix(1, THROUGH.sky, veil),
-      SKY.light / Math.max(model, 1e-6),
-    ),
-  );
+  const environment = Math.min(SKY.most, SKY.light / Math.max(model, 1e-6));
 
   const clear =
     sky.elevation < DUSK
@@ -258,31 +256,11 @@ export interface Theme {
   readonly environment: number;
 }
 
-const EXPOSURE = 0.62;
+const EXPOSURE = 0.85;
 
 /** Dark mode: a lower exposure and a dimmer sky at the same sun. */
 export function theme(dark: boolean): Theme {
   return dark
-    ? { dark, exposure: EXPOSURE * 0.82, environment: 0.75 }
+    ? { dark, exposure: EXPOSURE * 0.7, environment: 0.75 }
     : { dark, exposure: EXPOSURE, environment: 1 };
-}
-
-/** ACES's curve as three applies it. */
-function rrt(v: number): number {
-  return (v * (v + 0.0245786) - 0.000090537) / (v * (0.983729 * v + 0.432951) + 0.238081);
-}
-
-/** The linear value that lands on `target` after `exposure` and ACES: the backdrop and the fog
- * then meet the page colour exactly. */
-export function untone(target: number, exposure: number): number {
-  let [lo, hi] = [0, 60];
-
-  for (let i = 0; i < 40; i++) {
-    const mid = (lo + hi) / 2;
-
-    if (rrt((mid * exposure) / 0.6) < target) lo = mid;
-    else hi = mid;
-  }
-
-  return (lo + hi) / 2;
 }

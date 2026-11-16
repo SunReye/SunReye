@@ -14,17 +14,18 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import type { Look } from "./quality.ts";
 import { jitter, Refiner } from "./refine.ts";
 
-/** One ambient-occlusion pass, as the prototype tuned it. */
+/** One ambient-occlusion pass, wide and strong: on a white model it is what sets a wall on the
+ * ground and an eave on its wall. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js reads them.
 function ambientOcclusion(scene: Scene, camera: PerspectiveCamera): GTAOPass {
   const pass = new GTAOPass(scene, camera, 1, 1);
 
-  pass.blendIntensity = 0.9;
+  pass.blendIntensity = 1;
   pass.updateGtaoMaterial({
-    radius: 0.7,
+    radius: 2,
     distanceExponent: 1.5,
     thickness: 1.5,
-    scale: 1,
+    scale: 1.5,
     samples: 12,
   });
   pass.updatePdMaterial({

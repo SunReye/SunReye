@@ -10,6 +10,7 @@ import {
   Vector3,
 } from "three";
 import type { Face, Point } from "../builder/pv.ts";
+import { TONE } from "./materials.ts";
 import { level } from "./surfaces.ts";
 
 /** An edge of a roof face, in the crate's frame, with its face's colour. */
@@ -94,8 +95,8 @@ export function edges(faces: readonly Face[]): Trim {
   };
 }
 
-/** A roof tile's own colour, for a roof without one: the tile map's mean. */
-const TILE = "#2c2c2e";
+/** A roof's own tone, for a roof without a colour. */
+const ROOF = TONE.roof;
 
 /** Metres: a ridge cap's radius, a verge tile's, a gutter's, and how far a gutter hangs under
  * its eave. */
@@ -127,7 +128,7 @@ function rounds(
     turn.setFromUnitVectors(up, along.normalize());
     a.add(b).multiplyScalar(0.5).y -= drop;
     mesh.setMatrixAt(i, matrix.compose(a, turn, new Vector3(radius, length, radius)));
-    mesh.setColorAt(i, new Color(colour ?? TILE));
+    mesh.setColorAt(i, new Color(colour ?? ROOF));
   }
 
   mesh.name = "trim";
@@ -137,28 +138,22 @@ function rounds(
 
 const round = (edge: Edge, radius: number): Round => Object.assign({ radius, drop: 0 }, edge);
 
-/** The trim of the pitched roofs among `faces`: tile caps and verges in the roof's colour, and
- * zinc gutters; nothing without any. */
+const matte = (): MeshStandardMaterial => new MeshStandardMaterial({ roughness: 0.92 });
+
+/** The trim of the pitched roofs among `faces`: caps and verges in the roof's colour, and
+ * gutters in the roof's own tone, all matte; nothing without any. */
 export function trim(faces: readonly Face[]): InstancedMesh[] {
   const { ridges, eaves, verges } = edges(faces);
 
-  const tiles: Round[] = [
+  const caps: Round[] = [
     ...ridges.map((edge) => round(edge, CAP)),
     ...verges.map((edge) => round(edge, VERGE)),
   ];
 
-  const gutters = eaves.map(({ from, to }) => ({
-    from,
-    to,
-    colour: "#8d9499",
-    radius: GUTTER,
-    drop: HUNG,
-  }));
+  const gutters = eaves.map(({ from, to }) => ({ from, to, radius: GUTTER, drop: HUNG }));
 
   return [
-    ...(tiles.length === 0 ? [] : [rounds(tiles, new MeshStandardMaterial({ roughness: 0.85 }))]),
-    ...(gutters.length === 0
-      ? []
-      : [rounds(gutters, new MeshStandardMaterial({ roughness: 0.4, metalness: 0.7 }))]),
+    ...(caps.length === 0 ? [] : [rounds(caps, matte())]),
+    ...(gutters.length === 0 ? [] : [rounds(gutters, matte())]),
   ];
 }

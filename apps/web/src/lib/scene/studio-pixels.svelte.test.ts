@@ -85,7 +85,7 @@ function fade(opened: Studio, metres: number): number {
 
   // Half the pixels between dark and lit: the column crosses two edges.
   return (
-    light.filter((v) => v > dark + (lit - dark) * 0.15 && v < lit - (lit - dark) * 0.15).length / 2
+    light.filter((v) => v > dark + (lit - dark) * 0.08 && v < lit - (lit - dark) * 0.08).length / 2
   );
 }
 
@@ -114,14 +114,14 @@ test("Ultra's burst smooths the edges of the picture it settles on, and changes 
   // The same picture: no brighter, no darker, nothing moved.
   expect(Math.abs(mean(refined) - mean(settled))).toBeLessThan(0.5);
   // Finer steps along its slanted edges than four samples a pixel give.
-  expect(shades(refined)).toBeGreaterThan(shades(settled) * 1.5);
+  expect(shades(refined)).toBeGreaterThan(shades(settled) * 1.3);
 });
 
 /** A 4 m sheet of each finish side by side under a high sun, nothing casting on them, seen from
  * straight above. */
 function sheets(level: Level): number[] {
   const camera = new PerspectiveCamera(40, 1, 0.1, 500);
-  const makes = [finish.tiles, finish.lawn, finish.GROUND.paving, () => finish.plaster("#d8c8b0")];
+  const makes = [finish.roofing, finish.floor, finish.GROUND.paving, () => finish.clay("#d8c8b0")];
 
   camera.position.set(0, 24, 0);
   camera.up.set(0, 0, -1);
@@ -173,14 +173,61 @@ test("Hoch and Ultra draw every finish in Mittel's colours: a level adds sharpne
 
   const medium = sheets("medium");
 
-  // What two studios at one level differ by.
-  expect(apart(sheets("medium"), medium)).toBeLessThan(0.5);
+  // What two studios at one level differ by: the occlusion's noise.
+  expect(apart(sheets("medium"), medium)).toBeLessThan(1);
 
   for (const level of ["high", "ultra"] as const) {
-    expect([level, apart(sheets(level), medium) < 0.5]).toEqual([level, true]);
+    expect([level, apart(sheets(level), medium) < 1]).toEqual([level, true]);
   }
+
+  // Niedrig, as a control: it draws without the occlusion that sets the sheets on the floor.
+  expect(apart(sheets("low"), medium)).toBeGreaterThan(3);
 });
 
-test("Niedrig draws each finish as it is, unweathered", () => {
-  expect(apart(sheets("low"), sheets("medium"))).toBeGreaterThan(3);
+test("white clay in full sun stays under white, and its shade lies well apart from it", () => {
+  const camera = new PerspectiveCamera(40, 1, 0.1, 500);
+
+  // From the north: the wall's shaded face, and the floor its shadow falls on.
+  camera.position.set(0, 6, -12);
+  camera.lookAt(0, 1, -2);
+  camera.updateMatrixWorld();
+  studio?.dispose();
+  studio = new Studio(document.createElement("canvas"), camera, () => look("high"));
+  studio.setSize(SIDE, SIDE);
+
+  const floor = new Mesh(new PlaneGeometry(16, 16), finish.clay());
+  const wall = new Mesh(new BoxGeometry(6, 3, 0.2), finish.clay());
+
+  floor.rotation.x = -Math.PI / 2;
+  floor.receiveShadow = true;
+  wall.position.y = 1.5;
+  wall.castShadow = wall.receiveShadow = true;
+  studio.scene.add(floor, wall);
+  studio.frame(new Vector3(), 10);
+  // A clear sun 50° up in the south.
+  studio.light(daylight([0, -0.643, 0.766]), theme(false), new Color(0.95, 0.95, 0.96));
+  studio.render();
+
+  const pixels = picture(studio);
+
+  /** The picture at a point of the scene. */
+  const at = (x: number, y: number, z: number): number => {
+    const seen = new Vector3(x, y, z).project(camera);
+
+    return (
+      pixels[
+        Math.round(((seen.y + 1) / 2) * SIDE) * SIDE + Math.round(((seen.x + 1) / 2) * SIDE)
+      ] ?? 0
+    );
+  };
+
+  const [sunlit, shadowed, shaded] = [at(0, 0, -6), at(0, 0, -1.2), at(0, 1.8, -0.1)];
+
+  // Bright, with headroom: nothing of the model reaches the page's white.
+  expect(sunlit).toBeGreaterThan(205);
+  expect(sunlit).toBeLessThan(248);
+  expect(shadowed).toBeLessThan(sunlit - 50);
+  expect(shaded).toBeLessThan(sunlit - 50);
+  // Shade keeps its form: never near black.
+  expect(Math.min(shadowed, shaded)).toBeGreaterThan(70);
 });

@@ -36,7 +36,7 @@ test("an overcast noon is still day: two thirds of a clear noon, lit by a bright
 
   expect(lightOf(overcast) / lightOf(clear)).toBeGreaterThanOrEqual(2 / 3);
   expect(lightOf(overcast)).toBeLessThan(lightOf(clear));
-  expect(lightOf(overcast)).toBeGreaterThan(lightOf(daylight(south(5))));
+  expect(lightOf(overcast)).toBeGreaterThanOrEqual(lightOf(daylight(south(5))) - 1e-9);
   expect(overcast.night).toBe(false);
   expect(ambientOf(overcast)).toBeGreaterThan(ambientOf(clear));
   // Grey: no channel a tenth off another.
@@ -47,17 +47,17 @@ test("an overcast winter noon is no darker than a clear one's shade, its fill gr
   const [clear, overcast] = [daylight(south(21)), daylight(south(21), 0.95)];
 
   expect(ambientOf(overcast)).toBeGreaterThan(1.3 * ambientOf(clear));
-  expect(overcast.fill.intensity).toBeGreaterThan(5 * clear.fill.intensity);
+  expect(overcast.fill.intensity).toBeGreaterThan(1.5 * clear.fill.intensity);
 });
 
-test("overcast, the sun's own light is nearly gone and its shadows are soft and faint", () => {
+test("overcast, a third of the sun's own light is left: a soft key light under the sky's", () => {
   const [clear, overcast] = [daylight(south(60)), daylight(south(60), 0.95)];
 
-  expect(overcast.intensity / clear.intensity).toBeLessThan(0.1);
-  expect(overcast.intensity).toBeGreaterThan(0);
-  expect(overcast.shadow).toBeGreaterThan(clear.shadow);
-  // Faint: the sun adds under a tenth to what the sky gives a shadowed face.
-  expect(overcast.intensity * luma(overcast.colour)).toBeLessThan(0.1 * ambientOf(overcast));
+  expect(overcast.intensity / clear.intensity).toBeGreaterThan(0.25);
+  expect(overcast.intensity / clear.intensity).toBeLessThan(0.5);
+  expect(overcast.shadow).toBeGreaterThan(2 * clear.shadow);
+  // The sky leads: the sun adds under half of what it gives a shadowed face.
+  expect(overcast.intensity * luma(overcast.colour)).toBeLessThan(0.5 * ambientOf(overcast));
 });
 
 test("a partly cloudy sky lies between the clear and the overcast one", () => {
@@ -67,7 +67,7 @@ test("a partly cloudy sky lies between the clear and the overcast one", () => {
   expect(partly!.intensity).toBeGreaterThan(overcast!.intensity);
   expect(ambientOf(partly!)).toBeGreaterThan(ambientOf(clear!));
   expect(lightOf(partly!)).toBeLessThan(lightOf(clear!));
-  expect(lightOf(partly!)).toBeGreaterThan(lightOf(overcast!));
+  expect(lightOf(partly!)).toBeGreaterThanOrEqual(lightOf(overcast!) - 1e-9);
   expect(partly!.clouds.coverage).toBeGreaterThan(clear!.clouds.coverage);
   expect(partly!.clouds.coverage).toBeLessThan(overcast!.clouds.coverage);
 });

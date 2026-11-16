@@ -1,4 +1,4 @@
-// The surface a window's light lands on (ADR 20 Openings): the lawn, or a lower roof under the
+// The surface a window's light lands on (ADR 20 Openings): the floor, or a lower roof under the
 // window. Pure; east, north, up in metres.
 import type { Face, Point } from "../builder/pv.ts";
 
@@ -11,8 +11,8 @@ export interface Landing {
   readonly height: (at: Plan) => number;
 }
 
-/** The lawn: level, without an edge. */
-const LAWN: Landing = { outline: [], height: () => 0 };
+/** The floor: level, without an edge. */
+const FLOOR: Landing = { outline: [], height: () => 0 };
 
 /** Which side of the edge from `a` to `b` a point lies on: positive to its left. */
 const side = (a: Plan, b: Plan, [e, n]: Plan): number =>
@@ -53,14 +53,14 @@ function landingOf({ corners }: Face): Landing | undefined {
 const within = (outline: readonly Plan[], at: Plan): boolean =>
   edges(outline).every(([a, b, inside]) => side(a, b, at) * inside >= 0);
 
-/** The highest of `roofs` under `at` and no higher than it; the lawn where there is none. */
+/** The highest of `roofs` under `at` and no higher than it; the floor where there is none. */
 export function landingUnder(roofs: readonly Face[], at: Point): Landing {
   const plan: Plan = [at[0], at[1]];
 
   return roofs
     .flatMap((roof) => landingOf(roof) ?? [])
     .filter((roof) => within(roof.outline, plan) && roof.height(plan) <= at[2])
-    .reduce((best, roof) => (roof.height(plan) > best.height(plan) ? roof : best), LAWN);
+    .reduce((best, roof) => (roof.height(plan) > best.height(plan) ? roof : best), FLOOR);
 }
 
 /** Where the edge from `a` to `b` crosses the line `from`–`to`. */
@@ -83,7 +83,7 @@ function cut(patch: readonly Plan[], [from, to, inside]: readonly [Plan, Plan, n
   });
 }
 
-/** The part of the convex `patch` over `landing`: all of it on the lawn. */
+/** The part of the convex `patch` over `landing`: all of it on the floor. */
 export function clipped(landing: Landing, patch: readonly Plan[]): readonly Plan[] {
   return edges(landing.outline).reduce<readonly Plan[]>((kept, edge) => cut(kept, edge), patch);
 }

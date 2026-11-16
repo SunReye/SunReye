@@ -57,8 +57,8 @@ float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowIntensity,
 		// What casts onto this point, and from how far.
 		float casters = 0.0;
 		float depth = 0.0;
-		for ( int i = 0; i < 12; i ++ ) {
-			vec2 offset = softDisk( i, 12, phi ) * texel * ${(WIDEST / 2).toFixed(1)};
+		for ( int i = 0; i < 16; i ++ ) {
+			vec2 offset = softDisk( i, 16, phi ) * texel * ${(WIDEST / 2).toFixed(1)};
 			float found = texture2D( shadowMap, shadowCoord.xy + offset ).r;
 			if ( found < shadowCoord.z + dot( offset, slope ) ) {
 				casters += 1.0;
@@ -69,11 +69,11 @@ float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowIntensity,
 		if ( casters > 0.0 ) {
 			float width = clamp( ( shadowCoord.z - depth / casters ) * shadowRadius, 1.5, ${WIDEST.toFixed(1)} );
 			float lit = 0.0;
-			for ( int i = 0; i < 20; i ++ ) {
-				vec2 offset = softDisk( i, 20, phi + 1.7 ) * texel * width * 0.5;
+			for ( int i = 0; i < 32; i ++ ) {
+				vec2 offset = softDisk( i, 32, phi + 1.7 ) * texel * width * 0.5;
 				lit += step( shadowCoord.z + dot( offset, slope ), texture2D( shadowMap, shadowCoord.xy + offset ).r );
 			}
-			shadow = lit / 20.0;
+			shadow = lit / 32.0;
 		}
 	}
 
