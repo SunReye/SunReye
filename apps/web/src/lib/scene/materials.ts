@@ -100,7 +100,7 @@ function plastered(): MeshStandardMaterial {
       roughness: 0.92,
     }),
     // Rain streaks, and splashed dirt at the foot.
-    { colour: 0.07, rough: 0.06, foot: 0.8, relief: 0.012 },
+    { colour: 0.1, rough: 0.06, foot: 0.8, relief: 0.012 },
   );
 }
 

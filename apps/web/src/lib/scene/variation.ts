@@ -92,31 +92,31 @@ weatherStone.x += mod(floor(weatherStone.y), 2.0) * uCells.z;
 vec2 weatherCell = floor(weatherStone);
 float weatherTone = weatherHash(weatherCell + 0.5);
 float weatherHue = weatherHash(weatherCell + 17.3) - 0.5;
-diffuseColor.rgb *= (0.86 + weatherTone * 0.28) * vec3(1.0 + weatherHue * 0.14, 1.0, 1.0 - weatherHue * 0.14);`;
+diffuseColor.rgb *= (0.8 + weatherTone * 0.4) * vec3(1.0 + weatherHue * 0.18, 1.0, 1.0 - weatherHue * 0.18);`;
 
 /** A lawn's greens at three scales, yellower here and bluer there, and clover: rounder, darker,
  * bluer-green patches that keep to the lusher stretches. */
 const CLOVER = `
 float weatherFine = weatherNoise(weatherAt * 2.3 + 29.0);
 float weatherGreen = weatherWide * 0.5 + weatherNoise(weatherAt * 0.47 + 61.0) * 0.3 + weatherFine * 0.2;
-diffuseColor.rgb *= mix(vec3(1.12, 1.0, 0.72), vec3(0.86, 1.0, 1.12), weatherGreen);
-float weatherClover = smoothstep(0.6, 0.72, weatherNoise(weatherAt * 1.1 + 50.0) * 0.7 + weatherFine * 0.3)
+diffuseColor.rgb *= mix(vec3(1.22, 1.02, 0.6), vec3(0.78, 0.98, 1.16), smoothstep(0.25, 0.75, weatherGreen));
+float weatherClover = smoothstep(0.54, 0.66, weatherNoise(weatherAt * 1.1 + 50.0) * 0.7 + weatherFine * 0.3)
   * smoothstep(0.35, 0.6, weatherNoise(weatherAt * 0.19 + 9.0));
-diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.62, 1.04, 0.7), weatherClover * 0.8);`;
+diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.5, 1.0, 0.6), weatherClover * 0.85);`;
 
 /** A wall: mended patches a shade off, soiling that runs down it, and a darkened foot. */
 const WALL = `
 float weatherPatch = smoothstep(0.58, 0.61, weatherNoise(weatherAt * vec2(0.22, 0.45) + 31.0));
-diffuseColor.rgb *= 1.0 + weatherPatch * 0.045 * (weatherNoise(weatherAt * 0.6 + 3.0) - 0.35);
+diffuseColor.rgb *= 1.0 + weatherPatch * 0.09 * (weatherNoise(weatherAt * 0.6 + 3.0) - 0.35);
 float weatherRun = smoothstep(0.5, 0.95, weatherNoise(vec2(weatherAt.x * 3.1, weatherAt.y * 0.24)));
-diffuseColor.rgb *= 1.0 - weatherRun * 0.07 * vec3(1.0, 0.92, 0.8);
+diffuseColor.rgb *= 1.0 - weatherRun * 0.12 * vec3(1.0, 0.92, 0.8);
 diffuseColor.rgb *= mix(uWeather.z, 1.0, smoothstep(0.0, 0.7, vWeatherAt.y + (weather - 0.5) * 0.5));`;
 
 /** Where feet run: a paler, smoother band along the middle, uneven like tread. */
 const FEET = `
 float weatherWorn = vWeatherWear.y * (1.0 - smoothstep(0.2, 0.8, abs(vWeatherWear.x)))
   * (0.55 + 0.45 * weatherNoise(vWeatherAt.xz * 1.3 + 77.0));
-diffuseColor.rgb *= 1.0 + weatherWorn * 0.13;
+diffuseColor.rgb *= 1.0 + weatherWorn * 0.2;
 diffuseColor.rgb *= 1.0 - vWeatherWear.y * smoothstep(0.82, 1.0, abs(vWeatherWear.x)) * 0.16 * weatherFiner;`;
 
 /** Where wheels run: two darker, packed tracks. */
