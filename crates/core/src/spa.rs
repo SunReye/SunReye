@@ -85,11 +85,30 @@ fn content_type(path: &str) -> &'static str {
         "js" => "text/javascript; charset=utf-8",
         "css" => "text/css; charset=utf-8",
         "json" => "application/json",
+        "webmanifest" => "application/manifest+json",
         "svg" => "image/svg+xml",
         "png" => "image/png",
         "ico" => "image/x-icon",
         "woff2" => "font/woff2",
         "txt" => "text/plain; charset=utf-8",
         _ => "application/octet-stream",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::content_type;
+
+    #[test]
+    fn the_web_app_manifest_is_served_as_a_manifest() {
+        assert_eq!(
+            content_type("manifest.webmanifest"),
+            "application/manifest+json"
+        );
+    }
+
+    #[test]
+    fn an_icon_is_served_as_a_png() {
+        assert_eq!(content_type("icon-512.png"), "image/png");
     }
 }
