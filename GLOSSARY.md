@@ -120,6 +120,22 @@ _Avoid_: Window, tick
 An hourly (UTC hour) or daily (plant-local day) aggregate built from intervals.
 _Avoid_: Aggregate, summary
 
+**Explore**:
+The screen that charts any stored series of any device over a range.
+_Avoid_: Explorer, analytics page
+
+**Lane**:
+One band of an Explore chart, holding the series of one unit on a shared time axis.
+_Avoid_: Axis, track
+
+**Overlay**:
+One series over several periods, laid on one plant-local clock axis.
+_Avoid_: Comparison (History's baseline is a different thing)
+
+**Fold**:
+One series' statistics per hour, day, week or month.
+_Avoid_: Aggregation, rollup (stored), summary
+
 **Self-consumption**:
 The share of the PV energy used on site rather than fed in, over a day or longer.
 _Avoid_: Self-use, own consumption (a measurement point's own consumption is something else)
