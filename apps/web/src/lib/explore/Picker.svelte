@@ -10,7 +10,8 @@
   import LoadingRows from "../components/loading-rows.svelte";
   import { m } from "../paraglide/messages.js";
   import type { Explore } from "./explore.svelte.ts";
-  import { searched } from "./picker.ts";
+  import { blocked } from "./lanes.ts";
+  import { searched, type PickerSeries } from "./picker.ts";
   import type { SeriesRef } from "./view.ts";
   import PickerGroup from "./PickerGroup.svelte";
 
@@ -31,6 +32,19 @@
   let query = $state("");
 
   const found = $derived(searched(x.devices, query));
+
+  /** Why the chart takes no further series, or only those of the lanes it has (ADR 22). */
+  const full = $derived(
+    blocked(x.chosen, { kind: null, unit: null }) === "series"
+      ? m.explore_full_series()
+      : x.devices.some((d) => d.groups.some((g) => g.series.some(barred)))
+        ? m.explore_full_lanes()
+        : null,
+  );
+
+  function barred(series: PickerSeries): boolean {
+    return !x.isChosen(series.ref) && blocked(x.chosen, series) !== null;
+  }
 </script>
 
 <div class="px-3 pt-3 pb-2">
@@ -50,6 +64,8 @@
     />
   </div>
 </div>
+
+<p role="status" class="px-4 pb-2 text-xs text-muted-foreground empty:hidden">{full}</p>
 
 <div class="min-h-0 flex-1 overflow-y-auto pb-2 scroll-fade-y no-scrollbar">
   {#if x.catalog === "loading"}
@@ -81,6 +97,7 @@
           {group}
           untitled={group.title === device.name}
           chosen={x.isChosen}
+          full={barred}
           {onpick}
         />
       {/each}

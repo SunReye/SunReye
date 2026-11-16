@@ -1,6 +1,8 @@
 // The heat grid's one canvas (ADR 11): a cell per column and hour, redrawn when the cells, the
 // size or the theme change. A month of hours is 744 cells, too many to mount as elements.
 
+import { redrawn } from "../canvas-redraw.ts";
+
 /** What the canvas draws: `[col][hour]`, null hatched unless `hatch` is off, NaN left empty. */
 export interface Painting {
   readonly cells: readonly (readonly (number | null)[])[];
@@ -102,19 +104,10 @@ export function paintHeat(canvas: HTMLCanvasElement, what: Painting): () => void
     painter.draw(what);
   };
 
-  const sizes = new ResizeObserver(redraw);
-  const theme = new MutationObserver(redraw);
-
-  sizes.observe(canvas);
-  theme.observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ["class", "data-theme"],
-  });
-  redraw();
+  const stop = redrawn(canvas, redraw);
 
   return () => {
-    sizes.disconnect();
-    theme.disconnect();
+    stop();
     painter.stop();
   };
 }
