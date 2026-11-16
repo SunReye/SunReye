@@ -1,4 +1,5 @@
 // A device's latest values as detail-sheet rows and tables (ADR 21). Pure.
+import { roleLabel, roleOf } from "../roles.ts";
 import type { ByDevice } from "../api/frames.ts";
 
 export interface Row {
@@ -39,7 +40,8 @@ export interface Group {
 
 /** How a number reads: its label, unit and digits, scaled from the role's unit. */
 export interface Format {
-  readonly label: string;
+  /** The role's own label (ADR 4) where absent. */
+  readonly label?: string;
   readonly unit: string;
   readonly digits: number;
   /** From the role's unit to the shown one; 1 when absent. */
@@ -55,7 +57,7 @@ export interface Reader {
   readonly indices: (roles: readonly string[]) => number[];
   readonly raw: (key: string) => number | undefined;
   readonly num: (key: string, format: Format) => Row | null;
-  readonly text: (key: string, label: string, say: (v: number) => string) => Row | null;
+  readonly text: (key: string, say: (v: number) => string) => Row | null;
 }
 
 /** What a reader reads from. */
@@ -115,7 +117,7 @@ export function reader(source: Readings, device: number, quiet: boolean): Reader
 
       return {
         key,
-        label,
+        label: label ?? roleLabel(roleOf(key)),
         value: Math.abs(v) * scale,
         unit,
         digits,
@@ -125,14 +127,20 @@ export function reader(source: Readings, device: number, quiet: boolean): Reader
         ...linked(source, device, key),
       };
     },
-    text: (key, label, say) => {
+    text: (key, say) => {
       const v = values[key];
 
       if (v === undefined) return null;
 
-      const href = linked(source, device, key);
-
-      return { key, label, text: say(v), unit: "", digits: 0, ...age(key), ...href };
+      return {
+        key,
+        label: roleLabel(key),
+        text: say(v),
+        unit: "",
+        digits: 0,
+        ...age(key),
+        ...linked(source, device, key),
+      };
     },
   };
 }
@@ -157,7 +165,7 @@ export function table(
   if (used.length === 0) return undefined;
 
   return {
-    cols: used.map((c) => ({ label: c.label, unit: c.unit })),
+    cols: used.map((c) => ({ label: c.label ?? roleLabel(c.role), unit: c.unit })),
     rows: lines.map((index) => ({
       key: String(index),
       label: label(index),

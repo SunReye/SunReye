@@ -88,8 +88,24 @@ function event(name: string, data: Readonly<{ devices: object; stale?: object }>
 /** Each statistics request: device, series and its window. */
 export const asked: Readonly<{ device: string; series: string; from: string; to: string }>[] = [];
 
+/** One hourly rollup of `watts` from `at`, in ms since the epoch. */
+function rollup(at: number, watts: number) {
+  const [start, end] = [new Date(at).toISOString(), new Date(at + 3_600_000).toISOString()];
+
+  return { date: start.slice(0, 10), start, end, mean: watts, integral: watts, hours: 1 };
+}
+
+/** The plant's battery discharged 2 kWh at 08:00 and charged 3 kWh at 10:00. */
+function battery(from: string): Response {
+  const at = (h: number) => Date.parse(from) + h * 3_600_000;
+
+  return Response.json({ points: [rollup(at(8), -2000), rollup(at(10), 3000)], period: "hour" });
+}
+
 /** String 1 made 12 kWh in the range, string 2 3 kWh: one rollup each. */
 function statistics(device: string, series: string | null, from: string): Response {
+  if (device === PLANT && series === "battery.power") return battery(from);
+
   const watts = { "pv.string.power[1]": 12_000, "pv.string.power[2]": 3000 }[series ?? ""];
   const at = Date.parse(from) + 10 * 3_600_000;
 

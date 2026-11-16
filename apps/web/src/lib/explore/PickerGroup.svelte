@@ -46,14 +46,9 @@
             onpick(each.ref);
           }}
         >
-          <span class="flex min-w-0 flex-1 flex-col">
-            <span class="truncate text-sm"
-              >{each.estimated ? "≈ " : ""}{each.label}</span
-            >
-            <span class="truncate font-mono text-[11px] leading-4 text-muted-foreground"
-              >{each.ref.series}</span
-            >
-          </span>
+          <span class="min-w-0 flex-1 truncate text-sm"
+            >{each.estimated ? "≈ " : ""}{each.label}</span
+          >
           {#if each.unit !== null}
             <span class="shrink-0 text-xs text-muted-foreground tabular-nums">{each.unit}</span>
           {/if}
