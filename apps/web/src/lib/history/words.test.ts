@@ -28,7 +28,7 @@ test("the verdict answers the question for the range, against its baseline", () 
   const month = rangeFor("month", dayOf(2026, 9, 3));
 
   expect(verdict({ metric: "energy", cal: CAL, range: month, sum: SUM, base: base(380) })).toBe(
-    "Im Oktober hat die Anlage 412 kWh erzeugt, 8 % mehr als im Vormonat.",
+    "Im Oktober hat die Anlage 412 kWh erzeugt, 8\u00A0% mehr als im Vormonat.",
   );
   expect(
     verdict({ metric: "energy", cal: CAL, range: rangeFor("day", TODAY), sum: SUM, base: null }),

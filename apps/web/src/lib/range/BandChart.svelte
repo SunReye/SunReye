@@ -363,7 +363,7 @@
 
     <span></span>
     <div
-      class="labels relative h-4 text-[11px] leading-4 text-muted-foreground tabular-nums"
+      class="labels relative mt-0.5 h-[1.375rem] text-[11px] leading-4 text-muted-foreground tabular-nums"
       aria-hidden="true"
     >
       {#each bars.list as k (k.key)}

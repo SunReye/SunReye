@@ -44,6 +44,7 @@ The first integration build rendered browser defaults: plain links for navigatio
   - *Peaks:* the highest power of PV, house load, grid import and feed-in, from the rollups' `max` (ADR 3), each with its hour or, over several days, the day, which a tap opens. They are the range's, not the remembered plant peak of the 2D flow.
 - **Before the record:** the time before the plant's first reading is not a gap. Its bands stay empty and unhatched, and coverage, gap hours and the gap list count from the first reading.
 - **Two-sided charts:** the legend names the upper and the lower side at every width.
+- **Band chart legend and axes:** the title of what is read stands a size above the keys; an hour band is titled by its clock times ("10:00–11:00 Uhr"). On a phone the legend is one list, a key per line with its value at the right edge; from 520 px the keys run in a row per side. The value axis ticks the baseline and each half of the taller side, and the other side mirrors that step, unsigned, as far as it reaches. The running band's dot has a lane of its own above the axis labels.
 - **Forecast tab:** the sum sets all that was measured against the forecast of the whole range; the accuracy figures judge whole past days alone.
 
 **2D power flow.** Ported from v3 (`dev` at `780b4e2`: `power-flow-diagram`, `power-graph`, `flow-pulse`, `plant-ceiling`) and restyled here.
