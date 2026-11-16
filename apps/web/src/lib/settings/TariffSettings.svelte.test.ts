@@ -66,6 +66,7 @@ const WEEKNIGHTS = {
     bands: [{ days: [1, 2, 3, 4, 5], from: "22:00", to: "24:00", price: 0.2 }],
   },
   export: { price: 0.08, bands: [] },
+  standingCharge: 12,
 };
 
 test("the admin changes the tariff in force from now on", async () => {
@@ -78,13 +79,13 @@ test("the admin changes the tariff in force from now on", async () => {
   const bought = screen.getByRole("group", { name: "Bezug" });
 
   await expect
-    .poll(() => text(bought.getByRole("button", { name: /^Grundpreis \(ct\/kWh\)/u })))
-    .toBe("Grundpreis (ct/kWh) 30");
+    .poll(() => text(bought.getByRole("button", { name: /^Basispreis \(ct\/kWh\)/u })))
+    .toBe("Basispreis (ct/kWh) 30");
   await expect.element(bought.getByRole("checkbox", { name: "Fr" })).toBeChecked();
   await expect.element(bought.getByRole("checkbox", { name: "Sa" })).not.toBeChecked();
   await expect.element(bought.getByRole("button", { name: "Bis 24:00" })).toBeVisible();
 
-  await enter(bought, "Grundpreis (ct/kWh)", "31,5");
+  await enter(bought, "Basispreis (ct/kWh)", "31,5");
   await userEvent.click(bought.getByRole("checkbox", { name: "Sa" }));
   await userEvent.click(
     screen.getByRole("region", { name: "Tarif" }).getByRole("button", { name: "Speichern" }),
@@ -99,7 +100,29 @@ test("the admin changes the tariff in force from now on", async () => {
         bands: [{ days: [1, 2, 3, 4, 5, 6], from: "22:00", to: "24:00", price: 0.2 }],
       },
       export: { price: 0.08, bands: [] },
+      standingCharge: 12,
     });
+});
+
+test("the admin sets the standing charge in euros a month", async () => {
+  const core = testCore({
+    "GET /api/v1/tariff": () => Response.json(WEEKNIGHTS),
+    "PUT /api/v1/tariff": () => Response.json(WEEKNIGHTS),
+  });
+
+  const screen = await render(TariffSettings, { core: connect(core) });
+  const tariff = screen.getByRole("region", { name: "Tarif" });
+
+  await expect
+    .poll(() => text(tariff.getByRole("button", { name: /^Grundpreis \(€\/Monat\)/u })))
+    .toBe("Grundpreis (€/Monat) 12");
+
+  await enter(tariff, "Grundpreis (€/Monat)", "16,5");
+  await userEvent.click(tariff.getByRole("button", { name: "Speichern" }));
+
+  await expect
+    .poll(() => core.sent.find(({ route }) => route === "PUT /api/v1/tariff")?.body)
+    .toMatchObject({ standingCharge: 16.5 });
 });
 
 /** Opens a band time on the value editor's wheels, turns the hour up and applies. */
@@ -130,8 +153,8 @@ test("the admin adds a band and reprices from a past date", async () => {
   const fed = screen.getByRole("group", { name: "Einspeisung" });
 
   await expect
-    .poll(() => text(fed.getByRole("button", { name: /^Grundpreis \(ct\/kWh\)/u })))
-    .toBe("Grundpreis (ct/kWh) 8");
+    .poll(() => text(fed.getByRole("button", { name: /^Basispreis \(ct\/kWh\)/u })))
+    .toBe("Basispreis (ct/kWh) 8");
 
   await userEvent.click(fed.getByRole("button", { name: "Zeitfenster hinzufügen" }));
   await userEvent.click(fed.getByRole("checkbox", { name: "So" }));
@@ -155,6 +178,7 @@ test("the admin adds a band and reprices from a past date", async () => {
       appliesFrom: first.toISOString(),
       import: WEEKNIGHTS.import,
       export: { price: 0.08, bands: [{ days: [7], from: "10:00", to: "14:00", price: 0.005 }] },
+      standingCharge: 12,
     });
 });
 
@@ -172,8 +196,8 @@ test("a tariff the core refuses shows why", async () => {
   const bought = screen.getByRole("group", { name: "Bezug" });
 
   await expect
-    .poll(() => text(bought.getByRole("button", { name: /^Grundpreis \(ct\/kWh\)/u })))
-    .toBe("Grundpreis (ct/kWh) 30");
+    .poll(() => text(bought.getByRole("button", { name: /^Basispreis \(ct\/kWh\)/u })))
+    .toBe("Basispreis (ct/kWh) 30");
 
   await userEvent.click(
     screen.getByRole("region", { name: "Tarif" }).getByRole("button", { name: "Speichern" }),

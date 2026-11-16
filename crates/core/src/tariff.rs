@@ -11,6 +11,7 @@ mod device;
 mod payback;
 mod reprice;
 mod routes;
+mod standing;
 mod store;
 
 use std::sync::Arc;
@@ -34,6 +35,10 @@ const PAST: Problem = Problem {
 const BAND: Problem = Problem {
     status: StatusCode::UNPROCESSABLE_ENTITY,
     code: Code::TariffBand,
+};
+const CHARGE: Problem = Problem {
+    status: StatusCode::UNPROCESSABLE_ENTITY,
+    code: Code::TariffCharge,
 };
 /// Minutes in a wall-clock day; a band may end at 24:00.
 const DAY: u16 = 24 * 60;
@@ -97,9 +102,24 @@ pub struct Version {
     pub applies_from: SystemTime,
     pub import: Schedule,
     pub export: Schedule,
+    /// EUR a month, owed whatever is bought; none as 0.
+    pub standing_charge: f64,
 }
 
 impl Version {
+    /// # Errors
+    /// A band is not one span of a day or overlaps another of its flow, or the standing charge is
+    /// not an amount from 0 up.
+    fn check(&self) -> Result<(), Problem> {
+        if !(self.import.valid() && self.export.valid()) {
+            return Err(BAND);
+        }
+        if !(self.standing_charge.is_finite() && self.standing_charge >= 0.0) {
+            return Err(CHARGE);
+        }
+        Ok(())
+    }
+
     /// The prices at `at`, on the wall clock of the plant timezone `zone`.
     #[must_use]
     pub fn prices(&self, zone: &TimeZone, at: SystemTime) -> Prices {
@@ -216,15 +236,13 @@ impl Tariffs {
     ///
     /// # Errors
     /// It applies from before `changed`, a band is not one span of a day or overlaps another of its
-    /// flow, or the file cannot be written.
+    /// flow, the standing charge is negative, or the file cannot be written.
     pub async fn change(&self, version: Version, changed: SystemTime) -> Result<Version, Problem> {
         // Whole seconds, as stored: a version applying from now is not in the past.
         if changes::seconds(version.applies_from) < changes::seconds(changed) {
             return Err(PAST);
         }
-        if !(version.import.valid() && version.export.valid()) {
-            return Err(BAND);
-        }
+        version.check()?;
         let stored = self
             .database
             .run(move |db| store::insert(db, version, changed, changes::Action::Change))

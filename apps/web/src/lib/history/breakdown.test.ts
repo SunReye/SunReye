@@ -80,3 +80,18 @@ test("over several recorded days, production and the house load name their daily
   expect(rows[3]?.sub).toBe("Ø 7,5 kWh je Tag");
   expect(breakdownOf("energy", INPUT)[0]?.sub).toBe("");
 });
+
+test("money lists the standing charge beside the import bill, in both bills and in no saving", () => {
+  const money = { paid: 3, earned: 1, saved: 4, standing: 0.5 };
+  const rows = breakdownOf("money", { ...INPUT, money });
+
+  // Without the plant: 4 saved + 3 paid − 1 earned, and the 0,50 owed either way.
+  expect(rows.map((r) => [r.label, r.value])).toEqual([
+    ["Rechnung ohne Anlage", 6.5],
+    ["Bezugskosten", 3],
+    ["Grundpreis", 0.5],
+    ["Einspeisevergütung", 1],
+    ["Ersparnis", 4],
+  ]);
+  expect(rows[2]!.format(0.5)).toBe("− 0,50 €");
+});

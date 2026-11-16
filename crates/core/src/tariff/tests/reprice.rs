@@ -121,6 +121,7 @@ fn sunny_sunday(applies_from: &str) -> Version {
             price: 0.08,
             bands: vec![band(EVERY_DAY, 11 * 60, 15 * 60, -0.05)],
         },
+        standing_charge: 0.0,
     }
 }
 

@@ -229,3 +229,21 @@ test("a series that runs both ways keeps a legend row for each side", async () =
   await expect.element(screen.getByText("2.0 kWh")).toBeVisible();
   await expect.element(screen.getByText("3.0 kWh")).toBeVisible();
 });
+
+test("the running band's dot stands clear above the axis labels beside it", async () => {
+  const hours = Array.from({ length: 24 }, (_, h) =>
+    Object.assign(band(`b${h}`, 1), { label: String(h), tick: h % 4 === 0 }),
+  );
+
+  hours[15] = Object.assign(hours[15]!, { state: "live" as const });
+
+  const screen = await render(BandChart, props(hours));
+  const next = screen.getByText("16", { exact: true });
+
+  await expect.element(next).toBeVisible();
+
+  const dot = screen.container.querySelector("[data-now]")!.getBoundingClientRect();
+
+  expect(dot.height).toBeGreaterThan(0);
+  expect(dot.bottom).toBeLessThanOrEqual(next.element().getBoundingClientRect().top);
+});

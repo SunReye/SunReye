@@ -23,14 +23,15 @@
     style:--x0="{o.cx0.toFixed(2)}px"
   >
     {#if live}
-      <!-- The running band: it grows with the live stream. -->
+      <!-- The running band: it grows with the live stream. In the lane above the labels, clear of its neighbour's. -->
       <span
-        class="absolute top-1 left-0 size-1.5 -translate-x-1/2 rounded-full bg-success text-success animate-pulse-dot motion-reduce:animate-none"
+        data-now
+        class="absolute top-0 left-0 size-1.5 -translate-x-1/2 rounded-full bg-success text-success animate-pulse-dot motion-reduce:animate-none"
       ></span>
     {:else}
       <span
         class={[
-          "absolute left-0 -translate-x-1/2 whitespace-nowrap",
+          "absolute bottom-0 left-0 -translate-x-1/2 whitespace-nowrap",
           strong && "font-medium text-foreground",
         ]}>{o.b.label}</span
       >

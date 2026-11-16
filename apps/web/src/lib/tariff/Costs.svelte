@@ -47,7 +47,10 @@
       { label: m.tariff_avoided(), colour: flowColour("solar") },
       { label: m.tariff_feed_in_pay(), colour: flowColour("export") },
     ]}
-    down={[{ label: m.tariff_import_cost(), colour: flowColour("import") }]}
+    down={[
+      { label: m.tariff_import_cost(), colour: flowColour("import") },
+      { label: m.tariff_standing(), colour: flowColour("house") },
+    ]}
     groups={[m.tariff_saving_group(), m.tariff_cost_group()]}
     via={data.current?.via}
     summary={{ title: data.title, ...(view?.total ?? split()) }}

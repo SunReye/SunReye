@@ -786,6 +786,9 @@ async fn each_change_body_names_its_own_schema() {
             .collect::<Vec<_>>()
     };
 
-    assert_eq!(body("/api/v1/tariff"), ["appliesFrom", "export", "import"]);
+    assert_eq!(
+        body("/api/v1/tariff"),
+        ["appliesFrom", "export", "import", "standingCharge"]
+    );
     assert_eq!(body("/api/v1/topology"), ["appliesFrom", "points"]);
 }

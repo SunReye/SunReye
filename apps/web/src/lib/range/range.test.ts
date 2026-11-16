@@ -64,7 +64,7 @@ test("stepping stops at the last day the screen reaches", () => {
 test("a custom range of hours steps by its own length", () => {
   const hours = spanRange(CAL, 20_760 * 24 + 8, 20_760 * 24 + 14);
 
-  expect(rangeLabel(CAL, hours)).toBe("3. Nov. 2026 · 8–14 Uhr");
+  expect(rangeLabel(CAL, hours)).toBe("3. Nov. 2026 · 8:00–14:00 Uhr");
   expect(step(CAL, hours, -1)).toEqual({ kind: "custom", from: 20_760, to: 20_761, h0: 2, h1: 8 });
 });
 
@@ -72,7 +72,12 @@ test("a day has an hour per band, a month a day per band, a year a month per ban
   const day = edges(CAL, rangeFor("day", CAL.today));
 
   expect(day).toHaveLength(24);
-  expect(day[14]).toMatchObject({ key: "b14", label: "14", title: "14–15 Uhr", state: "live" });
+  expect(day[14]).toMatchObject({
+    key: "b14",
+    label: "14",
+    title: "14:00–15:00 Uhr",
+    state: "live",
+  });
   expect(day[15]?.state).toBe("future");
   expect(day[13]?.state).toBe("past");
 
