@@ -69,3 +69,29 @@ export function stroke(points: readonly Spot[], width: number): Spot[][] {
     ];
   });
 }
+
+/** Softens one line of the mask, `step` bytes from each pixel to the next: 1, 2, 1. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- softened in place.
+function blur(mask: Uint8Array, line: Uint8Array, start: number, step: number): void {
+  const last = line.length - 1;
+
+  for (let i = 0; i <= last; i++) line[i] = mask[start + i * step] ?? 0;
+
+  for (let i = 0; i <= last; i++) {
+    const around = (line[Math.max(i - 1, 0)] ?? 0) + (line[Math.min(i + 1, last)] ?? 0);
+
+    mask[start + i * step] = (around + 2 * (line[i] ?? 0) + 2) >> 2;
+  }
+}
+
+/** Softens a painted mask in place, a pixel each way: drawn through at half its strength, a
+ * finish's edge then runs smooth where the pixels step. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- softened in place.
+export function soften(mask: Uint8Array, size: number): void {
+  const line = new Uint8Array(size);
+
+  // Along each row, then along each column.
+  for (let row = 0; row < size; row++) blur(mask, line, row * size, 1);
+
+  for (let column = 0; column < size; column++) blur(mask, line, column, size);
+}

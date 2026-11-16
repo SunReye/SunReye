@@ -2,13 +2,12 @@
 // finishes, the neighbours' buildings, the hedges and the trees, all in the scene's generated
 // materials and fading out at the radius. Pure: the pv crate stood everything, this draws it.
 import { Group, type Mesh, MeshStandardMaterial, type Object3D, Vector4 } from "three";
-import { world } from "../builder/handles/frame.ts";
 import type { Around, Standing } from "../builder/imported.ts";
 import type { Face } from "../builder/pv.ts";
-import { hedges, surface } from "../builder/scene.ts";
 import { BAND, fadeAll, LEAST, reach, type Fade } from "./around-fade.ts";
 import { terrain } from "./around-ground.ts";
 import { grove } from "./around-trees.ts";
+import { hedges, surface } from "./faces.ts";
 import * as finish from "./materials.ts";
 import { level } from "./surfaces.ts";
 
@@ -155,12 +154,19 @@ export function seeThrough(part: Object3D): boolean {
   return part.userData["seeThrough"] === true;
 }
 
+/** Where a lie's centre is in three.js's frame, east and south: the scene's north turns it. */
+function compass(north: number, { x, z }: Lie): readonly [number, number] {
+  const [sin, cos] = [Math.sin((north * Math.PI) / 180), Math.cos((north * Math.PI) / 180)];
+
+  return [x * cos - z * sin, x * sin + z * cos];
+}
+
 /** Lays the surroundings drawn for the lie `stood` where `now` puts them, without drawing them
  * again: a drag moves and turns them whole. `north` is the scene's compass bearing. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js moves it in place.
 export function settle({ group, fade }: Drawn, north: number, stood: Lie, now: Lie): void {
-  const [from, , fromSouth] = world(north, [stood.x, 0, stood.z]);
-  const [to, , toSouth] = world(north, [now.x, 0, now.z]);
+  const [from, fromSouth] = compass(north, stood);
+  const [to, toSouth] = compass(north, now);
   // three.js turns counter-clockwise seen from above.
   const angle = (-(now.turn - stood.turn) * Math.PI) / 180;
   const [sin, cos] = [Math.sin(angle), Math.cos(angle)];

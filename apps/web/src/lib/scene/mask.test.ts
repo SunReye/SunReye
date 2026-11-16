@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { paint, stroke } from "./mask.ts";
+import { paint, soften, stroke } from "./mask.ts";
 
 /** The mask's rows as text, top row last: `#` inside. */
 function rows(mask: Uint8Array, size: number): string[] {
@@ -55,4 +55,19 @@ test("a line paints its width along every stretch and round its bends", () => {
   }
 
   expect(rows(mask, 6)).toEqual(["######", "######", "....##", "....##", "....##", "....##"]);
+});
+
+test("a softened mask steps down across its edge, and keeps its inside and outside", () => {
+  const mask = new Uint8Array(36);
+
+  // The right half.
+  paint(mask, 6, [
+    [3, 0],
+    [6, 0],
+    [6, 6],
+    [3, 6],
+  ]);
+  soften(mask, 6);
+
+  expect(Array.from(mask.slice(12, 18))).toEqual([0, 0, 64, 191, 255, 255]);
 });

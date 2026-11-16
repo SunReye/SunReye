@@ -85,8 +85,7 @@ export class Surrounded {
 
     if (this.#shown !== undefined) studio.scene.add(this.#shown.drawn.group);
 
-    // The terrain lies in the lawn's place.
-    studio.showLawn(stood === undefined);
+    studio.surround(this.#shown?.drawn.fade.value.z ?? 0);
   }
 
   #place(lie: Lie | null | undefined): void {

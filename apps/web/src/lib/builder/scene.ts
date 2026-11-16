@@ -1,52 +1,15 @@
 // The scene as three.js objects, built from the pv crate's geometry (ADR 20). Pure: the drawing
 // component only adds the group to its renderer.
-import {
-  BufferGeometry,
-  CylinderGeometry,
-  DoubleSide,
-  Float32BufferAttribute,
-  Group,
-  Mesh,
-  type Object3D,
-  type MeshStandardMaterial,
-} from "three";
+import { CylinderGeometry, Group, Mesh, type Object3D } from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import * as finish from "../scene/materials.ts";
 import { fence, ground } from "../scene/surroundings.ts";
-import { conifer, crown, fan, foliage, level, uvs } from "../scene/surfaces.ts";
+import { hedges, surface } from "../scene/faces.ts";
+import { conifer, crown, level } from "../scene/surfaces.ts";
 import { openings } from "../scene/wall-openings.ts";
 import { trim } from "../scene/trim.ts";
 import { panel, toThree, type Panel } from "./panels.ts";
 import type { Face, Geometry, Mount, Solid } from "./pv.ts";
-
-/** Each convex face as a fan of triangles. */
-function triangles(faces: readonly Face[]): number[] {
-  return faces.flatMap(({ corners }) => fan(corners).flatMap((point) => toThree(point)));
-}
-
-export function surface(
-  name: Face["surface"] | "flat",
-  faces: readonly Face[],
-  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- set up, then drawn.
-  material: MeshStandardMaterial,
-  repeat: readonly [number, number],
-): Mesh {
-  const geometry = new BufferGeometry();
-
-  geometry.setAttribute("position", new Float32BufferAttribute(triangles(faces), 3));
-  geometry.setAttribute("uv", new Float32BufferAttribute(uvs(faces, repeat), 2));
-  geometry.computeVertexNormals();
-
-  // Double-sided: the crate does not promise a winding.
-  material.side = DoubleSide;
-  material.flatShading = true;
-
-  const mesh = new Mesh(geometry, material);
-
-  mesh.name = name;
-
-  return mesh;
-}
 
 /** Whether a cylinder carries a crown straight above it: a trunk. */
 function trunk(
@@ -92,17 +55,6 @@ function solid(obstacle: Solid, i: number, solids: readonly Solid[]): Mesh {
   upright.name = "solid";
 
   return upright;
-}
-
-/** Hedges: a dark body under clusters of leaves. */
-export function hedges(faces: readonly Face[]): Mesh[] {
-  if (faces.length === 0) return [];
-
-  const body = surface("hedge", faces, finish.hedge(), finish.REPEAT.render);
-
-  body.add(foliage(faces, 13));
-
-  return [body];
 }
 
 function marker({ at }: Mount): Mesh {

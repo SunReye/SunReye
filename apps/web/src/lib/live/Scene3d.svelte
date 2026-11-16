@@ -99,6 +99,14 @@
       />
     {/if}
   {/await}
+  {#if surroundings.stood}
+    <!-- Terrain fills the frame where the lawn left the page showing: the page comes back behind
+      the headline, as the far ground melts into it. -->
+    <div
+      class="pointer-events-none absolute inset-x-0 top-0 bg-linear-to-b from-background from-40% to-transparent"
+      style:height="{top + 72}px"
+    ></div>
+  {/if}
   <!-- On the canvas's lower edge while they are drawn. -->
   <div class="pointer-events-none absolute inset-x-3 bottom-1 flex">
     <SceneCredits credits={surroundings.stood?.around.credits ?? []} />

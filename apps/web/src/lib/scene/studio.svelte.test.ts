@@ -196,3 +196,29 @@ test("the light's table of the sky model's light holds for the model, clear and 
     renderer.dispose();
   }
 });
+
+test("imported surroundings take the lawn's place and push the fog out past them", () => {
+  const opened = open();
+
+  opened.frame(new Vector3(), 10);
+  opened.light(daylight([0, -0.5, 0.86]), theme(false), new Color(1, 1, 1));
+
+  const fog = opened.scene.fog instanceof Fog ? opened.scene.fog : new Fog(0);
+  // The lawn is the studio's one mesh until a scene is drawn.
+  const lawn = opened.scene.getObjectByProperty("isMesh", true);
+
+  expect([fog.near, fog.far, lawn?.visible]).toEqual([80, 320, true]);
+
+  opened.surround(200);
+
+  expect([fog.near, fog.far, lawn?.visible]).toEqual([840, 3360, false]);
+
+  // A new light keeps them.
+  opened.light(daylight([0, -0.5, 0.86]), theme(true), new Color(0, 0, 0));
+  expect(opened.scene.fog).toBe(fog);
+  expect([fog.near, fog.far]).toEqual([840, 3360]);
+
+  opened.surround(0);
+
+  expect([fog.near, fog.far, lawn?.visible]).toEqual([80, 320, true]);
+});

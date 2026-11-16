@@ -18,7 +18,7 @@ import type { Around, Draped, PatchFinish, Relief } from "../builder/imported.ts
 import type { Point } from "../builder/pv.ts";
 import { reach, toThree } from "./around-fade.ts";
 import * as finish from "./materials.ts";
-import { paint, stroke, type Spot } from "./mask.ts";
+import { paint, soften, stroke, type Spot } from "./mask.ts";
 import { patched } from "./weather.ts";
 
 /** Draws a ground finish only where its mask is painted. */
@@ -40,7 +40,11 @@ function masked<M extends Material>(material: M, mask: DataTexture): M {
       )
       .replace(
         "#include <clipping_planes_fragment>",
-        "#include <clipping_planes_fragment>\nif (texture2D(uAroundMask, vAroundGrid).r < 0.5) discard;",
+        "#include <clipping_planes_fragment>\nfloat aroundMask = smoothstep(0.4, 0.6, texture2D(uAroundMask, vAroundGrid).r);\nif (aroundMask < 0.004) discard;",
+      )
+      .replace(
+        "#include <alphatest_fragment>",
+        "#include <alphatest_fragment>\ndiffuseColor.a *= aroundMask;",
       );
   });
 }
@@ -116,6 +120,8 @@ export function masks(
 
     found.set(kind, mask);
   }
+
+  for (const mask of found.values()) soften(mask.data, side);
 
   return found;
 }

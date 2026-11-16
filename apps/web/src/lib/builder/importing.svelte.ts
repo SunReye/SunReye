@@ -95,6 +95,7 @@ export class Importing {
 
   /** Fetches anew and, once the document is ready, lays it on the scene's origin with the
    * building under the blocks hidden: one undo step (ADR 20). A failed load changes nothing. */
+  // fallow-ignore-next-line unused-class-member -- ImportLoad calls it through the importer's context.
   async load(request: SurroundingsLoad): Promise<void> {
     this.loading = "fetching";
 

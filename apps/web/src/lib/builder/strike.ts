@@ -90,7 +90,24 @@ export function strike(
       (hit) => hit.object.name === "module" && hit.distance <= nearest.distance + ON_ROOF,
     ) ?? nearest;
 
-  const building = buildingAt(object, faceIndex);
+  return (
+    struck(group, panels, object, faceIndex) ?? {
+      kind: "point",
+      point: [point.x, 0 - point.z, point.y],
+    }
+  );
+}
+
+/** The imported building, module, marker or opening `object` is; null for any other surface. */
+function struck(
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own objects, read only.
+  group: Group,
+  panels: readonly Panel[],
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own objects, read only.
+  object: Object3D,
+  face: number | null | undefined,
+): Hit | null {
+  const building = buildingAt(object, face);
 
   if (building !== null) return { kind: "imported", building };
 
@@ -101,7 +118,7 @@ export function strike(
     return module === undefined ? { kind: "grid", grid } : { kind: "grid", grid, module };
   }
 
-  if (object.name === "equipment" || object.name === "opening") return { kind: object.name, index };
-
-  return { kind: "point", point: [point.x, 0 - point.z, point.y] };
+  return object.name === "equipment" || object.name === "opening"
+    ? { kind: object.name, index }
+    : null;
 }

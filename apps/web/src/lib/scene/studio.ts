@@ -81,6 +81,8 @@ export class Studio {
   readonly #skyScene = new Scene();
   readonly #fade = { centre: { value: new Vector2() }, radius: { value: 12 } };
   readonly #lawn = ground(this.#fade);
+  readonly #fog = (this.scene.fog = new Fog(0xffffff));
+  #reach = 0;
   #environment: WebGLRenderTarget | undefined;
   /** What the environment and the backdrop were made for: either is made again only on change. */
   #environed = "";
@@ -137,9 +139,13 @@ export class Studio {
     weatherFinishes(tier === "full");
   }
 
-  /** Draws the lawn, or leaves it out: imported terrain lies in its place (ADR 20). */
-  showLawn(shown: boolean): void {
-    this.#lawn.visible = shown;
+  /** Imported surroundings reach `metres` from the plot, 0 for none: no lawn, the fog past them. */
+  surround(metres: number): void {
+    const radius = Math.max(this.#radius, metres);
+
+    this.#reach = metres;
+    this.#lawn.visible = metres === 0;
+    Object.assign(this.#fog, { near: radius * 4 + 40, far: radius * 16 + 160 });
   }
 
   /** Fits the sun's shadow and the lawn's fade to the plot: `centre` in three.js's frame. */
@@ -191,7 +197,8 @@ export class Studio {
     }
 
     // Far ground and trees melt into the page colour.
-    this.scene.fog = new Fog(untoned, this.#radius * 4 + 40, this.#radius * 16 + 160);
+    this.#fog.color.copy(untoned);
+    this.surround(this.#reach);
   }
 
   setSize(width: number, height: number): void {

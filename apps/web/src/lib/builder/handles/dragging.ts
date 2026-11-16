@@ -220,9 +220,32 @@ function levelled(slide: Slide, grab: Grab, crate: Crate | undefined): Dragged |
   return body === undefined ? null : slid(grab.grip, slide, body);
 }
 
+/** The crate among what a drag is given; none without all of it. */
+function crateOf(given: Given | undefined): Crate | undefined {
+  const { pv, laid } = given ?? {};
+
+  return pv !== undefined && laid !== undefined ? { pv, laid } : undefined;
+}
+
+/** An opening slides in its wall's plane, not a level one, where the crate lets it. */
+function slidOpening(
+  scene: Scene,
+  index: number,
+  grab: Grab,
+  now: Ray,
+  crate: Crate | undefined,
+): Dragged | null {
+  const { grip } = grab;
+
+  return crate !== undefined && (grip === "move" || grip === "width" || grip === "height")
+    ? slideOpening(scene, index, grip, [grab.ray, now], crate)
+    : null;
+}
+
 /** What dragging `grab` to the pointer's ray `now` makes of the scene; null where the ray misses
- * the drag's plane or the grip has nothing to drag. A chimney and an opening go where the `crate`
- * lets them, and nowhere without it. */
+ * the drag's plane or the grip has nothing to drag. A chimney and an opening go where the crate
+ * `given` lets them, and nowhere without it; the imported surroundings' ring snaps to the turns
+ * given. */
 export function drag(
   scene: Scene,
   target: Target,
@@ -230,16 +253,7 @@ export function drag(
   now: Ray,
   given?: Given,
 ): Dragged | null {
-  const { pv, laid } = given ?? {};
-  const crate = pv !== undefined && laid !== undefined ? { pv, laid } : undefined;
-
-  // An opening slides in its wall's plane, not a level one.
-  if (target.kind === "opening") {
-    return crate !== undefined &&
-      (grab.grip === "move" || grab.grip === "width" || grab.grip === "height")
-      ? slideOpening(scene, target.index, grab.grip, [grab.ray, now], crate)
-      : null;
-  }
+  if (target.kind === "opening") return slidOpening(scene, target.index, grab, now, crateOf(given));
 
   const [start, end] = [inScene(scene.north, grab.ray), inScene(scene.north, now)];
 
@@ -251,9 +265,7 @@ export function drag(
 
   if (from === null || to === null) return null;
 
-  if (target.kind === "import") {
-    return align(scene, grab, [from, to], given?.rests);
-  }
-
-  return levelled({ scene, target, from, to }, grab, crate);
+  return target.kind === "import"
+    ? align(scene, grab, [from, to], given?.rests)
+    : levelled({ scene, target, from, to }, grab, crateOf(given));
 }
