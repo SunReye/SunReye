@@ -54,7 +54,7 @@ test("money without a tariff shows dashes; the plant shows its yield and its rec
 
 test("with a baseline, the main rows say how they changed against it", () => {
   const base = {
-    sum: { ...SUM, production: 20, consumption: 40, purchase: 15, feedIn: 0, autarky: 40 },
+    sum: { ...SUM, production: 20, consumption: 40, purchase: 15, feedIn: 0.02, autarky: 40 },
     money: null,
   };
 
@@ -64,7 +64,7 @@ test("with a baseline, the main rows say how they changed against it", () => {
   expect(changes("energy")).toEqual([
     ["Produktion", "+100 %"],
     ["selbst genutzt", ""],
-    // Nothing was fed in before: no change to state.
+    // Next to nothing was fed in before: a change from it would say nothing.
     ["Einspeisung", ""],
     ["Hausverbrauch", "−25 %"],
     ["Netzbezug", "±0 %"],

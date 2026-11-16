@@ -22,11 +22,12 @@ const PLANT: Plant = {
   days: {
     ...NO_PLANT.days,
     load: [{ start: ms(0), end: ms(24), integral: 12_000, mean: 1000, max: 1000, covered: 12 * H }],
+    pv: [{ start: ms(0), end: ms(24), integral: 5000, mean: 400, max: 4200, covered: 12 * H }],
   },
 };
 
-function loaded(): Loaded {
-  const range = rangeFor("day", DAY);
+function loaded(kind: "day" | "week" = "day"): Loaded {
+  const range = rangeFor(kind, DAY);
   const list = edges(CAL, range);
   const none = sumOf(NO_PLANT, 0, 0);
 
@@ -68,4 +69,10 @@ test("the time before the record began is no gap", () => {
 
 test("a record older than the range leaves the range whole", () => {
   expect(summaryOf(loaded(), VIEW, STRINGS, ms(-500)).gapHours).toBe(12);
+});
+
+test("the first day's peak counts, though the record began after its midnight", () => {
+  const peaks = summaryOf(loaded("week"), VIEW, STRINGS, ms(10)).peaks;
+
+  expect(peaks.map((p) => [p.label, p.value])).toContainEqual(["PV-Leistung", 4200]);
 });

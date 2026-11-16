@@ -45,9 +45,15 @@ const row = (
   indent = false,
 ): Row => ({ label, value, format, sub, colour, indent, change: "" });
 
+/** In kWh or EUR: below it a baseline carries no change. */
+const NEXT_TO_NOTHING = 0.05;
+
 /** The row with its change from `was`; a share changes in percentage points. */
 function against(r: Row, was: number | null | undefined, points = false): Row {
   if (r.value === null || was === null || was === undefined) return r;
+
+  // From next to nothing, a change says nothing: 0,02 kWh to 0,04 kWh is no "+100 %".
+  if (!points && Math.abs(was) < NEXT_TO_NOTHING) return r;
 
   const c = points ? (r.value - was) / 100 : change(r.value, was);
 

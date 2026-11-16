@@ -46,6 +46,8 @@ export function summaryOf(
   begun = 0,
 ): Summary {
   const { from, to, elapsed } = recordedSpan(got, begun);
+  // Rollups count by their start: the first day's began before its first reading.
+  const start = got.spans[0]?.[0] ?? 0;
   const weak = plant.rows.filter((r) => r.flag === "weak").length;
 
   return {
@@ -64,7 +66,7 @@ export function summaryOf(
       sum: got.sum,
       money: got.money,
       base: got.base.sum.covered > 0 ? got.base : null,
-      days: got.plant.days.load.filter((r) => r.start >= from && r.start < to && r.covered > 0)
+      days: got.plant.days.load.filter((r) => r.start >= start && r.start < to && r.covered > 0)
         .length,
       kwp: plant.rows.reduce((a, r) => a + r.kwp, 0),
       strings: plant.rows.length,
@@ -72,7 +74,7 @@ export function summaryOf(
     }),
     against: got.base.sum.covered > 0 ? against(got.range, view.cmp) : "",
     peaks: peaksOf(got.plant, {
-      from,
+      from: start,
       to,
       hours: got.list.some((e) => e.t1 - e.t0 < 24),
       zone: got.zone,
