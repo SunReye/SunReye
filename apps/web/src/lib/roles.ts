@@ -25,7 +25,7 @@ type Label = (
 ) => string;
 
 /** Every role in the order a group lists it, with its label and what its index counts. */
-export const ROLES: readonly (readonly [string, Label, Family?])[] = [
+const ROLES: readonly (readonly [string, Label, Family?])[] = [
   ["pv.power", m.rd_power],
   ["pv.energy.total", m.rd_pv_total],
   ["pv.mppt.power", m.rd_power, "input"],
@@ -124,7 +124,8 @@ export interface Described {
 }
 
 /** A series' role, its index left out. */
-export const roleOf = (series: string): string => INDEXED.exec(series)?.groups?.["role"] ?? series;
+export const seriesRole = (series: string): string =>
+  INDEXED.exec(series)?.groups?.["role"] ?? series;
 
 /** A role's label within its group, its index left out: "Spannung". */
 export function roleLabel(role: string, locale?: Locale): string {
@@ -209,14 +210,14 @@ const SIDES = new Map<string, Sides>([
 ]);
 
 /** Whether a series' role is signed (ADR 4), so its upper side is named for its sign. */
-export const isSigned = (series: string): boolean => SIDES.has(roleOf(series));
+export const isSigned = (series: string): boolean => SIDES.has(seriesRole(series));
 
 /**
  * The upper side's key and the lower side's of a series that runs both ways, named and coloured;
  * above and below zero for a role of no sign that still went below it.
  */
 export function sidesOf(series: string): readonly [SeriesMeta, SeriesMeta] {
-  const sides = SIDES.get(roleOf(series)) ?? SIGNED;
+  const sides = SIDES.get(seriesRole(series)) ?? SIGNED;
   const own = roleFlow(series);
   const [up, down] = sides.flows ?? [own, own];
 

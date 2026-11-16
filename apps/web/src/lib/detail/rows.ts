@@ -1,5 +1,5 @@
 // A device's latest values as detail-sheet rows and tables (ADR 21). Pure.
-import { roleLabel, roleOf } from "../roles.ts";
+import { roleLabel, seriesRole } from "../roles.ts";
 import type { ByDevice } from "../api/frames.ts";
 
 export interface Row {
@@ -117,7 +117,7 @@ export function reader(source: Readings, device: number, quiet: boolean): Reader
 
       return {
         key,
-        label: label ?? roleLabel(roleOf(key)),
+        label: label ?? roleLabel(seriesRole(key)),
         value: Math.abs(v) * scale,
         unit,
         digits,
