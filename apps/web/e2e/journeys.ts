@@ -3,6 +3,7 @@
 
 import type { CDPSession, Page } from "playwright";
 import { aim } from "./aim.ts";
+import { EXPLORE } from "./explore.ts";
 import {
   back,
   builderShown,
@@ -209,6 +210,7 @@ const DESK: readonly Journey[] = [
       await back(page);
     },
   },
+  EXPLORE,
 ];
 
 const PHONE: readonly Journey[] = [

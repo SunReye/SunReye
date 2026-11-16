@@ -137,24 +137,26 @@ test("More lists the other screens and opens with a soft tap", async () => {
   expect(soft).toHaveBeenCalledOnce();
   const links = sheet().getByRole("link");
 
-  expect(links.elements()).toHaveLength(4);
-  await expect.element(links.nth(0)).toHaveTextContent("Tarif und Ersparnis");
-  await expect.element(links.nth(1)).toHaveTextContent("Einstellungen");
-  await expect.element(links.nth(2)).toHaveTextContent("3D-Haus");
-  await expect.element(links.nth(3)).toHaveTextContent("Status");
+  expect(links.elements()).toHaveLength(5);
+  await expect.element(links.nth(0)).toHaveTextContent("Erkunden");
+  await expect.element(links.nth(1)).toHaveTextContent("Tarif und Ersparnis");
+  await expect.element(links.nth(2)).toHaveTextContent("Einstellungen");
+  await expect.element(links.nth(3)).toHaveTextContent("3D-Haus");
+  await expect.element(links.nth(4)).toHaveTextContent("Status");
 });
 
-test("More lists Controls first, then Tariff, and Devices after Settings for the admin", async () => {
+test("More lists Controls first, then Explore and Tariff, and Devices after Settings for the admin", async () => {
   await phone("/", true);
   await openMore();
   const links = sheet().getByRole("link");
 
   await expect.element(links.first()).toHaveAttribute("href", "#/controls");
-  await expect.element(links.nth(1)).toHaveAttribute("href", "#/tariff");
+  await expect.element(links.nth(1)).toHaveAttribute("href", "#/explore");
+  await expect.element(links.nth(2)).toHaveAttribute("href", "#/tariff");
   await expect
     .element(sheet().getByRole("link", { name: /Geräte/u }))
     .toHaveAttribute("href", "#/settings?group=devices");
-  expect(links.elements()[3]?.getAttribute("href")).toBe("#/settings?group=devices");
+  expect(links.elements()[4]?.getAttribute("href")).toBe("#/settings?group=devices");
 });
 
 test("a screen picked in More closes the sheet", async () => {

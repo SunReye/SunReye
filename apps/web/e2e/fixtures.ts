@@ -109,6 +109,53 @@ const CAPABILITIES = {
   },
 };
 
+/** A series' unit by its role's last word. */
+const UNITS = new Map([
+  ["power", "W"],
+  ["voltage", "V"],
+  ["current", "A"],
+  ["soc", "%"],
+  ["efficiency", "%"],
+  ["temperature", "°C"],
+  ["frequency", "Hz"],
+  ["total", "kWh"],
+  ["energy", "kWh"],
+]);
+
+const unitOf = (series: string) =>
+  UNITS.get(
+    series
+      .replace(/\[\d+\]$/u, "")
+      .split(".")
+      .at(-1) ?? "",
+  ) ?? null;
+
+/** The series catalog (ADR 22): every device the plant publishes, with all it publishes, since `start`. */
+function catalog(start: number): Schemas["SeriesCatalog"] {
+  const names = new Map(
+    DEVICES.map((device: Readonly<(typeof DEVICES)[number]>) => [String(device.id), device.name]),
+  );
+
+  const [first, last] = [iso(start), iso(Date.now())];
+
+  return {
+    devices: Object.entries(plantAt(0, 0)).map(
+      ([id, values]: readonly [string, Readonly<Record<string, number>>]) => ({
+        id: Number(id),
+        name: names.get(id) ?? null,
+        removed: false,
+        series: Object.keys(values).map((series) => ({
+          series,
+          kind: series.endsWith(".total") ? ("counter" as const) : ("measurement" as const),
+          unit: unitOf(series),
+          first,
+          last,
+        })),
+      }),
+    ),
+  };
+}
+
 const figures = (production: number, saved: number) => ({
   production,
   consumption: 5200,
@@ -173,6 +220,7 @@ export function fixed(zone: string, start: number) {
     "/api/v1/module-types": () => ({ moduleTypes: [MODULE] }),
     "/api/v1/devices": () => ({ devices: DEVICES }),
     "/api/v1/capabilities": () => CAPABILITIES,
+    "/api/v1/series": () => catalog(start),
     "/api/v1/records": records,
     "/api/v1/battery/capacity": () => capacity(start),
     "/api/v1/payback": () => PAYBACK,
