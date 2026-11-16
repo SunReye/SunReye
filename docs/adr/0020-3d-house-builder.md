@@ -1,6 +1,6 @@
 # 20. 3D house builder
 
-Status: accepted (2026-11-09), amended (2026-11-10, 2026-11-12, 2026-11-13, 2026-11-14, 2026-11-15)
+Status: accepted (2026-11-09), amended (2026-11-10, 2026-11-12, 2026-11-13, 2026-11-14, 2026-11-15, 2026-11-16)
 
 ## Context
 
@@ -45,7 +45,8 @@ The PV layout (ADR 17) is entered as numbers: planes, module counts, MPPT inputs
   - *Defaults the tags leave open:* a tagged `height` is the ridge's; a gabled or hipped roof stands only on an outline filling four fifths of its covering rectangle, on that rectangle, rising at 35° unless `roof:height` says otherwise, its ridge along the long sides; an underground building is left out. A tree's crown is 0.3 of its height wide in radius unless `diameter_crown` is tagged; a tree row is a tree every 8 m; a hedge is 1.5 m high and 1 m wide. Everything but a building is cut at the radius. The terrain is a 5 m grid, measured from the ground under the blocks' middle and blended back to it over 10 m from their walls.
   - *API:* `POST /api/v1/surroundings` with the radius, and optionally the centre, answers at once; `GET /api/v1/surroundings` tells the admin how the load went and the new document's digest; `GET /api/v1/surroundings/{id}` serves a document to viewers.
   - Imported buildings and trees shade like obstacles, and the terrain shades from a 10 m height field; ground surfaces never shade. Terrain no higher than the blocks' ground shades nothing, and a forecast asks only what stands between an input's modules and the sun. They are read-only in the builder, apart from hiding a building.
-  - *Look:* drawn in the scene's generated materials, with the terrain fading into the page background at the radius, so studio mode keeps no visible horizon. "© OpenStreetMap contributors" and the terrain sources' credits show at the canvas's lower edge while they are drawn, and on the About page.
+  - *In the builder:* the Surroundings group's first row is their own level: loading, and once loaded their place, turn and hidden buildings. While it is open a knob on their centre moves them in 10 cm steps and a ring turns them, snapping within 3° to the turn that lines a hidden building's longest side up with a block's walls, else to 5°; the level's turn takes tenths of a degree. There a tap on an imported building hides it, and its hidden buildings are drawn see-through so a tap shows one again; at any other level a tap on one opens that level. A drag moves what is drawn whole and the crate stands it anew when it is let go. A reload starts over on the scene's origin, as building ids are the new document's.
+  - *Look:* drawn in the scene's generated materials, with the terrain fading into the page background at the radius, so studio mode keeps no visible horizon; the fog starts past them while they are drawn, and on the dashboard the page comes back behind the headline. They come after the house, as the cars do. "© OpenStreetMap contributors" and the terrain sources' credits show at the canvas's lower edge while they are drawn, and on the About page.
   - A fetch that fails keeps the last document and says why; without a location there is nothing to load.
 - **Car places.** A parking footprint, optionally under a carport whose roof carries modules, linked to one EVCC loadpoint device (ADR 10). It shows the car while one is connected.
   - A carport is a block marked open: a post at each corner reaches up to its roof instead of walls, and its roof faces carry module grids and shade like any other. A car place stands under one by position, not by reference.
