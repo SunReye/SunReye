@@ -33,6 +33,13 @@
       </Empty.Header>
     </Empty.Root>
   {:else}
-    <Pane {core} route={x.route} series={x.chosen} periods={x.view.periods} {height} />
+    <Pane
+      {core}
+      route={x.route}
+      series={x.chosen}
+      catalog={x.catalog}
+      periods={x.view.periods}
+      {height}
+    />
   {/if}
 </section>

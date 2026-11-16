@@ -11,13 +11,17 @@
   import { m } from "../paraglide/messages.js";
   import type { Explore } from "./explore.svelte.ts";
   import { searched } from "./picker.ts";
+  import type { SeriesRef } from "./view.ts";
   import PickerGroup from "./PickerGroup.svelte";
 
   let {
     x,
+    onpick,
     search = $bindable(null),
   }: {
     x: Explore;
+    /** A row was pressed: the pane toggles its series, the drawer closes on it. */
+    onpick: (ref: SeriesRef) => void;
     /** The search field, which "Add series" focuses beside an open pane. */
     search?: HTMLInputElement | null;
   } = $props();
@@ -48,9 +52,9 @@
 </div>
 
 <div class="min-h-0 flex-1 overflow-y-auto pb-2 scroll-fade-y no-scrollbar">
-  {#if x.loading}
+  {#if x.catalog === "loading"}
     <LoadingRows rows={5} />
-  {:else if x.failed}
+  {:else if x.catalog === "failed"}
     <div class="flex flex-col items-start gap-3 px-4 py-6" role="alert">
       <p class="text-sm text-muted-foreground">{m.explore_catalog_error()}</p>
       <Button variant="outline" size="sm" onclick={() => void x.load()}>{m.stats_retry()}</Button>
@@ -77,7 +81,7 @@
           {group}
           untitled={group.title === device.name}
           chosen={x.isChosen}
-          onpick={x.toggle}
+          {onpick}
         />
       {/each}
     </section>

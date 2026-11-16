@@ -19,6 +19,8 @@ export type ExploreCore = Readonly<
   Pick<Core, "timezone" | "series" | "capabilities" | "history" | "statistics">
 >;
 
+export type CatalogState = "loading" | "ready" | "failed";
+
 export interface ExploreInput {
   readonly core: ExploreCore;
   /** The hash route's query. */
@@ -63,22 +65,24 @@ export class Explore {
     void this.load();
   }
 
-  get loading(): boolean {
-    return this.#catalog === undefined && !this.#failed;
+  /** Whether the catalog was read: until it is, a chosen series' kind, unit and instants are null. */
+  get catalog(): CatalogState {
+    if (this.#failed) return "failed";
+
+    return this.#catalog === undefined ? "loading" : "ready";
   }
 
-  get failed(): boolean {
-    return this.#failed;
-  }
-
-  /** Reads the catalog, and which series are estimates; a viewer may not read those (ADR 9). */
+  /** Reads the catalog, and from the capabilities which series are estimates (ADR 17). */
   load = async (): Promise<void> => {
     const { core } = this.#input();
 
     this.#catalog = undefined;
     this.#failed = false;
 
-    const [catalog, caps] = await Promise.all([core.series(), core.capabilities()]);
+    // An unreachable core rejects; a refusal answers with a problem.
+    const [catalog, caps] = await Promise.all([core.series(), core.capabilities()]).catch(
+      () => [{ problem: "network" }, { problem: "network" }] as const,
+    );
 
     if ("problem" in catalog) {
       this.#failed = true;
@@ -91,12 +95,14 @@ export class Explore {
 
   isChosen = (ref: SeriesRef): boolean => this.view.series.some((r) => same(r, ref));
 
-  /** Adds a series, or removes a chosen one; an open picker closes on its entry, so back undoes both. */
+  /** Adds a series, or removes a chosen one, as a step back can undo. */
   toggle = (ref: SeriesRef): void => {
-    const s = seriesParam(toggled(this.view.series, ref));
+    this.route.patch({ s: seriesParam(toggled(this.view.series, ref)) }, true);
+  };
 
-    if (this.view.picking) this.route.patch({ s, pick: null });
-    else this.route.patch({ s }, true);
+  /** A pick in the drawer: it closes on its own entry, so back undoes the pick and the opening. */
+  choose = (ref: SeriesRef): void => {
+    this.route.patch({ s: seriesParam(toggled(this.view.series, ref)), pick: null });
   };
 
   setMode = (mode: Mode): void => {

@@ -31,11 +31,12 @@ const DEVICES: readonly CatalogDevice[] = [
   { id: WEATHER, name: null, removed: false, series: [measured("weather.ghi", "W/m²")] },
 ];
 
-/** The catalog cannot be read until `heal`. */
-export const plant = { broken: false };
+/** `broken`: the core refuses the catalog. `offline`: no request reaches it. */
+export const plant = { broken: false, offline: false };
 
 export function reset(): void {
   plant.broken = false;
+  plant.offline = false;
 }
 
 function transport(): Transport {
@@ -43,6 +44,8 @@ function transport(): Transport {
     base: "http://core.test/",
     fetch: (request) => {
       const read = new URL(request.url).pathname.split("/").at(-1);
+
+      if (plant.offline && read !== "timezone") return Promise.reject(new TypeError("network"));
 
       if (read === "timezone") return Promise.resolve(Response.json({ name: "UTC" }));
 

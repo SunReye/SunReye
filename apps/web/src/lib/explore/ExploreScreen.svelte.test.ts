@@ -148,6 +148,38 @@ test("without the catalog the chosen series keep their names and the picker offe
   await expect.element(screen.getByRole("heading", { name: "Deye" })).toBeVisible();
 });
 
+test("an unreachable core leaves the picker with the same way out", async () => {
+  await desk();
+  plant.offline = true;
+
+  const { screen } = await show();
+
+  await expect.element(screen.getByText("Die Reihen konnten nicht geladen werden.")).toBeVisible();
+});
+
+test("a route that opens the picker beside the pane still adds each series as a step", async () => {
+  await desk();
+
+  const { screen, went } = await show("pick=1");
+
+  await screen.getByRole("button", { name: /^Eingang 2 · Leistung/u }).click();
+
+  await expect.poll(() => went.at(-1)).toMatchObject({ push: true });
+});
+
+test("with a mouse below 1024 px the picker is a dialog", async () => {
+  await page.viewport(900, 800);
+
+  const { screen } = await show("pick=1");
+  const dialog = page.getByRole("dialog", { name: "Reihen wählen" });
+
+  expect(screen.getByRole("complementary", { name: "Reihen wählen" }).query()).toBeNull();
+  await expect.element(dialog).toHaveAttribute("data-slot", "dialog-content");
+  await expect
+    .element(dialog.getByRole("button", { name: /^Eingang 2 · Leistung/u }))
+    .toBeVisible();
+});
+
 // Last: touch emulation cannot be undone (pointer stays `none`).
 test("under the bar the picker is a drawer: Add series opens it, a pick closes it", async () => {
   await page.viewport(390, 844);

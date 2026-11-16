@@ -27,7 +27,7 @@
     aria-label={m.explore_picker()}
     class="sticky top-6 flex max-h-[calc(100dvh-3rem)] min-h-[416px] flex-col self-start"
   >
-    <Picker {x} bind:search />
+    <Picker {x} onpick={x.toggle} bind:search />
   </GlassCard>
 {:else}
   <ResponsiveSheet
@@ -41,6 +41,6 @@
       }
     }
   >
-    <Picker {x} />
+    <Picker {x} onpick={x.choose} />
   </ResponsiveSheet>
 {/if}
