@@ -2367,6 +2367,30 @@ export interface components {
             /** Format: double */
             pitch: number;
         };
+        /**
+         * @description A window lying flush in a block's roof face, placed in the face's outline like a chimney:
+         *     metres across the slope and up it from the face's lowest corner on the left.
+         */
+        RoofWindow: {
+            /**
+             * Format: double
+             * @description Its centre on the face.
+             */
+            across: number;
+            /** @description The block's index in the scene. */
+            block: number;
+            /** @description The roof face's index in its block, as module grids name it. */
+            face: number;
+            /** Format: double */
+            length: number;
+            /** Format: double */
+            up: number;
+            /**
+             * Format: double
+             * @description Its size: across the slope, and up it.
+             */
+            width: number;
+        };
         /** @description A building's roof; `rise` is the ridge's height over the eaves. */
         Roofing: {
             /** @enum {string} */
@@ -2418,6 +2442,8 @@ export interface components {
             obstacles: components["schemas"]["Obstacle"][];
             /** @description Windows and doors on the blocks' walls. Drawn only; they never shade. */
             openings?: components["schemas"]["Opening"][];
+            /** @description Windows lying flush in roof faces. Drawn only; they never shade. */
+            roofWindows?: components["schemas"]["RoofWindow"][];
             /** @description Drawn in order, each over the last; without any the plot is lawn. They never shade. */
             surfaces?: components["schemas"]["GroundSurface"][];
         };

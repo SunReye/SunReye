@@ -35,7 +35,7 @@ export interface LaidGrid {
    * where the setback leaves no roof. */
   readonly outline: readonly Point[];
   readonly inset: readonly Point[] | null;
-  /** The footprints of the face's chimneys. */
+  /** The footprints of the face's chimneys and roof windows. */
   readonly blocked: readonly (readonly Point[])[];
 }
 
@@ -50,7 +50,7 @@ export interface Ghost extends Spot {
 export type Misplaced =
   | { readonly kind: "face" | "moduleType"; readonly grid: number }
   | {
-      readonly kind: "setback" | "overlap" | "chimney";
+      readonly kind: "setback" | "overlap" | "chimney" | "window";
       readonly grid: number;
       /** The module's position in its grid. */
       readonly module: number;
@@ -68,4 +68,6 @@ export interface Modules {
   readonly walls: readonly Readonly<Record<Wall, WallFrame>>[];
   /** By chimney; null for one that names no roof face. */
   readonly footings: readonly (Footing | null)[];
+  /** By roof window, its pane's corners from the lower left; null for one on no roof face. */
+  readonly panes: readonly (readonly Point[] | null)[];
 }

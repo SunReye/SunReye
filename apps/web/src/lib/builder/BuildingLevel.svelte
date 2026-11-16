@@ -1,11 +1,13 @@
-<!-- A block's, a roof chimney's or an opening's level in the inspector (ADR 20 Blocks). -->
+<!-- A block's, a roof chimney's, a roof window's or an opening's level in the inspector (ADR 20
+  Blocks). -->
 <script lang="ts">
   import { haptics } from "../haptics.ts";
   import BlockFieldset from "./BlockFieldset.svelte";
-  import ChimneyFieldset from "./ChimneyFieldset.svelte";
   import { withoutBlock } from "./modules.ts";
   import OpeningFieldset from "./OpeningFieldset.svelte";
   import type { Pv, RoofFace, Scene, Unfit } from "./pv.ts";
+  import { chimneySizes, windowSizes } from "./roof-fields.ts";
+  import RoofFieldset from "./RoofFieldset.svelte";
   import { refit } from "./wall-openings.ts";
 
   let {
@@ -17,10 +19,10 @@
     onchange,
     onremove,
   }: {
-    kind: "block" | "chimney" | "opening";
+    kind: "block" | "chimney" | "roofWindow" | "opening";
     index: number;
     scene: Scene;
-    /** The roof faces a chimney may stand on. */
+    /** The roof faces a chimney may stand on and a roof window lie in. */
     roofs: readonly RoofFace[];
     /** The crate, which keeps a changed opening on its wall. */
     pv: Pick<Pv, "refit">;
@@ -32,6 +34,8 @@
   const block = $derived(kind === "block" ? scene.blocks[index] : undefined);
   const chimneys = $derived(scene.chimneys ?? []);
   const chimney = $derived(kind === "chimney" ? chimneys[index] : undefined);
+  const windows = $derived(scene.roofWindows ?? []);
+  const window = $derived(kind === "roofWindow" ? windows[index] : undefined);
   const openings = $derived(scene.openings ?? []);
   const opening = $derived(kind === "opening" ? openings[index] : undefined);
 
@@ -57,14 +61,27 @@
     onremove={removeBlock}
   />
 {:else if chimney !== undefined}
-  <ChimneyFieldset
+  <RoofFieldset
     item={chimney}
+    sizes={chimneySizes()}
     {roofs}
     onchange={(next) => {
       onchange({ ...scene, chimneys: chimneys.with(index, next) });
     }}
     onremove={() => {
       onremove({ ...scene, chimneys: chimneys.toSpliced(index, 1) });
+    }}
+  />
+{:else if window !== undefined}
+  <RoofFieldset
+    item={window}
+    sizes={windowSizes()}
+    {roofs}
+    onchange={(next) => {
+      onchange({ ...scene, roofWindows: windows.with(index, next) });
+    }}
+    onremove={() => {
+      onremove({ ...scene, roofWindows: windows.toSpliced(index, 1) });
     }}
   />
 {:else if opening !== undefined}

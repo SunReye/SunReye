@@ -3,7 +3,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::fitting::snap;
+use crate::gliding::{along, glided};
+use crate::grid::overlap;
 use crate::{Face, Point, RoofFace, Scene, Surface};
 
 /// An upright box standing on a block's roof face, placed in the face's outline like its module
@@ -28,12 +29,6 @@ pub struct Chimney {
 
 /// A strike this close to a chimney's sides or top, in metres, still lands on it.
 const EDGE: f64 = 0.05;
-
-/// Metres: the steps a dragged chimney moves in along its face.
-const STEP: f64 = 0.1;
-
-/// The halvings that find where a dragged chimney stops at its face's edge.
-const HALVINGS: u8 = 40;
 
 /// A chimney's foot on its roof face, in the shading frame.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -73,6 +68,12 @@ impl Chimney {
     /// Whether it stands wholly on `face`.
     fn fits(&self, face: &RoofFace) -> bool {
         self.corners(face).iter().all(|p| face.inside(*p, 0.0))
+    }
+
+    /// Whether it stands on none of the face's roof windows.
+    fn glazed(&self, face: &RoofFace) -> bool {
+        let area = self.area(face);
+        face.windows.iter().any(|pane| overlap(area, *pane, 0.0))
     }
 
     fn footing(&self, face: &RoofFace) -> Footing {
@@ -133,48 +134,6 @@ impl Chimney {
             && (low - edge..=high + edge).contains(&sloped)
             && (footing.low() - EDGE..=footing.top + EDGE).contains(&up)
     }
-
-    /// The furthest from `from`, where it fits, toward `to` that it still fits `face`.
-    fn furthest(&self, face: &RoofFace, from: [f64; 2], to: [f64; 2]) -> [f64; 2] {
-        let between = |share: f64| {
-            [
-                (to[0] - from[0]).mul_add(share, from[0]),
-                (to[1] - from[1]).mul_add(share, from[1]),
-            ]
-        };
-        let fits = |[across, up]: [f64; 2]| {
-            Self {
-                across,
-                up,
-                ..*self
-            }
-            .fits(face)
-        };
-        if fits(to) {
-            return to;
-        }
-        let (reached, _) = (0..HALVINGS).fold((0.0, 1.0), |(low, high), _| {
-            let mid = f64::midpoint(low, high);
-            if fits(between(mid)) {
-                (mid, high)
-            } else {
-                (low, mid)
-            }
-        });
-        between(reached)
-    }
-}
-
-/// A level move of `east` and `north` metres as across and up `face`, seen from above.
-fn along(face: &RoofFace, [east, north]: [f64; 2]) -> [f64; 2] {
-    let [across_east, across_north, _] = face.across;
-    let [up_east, up_north, _] = face.up;
-    let level = up_east.hypot(up_north);
-    let per_metre = if level > 0.0 { level * level } else { 1.0 };
-    [
-        east.mul_add(across_east, north * across_north),
-        east.mul_add(up_east, north * up_north) / per_metre,
-    ]
 }
 
 impl Scene {
@@ -212,30 +171,28 @@ impl Scene {
     }
 
     /// Chimney `index` moved by a level `east` and `north` metres, seen from above, along its
-    /// face: in 10 cm steps, stopped at the face's edge and sliding along it. One already off
-    /// its face goes where it is moved. None without the chimney or its face.
+    /// face: in 10 cm steps, stopped at the face's edge or a roof window and sliding along it.
+    /// One already off its face goes where it is moved. None without the chimney or its face.
     #[must_use]
     pub fn glide(&self, index: usize, shift: [f64; 2]) -> Option<Chimney> {
         let chimney = self.chimneys.get(index)?;
         let roofs = self.roofs();
         let face = chimney.face(&roofs)?;
-        let [across, up] = along(face, shift);
-        let wanted = [
-            snap(chimney.across + across, STEP),
-            snap(chimney.up + up, STEP),
-        ];
-        let [across, up] = if chimney.fits(face) {
-            let straight = chimney.furthest(face, [chimney.across, chimney.up], wanted);
-            let sideways = chimney.furthest(face, straight, [wanted[0], straight[1]]);
-            chimney.furthest(face, sideways, [sideways[0], wanted[1]])
-        } else {
-            wanted
-        };
-        Some(Chimney {
+        let at = |[across, up]: [f64; 2]| Chimney {
             across,
             up,
             ..*chimney
-        })
+        };
+        let stands = |to| {
+            let moved = at(to);
+            moved.fits(face) && !moved.glazed(face)
+        };
+        Some(at(glided(
+            face,
+            [chimney.across, chimney.up],
+            shift,
+            stands,
+        )))
     }
 
     /// Whether every block's overhang is at least 0 and its colours are `#rrggbb`.

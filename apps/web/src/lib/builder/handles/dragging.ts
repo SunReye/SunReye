@@ -181,7 +181,7 @@ function slid(grip: Grip, slide: Slide, body: Body): Dragged | null {
 /** What a chimney's or an opening's drag asks the crate: where it may be, and the walls it laid
  * out. */
 export interface Crate extends Fitter {
-  readonly pv: Pick<Pv, "refit" | "glide">;
+  readonly pv: Pick<Pv, "refit" | "glide" | "glideWindow">;
 }
 
 /** A chimney follows the pointer's level move along its roof face, where the crate lets it. */
@@ -200,12 +200,30 @@ function climb({ scene, target, from, to }: Slide, pv: Pick<Pv, "glide">): Dragg
     : null;
 }
 
-/** A drag in a level plane: a fence's point, a chimney on its face, or a body. */
+/** A roof window follows the pointer's level move along its roof face, where the crate lets it. */
+function glaze({ scene, target, from, to }: Slide, pv: Pick<Pv, "glideWindow">): Dragged | null {
+  const windows = scene.roofWindows ?? [];
+  // The scene's frame turned back to east and north, the crate's.
+  const [east, south] = turn(to[0] - from[0], to[2] - from[2], scene.north);
+  const moved = pv.glideWindow(scene, target.index, [east, -south]);
+
+  return moved
+    ? {
+        scene: { ...scene, roofWindows: windows.with(target.index, moved) },
+        value: [moved.across, moved.up],
+        unit: "m",
+      }
+    : null;
+}
+
+/** A drag in a level plane: a fence's point, a chimney or a roof window on its face, or a body. */
 function levelled(slide: Slide, grab: Grab, crate: Crate | undefined): Dragged | null {
   if (grab.grip === "point") return repoint(slide, grab.point ?? -1);
 
-  if (slide.target.kind === "chimney") {
-    return grab.grip === "move" && crate !== undefined ? climb(slide, crate.pv) : null;
+  if (slide.target.kind === "chimney" || slide.target.kind === "roofWindow") {
+    if (grab.grip !== "move" || crate === undefined) return null;
+
+    return slide.target.kind === "chimney" ? climb(slide, crate.pv) : glaze(slide, crate.pv);
   }
 
   const body = bodyOf(slide.scene, slide.target);
