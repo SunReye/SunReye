@@ -108,6 +108,8 @@ pub enum Request {
         range: Range<SystemTime>,
         reply: oneshot::Sender<Result<Vec<Rollup>, Error>>,
     },
+    /// Whether a device's series is a status or a held value.
+    Carries(DeviceId, String, oneshot::Sender<Result<bool, Error>>),
     Rewriting(Rewriting),
     Forecasting(Forecasting),
     Catalog(oneshot::Sender<Result<Vec<Catalogued>, Error>>),
@@ -442,6 +444,9 @@ impl Store {
                 reply,
             } => {
                 reply.send(self.rollups(device, &name, tier, range)).ok();
+            }
+            Request::Carries(device, name, reply) => {
+                reply.send(self.carries_named(device, &name)).ok();
             }
             Request::Rewriting(request) => self.rewriting(request),
             Request::Forecasting(request) => self.forecasting(request),

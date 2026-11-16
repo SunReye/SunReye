@@ -250,41 +250,36 @@ async fn a_series_never_exceeds_1500_points() {
     );
 }
 
-/// A status or held value has no mean: each hour and day reads as the last value it held
-/// (ADR 3), carried forward through windows without a change.
+/// A status or held value has no rollups (ADR 3): past a day it reads as raw intervals.
 #[tokio::test]
-async fn a_held_value_and_a_status_carry_the_last_value_forward_at_every_tier() {
+async fn a_held_value_and_a_status_read_as_raw_intervals_at_any_range() {
     for kind in [RoleKind::Held, RoleKind::Status] {
         let (_dir, core, set_cookie) = core(kind, 60).await;
         // 50 until half past the first hour, then 80, read for three hours and then lost.
         let readings = steady(0, 10_800, 60, |t| if t < 1800 { 50.0 } else { 80.0 });
         core.store(readings).await;
 
-        let (_, hours) = core.history(&set_cookie, 0, 2 * 86_400).await;
-        let (_, days) = core.history(&set_cookie, 0, 1500 * 3600).await;
+        for to in [2 * 86_400, 1500 * 3600] {
+            let (_, body) = core.history(&set_cookie, 0, to).await;
 
-        let hour = |start: u64| json!({ "start": instant(start), "end": instant(start + 3600), "mean": 80.0 });
-        assert_eq!(
-            hours,
-            json!({ "tier": "hour", "points": [hour(0), hour(3600), hour(7200)] }),
-            "{kind:?}"
-        );
-        assert_eq!(
-            days,
-            json!({
-                "tier": "day",
-                "points": [
-                    { "start": "2026-08-26T00:00:00Z", "end": "2026-08-27T00:00:00Z", "mean": 80.0 },
-                ],
-            }),
-            "{kind:?}"
-        );
+            assert_eq!(
+                body,
+                json!({
+                    "tier": "raw",
+                    "points": [
+                        { "start": instant(0), "end": instant(1800), "mean": 50.0 },
+                        { "start": instant(1800), "end": instant(10_800), "mean": 80.0 },
+                    ],
+                }),
+                "{kind:?} to {to}"
+            );
+        }
     }
 }
 
-/// The hour in progress reads as the value in force, not a mean of the hour so far.
+/// History ends at the core's clock: the value in force is not held into the future.
 #[tokio::test]
-async fn a_held_values_hour_in_progress_reads_as_the_value_in_force() {
+async fn a_held_values_intervals_end_at_the_clock() {
     let (_dir, core, set_cookie) = core(RoleKind::Held, 60).await;
     // 50 for three and a quarter hours, then 80 for another quarter, still being read.
     let readings = steady(0, 12_600, 60, |t| if t < 11_700 { 50.0 } else { 80.0 });
@@ -292,13 +287,62 @@ async fn a_held_values_hour_in_progress_reads_as_the_value_in_force() {
 
     let (_, body) = core.history(&set_cookie, 0, 2 * 86_400).await;
 
-    let means: Vec<_> = body["points"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|p| p["mean"].as_f64().unwrap())
-        .collect();
-    assert_eq!(means, [50.0, 50.0, 50.0, 80.0]);
+    assert_eq!(
+        body,
+        json!({
+            "tier": "raw",
+            "points": [
+                { "start": instant(0), "end": instant(11_700), "mean": 50.0 },
+                { "start": instant(11_700), "end": instant(12_660), "mean": 80.0 },
+            ],
+        })
+    );
+}
+
+#[tokio::test]
+async fn a_status_over_a_month_returns_its_intervals_carried_from_before_the_range() {
+    let (_dir, core, set_cookie) = core(RoleKind::Status, 3600).await;
+    // Hourly readings of a state that flips at noon each day, for 32 days.
+    core.store(steady(0, 32 * 86_400, 3600, |t| {
+        if (t + 43_200) / 86_400 % 2 == 0 {
+            0.0
+        } else {
+            1.0
+        }
+    }))
+    .await;
+
+    let (status, body) = core.history(&set_cookie, 86_400, 31 * 86_400).await;
+
+    assert_eq!((status, &body["tier"]), (StatusCode::OK, &json!("raw")));
+    let points = body["points"].as_array().unwrap();
+    // The state in force since noon the day before, then 30 days of flips.
+    assert_eq!(points.len(), 31);
+    assert_eq!(
+        points[0],
+        json!({ "start": instant(86_400), "end": instant(129_600), "mean": 1.0 })
+    );
+    assert_eq!(
+        points[30],
+        json!({ "start": instant(30 * 86_400 + 43_200), "end": instant(31 * 86_400), "mean": 1.0 })
+    );
+}
+
+#[tokio::test]
+async fn a_status_past_1500_intervals_is_refused_even_within_a_day() {
+    let (_dir, core, set_cookie) = core(RoleKind::Status, 30).await;
+    // A state that flips with every reading, 1,501 of them.
+    core.store(steady(0, 1501 * 30, 30, |t| {
+        if t / 30 % 2 == 0 { 0.0 } else { 1.0 }
+    }))
+    .await;
+
+    let (status, body) = core.history(&set_cookie, 0, 1500 * 30).await;
+    let (_, over) = core.history(&set_cookie, 0, 1501 * 30).await;
+
+    assert_eq!((status, &body["tier"]), (StatusCode::OK, &json!("raw")));
+    assert_eq!(body["points"].as_array().unwrap().len(), 1500);
+    assert_eq!(over["code"], "history.range");
 }
 
 fn refused(code: &str) -> (StatusCode, String) {
