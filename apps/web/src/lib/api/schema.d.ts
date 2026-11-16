@@ -781,6 +781,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/series": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every device with a stored change point or rollup, present or removed, and each of its
+         *     stored series with its kind, unit and first and last stored instant. Forecasts are not history
+         *     and are not listed.
+         */
+        get: operations["catalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/session": {
         parameters: {
             query?: never;
@@ -1199,6 +1220,30 @@ export interface components {
             x: number;
             /** Format: double */
             z: number;
+        };
+        CatalogDevice: {
+            /** Format: int32 */
+            id: number;
+            /**
+             * @description Its registry name, a removed device's from its tombstone; `null` for a computed device
+             *     (ADR 15), which the SPA names by its id, or one removed before tombstones were kept.
+             */
+            name?: string | null;
+            /** @description Whether it was removed; its history stays. */
+            removed: boolean;
+            /** @description By name. */
+            series: components["schemas"]["CatalogSeries"][];
+        };
+        CatalogSeries: {
+            /** @description The first stored instant, of a change point or a rollup's start, RFC 3339, UTC. */
+            first: string;
+            kind?: components["schemas"]["SeriesKind"] | null;
+            /** @description The last stored instant, a gap's included, RFC 3339, UTC. */
+            last: string;
+            /** @description Such as `pv.mppt.power[2]`. */
+            series: string;
+            /** @description Its symbol, such as `W`, as stored with its history (ADR 3); `null` when it has none. */
+            unit?: string | null;
         };
         Catalogue: {
             profiles: components["schemas"]["Listing"][];
@@ -2351,6 +2396,15 @@ export interface components {
          * @enum {string}
          */
         Scope: "read" | "admin";
+        /** @description Every device with stored history, by id. */
+        SeriesCatalog: {
+            devices: components["schemas"]["CatalogDevice"][];
+        };
+        /**
+         * @description What a series' values are (ADR 4).
+         * @enum {string}
+         */
+        SeriesKind: "measurement" | "counter" | "status" | "held";
         SettingChange: {
             after?: components["schemas"]["Declared"] | null;
             before?: components["schemas"]["Declared"] | null;
@@ -4322,6 +4376,33 @@ export interface operations {
                 };
             };
             "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    catalog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeriesCatalog"];
+                };
+            };
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -28,6 +28,8 @@ const ROUTES: &[(Method, &str, Access)] = &[
     (Method::GET, "/api/v1/capabilities", Read),
     (Method::GET, "/api/v1/devices/{id}/history", Read),
     (Method::GET, "/api/v1/devices/{id}/statistics", Read),
+    // Devices' names reach viewers here, as their figures already do (ADR 22).
+    (Method::GET, "/api/v1/series", Read),
     // History folded, as statistics and costs are (ADR 9).
     (Method::GET, "/api/v1/records", Read),
     (Method::GET, "/api/v1/battery/capacity", Read),

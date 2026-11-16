@@ -52,6 +52,7 @@ mod forecasts;
 mod history;
 mod records;
 mod roles;
+mod series;
 mod statistics;
 
 #[derive(OpenApi)]
@@ -188,6 +189,9 @@ fn stored_routes(api: &Api) -> OpenApiRouter {
                 api.storage.zones.watch(),
                 Clock::clone(&api.clock),
             )),
+        OpenApiRouter::new()
+            .routes(routes!(series::catalog))
+            .with_state((api.history.clone(), api.devices.clone())),
         OpenApiRouter::new()
             .routes(routes!(battery::capacity))
             .with_state((api.history.clone(), Clock::clone(&api.clock))),
