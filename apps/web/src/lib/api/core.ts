@@ -7,7 +7,6 @@ import { pvModel, type PvModel } from "./model";
 import { setup, type Connection, type Setup } from "./setup";
 import type { components } from "./schema";
 import { plantRecords, type PlantRecords } from "./records";
-import { surroundings, type Surroundings } from "./surroundings";
 import { tariffs, type Tariffs } from "./tariff";
 
 export type History = components["schemas"]["History"];
@@ -42,7 +41,14 @@ export type WriteLog = components["schemas"]["WriteLog"];
 
 export type { Problem } from "./client";
 
-export type { CatalogueSheet, Datasheet, Layout, ModuleType } from "./layouts";
+export type {
+  CatalogueSheet,
+  Datasheet,
+  Layout,
+  ModuleType,
+  SurroundingsLoad,
+  SurroundingsStatus,
+} from "./layouts";
 
 export type { ImportStatus, SharedArchive } from "./imports";
 
@@ -59,8 +65,6 @@ export type {
 } from "./setup";
 
 export type { Live, Values } from "./live";
-
-export type { SurroundingsLoad, SurroundingsStatus } from "./surroundings";
 
 export { PLANT, registered, SPOT, TARIFF, WEATHER } from "./computed-devices";
 
@@ -84,8 +88,7 @@ export function http(base: string): Transport {
 }
 
 /** A core's API: what the SPA reads, through one transport. */
-export interface Core
-  extends Setup, CarBodies, Imports, PvModel, Tariffs, PlantRecords, Layouts, Surroundings {
+export interface Core extends Setup, CarBodies, Imports, PvModel, Tariffs, PlantRecords, Layouts {
   /** Calls `listener` with every value on connect and after each change, until the returned stop. */
   live(listener: (live: Live) => void): () => void;
   /** Time-weighted means of one series from `from` to before `to`, at the tier the core picks. */
@@ -170,7 +173,6 @@ export function connect(transport: Transport): Core {
     ...status(client),
     ...tariffs(client),
     ...plantRecords(client),
-    ...surroundings(client),
   };
 }
 

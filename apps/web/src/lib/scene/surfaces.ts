@@ -67,21 +67,21 @@ export function moduleUvs([a, b, , d]: readonly Point[]): number[] {
 }
 
 /** Lehmer's generator: the same leaves on every build. */
-function seeded(seed: number): () => number {
+export function seeded(seed: number): () => number {
   let state = seed;
 
   return () => (state = (state * 16807) % 2147483647) / 2147483647;
 }
 
 /** One cluster of leaves: where it sits, how big it is, and its hue, saturation and lightness. */
-interface Cluster {
+export interface Cluster {
   readonly at: readonly [number, number, number];
   readonly size: number;
   readonly hsl: readonly [number, number, number];
 }
 
 /** Leaf clusters as one instanced mesh of the prototype's icosahedra, each turned at random. */
-function clusters(made: readonly Cluster[], random: () => number): InstancedMesh {
+export function clusters(made: readonly Cluster[], random: () => number): InstancedMesh {
   const mesh = new InstancedMesh(new IcosahedronGeometry(0.5, 1), leaves(), made.length);
 
   const [matrix, turn, at, size, colour] = [
@@ -106,36 +106,42 @@ function clusters(made: readonly Cluster[], random: () => number): InstancedMesh
   return mesh;
 }
 
+/** One cluster of a broadleaf crown of `radius`, about its centre: in a shell of the sphere,
+ * lighter high and outside. */
+export function leaf(radius: number, random: () => number): Cluster {
+  // Points in a shell, denser outside so the crown reads as clusters.
+  const [u, phi, shell] = [
+    random() * 2 - 1,
+    random() * Math.PI * 2,
+    0.55 + 0.45 * Math.cbrt(random()),
+  ];
+
+  const ring = Math.sqrt(1 - u * u);
+
+  return {
+    at: [
+      radius * shell * ring * Math.cos(phi),
+      radius * shell * u,
+      radius * shell * ring * Math.sin(phi),
+    ],
+    size: (0.6 + random() * 0.65) * Math.min(1, radius / 2.7 + 0.3),
+    // Deep inside and low, where the crown shades itself; sunlit and yellower outside.
+    hsl: [
+      0.22 + random() * 0.08,
+      0.4 + random() * 0.16,
+      0.07 + shell * 0.08 + u * shell * 0.05 + random() * 0.07,
+    ],
+  };
+}
+
+/** How many clusters a broadleaf crown of `radius` holds. */
+export const leafCount = (radius: number): number =>
+  Math.max(12, Math.round(260 * (radius / 2.7) ** 2));
+
 /** A tree's crown: clusters of leaves in a shell of the sphere, lighter high and outside. */
 export function crown(radius: number, seed: number): InstancedMesh {
-  const count = Math.max(12, Math.round(260 * (radius / 2.7) ** 2));
   const random = seeded(seed);
-
-  const made = Array.from({ length: count }, (): Cluster => {
-    // Points in a shell, denser outside so the crown reads as clusters.
-    const [u, phi, shell] = [
-      random() * 2 - 1,
-      random() * Math.PI * 2,
-      0.55 + 0.45 * Math.cbrt(random()),
-    ];
-
-    const ring = Math.sqrt(1 - u * u);
-
-    return {
-      at: [
-        radius * shell * ring * Math.cos(phi),
-        radius * shell * u,
-        radius * shell * ring * Math.sin(phi),
-      ],
-      size: (0.6 + random() * 0.65) * Math.min(1, radius / 2.7 + 0.3),
-      // Deep inside and low, where the crown shades itself; sunlit and yellower outside.
-      hsl: [
-        0.22 + random() * 0.08,
-        0.4 + random() * 0.16,
-        0.07 + shell * 0.08 + u * shell * 0.05 + random() * 0.07,
-      ],
-    };
-  });
+  const made = Array.from({ length: leafCount(radius) }, () => leaf(radius, random));
 
   return clusters(made, random);
 }
@@ -143,30 +149,35 @@ export function crown(radius: number, seed: number): InstancedMesh {
 /** Leaf clusters per square metre of a crown's surface: the broadleaf crown's density. */
 const DENSITY = 2.8;
 
-/**
- * A conifer's crown: clusters in a shell of the cone from its base up `height`, smaller and
- * darker blue-green than a broadleaf's, lighter toward the tip.
- */
-export function conifer(radius: number, height: number, seed: number): InstancedMesh {
-  const count = Math.min(
+/** How many clusters a conifer's crown of `radius` and `height` holds. */
+export const needleCount = (radius: number, height: number): number =>
+  Math.min(
     1500,
     Math.max(24, Math.round(3 * DENSITY * Math.PI * radius * Math.hypot(radius, height))),
   );
 
+/** One cluster of a conifer's crown, from its base up: in a shell of the cone, smaller and
+ * darker blue-green than a broadleaf's, lighter toward the tip. */
+export function needle(radius: number, height: number, random: () => number): Cluster {
+  // Up the cone by area: more clusters low, where it is wide.
+  const up = 1 - Math.sqrt(random());
+  const [phi, shell] = [random() * Math.PI * 2, 0.6 + 0.4 * Math.cbrt(random())];
+  const reach = radius * (1 - up) * shell;
+
+  return {
+    at: [reach * Math.cos(phi), height * up, reach * Math.sin(phi)],
+    size: (0.45 + random() * 0.45) * Math.min(1, radius / 2 + 0.4) * (1 - up * 0.6),
+    hsl: [0.3 + random() * 0.05, 0.3 + random() * 0.12, 0.12 + up * 0.05 + random() * 0.05],
+  };
+}
+
+/** A conifer's crown: clusters in a shell of the cone from its base up `height`. */
+export function conifer(radius: number, height: number, seed: number): InstancedMesh {
   const random = seeded(seed);
 
-  const made = Array.from({ length: count }, (): Cluster => {
-    // Up the cone by area: more clusters low, where it is wide.
-    const up = 1 - Math.sqrt(random());
-    const [phi, shell] = [random() * Math.PI * 2, 0.6 + 0.4 * Math.cbrt(random())];
-    const reach = radius * (1 - up) * shell;
-
-    return {
-      at: [reach * Math.cos(phi), height * up, reach * Math.sin(phi)],
-      size: (0.45 + random() * 0.45) * Math.min(1, radius / 2 + 0.4) * (1 - up * 0.6),
-      hsl: [0.3 + random() * 0.05, 0.3 + random() * 0.12, 0.12 + up * 0.05 + random() * 0.05],
-    };
-  });
+  const made = Array.from({ length: needleCount(radius, height) }, () =>
+    needle(radius, height, random),
+  );
 
   const mesh = clusters(made, random);
   // A dark body, so the gaps between the clusters read as depth, not sky.

@@ -1,7 +1,8 @@
 // Imported surroundings (ADR 20) as the browser holds them: the document the core fetched, the
 // scene's import that names it, and what the pv crate stands around the blocks.
 import type { components } from "../api/schema";
-import type { Face, Point, Solid } from "./pv.ts";
+import type { Face, Point, Scene, Solid } from "./pv.ts";
+import { isAround, isImport, unwrap, type Exported } from "./replies.ts";
 
 /** A fetched document: everything in metres east and north of its centre. */
 export type Imported = components["schemas"]["Imported"];
@@ -53,4 +54,28 @@ export interface Around {
   readonly terrain: Relief;
   /** Who the data is owed to, shown wherever it is drawn. */
   readonly credits: readonly string[];
+}
+
+/** What the crate answers about imported surroundings. */
+export interface Surrounding {
+  /** The scene's imported surroundings from the `document` its import names, stood where the
+   * scene lays it; null for a scene without an import. */
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the core's document, read only.
+  readonly around: (scene: Scene, document: Imported) => Around | null;
+  /** The import a scene starts with for the document `id`: its centre on the scene's origin and
+   * the building under the blocks hidden. */
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the core's document, read only.
+  readonly loadImport: (id: string, scene: Scene, document: Imported) => Import;
+}
+
+/** The crate's answers through `call`, the reply of one of its exports to its JSON input. */
+export function surrounding(call: (name: Exported, input: string) => string): Surrounding {
+  return {
+    // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the core's document, read only.
+    around: (scene, document) =>
+      unwrap(call("around", JSON.stringify({ scene, document })), isAround),
+    // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the core's document, read only.
+    loadImport: (id, scene, document) =>
+      unwrap(call("load_import", JSON.stringify({ id, scene, document })), isImport),
+  };
 }

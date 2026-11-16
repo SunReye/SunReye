@@ -1,19 +1,17 @@
 // The `pv` crate in the browser through its glue crate, crates/pv-wasm (ADR 2, 20).
 import type { ModuleType, StringDraft } from "../api/core.ts";
 import type { Fence, Fencing, Ground, GroundSurface, Obstacle } from "./obstacles.ts";
-import type { Around, Import, Imported } from "./imported.ts";
+import { surrounding, type Import, type Surrounding } from "./imported.ts";
 import type { Chimney, Overhang } from "./roofing.ts";
 import type { Equipment, Fitted, Opening, OpeningKind, Unfit } from "./walls.ts";
 
 export type { Equipment, Fitted, Opening, OpeningKind, Unfit, Wall, WallFrame } from "./walls.ts";
 
 import {
-  isAround,
   isChimney,
   isExports,
   isGeometry,
   isGhost,
-  isImport,
   isIndex,
   isList,
   isModules,
@@ -171,7 +169,7 @@ export interface ClearRun {
   readonly times: readonly number[];
 }
 
-export interface Pv {
+export interface Pv extends Surrounding {
   /** The scene's faces and solids; throws the crate's reason for a scene it cannot read. */
   readonly geometry: (scene: Scene) => Geometry;
   /** The scene's module grids laid out, with module sizes by module type id. */
@@ -215,12 +213,6 @@ export interface Pv {
   readonly fillFace: (on: OnGrid) => (readonly [number, number])[];
   /** The modules a roof chimney stands on: each its grid's index and its own in it. */
   readonly covered: (scene: Scene, sizes: Sizes) => (readonly [number, number])[];
-  /** The scene's imported surroundings from the `document` its import names, stood where the
-   * scene lays it; null for a scene without an import. */
-  readonly around: (scene: Scene, document: Imported) => Around | null;
-  /** The import a scene starts with for the document `id`: its centre on the scene's origin and
-   * the building under the blocks hidden. */
-  readonly loadImport: (id: string, scene: Scene, document: Imported) => Import;
 }
 
 /** The reply of a glue crate's export to its JSON input. */
@@ -284,11 +276,8 @@ export async function loadPv(bytes: Uint8Array<ArrayBuffer>): Promise<Pv> {
       unwrap(call("glide", JSON.stringify({ scene, index, shift })), isChimney),
     chimneyAt: (scene, point) =>
       unwrap(call("chimney_at", JSON.stringify({ scene, point })), isIndex),
-    around: (scene, document) =>
-      unwrap(call("around", JSON.stringify({ scene, document })), isAround),
-    loadImport: (id, scene, document) =>
-      unwrap(call("load_import", JSON.stringify({ id, scene, document })), isImport),
     ...laying(call),
+    ...surrounding(call),
   };
 }
 

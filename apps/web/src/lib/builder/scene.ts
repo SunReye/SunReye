@@ -24,7 +24,7 @@ function triangles(faces: readonly Face[]): number[] {
   return faces.flatMap(({ corners }) => fan(corners).flatMap((point) => toThree(point)));
 }
 
-function surface(
+export function surface(
   name: Face["surface"] | "flat",
   faces: readonly Face[],
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- set up, then drawn.
@@ -95,7 +95,7 @@ function solid(obstacle: Solid, i: number, solids: readonly Solid[]): Mesh {
 }
 
 /** Hedges: a dark body under clusters of leaves. */
-function hedges(faces: readonly Face[]): Mesh[] {
+export function hedges(faces: readonly Face[]): Mesh[] {
   if (faces.length === 0) return [];
 
   const body = surface("hedge", faces, finish.hedge(), finish.REPEAT.render);
