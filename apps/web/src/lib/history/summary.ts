@@ -23,13 +23,25 @@ export interface StringsState {
   readonly learning: number | null;
 }
 
+/**
+ * The part of the range the record can cover, in ms: from the range's start, or the record's when
+ * it began later, to the range's end or now. The time before the record began is no gap.
+ */
+export function recordedSpan(got: Readonly<Loaded>, begun: number) {
+  const from = Math.max(got.spans[0]?.[0] ?? 0, begun);
+  const to = Math.min(got.spans.at(-1)?.[1] ?? 0, got.now);
+
+  return { from, to: Math.max(from, to), elapsed: Math.max(0, to - from) };
+}
+
+/** `begun` is when the record began, in ms since the epoch; 0 while it is not known. */
 export function summaryOf(
   got: Readonly<Loaded>,
   view: Readonly<StatsView>,
   plant: Readonly<StringsState>,
+  begun = 0,
 ): Summary {
-  const [from, to] = [got.spans[0]?.[0] ?? 0, got.spans.at(-1)?.[1] ?? 0];
-  const elapsed = Math.max(0, Math.min(to, got.now) - from);
+  const { from, to, elapsed } = recordedSpan(got, begun);
   const weak = plant.rows.filter((r) => r.flag === "weak").length;
 
   return {

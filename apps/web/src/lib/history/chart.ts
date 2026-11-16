@@ -141,8 +141,15 @@ function costs(got: Loaded): Chart {
   };
 }
 
-export function chartOf(metric: Metric, got: Loaded): Chart {
-  if (metric === "money") return costs(got);
+/** `begun` is when the record began, in ms since the epoch: a band that ended by then is no gap. */
+export function chartOf(metric: Metric, got: Loaded, begun = 0): Chart {
+  const chart = metric === "money" ? costs(got) : flows(got, metric === "autarky" ? "autarky" : "energy");
+  const end = (i: number) => hourInstant(got.zone, chart.drills[i]?.t1 ?? 0).getTime();
 
-  return flows(got, metric === "autarky" ? "autarky" : "energy");
+  return {
+    ...chart,
+    bands: chart.bands.map((b, i) =>
+      b.state === "gap" && end(i) <= begun ? { ...b, state: "before" } : b,
+    ),
+  };
 }

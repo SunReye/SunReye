@@ -6,6 +6,7 @@ import { inputCorrections, modulePeaks } from "../analytics/string-energy.ts";
 import type { InputCorrection } from "../analytics/strings.ts";
 import { layoutStrings } from "../live/plant-facts.ts";
 import { dayOfIso } from "../range/calendar.ts";
+import { hourInstant } from "../range/range.ts";
 
 export type FactsCore = Readonly<
   Pick<
@@ -56,6 +57,13 @@ async function since(core: FactsCore): Promise<number | null> {
   const first = "points" in read ? read.points[0] : undefined;
 
   return first ? dayOfIso(first.date) : null;
+}
+
+/** When the record began, in ms since the epoch; 0 while it is not known. */
+export function begunOf(facts: Readonly<Pick<Facts, "since">> | null, zone: string): number {
+  const since = facts?.since ?? null;
+
+  return since === null ? 0 : hourInstant(zone, since * 24).getTime();
 }
 
 export async function readFacts(core: FactsCore): Promise<Facts> {

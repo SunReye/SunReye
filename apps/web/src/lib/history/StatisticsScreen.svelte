@@ -6,6 +6,7 @@
 -->
 <script lang="ts">
   import type { Go } from "../range/route.svelte.ts";
+  import { begunOf } from "./facts.ts";
   import { Statistics, type StatisticsCore } from "./screen.svelte.ts";
   import StatsAside from "./StatsAside.svelte";
   import StatsCard from "./StatsCard.svelte";
@@ -19,7 +20,14 @@
   const got = $derived(s.data.current);
 
   const summary = $derived(
-    got ? summaryOf(got, s.view, { rows: s.rows, learning: s.learning ? s.since : null }) : null,
+    got
+      ? summaryOf(
+          got,
+          s.view,
+          { rows: s.rows, learning: s.learning ? s.since : null },
+          begunOf(s.facts, got.zone),
+        )
+      : null,
   );
 </script>
 

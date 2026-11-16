@@ -3,15 +3,16 @@
   import StringsPanel from "../analytics/StringsPanel.svelte";
   import BatteryPanel from "./BatteryPanel.svelte";
   import DataPanel from "./DataPanel.svelte";
+  import { begunOf } from "./facts.ts";
   import { gapsOf } from "./flows.ts";
   import type { PaneProps } from "./pane.ts";
   import PaybackPanel from "./PaybackPanel.svelte";
+  import { recordedSpan } from "./summary.ts";
   import TariffTab from "./TariffTab.svelte";
 
   let { core, got, view, route, facts, loading, height }: PaneProps = $props();
 
-  const span = $derived([got.spans[0]?.[0] ?? 0, got.spans.at(-1)?.[1] ?? 0] as const);
-  const elapsed = $derived(Math.max(0, Math.min(span[1], got.now) - span[0]));
+  const span = $derived(recordedSpan(got, begunOf(facts, got.zone)));
   const payback = $derived(facts?.payback ?? null);
   const strings = $derived(facts?.strings ?? []);
   const since = $derived(facts?.since ?? null);
@@ -34,9 +35,9 @@
   />
 {:else}
   <DataPanel
-    gaps={gapsOf(got.plant, span[0], span[1], got.now)}
+    gaps={gapsOf(got.plant, span.from, span.to, got.now)}
     covered={got.sum.covered}
-    {elapsed}
+    elapsed={span.elapsed}
     label={route.label}
     {since}
     zone={got.zone}
