@@ -1,4 +1,5 @@
 // The tariff as the admin edits it: prices in ct/kWh, as households read them; the core's in EUR/kWh.
+// The standing charge is in EUR a month on both sides.
 import type { ScheduleChange, TariffChange } from "../api/core";
 
 export interface BandDraft {
@@ -25,6 +26,8 @@ export interface TariffDraft {
   appliesFrom: string;
   import: ScheduleDraft;
   export: ScheduleDraft;
+  /** EUR a month. */
+  standingCharge: number;
 }
 
 /** A draft as the conversions read it. */
@@ -46,6 +49,7 @@ export function draftOf(tariff: TariffChange | undefined): TariffDraft {
     appliesFrom: "",
     import: scheduleDraft(tariff?.import),
     export: scheduleDraft(tariff?.export),
+    standingCharge: tariff?.standingCharge ?? 0,
   };
 }
 
@@ -61,12 +65,17 @@ export function instantOf(local: string): string | undefined {
   return local === "" ? undefined : new Date(local).toISOString();
 }
 
-/** The prices the draft asks for. */
+/** The prices and the standing charge the draft asks for. */
 export function changeOf(draft: {
   readonly import: ScheduleInput;
   readonly export: ScheduleInput;
+  readonly standingCharge: number;
 }): TariffChange {
-  return { import: scheduleOf(draft.import), export: scheduleOf(draft.export) };
+  return {
+    import: scheduleOf(draft.import),
+    export: scheduleOf(draft.export),
+    standingCharge: draft.standingCharge,
+  };
 }
 
 function scheduleDraft(schedule: ScheduleChange | undefined): ScheduleDraft {

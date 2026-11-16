@@ -492,6 +492,7 @@
   "tariff_save": "Save",
   "tariff_title": "Tariff",
   "tariff_base_price": "Base price (ct/kWh)",
+  "tariff_standing_charge": "Standing charge (€/month)",
   "tariff_band": "Time band",
   "tariff_from": "From",
   "tariff_to": "To",
