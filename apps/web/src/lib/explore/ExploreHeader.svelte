@@ -5,6 +5,7 @@
   import RangeControl from "../range/RangeControl.svelte";
   import type { Explore } from "./explore.svelte.ts";
   import ModeSwitch from "./ModeSwitch.svelte";
+  import { OVERLAY_KINDS } from "./overlay.ts";
 
   let { x }: { x: Explore } = $props();
 </script>
@@ -14,7 +15,7 @@
 >
   <PageTitle wide class="order-1" title={m.explore_title()} />
   <div class="order-3 w-full lg:order-2">
-    <RangeControl model={x.route} />
+    <RangeControl model={x.route} kinds={x.view.mode === "overlay" ? OVERLAY_KINDS : undefined} />
   </div>
   <div class="order-2 ml-auto lg:order-3 lg:justify-self-end">
     <ModeSwitch mode={x.view.mode} onchange={x.setMode} />

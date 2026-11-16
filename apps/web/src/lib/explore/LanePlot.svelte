@@ -5,20 +5,22 @@
 -->
 <script lang="ts">
   import type { Attachment } from "svelte/attachments";
-  import { m } from "../paraglide/messages.js";
   import LaneAxis from "./LaneAxis.svelte";
   import { paintScene } from "./paint.ts";
   import type { Pointer } from "./pointer.svelte.ts";
   import { sceneOf } from "./scene.ts";
-  import { scenesOf } from "./series-chart.ts";
-  import type { Chart } from "./series-view.svelte.ts";
+  import { scenesOf, type Chart } from "./series-chart.ts";
+
 
   let {
     chart,
+    label,
     pointer,
     plot = $bindable(null),
   }: {
     chart: Chart;
+    /** The plot's name, with the keys that read it. */
+    label: string;
     pointer: Pointer;
     /** The plot, which the pointer measures its instants on. */
     plot?: HTMLElement | null;
@@ -56,7 +58,7 @@
     role="group"
     tabindex="0"
     data-scrub
-    aria-label={m.explore_chart_keys({ chart: m.explore_series_chart() })}
+    aria-label={label}
     onpointerdown={pointer.down}
     onpointermove={pointer.move}
     onpointerup={pointer.up}

@@ -25,7 +25,7 @@
     class: className,
     onchange,
   }: {
-    /** Empty for no day, which only a field with an empty `shortcut` holds. */
+    /** Empty for no day: a field that only picks, or one with an empty `shortcut`. */
     value: string;
     min?: string;
     max?: string;
@@ -131,9 +131,11 @@
     return written(short);
   });
 
-  /** A compact button drops the year, so its name carries the whole day. */
+  /** A compact button drops the year, so its name carries the whole day, if it holds one. */
   const named = $derived(
-    variant === "compact" ? `${label}: ${written({ dateStyle: "long" })}` : label,
+    variant === "compact" && day !== undefined
+      ? `${label}: ${written({ dateStyle: "long" })}`
+      : label,
   );
 
   // An empty value has no day on the calendar to show it is picked, so its shortcut stays live.

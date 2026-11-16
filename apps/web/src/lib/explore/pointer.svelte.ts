@@ -1,5 +1,6 @@
 // Reading a chart along its time axis (ADR 21): the legend shows the values under the pointer.
 // Mouse: hover reads, a drag narrows the range. Touch: a finger reads; there is no brushing.
+// A chart that cannot narrow only reads.
 // Keys: arrows move the pointer, Shift and arrows select a span, Enter narrows to it, Escape clears.
 
 /** What the chart reads from its caller at the moment of an input. */
@@ -8,8 +9,8 @@ export interface Target {
   /** The time axis, [from, to) in epoch ms. */
   readonly from: number;
   readonly to: number;
-  /** Narrows to the span between two instants. */
-  readonly onbrush: (a: number, b: number) => void;
+  /** Narrows to the span between two instants; null on a chart that only reads. */
+  readonly onbrush: ((a: number, b: number) => void) | null;
 }
 
 type Input = Readonly<
@@ -55,7 +56,7 @@ export class Pointer {
       return;
     }
 
-    if (e.button !== 0) return;
+    if (e.button !== 0 || !this.#target().onbrush) return;
 
     this.#drag = { x: e.clientX, t: this.#instant(e) };
     this.#target().plot?.setPointerCapture(e.pointerId);
@@ -97,7 +98,7 @@ export class Pointer {
 
     if (!brush || brush[0] === brush[1]) return false;
 
-    this.#target().onbrush(brush[0], brush[1]);
+    this.#target().onbrush?.(brush[0], brush[1]);
 
     return true;
   }
@@ -112,11 +113,11 @@ export class Pointer {
 
     if (dir === undefined) return undefined;
 
-    const { from, to } = this.#target();
+    const { from, to, onbrush } = this.#target();
     const was = this.at ?? (from + to) / 2;
     const next = Math.min(to, Math.max(from, was + dir * STEP * (to - from)));
 
-    this.brush = e.shiftKey ? [this.brush?.[0] ?? was, next] : null;
+    this.brush = e.shiftKey && onbrush ? [this.brush?.[0] ?? was, next] : null;
     this.#pinned = true;
     this.at = next;
 

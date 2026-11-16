@@ -39,12 +39,21 @@
   <Skeleton style="height: {props.height}px" role="status" aria-label={m.loading()} />
 {:else}
   <div class="@container flex flex-col gap-2">
-    <SeriesLegend title={view.title(pointer.at)} figures={figuresOf(chart.lanes, pointer.at)} />
+    <SeriesLegend
+      title={view.title(pointer.at)}
+      label={m.explore_series_chart()}
+      figures={figuresOf(chart.lanes, pointer.at)}
+    />
 
     {#each chart.notes as note (note)}
       <p class="text-xs text-muted-foreground">{note}</p>
     {/each}
 
-    <LanePlot {chart} {pointer} bind:plot />
+    <LanePlot
+      {chart}
+      label={m.explore_chart_keys({ chart: m.explore_series_chart() })}
+      {pointer}
+      bind:plot
+    />
   </div>
 {/if}

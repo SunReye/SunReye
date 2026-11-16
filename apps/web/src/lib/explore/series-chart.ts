@@ -1,6 +1,7 @@
 // Series mode's chart as its pane shows it (ADR 22): the lanes with their axes, what the canvas
 // draws, what the legend reads under the pointer, and what the chart has to say about its reads.
 import { m } from "../paraglide/messages.js";
+import type { Edge } from "../range/edges.ts";
 import { num } from "../range/format.ts";
 import { axisOf, sampleAt, tickDigits, valueDigits, type Axis, type Sample } from "./curve.ts";
 import type { Lane, Lanes, LaneSeries } from "./lanes.ts";
@@ -95,19 +96,52 @@ export function scenesOf(lanes: readonly LaneView[]): LaneScene[] {
   }));
 }
 
-/** A legend row: a series and its value under the pointer, or its latest. */
+/** The chart as a pane shows it. */
+export interface Chart {
+  /** The time axis, [from, to) in epoch ms. */
+  readonly from: number;
+  readonly to: number;
+  /** The plot's height in px. */
+  readonly height: number;
+  readonly lanes: readonly LaneView[];
+  /** What the chart says of its reads. */
+  readonly notes: readonly string[];
+  /** The legend's title while nothing is read. */
+  readonly idle: string;
+  /** The time axis' labels, each at a share of its width in percent. */
+  readonly times: readonly { readonly key: string; readonly text: string; readonly x: number }[];
+}
+
+/** A label per band the range's charts label, at its start on an axis that ends at `to`. */
+export function timesOf(
+  list: readonly Edge[],
+  spans: readonly (readonly [number, number])[],
+  to: number,
+): Chart["times"] {
+  const from = spans[0]?.[0] ?? 0;
+
+  return list.flatMap((edge, i) =>
+    edge.tick
+      ? [{ key: edge.key, text: edge.label, x: ((spans[i]![0] - from) / (to - from)) * 100 }]
+      : [],
+  );
+}
+
+/** A legend row: a series or a period and its value under the pointer, or its latest. */
 export interface Figure {
   readonly key: string;
   readonly colour: string;
   readonly label: string;
-  readonly device: string;
+  /** Null where the rows are one series' periods. */
+  readonly device: string | null;
   /** "–" in a gap. */
   readonly value: string;
   /** A statistic's extremes, "150 – 250". */
   readonly extremes: string | null;
 }
 
-function written(lane: LaneView, s: Sample | null) {
+/** A sample as the legend writes it, by its lane's axis and unit. */
+export function written(lane: LaneView, s: Sample | null) {
   if (!s) return { value: "–", extremes: null };
 
   const digits = lane.axis ? valueDigits(lane.axis) : 0;

@@ -1,7 +1,9 @@
 // The Explore screen's state (ADR 22): its range and view from the hash route, the series catalog
 // behind the picker, and what each control does to the route. Nothing is kept outside the route.
 import type { Core } from "../api/core.ts";
+import { parseRange, rangeParams } from "../range/params.ts";
 import { RangeRoute, type Go } from "../range/route.svelte.ts";
+import { overlayRange } from "./overlay.ts";
 import { chosenOf, pickerOf, type Chosen, type PickerDevice } from "./picker.ts";
 import {
   EXPLORE_PARAMS,
@@ -35,15 +37,28 @@ export class Explore {
   #catalog = $state.raw<readonly PickerDevice[]>();
   #failed = $state(false);
 
-  // Explore opens on today: a bare route is a day's.
+  // Explore opens on today: a bare route is a day's. An address that overlays a longer range
+  // reads as the day overlay opens of it.
   readonly #params = $derived.by(() => {
     const { params } = this.#input();
+    const kind = params.get("range");
+    const overlaid = params.get("mode") === "overlay" && kind !== "day" && kind !== "week";
 
-    if (params.has("range")) return params;
+    if (kind !== null && !overlaid) return params;
 
     const own = new URLSearchParams(params);
 
     own.set("range", "day");
+
+    if (kind !== null) {
+      const { cal } = this.route.place;
+      const opened = rangeParams(cal, overlayRange(cal, parseRange(cal, params)));
+
+      for (const key of ["from", "to"]) own.delete(key);
+
+      if (opened.at === null) own.delete("at");
+      else own.set("at", opened.at);
+    }
 
     return own;
   });
@@ -105,8 +120,14 @@ export class Explore {
     this.route.patch({ s: seriesParam(toggled(this.view.series, ref)), pick: null });
   };
 
+  /** Overlay takes a day or a week (ADR 22): from a longer range it opens a day of it. */
   setMode = (mode: Mode): void => {
-    if (mode !== this.view.mode) this.route.patch({ mode: mode === "series" ? null : mode }, true);
+    if (mode === this.view.mode) return;
+
+    const { cal } = this.route.place;
+    const range = mode === "overlay" ? rangeParams(cal, overlayRange(cal, this.route.range)) : {};
+
+    this.route.patch({ ...range, mode: mode === "series" ? null : mode }, true);
   };
 
   /** Opens the picker as a step of its own: back closes it. */

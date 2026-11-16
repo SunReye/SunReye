@@ -9,29 +9,13 @@ import { narrowed } from "./brush.ts";
 import { lanesOf } from "./lanes.ts";
 import type { ModeProps } from "./mode.ts";
 import { readSeries } from "./read.ts";
-import { lanesView, notesOf, type LaneView, type Loaded } from "./series-chart.ts";
+import { lanesView, notesOf, timesOf, type Chart, type Loaded } from "./series-chart.ts";
 
 /** Four lanes on a phone grow the chart instead of flattening each other. */
 const LANE_MIN = 84;
 
 /** What the legend and the time labels take of the pane's height. */
 const AROUND = 132;
-
-/** The chart as the pane shows it. */
-export interface Chart {
-  /** The time axis, [from, to) in epoch ms. */
-  readonly from: number;
-  readonly to: number;
-  /** The plot's height in px. */
-  readonly height: number;
-  readonly lanes: readonly LaneView[];
-  /** What the chart says of its reads. */
-  readonly notes: readonly string[];
-  /** The legend's title while nothing is read. */
-  readonly idle: string;
-  /** The time axis' labels, each at a share of its width in percent. */
-  readonly times: readonly { readonly key: string; readonly text: string; readonly x: number }[];
-}
 
 export class SeriesView {
   readonly #input: () => ModeProps;
@@ -62,18 +46,7 @@ export class SeriesView {
       lanes: lanesView(got.data, height),
       notes: notesOf(got.data),
       idle: `${rangeLabel(got.cal, got.range)} · ${m.explore_latest()}`,
-      // A label per band the range's charts label, at its start.
-      times: got.list.flatMap((edge, i) =>
-        edge.tick
-          ? [
-              {
-                key: edge.key,
-                text: edge.label,
-                x: ((got.spans[i]![0] - from) / (to - from)) * 100,
-              },
-            ]
-          : [],
-      ),
+      times: timesOf(got.list, got.spans, to),
     };
   });
 
