@@ -68,12 +68,6 @@ impl Data {
         storage.tick(at(180)).await.unwrap();
         std::fs::create_dir_all(self.dir.join("cars")).unwrap();
         std::fs::write(self.dir.join("cars").join(format!("{CAR}.glb")), b"glb").unwrap();
-        // What a backup leaves behind: a fetch cut short, and a file no one named by digest.
-        let around = self.dir.join("surroundings");
-        std::fs::create_dir_all(&around).unwrap();
-        std::fs::write(around.join(format!("{CAR}.json")), b"{}").unwrap();
-        std::fs::write(around.join(format!("{CAR}.part")), b"{").unwrap();
-        std::fs::write(around.join("notes.json"), b"{}").unwrap();
     }
 
     async fn history(&self, storage: &Storage) -> Vec<ChangePoint> {
@@ -91,7 +85,7 @@ fn mode(path: &Path) -> u32 {
 }
 
 #[tokio::test]
-async fn a_restored_backup_brings_back_raw_history_car_bodies_and_surroundings() {
+async fn a_restored_backup_brings_back_raw_history_and_the_car_bodies() {
     let dir = tempfile::tempdir().unwrap();
     let data = Data::new(&dir.path().join("data"));
     let storage = data.open().await;
@@ -111,13 +105,6 @@ async fn a_restored_backup_brings_back_raw_history_car_bodies_and_surroundings()
     assert_eq!(data.history(&storage).await, before);
     let car = std::fs::read(data.dir.join("cars").join(format!("{CAR}.glb"))).unwrap();
     assert_eq!(car, b"glb");
-    let around: Vec<_> = std::fs::read_dir(data.dir.join("surroundings"))
-        .unwrap()
-        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
-        .collect();
-    assert_eq!(around, vec![format!("{CAR}.json")]);
-    let document = std::fs::read(data.dir.join("surroundings").join(&around[0])).unwrap();
-    assert_eq!(document, b"{}");
 }
 
 /// Unlock codes: distinctive, so a search of the file finds only a leak.

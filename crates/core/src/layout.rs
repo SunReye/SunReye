@@ -1,8 +1,8 @@
 //! The PV layout (ADR 17): module types and strings wired to inverters' MPPT inputs.
 //!
 //! The layout module owns the `module_type`, `pv_string`, `layout`, `layout_string` and
-//! `layout_scene` tables. Ids are never reused; a change is a new version applying from its
-//! instant. A version with a scene (ADR 20) derives its strings' planes and module counts from it.
+//! `layout_scene` tables. Ids are never reused; a layout keeps one version per instant it applies
+//! from, and each stored change appends to the change log (ADR 19). A version with a scene (ADR 20) derives its strings' planes and module counts from it.
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, RwLock};
@@ -23,11 +23,13 @@ use utoipa_axum::routes;
 
 use crate::api::{Clock, Code, Problem, ProblemDetails, Refused, internal};
 use crate::bus::DeviceId;
+use crate::changes::{self, Action, Entry, Subject};
 use crate::storage::{Database, Error};
-use crate::surroundings::Documents;
 
 mod catalogue;
 mod scene;
+#[cfg(test)]
+mod tests;
 
 const BODY: Problem = Problem {
     status: StatusCode::BAD_REQUEST,
@@ -61,7 +63,7 @@ enum Refusal {
     },
     /// A scene's grid names no roof face, a module no string or one of another module type, an
     /// equipment marker lies off its wall, a car place, ground surface, fence, opening, roof
-    /// chimney or roof window is refused, or its import names no stored surroundings.
+    /// chimney or roof window is refused.
     Scene,
     /// A module crosses its face's setback.
     Setback,
@@ -283,8 +285,6 @@ pub fn in_force(versions: &[Version], at: SystemTime) -> Option<&Version> {
 pub struct Layouts {
     database: Database,
     inverters: Inverters,
-    /// The imported surroundings a scene may name (ADR 20).
-    documents: Option<Documents>,
     changed: Arc<watch::Sender<()>>,
 }
 
@@ -294,24 +294,8 @@ impl Layouts {
         Self {
             database,
             inverters,
-            documents: None,
             changed: Arc::new(watch::channel(()).0),
         }
-    }
-
-    /// The layouts whose scenes may stand among the imported surroundings of `documents`;
-    /// without them a scene names none.
-    #[must_use]
-    pub fn among(mut self, documents: Documents) -> Self {
-        self.documents = Some(documents);
-        self
-    }
-
-    /// The imported surroundings the scene of `version` names; `None` without a scene, an
-    /// import, or its document.
-    pub async fn surroundings(&self, version: &Version) -> Option<Arc<pv::Imported>> {
-        let import = version.scene.as_ref()?.imported.as_ref()?;
-        self.documents.as_ref()?.read(&import.document).await
     }
 
     /// Marked changed by each layout change.
@@ -362,7 +346,8 @@ impl Layouts {
         Ok(ModuleType { id, datasheet })
     }
 
-    /// Appends a version applying from `applies_from`; new strings get fresh ids.
+    /// Stores a version applying from `applies_from`, in place of one from the same instant, unless
+    /// it equals the version in force then; new strings get fresh ids.
     ///
     /// # Errors
     /// A string names an unknown inverter, MPPT input, string id or module type, or a value is
@@ -379,7 +364,6 @@ impl Layouts {
         let scene = scene.map(|scene| scene.settled(scene::sizes(&module_types)));
         if let Some(scene) = &scene {
             scene::derive(scene, &mut strings, &module_types).map_err(Problem::from)?;
-            self.imports(scene).await?;
         }
         for (at, draft) in strings.iter().enumerate() {
             self.check(at, &draft.wiring)?;
@@ -389,20 +373,11 @@ impl Layouts {
             .run(move |db| insert_version(db, applies_from, strings, scene, changed))
             .await
             .map_err(internal)??;
-        self.changed.send_replace(());
-        Ok(stored)
-    }
-
-    /// Refuses a scene whose import names no stored document.
-    async fn imports(&self, scene: &Scene) -> Result<(), Refusal> {
-        let Some(import) = &scene.imported else {
-            return Ok(());
-        };
-        let stored = match &self.documents {
-            Some(documents) if scene.import_fits() => documents.read(&import.document).await,
-            _ => None,
-        };
-        stored.map(|_| ()).ok_or(Refusal::Scene)
+        let (version, stored) = stored;
+        if stored {
+            self.changed.send_replace(());
+        }
+        Ok(version)
     }
 
     /// Each string of `version` whose open-circuit voltage at −10 °C exceeds its inverter's
@@ -552,22 +527,56 @@ fn read_module_types(db: &Connection) -> rusqlite::Result<Vec<ModuleType>> {
     .collect()
 }
 
-/// Appends a version, issuing ids to new strings; refuses an unknown string or module type.
+/// Stores a version, issuing ids to new strings, in place of the one applying from the same
+/// instant; refuses an unknown string or module type. A version equal to the one in force then is
+/// not stored: that one returns, with `false`.
 fn insert_version(
     db: &Connection,
     applies_from: SystemTime,
     drafts: Vec<StringDraft>,
     scene: Option<Scene>,
     changed: SystemTime,
-) -> rusqlite::Result<Result<Version, Refusal>> {
+) -> rusqlite::Result<Result<(Version, bool), Refusal>> {
     let tx = db.unchecked_transaction()?;
+    let strings = match issue(&tx, drafts)? {
+        Ok(strings) => strings,
+        Err(refusal) => return Ok(Err(refusal)),
+    };
+    // The drafts' positions become the strings' ids.
+    let scene = scene.map(|scene| {
+        scene::renumber(&scene, |at| {
+            let at = usize::try_from(at).ok()?;
+            strings.get(at).map(|s| s.id)
+        })
+    });
+    let versions = read_versions(&tx)?;
+    if let Some(current) = in_force(&versions, applies_from)
+        && same(current, &strings, scene.as_ref())
+    {
+        return Ok(Ok((current.clone(), false)));
+    }
+    let version = Version {
+        applies_from: time(seconds(applies_from)),
+        strings,
+        scene,
+    };
+    write_version(&tx, &version, changed)?;
+    tx.commit()?;
+    Ok(Ok((version, true)))
+}
+
+/// The drafts as strings, new ones with fresh ids; refuses an unknown string or module type.
+fn issue(
+    db: &Connection,
+    drafts: Vec<StringDraft>,
+) -> rusqlite::Result<Result<Vec<PvString>, Refusal>> {
     let mut strings: Vec<PvString> = Vec::with_capacity(drafts.len());
     for draft in drafts {
-        let id = match string_id(&tx, draft.id, &strings)? {
+        let id = match string_id(db, draft.id, &strings)? {
             Ok(id) => id,
             Err(refusal) => return Ok(Err(refusal)),
         };
-        let module = tx
+        let module = db
             .query_row(
                 "SELECT 1 FROM module_type WHERE id = ?1",
                 [draft.wiring.module_type],
@@ -582,35 +591,98 @@ fn insert_version(
             wiring: draft.wiring,
         });
     }
-    tx.execute(
-        "INSERT INTO layout (applies_from, changed, actor) VALUES (?1, ?2, ?3)",
-        params![seconds(applies_from), seconds(changed), ACTOR],
-    )?;
-    let layout = tx.last_insert_rowid();
-    for s in &strings {
-        insert_string(&tx, layout, s)?;
+    Ok(Ok(strings))
+}
+
+/// Writes `version` in place of the one from its instant, with its change log entry.
+fn write_version(db: &Connection, version: &Version, changed: SystemTime) -> rusqlite::Result<()> {
+    let (layout, action) = replace_layout(db, version.applies_from, changed)?;
+    for s in &version.strings {
+        insert_string(db, layout, s)?;
     }
-    // The drafts' positions become the strings' ids.
-    let scene = scene.map(|scene| {
-        scene::renumber(&scene, |at| {
-            let at = usize::try_from(at).ok()?;
-            strings.get(at).map(|s| s.id)
-        })
-    });
-    if let Some(scene) = &scene {
+    if let Some(scene) = &version.scene {
         let json = serde_json::to_string(scene)
             .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-        tx.execute(
+        db.execute(
             "INSERT INTO layout_scene (layout, scene) VALUES (?1, ?2)",
             params![layout, json],
         )?;
     }
-    tx.commit()?;
-    Ok(Ok(Version {
-        applies_from: time(seconds(applies_from)),
-        strings,
-        scene,
-    }))
+    let modules: u32 = version
+        .strings
+        .iter()
+        .map(|s| u32::from(s.wiring.modules))
+        .sum();
+    let entry = Entry {
+        subject: Subject::Layout,
+        id: u32::try_from(layout).unwrap_or(u32::MAX),
+        action,
+        state: Some(serde_json::json!({ "strings": version.strings.len(), "modules": modules })),
+        actor: ACTOR,
+        changed,
+        applies_from: version.applies_from,
+    };
+    changes::append(db, &entry)
+}
+
+/// Degrees within which a derived plane is the same: a scene's planes may differ in their last
+/// bits from those an older build derived.
+const ROUNDING: f64 = 1e-9;
+
+/// Whether `version` has these strings, in any order, and this scene.
+fn same(version: &Version, strings: &[PvString], scene: Option<&Scene>) -> bool {
+    let by_id = |strings: &[PvString]| {
+        let mut sorted = strings.to_vec();
+        sorted.sort_by_key(|s| s.id);
+        sorted
+    };
+    let close = |a: f64, b: f64| (a - b).abs() < ROUNDING;
+    let alike = |a: &PvString, b: &PvString| {
+        let (x, y) = (&a.wiring, &b.wiring);
+        a.id == b.id
+            && close(x.tilt, y.tilt)
+            && close(x.azimuth, y.azimuth)
+            && Wiring {
+                tilt: y.tilt,
+                azimuth: y.azimuth,
+                ..x.clone()
+            } == *y
+    };
+    version.scene.as_ref() == scene
+        && version.strings.len() == strings.len()
+        && by_id(&version.strings)
+            .iter()
+            .zip(&by_id(strings))
+            .all(|(a, b)| alike(a, b))
+}
+
+/// The version applying from `applies_from`, emptied of its strings and scene, or a new one.
+fn replace_layout(
+    db: &Connection,
+    applies_from: SystemTime,
+    changed: SystemTime,
+) -> rusqlite::Result<(i64, Action)> {
+    let existing: Option<i64> = db
+        .query_row(
+            "SELECT id FROM layout WHERE applies_from = ?1",
+            [seconds(applies_from)],
+            |row| row.get(0),
+        )
+        .optional()?;
+    let Some(layout) = existing else {
+        db.execute(
+            "INSERT INTO layout (applies_from, changed, actor) VALUES (?1, ?2, ?3)",
+            params![seconds(applies_from), seconds(changed), ACTOR],
+        )?;
+        return Ok((db.last_insert_rowid(), Action::Add));
+    };
+    db.execute(
+        "UPDATE layout SET changed = ?2, actor = ?3 WHERE id = ?1",
+        params![layout, seconds(changed), ACTOR],
+    )?;
+    db.execute("DELETE FROM layout_string WHERE layout = ?1", [layout])?;
+    db.execute("DELETE FROM layout_scene WHERE layout = ?1", [layout])?;
+    Ok((layout, Action::Change))
 }
 
 /// A kept string's id, once per version, or a fresh one.

@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { Color, DataTexture, Mesh, MeshStandardMaterial, type Object3D } from "three";
+import { Color, Mesh, MeshStandardMaterial, type Object3D } from "three";
 import type { Face, Geometry } from "./pv.ts";
 import { buildScene } from "./scene.ts";
 
@@ -28,37 +28,15 @@ function standard(found: Object3D | undefined): MeshStandardMaterial {
   return found.material;
 }
 
-/** The material's drawn albedo, as sRGB: its map's mean in linear light times its colour. */
-// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own material, read only.
+/** The material's flat colour, as sRGB; a map would lay a pattern over it. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's material, read only.
 function albedo(found: MeshStandardMaterial): string {
-  const { map } = found;
+  if (found.map !== null || found.normalMap !== null) throw new TypeError("a patterned finish");
 
-  if (!(map instanceof DataTexture)) throw new TypeError("no generated map");
-
-  const data = map.image.data;
-
-  if (data === null) throw new TypeError("no pixels");
-
-  const mean = [0, 1, 2].map((channel) => {
-    let sum = 0;
-
-    for (let i = channel; i < data.length; i += 4) {
-      sum += new Color().setRGB((data[i] ?? 0) / 255, 0, 0).convertSRGBToLinear().r;
-    }
-
-    return sum / (data.length / 4);
-  });
-
-  return `#${new Color()
-    .setRGB(
-      (mean[0] ?? 0) * found.color.r,
-      (mean[1] ?? 0) * found.color.g,
-      (mean[2] ?? 0) * found.color.b,
-    )
-    .getHexString()}`;
+  return `#${found.color.getHexString()}`;
 }
 
-test("a block's colours paint its walls and roofs; without one a face keeps its finish's own", () => {
+test("a block's colours are flat matte tints on its walls and roofs; without one a wall is off-white clay and a roof a cooler grey", () => {
   const painted: Geometry = {
     faces: [
       ...house.map(({ surface, corners }) => ({
@@ -79,11 +57,19 @@ test("a block's colours paint its walls and roofs; without one a face keeps its 
 
   expect(roof === undefined ? "" : albedo(roof)).toBe("#9c4a32");
   expect(wall === undefined ? "" : albedo(wall)).toBe("#e8dcc0");
-  expect(plainRoof?.color.getHex()).toBe(0xffffff);
-  expect(plainWall?.color.getHex()).toBe(0xffffff);
+  expect([roof?.roughness, wall?.roughness].every((rough) => (rough ?? 0) > 0.85)).toBe(true);
+
+  const [clay, grey] = [plainWall?.color ?? new Color(0), plainRoof?.color ?? new Color(0)];
+
+  // Off-white, a little warm; the roof darker and cooler.
+  expect(clay.g).toBeGreaterThan(0.7);
+  expect(clay.g).toBeLessThan(0.9);
+  expect(clay.r).toBeGreaterThan(clay.b);
+  expect(grey.g).toBeLessThan(clay.g - 0.1);
+  expect(grey.b).toBeGreaterThan(grey.r);
 });
 
-test("a roof chimney is drawn in render from its faces", () => {
+test("a roof chimney is drawn in the walls' clay from its faces", () => {
   const side = {
     surface: "chimney",
     corners: [
@@ -98,5 +84,8 @@ test("a roof chimney is drawn in render from its faces", () => {
 
   const obstacle = buildScene({ faces: [], solids: [] }).getObjectByName("obstacle");
 
-  expect(standard(drawn).map).toBe(standard(obstacle).map);
+  const wall = buildScene({ faces: house, solids: [] }).getObjectByName("wall");
+
+  expect(albedo(standard(drawn))).toBe(albedo(standard(wall)));
+  expect(albedo(standard(obstacle))).toBe(albedo(standard(wall)));
 });

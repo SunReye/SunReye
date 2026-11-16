@@ -1,5 +1,5 @@
 // The 3D scene's warm-up worker (ADR 20 Loading), ported from the prototype. It answers whether
-// this browser has WebGL2 and generates the scene's noise textures, so the dashboard's main thread
+// this browser has WebGL2 and generates the scene's two maps, so the dashboard's main thread
 // pays for neither. Its WebGL2 context also starts the browser's GPU side, which the first context
 // otherwise waits for on the main thread. No three.js here: this runs before it loads.
 import type { GroupName, Maps } from "./pixels.ts";

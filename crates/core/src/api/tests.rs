@@ -32,7 +32,6 @@ use crate::profiles::{Keys, Profiles};
 use crate::scan::Scanner;
 use crate::spot::SpotZone;
 use crate::storage::{Problem, Storage};
-use crate::surroundings::Surroundings;
 use crate::tariff::Tariffs;
 use crate::topology::Topologies;
 use crate::weather;
@@ -64,7 +63,6 @@ mod secrets;
 mod settings;
 mod spot;
 mod statistics;
-mod surroundings;
 mod tariff;
 mod tokens;
 mod topology;
@@ -100,22 +98,6 @@ fn imports(dir: &Path, storage: &Storage, bus: &Bus, profiles: &Profiles) -> Imp
 /// Backs up into `dir/share`.
 fn backups(dir: &Path, storage: &Storage) -> Backups {
     Backups::new(storage.database(), dir.to_owned(), dir.join("share"))
-}
-
-/// Surroundings kept in `dir/surroundings`, fetched from a recorded Overpass answer: no test
-/// reaches the network.
-fn surroundings(dir: &Path, location: &PlantLocation) -> Surroundings {
-    let map = include_bytes!("../../../pv/fixtures/surroundings/overpass.json");
-    let fetched = sunreye_pv::Fetched {
-        tiles: Vec::new(),
-        map: serde_json::from_slice(map).unwrap(),
-    };
-    let (source, _) = crate::surroundings::fake::Fake::new(fetched, &[]);
-    Surroundings::spawn(
-        dir.join("surroundings"),
-        vec![Box::new(source)],
-        location.watch(),
-    )
 }
 
 const HOME: &str = "192.0.2.1:50000";
@@ -168,9 +150,7 @@ impl Core {
         let profiles = Profiles::open(storage.database(), Arc::<Host>::clone(&host), keys)
             .await
             .unwrap();
-        let location = PlantLocation::open(storage.database()).await.unwrap();
-        let surroundings = surroundings(path.parent().unwrap(), &location);
-        let layouts = Layouts::new(storage.database(), deye()).among(surroundings.documents());
+        let layouts = Layouts::new(storage.database(), deye());
         let logs = Logs::default();
         let api = Api {
             auth,
@@ -182,7 +162,7 @@ impl Core {
             // Its own inverters: the layout tests wire to the Deye above as device 1.
             devices: devices(&storage, &profiles, &bus).await.scanning(scanner),
             changes: Changes::new(storage.database()),
-            location,
+            location: PlantLocation::open(storage.database()).await.unwrap(),
             spot: SpotZone::open(storage.database()).await.unwrap(),
             imports: imports(path.parent().unwrap(), &storage, &bus, &profiles),
             backups: backups(path.parent().unwrap(), &storage),
@@ -190,7 +170,6 @@ impl Core {
             topologies: Topologies::new(storage.database()),
             tariffs: Tariffs::new(&storage, &bus, storage.zones().watch()),
             cars: CarBodies::new(path.with_file_name("cars")),
-            surroundings,
             storage: storage.settings(),
             logs: logs.clone(),
             clock: Arc::new(move || set.lock().unwrap().unwrap_or_else(SystemTime::now)),
@@ -285,11 +264,6 @@ async fn a_route_missing_from_the_openapi_document_fails_the_contract_test() {
         topologies: Topologies::new(storage.database()),
         tariffs: Tariffs::new(&storage, &Bus::default(), storage.zones().watch()),
         cars: CarBodies::new(dir.path().join("cars")),
-        surroundings: Surroundings::spawn(
-            dir.path().join("surroundings"),
-            Vec::new(),
-            watch::channel(None).1,
-        ),
         storage: storage.settings(),
         logs: Logs::default(),
         clock: Arc::new(SystemTime::now),

@@ -33,8 +33,6 @@ export type Level =
         | "string";
       readonly index: number;
     }
-  /** The imported surroundings: loading them, lining them up, hiding their buildings. */
-  | { readonly kind: "import" }
   | { readonly kind: "face"; readonly block: number; readonly face: number }
   /** One module on a face, by its position in the face's grid. */
   | {
@@ -52,7 +50,6 @@ const SECTIONS: Readonly<Record<Exclude<Level["kind"], "root" | "section">, Sect
   obstacle: "surroundings",
   surface: "surroundings",
   fence: "surroundings",
-  import: "surroundings",
   marker: "equipment",
   place: "equipment",
   face: "modules",
@@ -220,8 +217,6 @@ export function picked(
   if (hit.kind === "opening") return { kind: "opening", index: hit.index };
 
   if (hit.kind === "point") return at(scene, pv, hit.point);
-
-  if (hit.kind === "imported") return { kind: "import" };
 
   const grid = scene.grids?.[hit.grid];
 

@@ -5,21 +5,15 @@ import {
   DoubleSide,
   Float32BufferAttribute,
   Mesh,
-  MeshPhysicalMaterial,
-  MeshStandardMaterial,
+  type MeshStandardMaterial,
 } from "three";
 import type { Point } from "../builder/pv.ts";
 import { normal, unit, type Vector } from "../builder/vector.ts";
+import { clay, darkGlass } from "./materials.ts";
 
-/** Metres: the frame's width, and how far the frame and the glass stand over the tiles. */
+/** Metres: the frame's width, and how far the frame and the glass stand over the roof. */
 const FRAME = 0.06;
 const PROUD = { frame: 0.05, glass: 0.03 } as const;
-
-/** Anthracite, as most roof windows' cladding. */
-const CLADDING = 0x2c3136;
-
-/** Dark glass: what a room behind it shows of itself by day. */
-const GLASS = 0x18222c;
 
 const moved = (from: Vector, by: Vector, metres: number): Vector => [
   from[0] + by[0] * metres,
@@ -61,7 +55,7 @@ function ring([a, b, c, d]: Quad, inset: number, proud: number): Quad {
   return [at(a, 1, 1), at(b, -1, 1), at(c, -1, -1), at(d, 1, -1)];
 }
 
-/** One roof window: its frame, standing a little over the tiles, round its glass. */
+/** One roof window: its frame, standing a little over the roof, round its glass. */
 function framed(pane: Quad): Mesh {
   const foot = ring(pane, 0, 0);
   const rim = ring(pane, 0, PROUD.frame);
@@ -78,15 +72,9 @@ function framed(pane: Quad): Mesh {
     ];
   });
 
-  const frame = mesh(
-    sides,
-    new MeshStandardMaterial({ color: CLADDING, roughness: 0.55, metalness: 0.35 }),
-  );
+  const frame = mesh(sides, clay());
 
-  const glass = mesh(
-    [ring(pane, FRAME, PROUD.glass)],
-    new MeshPhysicalMaterial({ color: GLASS, roughness: 0.08, metalness: 0, clearcoat: 1 }),
-  );
+  const glass = mesh([ring(pane, FRAME, PROUD.glass)], darkGlass());
 
   glass.name = "roofWindow";
   frame.add(glass);

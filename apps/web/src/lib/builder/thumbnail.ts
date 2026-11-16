@@ -11,12 +11,11 @@ export interface Polygon {
   readonly fill: string;
 }
 
-/** The 3D scene's finishes (scene/pixels.ts): plaster walls, tiled roofs, rendered flat roofs. */
-const FINISH = { wall: [206, 199, 186], roof: [50, 50, 52], flat: [128, 126, 122] } as const;
+/** The 3D scene's tones (scene/materials.ts): clay walls under roofs of a cooler grey. */
+const TONE = { wall: [230, 227, 221], roof: [201, 205, 210] } as const;
 
-function paint(surface: Face["surface"], up: number, light: number): string {
-  const finish =
-    surface === "wall" ? FINISH.wall : Math.abs(up) > 0.999 ? FINISH.flat : FINISH.roof;
+function paint(surface: Face["surface"], light: number): string {
+  const finish = surface === "wall" ? TONE.wall : TONE.roof;
 
   const k = 0.55 + 0.45 * light;
 
@@ -59,7 +58,7 @@ export function thumbnail(faces: readonly Face[]): Thumbnail {
       return {
         surface,
         light,
-        fill: paint(surface, facing[2], light),
+        fill: paint(surface, light),
         screen: corners.map((p) => [dot(p, RIGHT), -dot(p, UP)] as const),
         depth: corners.reduce((sum, p) => sum + dot(p, TOWARD), 0) / corners.length,
       };

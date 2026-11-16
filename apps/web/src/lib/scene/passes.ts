@@ -1,7 +1,7 @@
 // The studio's passes for its 3D quality (ADR 20 Look, Rendering quality): the scene into
-// multisampled HDR, ambient occlusion, a bloom on the sun's glints, tone mapping, and Ultra's
-// burst of refining frames.
+// multisampled HDR, ambient occlusion, tone mapping, and Ultra's burst of refining frames.
 import {
+  DoubleSide,
   HalfFloatType,
   type PerspectiveCamera,
   type Scene,
@@ -12,21 +12,27 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
-import { glintFrom, glints } from "./bloom.ts";
 import type { Look } from "./quality.ts";
 import { jitter, Refiner } from "./refine.ts";
 
-/** One ambient-occlusion pass, as the prototype tuned it. */
+/** One ambient-occlusion pass, wide and strong: on a white model it is what sets a wall on the
+ * ground and an eave on its wall. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js reads them.
 function ambientOcclusion(scene: Scene, camera: PerspectiveCamera): GTAOPass {
   const pass = new GTAOPass(scene, camera, 1, 1);
 
-  pass.blendIntensity = 0.9;
+  // The pass draws the scene's depths and normals with a material of its own, which culls a
+  // face wound away from the camera: what stands behind it would then shade it, a wall's edge
+  // showing through its roof. The crate promises no winding, so both sides are drawn, each
+  // with the normal of the side seen.
+  pass.normalMaterial.side = DoubleSide;
+
+  pass.blendIntensity = 1;
   pass.updateGtaoMaterial({
-    radius: 0.7,
+    radius: 2,
     distanceExponent: 1.5,
     thickness: 1.5,
-    scale: 1,
+    scale: 1.5,
     samples: 12,
   });
   pass.updatePdMaterial({
@@ -49,7 +55,6 @@ export class Passes {
   readonly #camera: PerspectiveCamera;
   readonly #composer: EffectComposer;
   readonly #occlusion: GTAOPass;
-  readonly #bloom = glints();
   readonly #refiner = new Refiner();
   #finest = false;
 
@@ -57,7 +62,7 @@ export class Passes {
   constructor(renderer: WebGLRenderer, scene: Scene, camera: PerspectiveCamera) {
     this.#renderer = renderer;
     this.#camera = camera;
-    // Multisampled HDR, then ambient occlusion and bloom, then tone mapping and sRGB.
+    // Multisampled HDR, then ambient occlusion, then tone mapping and sRGB.
     this.#composer = new EffectComposer(
       renderer,
       new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples: 4 }),
@@ -65,7 +70,6 @@ export class Passes {
     this.#occlusion = ambientOcclusion(scene, camera);
     this.#composer.addPass(new RenderPass(scene, camera));
     this.#composer.addPass(this.#occlusion);
-    this.#composer.addPass(this.#bloom);
     this.#composer.addPass(new OutputPass());
   }
 
@@ -80,15 +84,9 @@ export class Passes {
   }
 
   /** The passes `look` asks for. */
-  follow({ occlusion, rich, finest }: Look): void {
+  follow({ occlusion, finest }: Look): void {
     this.#occlusion.enabled = occlusion;
-    this.#bloom.enabled = rich;
     this.#finest = finest;
-  }
-
-  /** Only what outshines the page's white blooms: `page` is its brightest channel. */
-  glint(page: number, exposure: number): void {
-    this.#bloom.threshold = glintFrom(page, exposure);
   }
 
   setSize(width: number, height: number, ratio: number): void {
@@ -134,7 +132,6 @@ export class Passes {
   dispose(): void {
     this.#composer.dispose();
     this.#occlusion.dispose();
-    this.#bloom.dispose();
     this.#refiner.dispose();
   }
 }

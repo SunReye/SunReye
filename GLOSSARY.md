@@ -244,12 +244,8 @@ _Avoid_: Eave depth, soffit
 An upright box standing on one roof face of a block; no module may stand on its footprint.
 _Avoid_: Chimney obstacle, stack
 
-**Imported surroundings**:
-The terrain, neighbouring buildings, trees and ground around the plant, fetched once from open map data for a radius and lined up with the blocks; buildings and trees shade.
-_Avoid_: Map, environment, tiles
-
 **3D quality**:
-How richly a browser draws the scene (Auto, Niedrig, Mittel, Hoch, Ultra), apart from what moves.
+How sharply a browser draws the scene (Auto, Niedrig, Mittel, Hoch, Ultra), apart from what moves.
 _Avoid_: Graphics tier, motion tier
 
 **Roof window**:
@@ -281,8 +277,16 @@ What the scene draws for a connected car: the default low-poly sedan in the car 
 _Avoid_: Car model
 
 **Ground surface**:
-A rectangle on the plot with one finish, such as lawn, paving or a driveway. Drawn only; it casts no shade.
+A rectangle on the plot with one finish, such as lawn, paving or a driveway, drawn as a flat grey. Drawn only; it casts no shade.
 _Avoid_: Floor, texture
+
+**Studio floor**:
+The light-grey ground the scene stands on, fading into the page. A plot without ground surfaces shows only it.
+_Avoid_: Lawn, ground plane
+
+**Clay**:
+The matte off-white the scene draws everything built in, with no map: a white-box model. Roofs, crowns, trunks and fences are each a flat tone of it.
+_Avoid_: Finish, texture, plaster
 
 **Fence**:
 A line on the plot with a height and a finish. Drawn only; it casts no shade.

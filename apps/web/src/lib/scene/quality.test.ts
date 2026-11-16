@@ -4,46 +4,43 @@ import { capable, drawn, parseQuality, parseSteps, relief, type Device } from ".
 const strong: Device = { capable: true, steps: 0, tier: "full" };
 const weak: Device = { capable: false, steps: 0, tier: "full" };
 
-test("Niedrig draws at a pixel ratio of 1 from a 1024 shadow map, bare", () => {
+test("Niedrig draws as the lite tier did, at a pixel ratio of 1 from a 1024 shadow map", () => {
   expect(drawn("low", strong)).toEqual({
     level: "low",
     pixelRatio: 1,
     shadowMap: 1024,
     occlusion: false,
-    weathering: false,
-    rich: false,
+    contact: false,
     finest: false,
   });
 });
 
-test("Mittel draws from a 2048 map with occlusion and varied finishes, up to 1.5", () => {
+test("Mittel draws what the full tier drew: a 2048 map, occlusion, up to 1.5", () => {
   expect(drawn("medium", strong)).toEqual({
     level: "medium",
     pixelRatio: 1.5,
     shadowMap: 2048,
     occlusion: true,
-    weathering: true,
-    rich: false,
+    contact: false,
     finest: false,
   });
 });
 
-test("Hoch adds its extras from a 4096 map, up to a pixel ratio of 2", () => {
-  expect(drawn("high", weak)).toMatchObject({
+test("Hoch only sharpens Mittel: contact-hardening shadows from a 4096 map, up to 2", () => {
+  expect(drawn("high", weak)).toEqual({
+    ...drawn("medium", weak),
+    level: "high",
     pixelRatio: 2,
     shadowMap: 4096,
-    occlusion: true,
-    weathering: true,
-    rich: true,
-    finest: false,
+    contact: true,
   });
 });
 
-test("Ultra adds its own at the device's pixel ratio", () => {
-  expect(drawn("ultra", weak)).toMatchObject({
+test("Ultra only sharpens Hoch: its burst and full occlusion at the device's pixel ratio", () => {
+  expect(drawn("ultra", weak)).toEqual({
+    ...drawn("high", weak),
+    level: "ultra",
     pixelRatio: Infinity,
-    shadowMap: 4096,
-    rich: true,
     finest: true,
   });
 });
@@ -60,30 +57,33 @@ test("Auto steps down a level per measured strain, never under Niedrig", () => {
   expect(drawn("auto", { ...weak, steps: 1 }).level).toBe("low");
 });
 
-test("the lite and still tiers cap Auto at Mittel and drop its occlusion; its finishes still vary", () => {
+test("the lite and still tiers cap Auto at Mittel", () => {
   for (const tier of ["lite", "still"] as const) {
-    expect(drawn("auto", { ...strong, tier })).toMatchObject({
-      level: "medium",
-      shadowMap: 2048,
-      occlusion: false,
-      weathering: true,
-      rich: false,
-    });
+    expect(drawn("auto", { ...strong, tier })).toMatchObject({ level: "medium", shadowMap: 2048 });
   }
 });
 
-test("Niedrig alone draws each finish plain, on any tier", () => {
-  expect(drawn("auto", { ...weak, steps: 1, tier: "lite" })).toMatchObject({
-    level: "low",
-    weathering: false,
-  });
+test("the lite and still tiers drop occlusion at every level, as they did", () => {
+  for (const tier of ["lite", "still"] as const) {
+    for (const choice of ["auto", "medium", "high", "ultra"] as const) {
+      const { occlusion } = drawn(choice, { ...strong, tier });
+
+      expect([choice, occlusion]).toEqual([choice, false]);
+    }
+  }
 });
 
-test("a chosen level stays where it is, whatever the device", () => {
+test("a chosen level keeps its sharpness, whatever the device", () => {
   const strained: Device = { capable: false, steps: 2, tier: "lite" };
 
-  expect(drawn("ultra", strained)).toEqual(drawn("ultra", strong));
-  expect(drawn("medium", strained)).toEqual(drawn("medium", strong));
+  expect(drawn("ultra", strained)).toMatchObject({
+    level: "ultra",
+    pixelRatio: Infinity,
+    shadowMap: 4096,
+    contact: true,
+    finest: true,
+  });
+  expect(drawn("medium", { ...strained, tier: "full" })).toEqual(drawn("medium", strong));
 });
 
 test("a strain relieves Auto's drawing above Mittel before it touches the motion tier", () => {

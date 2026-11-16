@@ -65,10 +65,7 @@
   );
 
   const surrounding = $derived(
-    level.kind === "obstacle" ||
-      level.kind === "surface" ||
-      level.kind === "fence" ||
-      level.kind === "import"
+    level.kind === "obstacle" || level.kind === "surface" || level.kind === "fence"
       ? level.kind
       : null,
   );

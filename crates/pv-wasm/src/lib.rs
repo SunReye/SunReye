@@ -4,7 +4,6 @@
 //! returns `ptr << 32 | len` of a JSON reply, `{"ok": …}` or `{"error": "…"}`, and the host hands
 //! every buffer back to `release`.
 
-mod around;
 mod clear;
 mod edit;
 
@@ -380,28 +379,10 @@ mod exports {
     /// # Safety
     /// `input`/`input_len` name a live buffer from `reserve`.
     #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn around(input: *const u8, input_len: usize) -> u64 {
-        // SAFETY: the caller guarantees the buffer, written through `reserve`.
-        let input = unsafe { std::slice::from_raw_parts(input, input_len) };
-        leak(super::edited(input, super::around::Around::reply))
-    }
-
-    /// # Safety
-    /// `input`/`input_len` name a live buffer from `reserve`.
-    #[unsafe(no_mangle)]
     pub unsafe extern "C" fn lay(input: *const u8, input_len: usize) -> u64 {
         // SAFETY: the caller guarantees the buffer, written through `reserve`.
         let input = unsafe { std::slice::from_raw_parts(input, input_len) };
         leak(super::edited(input, super::edit::Lay::reply))
-    }
-
-    /// # Safety
-    /// `input`/`input_len` name a live buffer from `reserve`.
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn load_import(input: *const u8, input_len: usize) -> u64 {
-        // SAFETY: the caller guarantees the buffer, written through `reserve`.
-        let input = unsafe { std::slice::from_raw_parts(input, input_len) };
-        leak(super::edited(input, super::around::Loaded::reply))
     }
 
     /// # Safety

@@ -12,39 +12,19 @@ import {
   type MeshStandardMaterial,
 } from "three";
 import type { Fencing, Ground, Point } from "../builder/pv.ts";
-import { FENCE, GROUND, REPEAT } from "./materials.ts";
-import { fan, uvs } from "./surfaces.ts";
+import { FENCE, GROUND } from "./materials.ts";
+import { fan } from "./surfaces.ts";
 
-/** Metres above the lawn of the first surface, and between each and the next. */
+/** Metres above the floor of the first surface, and between each and the next. */
 const LIFT = 0.005;
 const STACK = 0.002;
 
 /** East, north, up to three.js: x east, y up, z south. */
 const toThree = ([east, north, up]: Point): [number, number, number] => [east, up, 0 - north];
 
-const far = (p: Point | undefined, q: Point | undefined): number =>
-  p === undefined || q === undefined ? 0 : Math.hypot(q[0] - p[0], q[1] - p[1]);
-
-/**
- * Where each point of a four-cornered surface's triangles lies across its narrow side, -1 at
- * one long edge to 1 at the other, and 1 to say so: feet and wheels run along the long side
- * (ADR 20 Look). Any other outline says nothing, and nothing wears.
- */
-function across(corners: readonly Point[]): number[] {
-  if (corners.length !== 4) return fan(corners).flatMap(() => [0, 0]);
-
-  const [a, b, c] = corners;
-  // Whether the first side is the narrow one: then the first and last corners share a long edge.
-  const narrow = far(a, b) < far(b, c);
-  const side = narrow ? [-1, 1, 1, -1] : [-1, -1, 1, 1];
-
-  return fan(corners.map((_, i) => [side[i] ?? 0, 0, 0] as const)).flatMap(([at]) => [at, 1]);
-}
-
-/** A ground surface, lifted over the lawn and over every earlier one. */
+/** A ground surface, lifted over the floor and over every earlier one. */
 export function ground({ finish, corners }: Ground, index: number): Mesh {
   const geometry = new BufferGeometry();
-  const face = { surface: "roof", corners } as const;
 
   geometry.setAttribute(
     "position",
@@ -53,8 +33,6 @@ export function ground({ finish, corners }: Ground, index: number): Mesh {
       3,
     ),
   );
-  geometry.setAttribute("uv", new Float32BufferAttribute(uvs([face], REPEAT[finish]), 2));
-  geometry.setAttribute("wear", new Float32BufferAttribute(across(corners), 2));
   geometry.computeVertexNormals();
 
   const material = GROUND[finish]();
@@ -68,8 +46,6 @@ export function ground({ finish, corners }: Ground, index: number): Mesh {
 
   mesh.position.y = LIFT + index * STACK;
   mesh.name = "ground";
-  // What grows through it: blades stand on a lawn surface, and on no other (ADR 20).
-  mesh.userData = { finish };
 
   return mesh;
 }
@@ -82,7 +58,7 @@ const RAIL = 0.04;
 const BAR = 0.02;
 const BARS = 0.12;
 
-/** A box from `from` to `to` on the ground, `thick` across and `high` tall, its UVs in metres. */
+/** A box from `from` to `to` on the ground, `thick` across and `high` tall. */
 function run(
   from: readonly [number, number, number],
   to: readonly [number, number, number],
@@ -91,14 +67,7 @@ function run(
   material: MeshStandardMaterial,
 ): Mesh {
   const length = Math.hypot(to[0] - from[0], to[2] - from[2]);
-  const geometry = new BoxGeometry(length, high, thick);
-  const uv = geometry.getAttribute("uv");
-  const metres = REPEAT.wood[0];
-
-  for (let i = 0; i < uv.count; i++)
-    uv.setXY(i, (uv.getX(i) * length) / metres, (uv.getY(i) * high) / metres);
-
-  const mesh = new Mesh(geometry, material);
+  const mesh = new Mesh(new BoxGeometry(length, high, thick), material);
 
   mesh.position.set((from[0] + to[0]) / 2, low + high / 2, (from[2] + to[2]) / 2);
   mesh.rotation.y = Math.atan2(-(to[2] - from[2]), to[0] - from[0]);

@@ -12,19 +12,12 @@ import type {
 import { coldStrings, stringRefusal, type Limits, type StringRefusal } from "./checks.ts";
 import { haptics } from "../haptics.ts";
 import { begin, record, redo, undo, type Edits } from "./history.ts";
-import { Importing } from "./importing.svelte.ts";
 import { parent, picked, type Level } from "./levels.ts";
 import { painted, panels, uncovered, type Draft } from "./modules.ts";
 import { exists, type Plan } from "./outline.ts";
 import type { Geometry, Modules, Pv, Scene, Sizes } from "./pv.ts";
-import {
-  editingOf,
-  paintingOf,
-  type Editing,
-  type Hit,
-  type Painting,
-  type Panel,
-} from "./drawing.svelte.ts";
+import { paintingOf, type Editing, type Hit, type Painting, type Panel } from "./drawing.svelte.ts";
+import { fill, type Template } from "./templates.ts";
 
 const same = (a: Scene, b: Scene): boolean => JSON.stringify(a) === JSON.stringify(b);
 
@@ -88,23 +81,10 @@ export class Session {
   /** A handle drag's scene, shown but not yet recorded. */
   #dragged = $state.raw<Draft>();
 
-  /** The imported surroundings: their documents, a load under way and what is drawn of them. */
-  readonly importing: Importing;
-
   constructor(opening: () => Opening) {
     this.#opening = opening;
     // The start is where this session begins; a later one is a new session's.
     this.#history = $state.raw(begin(opening().start));
-
-    this.importing = new Importing(() => ({
-      core: opening().core,
-      pv: opening().pv,
-      recorded: this.#history.present.scene,
-      scene: () => this.draft.scene,
-      put: (scene) => {
-        this.change({ ...this.draft, scene });
-      },
-    }));
 
     this.#sizes = $derived(
       Object.fromEntries(this.moduleTypes.map(({ id, width, height }) => [id, { width, height }])),
@@ -208,25 +188,52 @@ export class Session {
     this.#history = redo(this.#history);
   }
 
-  /** Where a drag's steps go, and its end. */
-  readonly #steps = { ondrag: this.drag.bind(this), ondrop: this.drop.bind(this) };
-
-  /** The selected object's handles, or the imported surroundings', and where their drags go. */
+  /** A selected block, obstacle, ground surface, fence, car place, chimney or opening's handles,
+   * and where their drags go. */
   get editing(): Editing | undefined {
-    const { scene } = this.draft;
-    const handling = { scene, pv: this.#opening().pv, laid: this.laid, ...this.#steps };
+    const { level } = this;
 
-    return editingOf(this.level, handling, () => this.importing.rests(scene));
+    if (
+      level.kind !== "block" &&
+      level.kind !== "obstacle" &&
+      level.kind !== "surface" &&
+      level.kind !== "fence" &&
+      level.kind !== "place" &&
+      level.kind !== "chimney" &&
+      level.kind !== "roofWindow" &&
+      level.kind !== "opening"
+    ) {
+      return undefined;
+    }
+
+    return {
+      scene: this.draft.scene,
+      target: { kind: level.kind, index: level.index },
+      pv: this.#opening().pv,
+      laid: this.laid,
+      ondrag: (scene) => {
+        this.drag(scene);
+      },
+      ondrop: () => {
+        this.drop();
+      },
+    };
   }
 
-  /** The selected face's grid to lay modules on, or the picked string to wire (ADR 20). */
+  /** The selected face's grid, on whose roof a press in 3D lays modules, or the picked string,
+   * which a drag across modules wires (ADR 20). */
   get painting(): Painting | undefined {
     return paintingOf(this.level, {
       draft: this.draft,
       laid: this.laid,
       pv: this.#opening().pv,
       sizes: this.#sizes,
-      ...this.#steps,
+      ondrag: (scene) => {
+        this.drag(scene);
+      },
+      ondrop: () => {
+        this.drop();
+      },
       go: (level) => {
         this.go(level);
       },
@@ -238,11 +245,10 @@ export class Session {
     return this.draft.scene.blocks.length === 0 && !this.#empty;
   }
 
-  /** Starts from a template's `filled` draft, one undo step, or from nothing; nothing remembers
-   * which (ADR 20). */
-  begin(filled?: Draft): void {
-    if (filled === undefined) this.#empty = true;
-    else this.change(filled);
+  /** Fills the scene from a template, one undo step; nothing remembers which (ADR 20). */
+  begin(template: Template): void {
+    if (template === "empty") this.#empty = true;
+    else this.change(fill(this.draft, template));
   }
 
   go(level: Level): void {
@@ -253,9 +259,6 @@ export class Session {
   /** Drills the inspector to what a click in 3D struck, and pulls it up unless it should `peek`: a
    * phone keeps the canvas in view, its handles at hand. */
   pick(hit: Hit, peek = false): void {
-    // At the surroundings' own level a tap hides or shows a building instead (ADR 20).
-    if (this.level.kind === "import" && this.importing.tap(hit)) return;
-
     const level = picked(this.draft.scene, hit, this.#opening().pv);
 
     if (level === null) return;

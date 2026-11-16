@@ -1,6 +1,5 @@
 // The pv glue crate's exports and its JSON replies, `{"ok": …}` or `{"error": "…"}`, checked
 // at the boundary.
-import type { Around, Import } from "./imported.ts";
 import type { Chimney, Geometry, Ghost, Modules, Opening, RoofWindow, Sun, Unfit } from "./pv.ts";
 
 export type Reply<T> = { readonly ok: T } | { readonly error: string };
@@ -108,10 +107,6 @@ export const isOpening: (value: unknown) => value is Reply<Opening | null> = isA
 
 export const isChimney: (value: unknown) => value is Reply<Chimney | null> = isAnswer;
 
-export const isAround: (value: unknown) => value is Reply<Around | null> = isAnswer;
-
-export const isImport: (value: unknown) => value is Reply<Import> = isAnswer;
-
 export const isRoofWindow: (value: unknown) => value is Reply<RoofWindow | null> = isAnswer;
 
 export const isGhost: (value: unknown) => value is Reply<Ghost | null> = isAnswer;
@@ -150,8 +145,6 @@ export interface Exports {
   readonly slide: (input: number, inputLen: number) => bigint;
   readonly fill: (input: number, inputLen: number) => bigint;
   readonly covered: (input: number, inputLen: number) => bigint;
-  readonly around: (input: number, inputLen: number) => bigint;
-  readonly load_import: (input: number, inputLen: number) => bigint;
   readonly glide_window: (input: number, inputLen: number) => bigint;
   readonly roof_window_at: (input: number, inputLen: number) => bigint;
   readonly place_window: (input: number, inputLen: number) => bigint;
@@ -174,8 +167,6 @@ const functions = [
   "slide",
   "fill",
   "covered",
-  "around",
-  "load_import",
   "glide_window",
   "roof_window_at",
   "place_window",

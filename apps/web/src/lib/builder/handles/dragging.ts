@@ -2,7 +2,6 @@
 // ray now, snapped. Pure; the drag slides in a level plane, the pitch in an upright one.
 import type { Pv, Scene } from "../pv.ts";
 import { slide as slideOpening, type Fitter } from "../wall-openings.ts";
-import { align } from "./aligning.ts";
 import { bodyOf, on, ridge, type Body, type Rect, type Round, type Target } from "./body.ts";
 import {
   clamp,
@@ -185,12 +184,6 @@ export interface Crate extends Fitter {
   readonly pv: Pick<Pv, "refit" | "glide" | "glideWindow">;
 }
 
-/** What a drag is given besides the scene: the crate for a chimney or an opening, and for the
- * imported surroundings the turns their ring snaps to. */
-export interface Given extends Partial<Crate> {
-  readonly rests?: readonly number[] | undefined;
-}
-
 /** A chimney follows the pointer's level move along its roof face, where the crate lets it. */
 function climb({ scene, target, from, to }: Slide, pv: Pick<Pv, "glide">): Dragged | null {
   const chimneys = scene.chimneys ?? [];
@@ -238,40 +231,23 @@ function levelled(slide: Slide, grab: Grab, crate: Crate | undefined): Dragged |
   return body === undefined ? null : slid(grab.grip, slide, body);
 }
 
-/** The crate among what a drag is given; none without all of it. */
-function crateOf(given: Given | undefined): Crate | undefined {
-  const { pv, laid } = given ?? {};
-
-  return pv !== undefined && laid !== undefined ? { pv, laid } : undefined;
-}
-
-/** An opening slides in its wall's plane, not a level one, where the crate lets it. */
-function slidOpening(
-  scene: Scene,
-  index: number,
-  grab: Grab,
-  now: Ray,
-  crate: Crate | undefined,
-): Dragged | null {
-  const { grip } = grab;
-
-  return crate !== undefined && (grip === "move" || grip === "width" || grip === "height")
-    ? slideOpening(scene, index, grip, [grab.ray, now], crate)
-    : null;
-}
-
 /** What dragging `grab` to the pointer's ray `now` makes of the scene; null where the ray misses
- * the drag's plane or the grip has nothing to drag. A chimney and an opening go where the crate
- * `given` lets them, and nowhere without it; the imported surroundings' ring snaps to the turns
- * given. */
+ * the drag's plane or the grip has nothing to drag. A chimney and an opening go where the `crate`
+ * lets them, and nowhere without it. */
 export function drag(
   scene: Scene,
   target: Target,
   grab: Grab,
   now: Ray,
-  given?: Given,
+  crate?: Crate,
 ): Dragged | null {
-  if (target.kind === "opening") return slidOpening(scene, target.index, grab, now, crateOf(given));
+  // An opening slides in its wall's plane, not a level one.
+  if (target.kind === "opening") {
+    return crate !== undefined &&
+      (grab.grip === "move" || grab.grip === "width" || grab.grip === "height")
+      ? slideOpening(scene, target.index, grab.grip, [grab.ray, now], crate)
+      : null;
+  }
 
   const [start, end] = [inScene(scene.north, grab.ray), inScene(scene.north, now)];
 
@@ -283,7 +259,5 @@ export function drag(
 
   if (from === null || to === null) return null;
 
-  return target.kind === "import"
-    ? align(scene, grab, [from, to], given?.rests)
-    : levelled({ scene, target, from, to }, grab, crateOf(given));
+  return levelled({ scene, target, from, to }, grab, crate);
 }

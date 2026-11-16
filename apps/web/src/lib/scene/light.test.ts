@@ -2,7 +2,6 @@
 import { expect, test } from "bun:test";
 import { ambientOf, lightOf, luma, skyOf, south } from "./light.harness.ts";
 import { daylight, theme } from "./light.ts";
-import { skylight } from "./skylight.ts";
 
 test("the light shines from the given sun and lights the day", () => {
   const noon = daylight(south(60));
@@ -17,9 +16,6 @@ test("a low sun is weaker and warmer than a high one, and the cells glow less", 
   const [low, high] = [daylight(south(4)), daylight(south(50))];
 
   expect(low.intensity).toBeLessThan(high.intensity);
-  expect(low.environment * skylight(4, low.clouds.coverage)).toBeLessThan(
-    high.environment * skylight(50, high.clouds.coverage),
-  );
   expect(low.glow).toBeLessThan(high.glow);
   // Warmer: less blue against red.
   expect(low.colour.b / low.colour.r).toBeLessThan(high.colour.b / high.colour.r);
@@ -86,7 +82,7 @@ test("dusk eases into night: no light steps across the horizon", () => {
 });
 
 test("the sun's light is whole again at a low sun, the moon's at the end of nautical twilight", () => {
-  expect(daylight(south(5)).intensity).toBe(2);
+  expect(daylight(south(5)).intensity).toBe(2.8);
   expect(daylight(south(0)).intensity).toBe(0);
   // Civil twilight has no light that casts a shadow: the sky alone lights it.
   expect(daylight(south(-6)).intensity).toBe(0);
@@ -118,17 +114,16 @@ test("a sun on the horizon is day: twice the moonlit night, two fifths of the ze
 });
 
 test("a low morning sun is exposed as a November noon is: from 3° up, nine tenths of the light at 21°", () => {
-  // The owner's photo at 08:30 on 14 November, the sun 7° up: full daylight, a green lawn.
+  // The owner's photo at 08:30 on 14 November, the sun 7° up: full daylight.
   const noon = lightOf(daylight(south(21)));
 
   for (const elevation of [3, 5, 7, 8]) {
     const morning = daylight(south(elevation));
 
     expect(lightOf(morning) / noon).toBeGreaterThanOrEqual(0.9);
-    // The sky lights what the low sun cannot reach: the lawn and the faces turned from it.
-    expect(ambientOf(morning)).toBeGreaterThan(2 * morning.intensity * luma(morning.colour));
-    // Most of it from the sky model, whose reflections a fill has none of.
-    expect(skyOf(morning)).toBeGreaterThanOrEqual(0.99 * skyOf(daylight(south(21))));
+    // The sun stays a key light: two fifths of it, so a white face turned to it stands out
+    // from one turned away.
+    expect(morning.intensity * luma(morning.colour)).toBeGreaterThan(0.4 * lightOf(morning));
   }
 });
 
@@ -167,17 +162,30 @@ test("the sky's light is warm at the horizon and blue below it", () => {
   }
 });
 
-test("from the end of nautical twilight down, the night is #748's moonlight", () => {
+test("a high sun models a white model: the sky and the fill together stay under its own light", () => {
+  for (const elevation of [30, 42, 60, 90]) {
+    const day = daylight(south(elevation));
+
+    expect(ambientOf(day)).toBeLessThan(day.intensity * luma(day.colour));
+    // The sky model is blue: most of what a shaded face gets is the fill's neutral light.
+    expect(skyOf(day)).toBeLessThan(0.5 * ambientOf(day));
+    expect(
+      Math.max(day.fill.sky.r, day.fill.sky.b) / Math.min(day.fill.sky.r, day.fill.sky.b),
+    ).toBeLessThan(1.15);
+  }
+});
+
+test("from the end of nautical twilight down, the night is the moon's: pale, under a grey-blue fill", () => {
   for (const elevation of [-12, -15, -30]) {
     const night = daylight(south(elevation));
 
-    expect(night.intensity).toBeCloseTo(2.3, 10);
+    expect(night.intensity).toBeCloseTo(1.6, 10);
     expect(night.environment).toBeCloseTo(0.35, 10);
-    expect(night.fill.intensity).toBeCloseTo(1.5, 10);
-    // 0x93a5d8 over 0x4a5475, linear.
-    expect(night.fill.sky.r).toBeCloseTo(0.2918, 3);
-    expect(night.fill.sky.b).toBeCloseTo(0.6867, 3);
-    expect(night.fill.ground.g).toBeCloseTo(0.0887, 3);
+    expect(night.fill.intensity).toBeCloseTo(0.8, 10);
+    // 0xb9c2dc over 0x70778c, linear.
+    expect(night.fill.sky.r).toBeCloseTo(0.4851, 3);
+    expect(night.fill.sky.b).toBeCloseTo(0.7157, 3);
+    expect(night.fill.ground.g).toBeCloseTo(0.1845, 3);
     expect(night.lamps).toBe(1);
   }
 });

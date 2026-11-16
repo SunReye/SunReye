@@ -201,32 +201,16 @@ pub(crate) async fn estimates(
         .into_iter()
         .map(|m| (m.id, m.datasheet.model()))
         .collect();
-    // Each version's model is built once, when the first target under it comes up: its
-    // imported surroundings (ADR 20) are thousands of occluders.
-    let mut models: Vec<Option<Model>> = versions.iter().map(|_| None).collect();
-    let mut estimates = Vec::with_capacity(weather.len());
-    for (target, sky) in weather {
-        let at = versions.iter().rposition(|v| v.applies_from <= target);
-        let slot = at.and_then(|at| Some((versions.get(at)?, models.get_mut(at)?)));
-        let values = match slot {
-            Some((version, model)) => {
-                if model.is_none() {
-                    let around = layouts.surroundings(version).await;
-                    let inverters = layouts.inverters();
-                    let places = (location, around.as_deref());
-                    *model = Some(Model::new(version, &module_types, inverters, places));
-                }
-                model.as_ref().map_or_else(HashMap::new, |model| {
-                    model.values(&pv::estimate(&model.layout, &sky))
-                })
-            }
-            None => HashMap::new(),
-        };
-        estimates.push((target, values));
-        // A run over months of weather would hold the one thread the API answers on.
-        tokio::task::yield_now().await;
-    }
-    Ok(estimates)
+    Ok(weather
+        .into_iter()
+        .map(|(target, sky)| {
+            let values = in_force(versions, target).map_or_else(HashMap::new, |version| {
+                let model = Model::new(version, &module_types, layouts.inverters(), location);
+                model.values(&pv::estimate(&model.layout, &sky))
+            });
+            (target, values)
+        })
+        .collect())
 }
 
 /// A string's inverter device and MPPT input.
@@ -322,9 +306,9 @@ impl Model {
         version: &Version,
         module_types: &HashMap<u32, pv::ModuleType>,
         inverters: &Inverters,
-        (location, around): (Location, Option<&pv::Imported>),
+        location: Location,
     ) -> Self {
-        let (by_string, occluders) = scene(version, module_types, around);
+        let (by_string, occluders) = scene(version, module_types);
         let mut wired: Wired<'_> = BTreeMap::new();
         for string in &version.strings {
             let w = &string.wiring;
@@ -388,12 +372,10 @@ impl Model {
     }
 }
 
-/// The modules the version's scene places, by string id, and what shades them: the scene and
-/// the imported surroundings `around` it.
+/// The modules the version's scene places, by string id, and what shades them.
 fn scene(
     version: &Version,
     module_types: &HashMap<u32, pv::ModuleType>,
-    around: Option<&pv::Imported>,
 ) -> (Placed, Vec<pv::Occluder>) {
     let Some(scene) = &version.scene else {
         return (HashMap::new(), Vec::new());
@@ -412,7 +394,7 @@ fn scene(
             by_string.entry(id).or_default().push(placed.module);
         }
     }
-    (by_string, scene.occluders_among(around))
+    (by_string, scene.occluders())
 }
 
 /// One MPPT input of the model, with its limits from the profile (ADR 5), and its place.

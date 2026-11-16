@@ -16,7 +16,6 @@ import {
   Vector3,
   WebGLCubeRenderTarget,
   WebGLRenderer,
-  type WebGLProgramParametersWithUniforms,
 } from "three";
 import { aim, sky } from "./backdrop.ts";
 import { daylight, theme } from "./light.ts";
@@ -24,7 +23,7 @@ import { skylight } from "./skylight.ts";
 import { drawn, type Level } from "./quality.ts";
 import { SAMPLES } from "./refine.ts";
 import { Studio } from "./studio.ts";
-import { weathered } from "./weather.ts";
+import { backdropAt } from "./vignette.ts";
 
 let studio: Studio | undefined;
 
@@ -98,10 +97,7 @@ test("a frame draws at every level, its programs sound", () => {
     const opened = open(level);
     const failed: string[] = [];
 
-    const box = new Mesh(
-      new BoxGeometry(4, 3, 4),
-      weathered(new MeshStandardMaterial(), { colour: 0.2, rough: 0.1, relief: 0.01 }),
-    );
+    const box = new Mesh(new BoxGeometry(4, 3, 4), new MeshStandardMaterial());
 
     box.castShadow = box.receiveShadow = true;
 
@@ -149,32 +145,39 @@ test("below Ultra a settled picture is left as drawn", () => {
   expect(opened.refine()).toBe(false);
 });
 
-type Sources = Pick<WebGLProgramParametersWithUniforms, "fragmentShader">;
+/** The picture's middle pixel, as drawn. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own objects.
+function middle(opened: Studio): number[] {
+  const gl = opened.renderer.getContext();
+  const pixel = new Uint8Array(4);
 
-/** Of all three.js hands a material before it compiles its program, the weathering needs these. */
-// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the patch fills it.
-const isShader = (source: Sources): source is WebGLProgramParametersWithUniforms =>
-  "fragmentShader" in source;
+  gl.readPixels(32, 32, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
 
-/** Whether a finish made now compiles weathered in `opened`. */
-// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own.
-function weathers(opened: Studio): boolean {
-  const shader = { uniforms: {}, vertexShader: "", fragmentShader: "#include <common>" };
-
-  if (!isShader(shader)) throw new TypeError("no shader");
-
-  weathered(new MeshStandardMaterial(), { colour: 0.2, rough: 0.1 }).onBeforeCompile(
-    shader,
-    opened.renderer,
-  );
-
-  return shader.fragmentShader.includes("weatherNoise");
+  return [...pixel.subarray(0, 3)];
 }
 
-test("a studio is made in its look, so its first frame already draws the finishes for it", () => {
-  expect(weathers(open("low"))).toBe(false);
-  expect(weathers(open("medium"))).toBe(true);
-});
+test.each([
+  ["light", false, [0.95, 0.95, 0.96]],
+  ["dark", true, [0.012, 0.014, 0.02]],
+  ["tinted", false, [0.9, 0.8, 0.6]],
+] as const)(
+  "an empty studio's backdrop lands on its vignette of the %s page colour",
+  (_, dark, page) => {
+    const opened = open();
+
+    opened.light(daylight([0, -0.5, 0.866]), theme(dark), new Color(...page));
+    opened.render();
+
+    // What the hero's stand-in paints there, as sRGB bytes.
+    const wanted = backdropAt(page, dark, 0.5, 0.5).map((v) =>
+      Math.round(new Color(v, v, v).convertLinearToSRGB().r * 255),
+    );
+
+    for (const [i, byte] of middle(opened).entries()) {
+      expect(Math.abs(byte - (wanted[i] ?? 0))).toBeLessThanOrEqual(1);
+    }
+  },
+);
 
 test("light and dark themes change the background, the fog and the exposure", () => {
   const opened = open();
