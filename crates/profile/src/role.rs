@@ -55,6 +55,7 @@ pub enum StorageClass {
 }
 
 /// The kind of a named role; a role ADR 4 lacks is a measurement.
+#[must_use]
 pub fn kind(role: &str) -> RoleKind {
     match role {
         "battery.mode" | "inverter.status" | "ev.connected" | "ev.charging" | "ev.mode"

@@ -337,3 +337,39 @@ async fn archive_weather_is_stored_as_history_and_read_back_hourly() {
     .unwrap();
     assert_eq!(read, slots);
 }
+
+/// Irradiance in W/m², temperature in °C and wind in m/s, as Open-Meteo serves them.
+#[tokio::test]
+async fn archive_weather_is_catalogued_with_its_units() {
+    let dir = tempfile::tempdir().unwrap();
+    let bus = Bus::default();
+    let storage =
+        Storage::open(&dir.path().join("history.sqlite"), UNIX_EPOCH, "UTC", &bus).unwrap();
+    let (archive, _calls) = FakeArchive::new(vec![past(11, 495.1)]);
+    let day = jiff::civil::date(2026, 6, 21);
+
+    Past::new(archive, DEVICE, &bus)
+        .fetch(&storage, BERLIN, day, day)
+        .await
+        .unwrap();
+
+    let units: Vec<(String, Option<String>)> = storage
+        .reader()
+        .catalog()
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|c| (c.series, c.unit))
+        .collect();
+    let unit = |series: &str, unit: &str| (series.to_owned(), Some(unit.to_owned()));
+    assert_eq!(
+        units,
+        [
+            unit("weather.dhi", "W/m²"),
+            unit("weather.dni", "W/m²"),
+            unit("weather.ghi", "W/m²"),
+            unit("weather.temperature", "°C"),
+            unit("weather.wind", "m/s"),
+        ]
+    );
+}

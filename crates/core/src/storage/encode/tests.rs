@@ -14,6 +14,7 @@ const T0: i64 = 1_787_745_600 * S;
 fn policy(deadband: f64) -> Policy {
     Policy {
         kind: RoleKind::Measurement,
+        unit: None,
         step: 0.1,
         deadband,
         cadence: Duration::from_secs(5),

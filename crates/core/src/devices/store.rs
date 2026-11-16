@@ -341,6 +341,16 @@ pub fn devices(db: &Db) -> rusqlite::Result<Vec<Device>> {
     .collect()
 }
 
+/// Every device's name, present or removed, by id: `(id, name, removed)`.
+pub fn names(db: &Db) -> rusqlite::Result<Vec<(u32, String, bool)>> {
+    db.prepare(
+        "SELECT id, name, 0 FROM device UNION ALL SELECT id, name, 1 FROM device_tombstone
+         ORDER BY id",
+    )?
+    .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+    .collect()
+}
+
 fn device_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Device> {
     Ok(Device {
         id: row.get(0)?,
@@ -448,6 +458,12 @@ pub fn change_device(
 
 pub fn remove_device(db: &Db, id: u32, changed: SystemTime) -> Outcome<()> {
     let tx = db.unchecked_transaction()?;
+    // Its history stays named (ADR 3).
+    tx.execute(
+        "INSERT INTO device_tombstone (id, name, removed) SELECT id, name, ?2 FROM device
+         WHERE id = ?1",
+        params![id, changes::seconds(changed)],
+    )?;
     if tx.execute("DELETE FROM device WHERE id = ?1", [id])? == 0 {
         return Ok(Err(ChangeRefusal::NoDevice));
     }

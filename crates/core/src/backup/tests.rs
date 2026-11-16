@@ -44,6 +44,7 @@ impl Data {
         let storage = Storage::open(&self.dir.join(STORE), UNIX_EPOCH, "UTC", &self.bus).unwrap();
         let policy = Policy {
             kind: RoleKind::Measurement,
+            unit: None,
             step: 1.0,
             deadband: 0.0,
             cadence: Duration::from_secs(5),

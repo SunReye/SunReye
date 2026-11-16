@@ -30,6 +30,8 @@ const RETENTION: Duration = Duration::from_hours(24 * 1827);
 pub struct Policy {
     /// What its values are: decides the rollup.
     pub kind: RoleKind,
+    /// The symbol of its values' unit, kept beside its step for the series catalog (ADR 22).
+    pub unit: Option<&'static str>,
     /// The quantisation step, in the role's unit: stored values are integer multiples of it.
     pub step: f64,
     /// The smallest stored change, in the role's unit; zero stores every change.
@@ -39,6 +41,15 @@ pub struct Policy {
 }
 
 impl Policy {
+    /// Stores its values' unit as `symbol`, one outside the profile table (ADR 4) such as `EUR/h`.
+    #[must_use]
+    pub const fn in_unit(self, symbol: &'static str) -> Self {
+        Self {
+            unit: Some(symbol),
+            ..self
+        }
+    }
+
     /// Counters and enums get no deadband; a measurement gets its unit's default (ADR 4).
     #[must_use]
     pub const fn new(kind: RoleKind, unit: Option<Unit>, step: f64, cadence: Duration) -> Self {
@@ -52,10 +63,30 @@ impl Policy {
         };
         Self {
             kind,
+            unit: match unit {
+                Some(unit) => Some(symbol(unit)),
+                None => None,
+            },
             step,
             deadband,
             cadence,
         }
+    }
+}
+
+/// A profile unit's symbol, as profiles spell it.
+#[must_use]
+pub const fn symbol(unit: Unit) -> &'static str {
+    match unit {
+        Unit::Watt => "W",
+        Unit::KilowattHour => "kWh",
+        Unit::Volt => "V",
+        Unit::Ampere => "A",
+        Unit::Hertz => "Hz",
+        Unit::Percent => "%",
+        Unit::Celsius => "°C",
+        Unit::Hour => "h",
+        Unit::Dimensionless => "none",
     }
 }
 
@@ -102,6 +133,21 @@ pub enum Aggregate {
     /// A status or held value: the last value it held in the window, carried forward from
     /// before it. No row is stored; it is read from change points.
     Held { value: f64 },
+}
+
+/// A series with stored history, as the series catalog lists it (ADR 22).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Catalogued {
+    pub device: DeviceId,
+    /// Named like `pv.mppt.power[2]`.
+    pub series: String,
+    /// `None` for a series last declared before kinds were stored.
+    pub kind: Option<RoleKind>,
+    /// Its symbol, such as `W` or `EUR/h`.
+    pub unit: Option<String>,
+    /// The first and last stored instant, of a change point or a rollup's start.
+    pub first: SystemTime,
+    pub last: SystemTime,
 }
 
 /// A value issued at one time about a later target time (ADR 15).
@@ -709,6 +755,14 @@ impl Rewriter {
 pub struct Reader(mpsc::Sender<Command>);
 
 impl Reader {
+    /// Every series with a stored change point or rollup, by device, then name.
+    ///
+    /// # Errors
+    /// The file cannot be read.
+    pub async fn catalog(&self) -> Result<Vec<Catalogued>, Error> {
+        request(&self.0, Request::Catalog).await?
+    }
+
     /// The change points of `series` from `from` to `to`, led by the one in force at `from`;
     /// none for a series without history. The open bucket is not yet history.
     ///

@@ -348,3 +348,30 @@ async fn the_prices_are_stored_as_change_points() {
         ]
     );
 }
+
+#[tokio::test(start_paused = true)]
+async fn the_spot_price_is_catalogued_in_eur_per_kwh() {
+    let site = site();
+    let (fake, _calls) = Fake::new(morning(), &[]);
+    let spot = SpotPrices::new(fake, &site.bus);
+    let mut readings = site.bus.subscribe();
+    let (_zone, zone) = watch::channel(Some(BiddingZone::DeLu));
+    tokio::select! {
+        () = spot.run(&site.storage, zone, clock("2026-11-09T11:05:00Z")) => panic!("the device stopped"),
+        _ = until(&mut readings, "-0.02000") => {}
+    }
+
+    // Storage hears the bus on its own task: asked until the price is history.
+    let mut catalog = Vec::new();
+    while catalog.is_empty() {
+        tokio::task::yield_now().await;
+        site.storage
+            .tick(instant("2026-11-09T11:20:00Z"))
+            .await
+            .unwrap();
+        catalog = site.storage.reader().catalog().await.unwrap();
+    }
+
+    assert_eq!(catalog[0].series, "price.spot");
+    assert_eq!(catalog[0].unit.as_deref(), Some("EUR/kWh"));
+}

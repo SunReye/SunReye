@@ -60,6 +60,7 @@ mod roles;
 mod scan;
 mod screen;
 mod secrets;
+mod series;
 mod settings;
 mod spot;
 mod statistics;
