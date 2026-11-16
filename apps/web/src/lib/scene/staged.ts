@@ -7,7 +7,7 @@ import { lamps } from "./wall-openings.ts";
 
 /** Frees a drawn part's meshes; textures are shared and stay. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js frees in place.
-function free(part: Object3D): void {
+export function free(part: Object3D): void {
   if (part instanceof Mesh) {
     if (part.geometry instanceof BufferGeometry) part.geometry.dispose();
 

@@ -2,6 +2,7 @@
 // one pointer ray to another makes of the scene, snapped. Pure and three.js-free: rays and points
 // are in three.js's frame (x east, y up, z south, turned by the scene's north).
 import type { Footing, Modules, Point, Scene } from "../pv.ts";
+import { importHandles } from "./aligning.ts";
 import { bodyOf, onWorld, ridge, type Rect, type Round, type Target } from "./body.ts";
 import { wallOf } from "../wall-openings.ts";
 import { turn, world, type Triple } from "./frame.ts";
@@ -13,7 +14,8 @@ export type { Ray, Triple } from "./frame.ts";
 export { drag, type Dragged, type Grab } from "./dragging.ts";
 
 /** What a handle drags: a wall arrow's width, depth or radius, an opening's height, the ridge's
- * pitch, the ring's turn, the footprint's place, or a fence's point. */
+ * pitch, the ring's turn, the footprint's place, or a point: a fence's, or the imported
+ * surroundings' centre. */
 export type Grip = "width" | "depth" | "height" | "radius" | "pitch" | "turn" | "move" | "point";
 
 export interface Handle {
@@ -169,16 +171,24 @@ function openingHandles(scene: Scene, index: number, laid: Laid): Handle[] {
 
 const NONE: Laid = { walls: [], footings: [], panes: [] };
 
+/** The handles of what has no footprint to drag: they stand on its own points, on what the
+ * crate laid out for it, or on the imported surroundings' centre. */
+const STANDING: Readonly<
+  Partial<Record<Target["kind"], (scene: Scene, index: number, laid: Laid) => Handle[]>>
+> = {
+  fence: (scene, index) => fenceHandles(scene, index),
+  chimney: (_, index, laid) => chimneyHandles(laid.footings[index]),
+  roofWindow: (_, index, laid) => windowHandles(laid.panes[index]),
+  opening: openingHandles,
+  import: (scene) => importHandles(scene),
+};
+
 /** The selected object's handles; a chimney's, a roof window's and an opening's stand on what the
  * crate `laid` out for this `scene`, and without it they have none. */
 export function handles(scene: Scene, target: Target, laid: Laid = NONE): Handle[] {
-  if (target.kind === "fence") return fenceHandles(scene, target.index);
+  const standing = STANDING[target.kind];
 
-  if (target.kind === "chimney") return chimneyHandles(laid.footings[target.index]);
-
-  if (target.kind === "roofWindow") return windowHandles(laid.panes[target.index]);
-
-  if (target.kind === "opening") return openingHandles(scene, target.index, laid);
+  if (standing !== undefined) return standing(scene, target.index, laid);
 
   const body = bodyOf(scene, target);
 

@@ -5,7 +5,6 @@ import {
   ACESFilmicToneMapping,
   Color,
   DirectionalLight,
-  Fog,
   HemisphereLight,
   type Object3D,
   type PerspectiveCamera,
@@ -13,16 +12,16 @@ import {
   Scene,
   SRGBColorSpace,
   type Texture,
-  Vector2,
   Vector3,
   WebGLRenderer,
   type WebGLRenderTarget,
 } from "three";
 import { toThree } from "../builder/scene.ts";
-import { aim, backdrop, ground, sky } from "./backdrop.ts";
+import { aim, backdrop, sky } from "./backdrop.ts";
 import { finishIn, refinish } from "./finishes.ts";
 import { CLEAR_SHADOW, untone, type Daylight, type Theme } from "./light.ts";
 import { Passes } from "./passes.ts";
+import { Plot } from "./plot.ts";
 import { gpuOf, type Look } from "./quality.ts";
 import { shade, shadowFor, soften } from "./sun-shadow.ts";
 
@@ -40,7 +39,7 @@ export class Studio {
   readonly #pmrem: PMREMGenerator;
   readonly #sky = sky(1000);
   readonly #skyScene = new Scene();
-  readonly #fade = { centre: { value: new Vector2() }, radius: { value: 12 } };
+  readonly #plot = new Plot();
   #environment: WebGLRenderTarget | undefined;
   /** What the environment and the backdrop were made for: either is made again only on change. */
   #environed = "";
@@ -76,7 +75,8 @@ export class Studio {
     this.#pmrem = new PMREMGenerator(this.renderer);
     this.#skyScene.add(this.#sky);
     soften(this.#sun);
-    this.scene.add(this.#sun, this.#sun.target, this.#fill, ground(this.#fade));
+    this.scene.add(this.#sun, this.#sun.target, this.#fill, this.#plot.lawn);
+    this.scene.fog = this.#plot.fog;
 
     this.#passes = new Passes(this.renderer, this.scene, camera);
     // Before the first frame: a finish is compiled for the look it is first drawn in.
@@ -121,12 +121,17 @@ export class Studio {
     finishIn(part, this.#look);
   }
 
+  /** Imported surroundings reach `metres` from the plot, 0 for none (plot.ts). */
+  // fallow-ignore-next-line unused-class-member -- the canvas's surroundings call it through `Lit`.
+  surround(metres: number): void {
+    this.#plot.surround(metres);
+  }
+
   /** Fits the sun's shadow and the lawn's fade to the plot: `centre` in three.js's frame. */
   frame(centre: Readonly<Vector3>, radius: number): void {
     this.#centre.set(centre.x, centre.y, centre.z);
     this.#radius = Math.max(radius, 5);
-    this.#fade.centre.value.set(centre.x, centre.z);
-    this.#fade.radius.value = this.#radius;
+    this.#plot.fit(centre.x, centre.z, this.#radius);
 
     const reach = this.#radius + 2;
     const camera = this.#sun.shadow.camera;
@@ -172,8 +177,7 @@ export class Studio {
       this.scene.background = this.#backdrop;
     }
 
-    // Far ground and trees melt into the page colour.
-    this.scene.fog = new Fog(untoned, this.#radius * 4 + 40, this.#radius * 16 + 160);
+    this.#plot.fog.color.copy(untoned);
   }
 
   setSize(width: number, height: number): void {

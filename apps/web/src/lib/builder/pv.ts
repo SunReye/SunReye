@@ -1,6 +1,7 @@
 // The `pv` crate in the browser through its glue crate, crates/pv-wasm (ADR 2, 20).
 import type { ModuleType, StringDraft } from "../api/core.ts";
 import type { Fence, Fencing, Ground, GroundSurface, Obstacle } from "./obstacles.ts";
+import { surrounding, type Import, type Surrounding } from "./imported.ts";
 import { roofCalls } from "./roof-calls.ts";
 import type { Chimney, Overhang, RoofWindow } from "./roofing.ts";
 import type { Equipment, Fitted, Opening, OpeningKind, Unfit } from "./walls.ts";
@@ -99,6 +100,8 @@ export interface Scene {
   readonly surfaces?: readonly GroundSurface[];
   readonly fences?: readonly Fence[];
   readonly openings?: readonly Opening[];
+  /** The imported surroundings it draws and shades with; none, none. */
+  readonly imported?: Import | null;
   readonly roofWindows?: readonly RoofWindow[];
 }
 
@@ -168,7 +171,7 @@ export interface ClearRun {
   readonly times: readonly number[];
 }
 
-export interface Pv {
+export interface Pv extends Surrounding {
   /** The scene's faces and solids; throws the crate's reason for a scene it cannot read. */
   readonly geometry: (scene: Scene) => Geometry;
   /** The scene's module grids laid out, with module sizes by module type id. */
@@ -271,6 +274,7 @@ export async function loadPv(bytes: Uint8Array<ArrayBuffer>): Promise<Pv> {
     chimneyAt: (scene, point) =>
       unwrap(call("chimney_at", JSON.stringify({ scene, point })), isIndex),
     ...roofCalls(call),
+    ...surrounding(call),
   };
 }
 

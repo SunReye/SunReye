@@ -20,6 +20,7 @@
     model,
     location,
     diffuse,
+    around,
     locked = false,
     top = 0,
     onselect,
@@ -39,6 +40,8 @@
     location?: Location | undefined;
     /** How diffuse the sky's light is now, 0 to 1: the weather; null or none for a clear sky. */
     diffuse?: number | null | undefined;
+    /** The layout's imported surroundings as the crate stood them. */
+    around?: Parameters<typeof SceneCanvas>[1]["around"];
     /** The camera stays put and a finger on the scene scrolls the page (ADR 20). */
     locked?: boolean;
     /** Pixels at the top the chips leave free: the hero's headline. */
@@ -249,6 +252,7 @@
     cars={live.cars}
     {sun}
     {diffuse}
+    {around}
     {model}
     view={kept ?? presetView("isometric", geometry)}
     {locked}
