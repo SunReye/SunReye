@@ -84,7 +84,8 @@ export class Cover {
   }
 }
 
-type Flat = readonly [number, number];
+/** A point on the ground: x and z. */
+export type Flat = readonly [number, number];
 
 /** Twice the signed area of `a`, `b`, `p`. */
 function edge(a: Flat, b: Flat, p: Flat): number {

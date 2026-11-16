@@ -1,12 +1,10 @@
 // The scene's physically based finishes, every map generated in code (ADR 20 Look). Textures are
 // made once and shared; materials are made per build, so disposing a build keeps the textures.
 import {
-  AdditiveBlending,
   Color,
   DataTexture,
   LinearFilter,
   LinearMipmapLinearFilter,
-  MeshBasicMaterial,
   MeshPhysicalMaterial,
   MeshStandardMaterial,
   NoColorSpace,
@@ -17,7 +15,7 @@ import {
 import type { FenceFinish, GroundFinish, OpeningKind } from "../builder/pv.ts";
 import { GROUPS, type GroupName, type Pixels } from "./pixels.ts";
 import { warmed } from "./warm.ts";
-import { mean, weathered } from "./weather.ts";
+import { mean, perTree, weathered, type Weather } from "./weather.ts";
 
 const textures = new Map<string, DataTexture>();
 
@@ -42,7 +40,7 @@ function texture(key: string, pixels: Pixels): DataTexture {
 }
 
 /** One map of a material's group: the warm-up worker's, or generated here on first use. */
-function map(name: GroupName, kind: string): DataTexture {
+export function generated(name: GroupName, kind: string): DataTexture {
   const key = `${name}.${kind}`;
   const cached = textures.get(key);
 
@@ -52,11 +50,11 @@ function map(name: GroupName, kind: string): DataTexture {
     textures.set(made, texture(made, pixels));
   }
 
-  const generated = textures.get(key);
+  const made = textures.get(key);
 
-  if (generated === undefined) throw new Error(`no map ${key}`);
+  if (made === undefined) throw new Error(`no map ${key}`);
 
-  return generated;
+  return made;
 }
 
 /** Faces carry their UVs in texture repeats; these are a repeat's metres on each finish. */
@@ -96,8 +94,8 @@ export function plaster(colour?: string): MeshStandardMaterial {
 function plastered(): MeshStandardMaterial {
   return weathered(
     new MeshStandardMaterial({
-      map: map("plaster", "map"),
-      normalMap: map("plaster", "normal"),
+      map: generated("plaster", "map"),
+      normalMap: generated("plaster", "normal"),
       normalScale: new Vector2(0.6, 0.6),
       roughness: 0.92,
     }),
@@ -114,14 +112,14 @@ export function tiles(colour?: string): MeshStandardMaterial {
 function tiled(): MeshStandardMaterial {
   return weathered(
     new MeshStandardMaterial({
-      map: map("tiles", "map"),
-      normalMap: map("tiles", "normal"),
-      roughnessMap: map("tiles", "rough"),
+      map: generated("tiles", "map"),
+      normalMap: generated("tiles", "normal"),
+      roughnessMap: generated("tiles", "rough"),
       normalScale: new Vector2(1.6, 1.6),
       roughness: 1,
     }),
-    // Patches of older, darker tiles.
-    { colour: 0.16, rough: 0.12, relief: 0.02 },
+    // Patches of older, darker tiles; each tile its own, and what a roof gathers.
+    { colour: 0.16, rough: 0.12, relief: 0.02, cells: [8, 8, 0], roof: true },
   );
 }
 
@@ -130,8 +128,8 @@ export function render(colour?: string): MeshStandardMaterial {
   return painted(
     weathered(
       new MeshStandardMaterial({
-        map: map("plinth", "map"),
-        normalMap: map("plinth", "normal"),
+        map: generated("plinth", "map"),
+        normalMap: generated("plinth", "normal"),
         roughness: 0.85,
       }),
       { colour: 0.12, rough: 0.1, relief: 0.012 },
@@ -141,31 +139,42 @@ export function render(colour?: string): MeshStandardMaterial {
 }
 
 export function bark(): MeshStandardMaterial {
-  return new MeshStandardMaterial({
-    map: map("bark", "map"),
-    normalMap: map("bark", "normal"),
-    roughness: 0.95,
-  });
+  return perTree(
+    new MeshStandardMaterial({
+      map: generated("bark", "map"),
+      normalMap: generated("bark", "normal"),
+      roughness: 0.95,
+    }),
+  );
 }
 
 /** Leaves take their colour per instance; the grass's blades give them grain. */
 export function leaves(): MeshStandardMaterial {
-  return new MeshStandardMaterial({
-    roughness: 0.8,
-    normalMap: map("grass", "normal"),
-    normalScale: new Vector2(1.5, 1.5),
-  });
+  return perTree(
+    new MeshStandardMaterial({
+      roughness: 0.8,
+      normalMap: generated("grass", "normal"),
+      normalScale: new Vector2(1.5, 1.5),
+    }),
+  );
 }
 
 export function lawn(): MeshStandardMaterial {
   return weathered(
     new MeshStandardMaterial({
-      map: map("grass", "map"),
-      normalMap: map("grass", "normal"),
+      map: generated("grass", "map"),
+      normalMap: generated("grass", "normal"),
       roughness: 0.95,
     }),
     // Lusher and thinner stretches, and dry spots.
-    { colour: 0.22, rough: 0.05, loose: true, patches: [1.22, 1.06, 0.72], relief: 0.05 },
+    {
+      colour: 0.22,
+      rough: 0.05,
+      loose: true,
+      patches: [1.22, 1.06, 0.72],
+      clover: true,
+      relief: 0.05,
+    },
   );
 }
 
@@ -174,33 +183,38 @@ export function hedge(): MeshStandardMaterial {
   return new MeshStandardMaterial({
     color: 0x1f2e16,
     roughness: 0.9,
-    normalMap: map("grass", "normal"),
+    normalMap: generated("grass", "normal"),
     normalScale: new Vector2(1.5, 1.5),
   });
 }
 
-/** Ground finishes, each from its own generated maps. */
+/** Ground finishes, each from its own generated maps: laid stones each their own and worn
+ * where feet run, a driveway in its wheel tracks. */
 export const GROUND: Readonly<Record<GroundFinish, () => MeshStandardMaterial>> = {
   lawn,
-  paving: () => paved("pavers", 0.8, false),
-  driveway: () => paved("asphalt", 1, true),
-  gravel: () => paved("gravel", 0.95, true),
-  path: () => paved("flags", 0.85, false),
+  paving: () => paved("pavers", 0.8, { cells: [4, 8, 0.5], wear: "feet" }),
+  driveway: () => paved("asphalt", 1, { loose: true, wear: "wheels" }),
+  gravel: () => paved("gravel", 0.95, { loose: true, wear: "feet" }),
+  path: () => paved("flags", 0.85, { cells: [3, 3, 1 / 3], wear: "feet" }),
 };
 
 /** Laid stones keep their bond; loose ground also takes a second scale of its map. */
-function paved(name: "pavers" | "asphalt" | "gravel" | "flags", roughness: number, loose: boolean) {
+function paved(
+  name: "pavers" | "asphalt" | "gravel" | "flags",
+  roughness: number,
+  varies: Pick<Weather, "cells" | "loose" | "wear">,
+) {
   return weathered(
     new MeshStandardMaterial({
-      map: map(name, "map"),
-      normalMap: map(name, "normal"),
+      map: generated(name, "map"),
+      normalMap: generated(name, "normal"),
       roughness,
       // Over the lawn and over earlier surfaces, never flickering through them.
       polygonOffset: true,
       polygonOffsetFactor: -1,
       polygonOffsetUnits: -1,
     }),
-    { colour: 0.14, rough: 0.12, loose, relief: loose ? 0.02 : 0.008 },
+    { colour: 0.14, rough: 0.12, relief: varies.loose === true ? 0.02 : 0.008, ...varies },
   );
 }
 
@@ -208,8 +222,8 @@ function paved(name: "pavers" | "asphalt" | "gravel" | "flags", roughness: numbe
 export const FENCE: Readonly<Record<FenceFinish, () => MeshStandardMaterial>> = {
   wood: () =>
     new MeshStandardMaterial({
-      map: map("wood", "map"),
-      normalMap: map("wood", "normal"),
+      map: generated("wood", "map"),
+      normalMap: generated("wood", "normal"),
       roughness: 0.75,
     }),
   // The prototype's window frames.
@@ -228,14 +242,14 @@ export function equipment(): MeshStandardMaterial {
  */
 export function module(): MeshPhysicalMaterial {
   return new MeshPhysicalMaterial({
-    map: map("module", "map"),
-    roughnessMap: map("module", "rough"),
+    map: generated("module", "map"),
+    roughnessMap: generated("module", "rough"),
     roughness: 0.5,
     metalness: 0,
     // Anti-reflective glass. At the prototype's 0.35 and a clear coat the sky's reflection read
     // navy in the roof close-up; this reads black in both themes (SceneCanvas test).
     specularIntensity: 0.12,
-    emissiveMap: map("module", "glow"),
+    emissiveMap: generated("module", "glow"),
     emissiveIntensity: 0,
     // Pulled toward the camera, so a module on its roof never flickers through it.
     polygonOffset: true,
@@ -257,28 +271,12 @@ export function glazed(kind: OpeningKind): MeshStandardMaterial {
   const name = GLAZING[kind];
 
   return new MeshStandardMaterial({
-    map: map(name, "map"),
-    normalMap: map(name, "normal"),
-    roughnessMap: map(name, "rough"),
+    map: generated(name, "map"),
+    normalMap: generated(name, "normal"),
+    roughnessMap: generated(name, "rough"),
     roughness: 1,
     emissive: 0xffffff,
-    emissiveMap: map(name, "glow"),
+    emissiveMap: generated(name, "glow"),
     emissiveIntensity: 0,
-  });
-}
-
-/** Light on the ground from a lit opening: added to what lies there, each patch at the strength
- * in its vertex colours, and out by day. */
-export function spilled(): MeshBasicMaterial {
-  return new MeshBasicMaterial({
-    map: map("spill", "map"),
-    vertexColors: true,
-    transparent: true,
-    opacity: 0,
-    blending: AdditiveBlending,
-    depthWrite: false,
-    polygonOffset: true,
-    polygonOffsetFactor: -8,
-    polygonOffsetUnits: -8,
   });
 }

@@ -5,7 +5,7 @@ import {
   type WebGLProgramParametersWithUniforms,
   type WebGLRenderer,
 } from "three";
-import { patched, weatherFinishes, weathered } from "./weather.ts";
+import { patched, perTree, weatherFinishes, weathered } from "./weather.ts";
 
 type Shader = WebGLProgramParametersWithUniforms;
 
@@ -128,4 +128,94 @@ test("an unweathered finish has no relief either", () => {
   weatherFinishes(true);
 
   expect(shader.fragmentShader).not.toContain("weatherRelief");
+});
+
+const plain = { colour: 0.1, rough: 0.1 } as const;
+
+test("each laid stone takes its own tone, hue and lift, by the cell of its bond", () => {
+  const laid = compiled(weathered(new MeshStandardMaterial(), { ...plain, cells: [4, 8, 0.5] }));
+  const poured = compiled(weathered(new MeshStandardMaterial(), plain));
+
+  expect(laid.uniforms["uCells"]?.value).toEqual([4, 8, 0.5]);
+  // Every other course shifted, as the map lays them; then one cell per stone.
+  expect(laid.fragmentShader).toContain("mod(floor(weatherStone.y), 2.0) * uCells.z");
+  expect(laid.fragmentShader).toContain("weatherHash(weatherCell + 0.5)");
+  expect(laid.fragmentShader).toContain("tbn[0] * (weatherHash(weatherCell + 3.1) - 0.5)");
+  expect(poured.fragmentShader).not.toContain("weatherCell");
+});
+
+test("every finish drifts at a scale of metres and again at its grain's", () => {
+  const shader = compiled(weathered(new MeshStandardMaterial(), plain)).fragmentShader;
+
+  expect(shader).toContain("weatherNoise(weatherAt * 0.13)");
+  expect(shader).toContain("weatherNoise(weatherAt * 11.0 + 43.0)");
+});
+
+test("each kind of finish gathers what its kind does, and no other's", () => {
+  const kinds = {
+    roof: { ...plain, roof: true },
+    wall: { ...plain, foot: 0.8 },
+    lawn: { ...plain, clover: true },
+    feet: { ...plain, wear: "feet" },
+    wheels: { ...plain, wear: "wheels" },
+  } as const;
+
+  const marks = {
+    roof: "weatherMoss",
+    wall: "weatherPatch",
+    lawn: "weatherClover",
+    feet: "smoothstep(0.2, 0.8, abs(vWeatherWear.x))",
+    wheels: "abs(abs(vWeatherWear.x) - 0.5)",
+  } as const;
+
+  const names = ["roof", "wall", "lawn", "feet", "wheels"] as const;
+  const made = names.map((name) => weathered(new MeshStandardMaterial(), kinds[name]));
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own.
+  const shaders = made.map((material) => compiled(material).fragmentShader);
+
+  for (const [i, name] of names.entries()) {
+    expect(names.filter((_, j) => shaders[j]?.includes(marks[name]) === true)).toEqual([name]);
+    expect(shaders[i]).toContain(marks[name]);
+  }
+
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own.
+  expect(new Set(made.map((material) => material.customProgramCacheKey())).size).toBe(5);
+});
+
+test("a roof's moss keeps to the side turned from the sun and the metres above the eave", () => {
+  const roof = compiled(weathered(new MeshStandardMaterial(), { ...plain, roof: true }));
+
+  expect(roof.vertexShader).toContain("attribute vec2 fall;");
+  expect(roof.fragmentShader).toContain("0.25 - weatherFace.z * 1.5");
+  expect(roof.fragmentShader).toContain("1.0 - smoothstep(0.0, 1.4, vWeatherFall.x)");
+});
+
+test("a tree's leaves and bark take the tree's own cast, and plain they keep their own", () => {
+  const leaves = perTree(new MeshStandardMaterial());
+
+  const shader = () => {
+    const made = {
+      uniforms: {},
+      vertexShader: "",
+      fragmentShader: "#include <common>\n#include <color_fragment>",
+    };
+
+    const renderer = { render: null };
+
+    if (!isShader(made) || !isRenderer(renderer)) throw new TypeError("no shader");
+
+    leaves.onBeforeCompile(made, renderer);
+
+    return made.fragmentShader;
+  };
+
+  expect(shader()).toContain("weatherHash(weatherStood)");
+
+  weatherFinishes(false);
+
+  const bare = shader();
+
+  weatherFinishes(true);
+
+  expect(bare).toBe("#include <common>\n#include <color_fragment>");
 });

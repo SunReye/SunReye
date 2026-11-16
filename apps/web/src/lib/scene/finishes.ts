@@ -1,6 +1,7 @@
 // What a 3D quality's look does to the scene's finishes (ADR 20 Look, Rendering quality):
 // weathering and relief are compiled into their programs, Hoch's reflections set on them.
 import { Material, Mesh, type Object3D } from "three";
+import { eaves } from "./eaves.ts";
 import { enrich } from "./gloss.ts";
 import type { Look } from "./quality.ts";
 import { weatherFinishes } from "./weather.ts";
@@ -12,6 +13,7 @@ const compiled = ({ weathering, rich }: Look): string => `${weathering}:${rich}`
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's scene, set in place.
 export function finishIn(scene: Object3D, look: Look): void {
   weatherFinishes(look.weathering, look.rich);
+  eaves(scene);
   enrich(scene, look.rich);
 }
 

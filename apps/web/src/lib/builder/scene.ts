@@ -171,7 +171,7 @@ function sections(geometry: Geometry, panels: readonly Panel[]): (() => Object3D
 }
 
 /** What lies on a surface that casts the same shadow: its own would only cost a draw. */
-const FLAT: ReadonlySet<string> = new Set(["module", "ground", "trim", "opening", "spill"]);
+const FLAT: ReadonlySet<string> = new Set(["module", "ground", "trim", "opening", "spill", "soil"]);
 
 /** Casts and catches the sun's shadow. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js sets it in place.
