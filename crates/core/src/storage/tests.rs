@@ -621,3 +621,56 @@ fn a_profile_units_symbol_is_its_profile_spelling() {
         );
     }
 }
+
+/// A series last declared before kinds were stored (migration 0028) takes its named role's kind;
+/// an extra declares its own, so it stays unknown.
+#[tokio::test]
+async fn a_series_without_a_stored_kind_takes_its_roles() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("core.sqlite");
+    let bus = Bus::default();
+    let storage = Storage::open(&path, epoch(), "UTC", &bus).unwrap();
+    let roles = [
+        ("battery.mode", None),
+        ("extra.pump", None),
+        ("pv.energy.total", None),
+        ("pv.mppt.power", Some(2)),
+    ];
+    for (role, index) in roles {
+        let series = bus.intern(role, index);
+        storage.declare(DEVICE, series, policy()).await.unwrap();
+        let reading = Reading {
+            device: DEVICE,
+            series,
+            value: 1.0,
+            unit: None,
+            time: at(0.0),
+            cadence: crate::endpoint::CADENCE,
+        };
+        storage.record(reading).await.unwrap();
+    }
+    storage.tick(at(86_400.0)).await.unwrap();
+    rusqlite::Connection::open(&path)
+        .unwrap()
+        .execute("UPDATE step SET kind = NULL", [])
+        .unwrap();
+
+    let kinds: Vec<(String, Option<RoleKind>)> = storage
+        .reader()
+        .catalog()
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|c| (c.series, c.kind))
+        .collect();
+
+    assert_eq!(
+        kinds,
+        [
+            ("battery.mode".to_owned(), Some(RoleKind::Status)),
+            ("extra.pump".to_owned(), None),
+            ("pv.energy.total".to_owned(), Some(RoleKind::Counter)),
+            ("pv.mppt.power[2]".to_owned(), Some(RoleKind::Measurement)),
+        ]
+    );
+}

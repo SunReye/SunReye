@@ -29,10 +29,11 @@ pub fn catalog(db: &Connection) -> Result<Vec<Catalogued>, Error> {
     let mut stored = Vec::new();
     for (device, series, name, kind, unit) in described {
         if let Some((first, last)) = bounds(db, device, series)? {
+            let kind = kind.as_deref().map_or_else(|| named_kind(&name), kind_of);
             stored.push(Catalogued {
                 device: DeviceId(device),
                 series: name,
-                kind: kind.as_deref().and_then(kind_of),
+                kind,
                 unit,
                 first: time(first),
                 last: time(last),
@@ -40,6 +41,13 @@ pub fn catalog(db: &Connection) -> Result<Vec<Catalogued>, Error> {
         }
     }
     Ok(stored)
+}
+
+/// A named role's kind, for a series declared before kinds were stored (migration 0028); none for
+/// an extra, which declares its own (ADR 4).
+fn named_kind(series: &str) -> Option<RoleKind> {
+    let role = series.split_once('[').map_or(series, |(role, _)| role);
+    (!role.starts_with("extra.")).then(|| sunreye_profile::role_kind(role))
 }
 
 fn kind_of(name: &str) -> Option<RoleKind> {

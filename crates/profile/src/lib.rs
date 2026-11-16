@@ -17,7 +17,7 @@ use serde::Serialize;
 pub use decode::Registers;
 pub use plan::Block;
 pub use profile::{DeadbandRefusal, Inverter, LoadError, Mppt, Profile, Quantity};
-pub use role::{RoleKind, StorageClass, Unit};
+pub use role::{RoleKind, StorageClass, Unit, kind as role_kind};
 pub use setting::{Field, LiveControl, Relock, Setting, Source, Step, Toggle, Unlock};
 
 /// Where a topic names the device address.
