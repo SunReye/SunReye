@@ -111,12 +111,6 @@ export class Studio {
     if (before.weathering !== look.weathering) reweather(this.scene);
   }
 
-  /** Imported surroundings reach `metres` from the plot, 0 for none (plot.ts). */
-  // fallow-ignore-next-line unused-class-member -- the canvas's surroundings call it through `Lit`.
-  surround(metres: number): void {
-    this.#plot.surround(metres);
-  }
-
   /** Fits the sun's shadow and the lawn's fade to the plot: `centre` in three.js's frame. */
   frame(centre: Readonly<Vector3>, radius: number): void {
     this.#centre.set(centre.x, centre.y, centre.z);

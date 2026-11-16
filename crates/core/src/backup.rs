@@ -1,5 +1,4 @@
-//! Backup and restore (ADR 3): the store, the car bodies and the imported surroundings (ADR 20)
-//! in one tar.
+//! Backup and restore (ADR 3): the store and the car bodies (ADR 20) in one tar.
 //!
 //! The store is copied by SQLite's online backup API. Credential secrets stay out unless asked
 //! (ADR 7); every other table goes in, so the core's identity (ADR 16) does too.
@@ -21,9 +20,8 @@ use crate::storage::{self, Database, SCHEMA};
 
 pub use self::routes::Backups;
 
-/// The directories of the data directory a backup takes with the store, and the ending of
-/// their files, each named by its SHA-256: car bodies and imported surroundings (ADR 20).
-const KEPT: [(&str, &str); 2] = [("cars", ".glb"), ("surroundings", ".json")];
+/// The car bodies' directory in the data directory and in a backup.
+const CARS: &str = "cars";
 
 #[derive(Debug)]
 pub enum Error {
@@ -81,7 +79,7 @@ impl From<storage::Error> for Error {
 pub const BACKUP_USAGE: &str = "\
 Usage: sunreye backup <file> [--secrets] [--data-dir <dir>]
 
-Backs up the store, car bodies and imported surroundings, the core running or not.
+Backs up the store and car bodies, the core running or not.
 
 Flags:
   --secrets          include the connections' secrets
@@ -92,7 +90,7 @@ Flags:
 pub const RESTORE_USAGE: &str = "\
 Usage: sunreye restore <file> [--data-dir <dir>]
 
-Replaces the store, car bodies and imported surroundings while the core is stopped.
+Replaces the store and car bodies while the core is stopped.
 
 Flags:
   --data-dir <dir>   the data directory; SUNREYE_DATA_DIR
@@ -201,8 +199,8 @@ pub fn command(options: &Options) -> Result<u64, Error> {
     finish(&staged, &options.data_dir, &options.file, options.secrets)
 }
 
-/// Backs up the store behind `database`, with the car bodies and surroundings of `data_dir`,
-/// into the new file `file`; with the credential secrets only when `secrets`. Returns the file's size.
+/// Backs up the store behind `database`, with the car bodies of `data_dir`, into the new file
+/// `file`; with the credential secrets only when `secrets`. Returns the file's size.
 ///
 /// # Errors
 /// `file` exists, or the store or a file cannot be read or written.
@@ -221,8 +219,8 @@ pub async fn write(
         .map_err(io::Error::other)?
 }
 
-/// Restores the backup `file` into `data_dir`, replacing its store, car bodies and
-/// surroundings; refused while a core runs on it.
+/// Restores the backup `file` into `data_dir`, replacing its store and car bodies; refused while
+/// a core runs on it.
 ///
 /// # Errors
 /// A core runs on `data_dir`, the file is no backup or one of a newer schema, or a file cannot
@@ -231,13 +229,11 @@ pub fn restore(file: &Path, data_dir: &Path) -> Result<(), Error> {
     startup::private(data_dir)?;
     let _claim = startup::claim(data_dir)?.ok_or(Error::Running)?;
     let store = data_dir.join(STORE);
-    let staged = suffixed(&store, ".restore");
-    let unpacked = unpack(file, &staged, data_dir).and_then(|()| check(&staged));
+    let (staged, cars) = (suffixed(&store, ".restore"), data_dir.join("cars.restore"));
+    let unpacked = unpack(file, &staged, &cars).and_then(|()| check(&staged));
     if let Err(e) = unpacked {
         std::fs::remove_file(&staged).ok();
-        for (kept, _) in KEPT {
-            std::fs::remove_dir_all(restoring(data_dir, kept)).ok();
-        }
+        std::fs::remove_dir_all(&cars).ok();
         return Err(e);
     }
     // The old store's WAL would be replayed onto the new one.
@@ -245,16 +241,9 @@ pub fn restore(file: &Path, data_dir: &Path) -> Result<(), Error> {
         remove(&suffixed(&store, suffix))?;
     }
     std::fs::rename(&staged, &store)?;
-    for (kept, _) in KEPT {
-        remove_dir(&data_dir.join(kept))?;
-        std::fs::rename(restoring(data_dir, kept), data_dir.join(kept))?;
-    }
+    remove_dir(&data_dir.join(CARS))?;
+    std::fs::rename(&cars, data_dir.join(CARS))?;
     Ok(())
-}
-
-/// Where a restore unpacks the kept directory `kept` before it replaces the one in use.
-fn restoring(data_dir: &Path, kept: &str) -> PathBuf {
-    data_dir.join(format!("{kept}.restore"))
 }
 
 /// A copy of the store in the data directory, removed when dropped.
@@ -293,7 +282,7 @@ fn copy(db: &Connection, to: &Path) -> rusqlite::Result<()> {
     ))
 }
 
-/// Strips the staged copy to what a backup holds, then writes it and the kept files to `file`.
+/// Strips the staged copy to what a backup holds, then writes it and the car bodies to `file`.
 fn finish(staged: &Staged, data_dir: &Path, file: &Path, secrets: bool) -> Result<u64, Error> {
     {
         let db = Connection::open(&staged.0)?;
@@ -316,34 +305,31 @@ fn finish(staged: &Staged, data_dir: &Path, file: &Path, secrets: bool) -> Resul
                 Error::Io(e)
             }
         })?;
-    let written = pack(out, &staged.0, data_dir);
+    let written = pack(out, &staged.0, &data_dir.join(CARS));
     if written.is_err() {
         std::fs::remove_file(file).ok();
     }
     Ok(written?)
 }
 
-/// Writes the store and each kept file of `data_dir` as one tar; returns its size.
-fn pack(out: File, store: &Path, data_dir: &Path) -> io::Result<u64> {
+/// Writes the store and each car body as one tar; returns its size.
+fn pack(out: File, store: &Path, cars: &Path) -> io::Result<u64> {
     let mut out = BufWriter::new(out);
     let mut members = vec![(STORE.to_owned(), store.to_owned())];
-    for (kept, ending) in KEPT {
-        let dir = data_dir.join(kept);
-        let mut files = match std::fs::read_dir(&dir) {
-            Ok(entries) => entries
-                .map(|entry| entry.map(|e| e.file_name().to_string_lossy().into_owned()))
-                .collect::<io::Result<Vec<_>>>()?,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => Vec::new(),
-            Err(e) => return Err(e),
-        };
-        files.retain(|name| named_by_digest(name, ending));
-        files.sort();
-        members.extend(
-            files
-                .into_iter()
-                .map(|name| (format!("{kept}/{name}"), dir.join(name))),
-        );
-    }
+    let mut bodies = match std::fs::read_dir(cars) {
+        Ok(entries) => entries
+            .map(|entry| entry.map(|e| e.file_name().to_string_lossy().into_owned()))
+            .collect::<io::Result<Vec<_>>>()?,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Vec::new(),
+        Err(e) => return Err(e),
+    };
+    bodies.retain(|name| body(name));
+    bodies.sort();
+    members.extend(
+        bodies
+            .into_iter()
+            .map(|name| (format!("{CARS}/{name}"), cars.join(name))),
+    );
     for (name, path) in members {
         let mut file = File::open(path)?;
         let size = file.metadata()?.len();
@@ -355,36 +341,25 @@ fn pack(out: File, store: &Path, data_dir: &Path) -> io::Result<u64> {
     Ok(out.metadata()?.len())
 }
 
-/// A kept file's name: its SHA-256 in lowercase hex, then `ending`.
-fn named_by_digest(name: &str, ending: &str) -> bool {
-    name.strip_suffix(ending).is_some_and(|id| {
+/// A car body's file name: its SHA-256 in lowercase hex, then `.glb`.
+fn body(name: &str) -> bool {
+    name.strip_suffix(".glb").is_some_and(|id| {
         id.len() == 64 && id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
     })
 }
 
-/// Where the backup's member `name` unpacks to under `data_dir`, if it is a kept file.
-fn kept(data_dir: &Path, name: &str) -> Option<PathBuf> {
-    let (dir, file) = name.split_once('/')?;
-    let (kept, ending) = KEPT.into_iter().find(|(kept, _)| *kept == dir)?;
-    named_by_digest(file, ending).then(|| restoring(data_dir, kept).join(file))
-}
-
-/// Unpacks the backup `file`: its store to `store`, its kept files beside the directories of
-/// `data_dir` they replace.
-fn unpack(file: &Path, store: &Path, data_dir: &Path) -> Result<(), Error> {
+/// Unpacks the backup `file`: its store to `store`, its car bodies into `cars`.
+fn unpack(file: &Path, store: &Path, cars: &Path) -> Result<(), Error> {
     remove(store)?;
-    for (kept, _) in KEPT {
-        let dir = restoring(data_dir, kept);
-        remove_dir(&dir)?;
-        std::fs::create_dir(dir)?;
-    }
+    remove_dir(cars)?;
+    std::fs::create_dir(cars)?;
     let mut found = false;
     tar::read(io::BufReader::new(File::open(file)?), |name, body| {
         let mut out = if name == STORE {
             found = true;
             private_file(store)?
-        } else if let Some(path) = kept(data_dir, name) {
-            private_file(&path)?
+        } else if let Some(name) = name.strip_prefix("cars/").filter(|n| self::body(n)) {
+            private_file(&cars.join(name))?
         } else {
             return Err(Error::File(format!("unexpected member `{name}`")));
         };
