@@ -50,7 +50,12 @@ test("a day names the hour, and opens nothing", () => {
 });
 
 test("rollups outside the range do not count", () => {
-  const peaks = peaksOf(PLANT, { from: T0 + 2 * 24 * H, to: T0 + 3 * 24 * H, hours: false, zone: "UTC" });
+  const peaks = peaksOf(PLANT, {
+    from: T0 + 2 * 24 * H,
+    to: T0 + 3 * 24 * H,
+    hours: false,
+    zone: "UTC",
+  });
 
   expect(peaks.map((p) => p.value)).toEqual([2645]);
 });

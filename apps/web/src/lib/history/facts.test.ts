@@ -46,7 +46,8 @@ function core(viewer = false, rolledUp = true) {
           Response.json({ status: 422, code: "history.range" }, { ...problem, status: 422 }),
         );
 
-      if (last === "statistics") asked.push(new Date(url.searchParams.get("from")!).getUTCFullYear());
+      if (last === "statistics")
+        asked.push(new Date(url.searchParams.get("from")!).getUTCFullYear());
 
       return Promise.resolve(
         viewer && key === "payback"

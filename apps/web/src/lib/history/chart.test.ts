@@ -184,7 +184,9 @@ test("the bands before the record began are before it, not gaps", () => {
   const began = Date.parse(at(10));
   const bands = chartOf("energy", loaded(PLANT), began).bands;
 
-  expect(bands.slice(0, 10).map((b) => b.state)).toEqual(Array.from({ length: 10 }, () => "before"));
+  expect(bands.slice(0, 10).map((b) => b.state)).toEqual(
+    Array.from({ length: 10 }, () => "before"),
+  );
   expect(bands[10]?.state).toBe("data");
   // An hour without readings after the record began stays a gap.
   expect(bands[12]?.state).toBe("gap");

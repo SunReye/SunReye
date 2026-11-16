@@ -26,7 +26,11 @@ const day = (d: number, wh: number, read: number): Rolled => ({
 /** Monday whole with 8 kWh, Tuesday 3 kWh by noon. */
 const PLANT: Plant = {
   ...NO_PLANT,
-  days: { ...NO_PLANT.days, pv: [day(0, 8000, 24), day(1, 3000, 12)], load: [day(0, 1, 24), day(1, 1, 12)] },
+  days: {
+    ...NO_PLANT.days,
+    pv: [day(0, 8000, 24), day(1, 3000, 12)],
+    load: [day(0, 1, 24), day(1, 1, 12)],
+  },
 };
 
 /** 10 kWh forecast on each of Monday, Tuesday and Wednesday, as 1 kW over ten hours. */

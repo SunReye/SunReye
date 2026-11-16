@@ -60,9 +60,7 @@ export function peaksOf(plant: Plant, at: PeakInput): Peak[] {
       {
         label: label(),
         value: top.max ?? 0,
-        when: at.hours
-          ? m.stats_peak_hour({ from: hour, to: hour + 1 })
-          : fmt("dayShort", day),
+        when: at.hours ? m.stats_peak_hour({ from: hour, to: hour + 1 }) : fmt("dayShort", day),
         colour: flowColour(colour),
         range: at.hours ? null : rangeFor("day", day),
       },

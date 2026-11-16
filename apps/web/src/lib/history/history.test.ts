@@ -47,7 +47,15 @@ function fake() {
       asked.push({ period: q.get("period") ?? "", from, to });
 
       const start = new Date(from).toISOString();
-      const point = { date: "2026-01-01", start, end: start, integral: 5, mean: 5, max: 9, hours: 0.5 };
+      const point = {
+        date: "2026-01-01",
+        start,
+        end: start,
+        integral: 5,
+        mean: 5,
+        max: 9,
+        hours: 0.5,
+      };
 
       return Promise.resolve(Response.json({ period: q.get("period"), points: [point] }));
     },
