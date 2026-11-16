@@ -74,7 +74,7 @@ async fn a_registered_devices_stored_series_are_listed_with_their_bounds() {
 
     let body = core.catalog(&set_cookie).await;
 
-    // The last value holds three readings' cadence, then a gap is stored where history stops.
+    // The last value holds one cadence, then a gap is stored where history stops.
     assert_eq!(
         body,
         json!({
@@ -180,5 +180,21 @@ async fn a_series_is_bounded_by_its_imported_days_before_its_readings() {
                 }],
             }],
         })
+    );
+}
+
+#[tokio::test]
+async fn a_series_starts_at_its_first_reading_not_its_hours_start() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    core.stored(plant::DEVICE, ("grid.power", None), &[600, 610])
+        .await;
+
+    let body = core.catalog(&set_cookie).await;
+
+    let series = &body["devices"][0]["series"][0];
+    assert_eq!(
+        (&series["first"], &series["last"]),
+        (&json!(instant(600)), &json!(instant(615)))
     );
 }

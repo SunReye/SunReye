@@ -61,9 +61,9 @@ fn kind_of(name: &str) -> Option<RoleKind> {
 }
 
 /// The first and last instant stored, of a change point, a gap's included, or a rollup's start.
-/// A day's start leads only a day before any finer history, such as an imported one (ADR 18):
-/// within a day, its start precedes the first reading. Each probe seeks the table's key, so the
-/// read never scans history.
+/// A rollup's start leads only when the window closes before any finer history, such as an
+/// imported one (ADR 18): inside its window, the start precedes the first reading. Each probe
+/// seeks the table's key, so the read never scans history.
 fn bounds(db: &Connection, device: u32, series: i64) -> Result<Option<(Tick, Tick)>, Error> {
     let earliest = decode_blocks(
         db,
@@ -74,14 +74,11 @@ fn bounds(db: &Connection, device: u32, series: i64) -> Result<Option<(Tick, Tic
     let key = (device, series);
     let hot = |order| edge(db, ["time", "hot", "time"], order, key);
     let hour = |order| edge(db, ["hour", "rollup_hour", "hour"], order, key);
-    let first = [
-        earliest.first().map(|p| p.time),
-        hot("ASC")?,
-        hour("ASC")?.map(|h| h * HOUR),
-    ]
-    .into_iter()
-    .flatten()
-    .min();
+    let points = [earliest.first().map(|p| p.time), hot("ASC")?];
+    let first = points.into_iter().flatten().min();
+    let first = before(hour("ASC")?.map(|h| (h * HOUR, h * HOUR + HOUR)), first);
+    let day = first_day(db, key)?;
+    let first = before(day, first);
     let last = [
         latest.last().map(|p| p.time),
         hot("DESC")?,
@@ -91,7 +88,21 @@ fn bounds(db: &Connection, device: u32, series: i64) -> Result<Option<(Tick, Tic
     .into_iter()
     .flatten()
     .max();
-    let day: Option<(Tick, Tick)> = db
+    Ok(first.zip(last))
+}
+
+/// The start of `window` when it closes by `first` or nothing finer is stored, else `first`.
+const fn before(window: Option<(Tick, Tick)>, first: Option<Tick>) -> Option<Tick> {
+    match (window, first) {
+        (Some((start, end)), Some(first)) if end <= first => Some(start),
+        (Some((start, _)), None) => Some(start),
+        (_, first) => first,
+    }
+}
+
+/// The first rolled-up day's window.
+fn first_day(db: &Connection, (device, series): (u32, i64)) -> Result<Option<(Tick, Tick)>, Error> {
+    Ok(db
         .prepare_cached(
             "SELECT start, end FROM rollup_day WHERE device = ?1 AND series = ?2
              ORDER BY day LIMIT 1",
@@ -99,13 +110,7 @@ fn bounds(db: &Connection, device: u32, series: i64) -> Result<Option<(Tick, Tic
         .query_row(params![device, series], |row| {
             Ok((row.get(0)?, row.get(1)?))
         })
-        .optional()?;
-    let first = match (day, first) {
-        (Some((start, end)), Some(first)) if end <= first => Some(start),
-        (Some((start, _)), None) => Some(start),
-        (_, first) => first,
-    };
-    Ok(first.zip(last))
+        .optional()?)
 }
 
 /// `column` of the first or last row of a series in `table`, ordered by `key`.
