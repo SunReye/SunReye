@@ -317,8 +317,12 @@ A multiplier the plant learns per MPPT input, plant-local month and hour: measur
 _Avoid_: Calibration, bias factor
 
 **Tariff**:
-The prices the plant pays for a kWh bought and earns for a kWh fed in, each a base price with optional bands, applying from a date.
+The prices the plant pays for a kWh bought and earns for a kWh fed in, each a base price with optional bands, and a standing charge, applying from a date.
 _Avoid_: Rate plan, contract
+
+**Standing charge**:
+The fixed amount a tariff bills each month whatever is bought, spread evenly over the month. German UI: Grundpreis.
+_Avoid_: Base price (a flow's price where no band applies), grid fee, monthly fee, base fee
 
 **Band**:
 A tariff price that holds on given weekdays for a span of the plant-local wall-clock day.
