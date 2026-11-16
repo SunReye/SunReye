@@ -1,5 +1,5 @@
 // A device's latest values as detail-sheet rows and tables (ADR 21). Pure.
-import { roleLabel } from "../roles.ts";
+import { roleLabel, roleOf } from "../roles.ts";
 import type { ByDevice } from "../api/frames.ts";
 
 export interface Row {
@@ -74,9 +74,6 @@ export interface Readings {
 }
 
 const INDEXED = /^(?<role>.+)\[(?<index>\d+)\]$/u;
-
-/** A series' role, its index left out. */
-const roleOf = (key: string) => INDEXED.exec(key)?.groups?.["role"] ?? key;
 
 /** The `role[i]` indices among `keys` for any of `roles`, ascending. */
 function indices(keys: readonly string[], roles: readonly string[]): number[] {

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import de from "../../messages/de.json";
 import en from "../../messages/en.json";
-import { roleLabel, seriesName, sidesOf } from "./roles.ts";
+import { isSigned, roleLabel, seriesName, sidesOf } from "./roles.ts";
 
 test("a signed series' sides are named by its sign: the grid imports above, exports below", () => {
   expect(sidesOf("grid.power")).toEqual([
@@ -15,6 +15,13 @@ test("a battery charges above and discharges below, both in its own flow's colou
     { label: "Geladen", colour: "var(--e-battery)" },
     { label: "Entladen", colour: "var(--e-battery)" },
   ]);
+});
+
+test("only ADR 4's signed roles have sides; an indexed one by its role", () => {
+  expect(isSigned("battery.power")).toBe(true);
+  expect(isSigned("grid.phase.power[2]")).toBe(true);
+  expect(isSigned("battery.temperature")).toBe(false);
+  expect(sidesOf("grid.phase.power[2]")[0].label).toBe("Bezogen");
 });
 
 test("a signed series of no named sides is above and below zero", () => {

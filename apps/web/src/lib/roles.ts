@@ -123,6 +123,9 @@ export interface Described {
   readonly order: readonly number[];
 }
 
+/** A series' role, its index left out. */
+export const roleOf = (series: string): string => INDEXED.exec(series)?.groups?.["role"] ?? series;
+
 /** A role's label within its group, its index left out: "Spannung". */
 export function roleLabel(role: string, locale?: Locale): string {
   return BY_ROLE.get(role)?.label({}, locale && { locale }) ?? role;
@@ -186,16 +189,34 @@ interface Sides {
   readonly flows?: readonly [Flow, Flow];
 }
 
-const SIDES = new Map<string, Sides>([
-  ["battery", { words: [m.side_charged, m.side_discharged] }],
-  ["grid", { words: [m.side_imported, m.side_exported], flows: ["import", "export"] }],
-]);
-
+const CHARGE: Sides = { words: [m.side_charged, m.side_discharged] };
+const GRID: Sides = { words: [m.side_imported, m.side_exported], flows: ["import", "export"] };
 const SIGNED: Sides = { words: [m.side_above, m.side_below] };
 
-/** The upper side's key and the lower side's of a series that runs both ways, named and coloured. */
+/** ADR 4's signed roles, by what their sign means; any other role is never below zero. */
+const SIDES = new Map<string, Sides>([
+  ["battery.power", CHARGE],
+  ["battery.current", CHARGE],
+  ["grid.power", GRID],
+  ["grid.phase.power", GRID],
+  ["grid.phase.current", GRID],
+  ...["inverter.power", "point.power", "price.import", "price.export", "price.spot"].map(
+    (role) => [role, SIGNED] as const,
+  ),
+  ...["cost.import.rate", "cost.export.rate", "cost.savings.rate"].map(
+    (role) => [role, SIGNED] as const,
+  ),
+]);
+
+/** Whether a series' role is signed (ADR 4), so its upper side is named for its sign. */
+export const isSigned = (series: string): boolean => SIDES.has(roleOf(series));
+
+/**
+ * The upper side's key and the lower side's of a series that runs both ways, named and coloured;
+ * above and below zero for a role of no sign that still went below it.
+ */
 export function sidesOf(series: string): readonly [SeriesMeta, SeriesMeta] {
-  const sides = SIDES.get(series.split(".", 1)[0]!) ?? SIGNED;
+  const sides = SIDES.get(roleOf(series)) ?? SIGNED;
   const own = roleFlow(series);
   const [up, down] = sides.flows ?? [own, own];
 

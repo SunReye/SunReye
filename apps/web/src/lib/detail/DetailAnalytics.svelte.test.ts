@@ -53,6 +53,15 @@ test("a battery's overview names its charge and discharge sides, never its serie
   ).not.toContainEqual(expect.stringContaining("battery.power"));
 });
 
+test("a grid that only imported keys its upper side as imported, in the import colour", async () => {
+  const { screen } = await show("grid");
+  const sheet = screen.getByRole("dialog", { name: "Netz" });
+  const key = sheet.getByRole("term").filter({ hasText: "Bezogen" });
+
+  await expect.element(key).toBeVisible();
+  expect(key.element().previousElementSibling?.getAttribute("style")).toContain("var(--e-import)");
+});
+
 test("the heat tab reads the range's hours and draws them on one canvas", async () => {
   const { screen } = await show("production", "range=month&at=2026-10-01");
   const sheet = screen.getByRole("dialog", { name: "Produktion" });
