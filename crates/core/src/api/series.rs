@@ -11,9 +11,13 @@ use sunreye_profile::RoleKind;
 use utoipa::ToSchema;
 
 use super::{Problem, ProblemDetails, internal};
+use crate::bus::DeviceId;
 use crate::devices::Devices;
-use crate::spot;
 use crate::storage::{Catalogued, Reader};
+use crate::{plant, spot, tariff, weather};
+
+/// The core's own devices (ADR 15), never removed.
+const COMPUTED: [DeviceId; 4] = [weather::DEVICE, plant::DEVICE, tariff::DEVICE, spot::DEVICE];
 
 /// Every device with stored history, by id.
 #[derive(Serialize, ToSchema)]
@@ -95,8 +99,10 @@ pub async fn catalog(
             let known = names.get(&id).cloned();
             listed.push(CatalogDevice {
                 id,
-                // A registered id the registry no longer knows was removed (ADR 15 ids).
-                removed: known.as_ref().map_or(id < spot::DEVICE.0, |n| n.1),
+                // History the registry and the core's own devices lack is a removed device's.
+                removed: known
+                    .as_ref()
+                    .map_or_else(|| !COMPUTED.contains(&DeviceId(id)), |n| n.1),
                 name: known.map(|n| n.0),
                 series: Vec::new(),
             });

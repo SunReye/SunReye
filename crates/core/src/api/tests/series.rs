@@ -10,7 +10,7 @@ use super::devices::{delete, gateway};
 use super::{Core, get, json, with_cookie};
 use crate::bus::{DeviceId, Reading};
 use crate::storage::{Backfill, Held, Issue, Policy};
-use crate::{plant, weather};
+use crate::{plant, spot, tariff, weather};
 
 /// 2026-08-26 12:00 UTC, on an hour.
 const T0: u64 = 1_787_745_600;
@@ -196,5 +196,51 @@ async fn a_series_starts_at_its_first_reading_not_its_hours_start() {
     assert_eq!(
         (&series["first"], &series["last"]),
         (&json!(instant(600)), &json!(instant(615)))
+    );
+}
+
+/// A device with history the registry lacks and no tombstone names was removed, whatever its id;
+/// a computed device (ADR 15) never is.
+#[tokio::test]
+async fn an_unregistered_device_is_removed_unless_computed() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    // Next to the computed devices' ids (ADR 15), but none of them.
+    let stray = DeviceId(spot::DEVICE.0 - 1);
+    let ids = [
+        weather::DEVICE,
+        plant::DEVICE,
+        tariff::DEVICE,
+        spot::DEVICE,
+        stray,
+    ];
+    // Each after the day the one before flushed.
+    for (day, id) in (0..).zip(ids) {
+        core.stored(id, ("grid.power", None), &[day * 2 * 86_400])
+            .await;
+    }
+
+    let body = core.catalog(&set_cookie).await;
+
+    let removed: Vec<(u32, bool)> = body["devices"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| {
+            (
+                u32::try_from(d["id"].as_u64().unwrap()).unwrap(),
+                d["removed"].as_bool().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        removed,
+        [
+            (stray.0, true),
+            (spot::DEVICE.0, false),
+            (tariff::DEVICE.0, false),
+            (plant::DEVICE.0, false),
+            (weather::DEVICE.0, false),
+        ]
     );
 }
