@@ -26,6 +26,30 @@ test("the range's answer: production against the day before, and a breakdown tha
   await expect.element(breakdown.getByText("11,0 kWh")).toBeVisible();
 });
 
+test("the breakdown says what its rows changed against, and the peaks name their hour", async () => {
+  const { screen } = await show(DAY);
+  const breakdown = screen.getByRole("region", { name: "Aufschlüsselung" });
+
+  // 6,0 kWh against the day before's 4,0 kWh.
+  await expect.element(breakdown.getByText("+50 %")).toBeVisible();
+  await expect.element(breakdown.getByText("Änderung zum Vortag")).toBeVisible();
+
+  const peaks = screen.getByRole("region", { name: "Spitzenwerte" });
+
+  await expect.element(peaks.getByText("PV-Leistung")).toBeVisible();
+  await expect.element(peaks.getByText("3,0 kW")).toBeVisible();
+  await expect.element(peaks.getByText("10–11 Uhr").first()).toBeVisible();
+});
+
+test("over several days a peak names its day and opens it", async () => {
+  const { screen, went } = await show(`range=week&at=${YESTERDAY}`);
+  const peaks = screen.getByRole("region", { name: "Spitzenwerte" });
+
+  await peaks.getByRole("button", { name: /^PV-Leistung: .* öffnen$/u }).click();
+
+  await expect.poll(() => went.at(-1)?.patch).toMatchObject({ range: "day", at: YESTERDAY });
+});
+
 test("a gap is hatched, never drawn as zero, and named in the verdict", async () => {
   const { screen } = await show(DAY);
 

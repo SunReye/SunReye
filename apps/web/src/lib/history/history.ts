@@ -15,6 +15,8 @@ export interface Rolled {
   /** The unit times hours: Wh for a power. */
   readonly integral: number;
   readonly mean: number;
+  /** The highest reading; null without one. */
+  readonly max: number | null;
   /** How long it had a value, in ms. */
   readonly covered: number;
 }
@@ -56,6 +58,7 @@ export async function rollups(
           end: Date.parse(p.end),
           integral: p.integral ?? 0,
           mean: p.mean ?? 0,
+          max: p.max ?? null,
           covered: (p.hours ?? 0) * H,
         });
 

@@ -7,13 +7,17 @@ import { gapsOf } from "./flows.ts";
 import { notesOf, type Note } from "./notes.ts";
 import type { Loaded } from "./stats.svelte.ts";
 import type { StatsView } from "./view.ts";
-import { verdict } from "./words.ts";
+import { peaksOf, type Peak } from "./peaks.ts";
+import { against, verdict } from "./words.ts";
 
 export interface Summary {
   readonly sentence: string;
   /** Hours of the range so far without a house reading. */
   readonly gapHours: number;
   readonly breakdown: readonly Row[];
+  /** What the breakdown's changes are against: "zum Vormonat"; empty without a baseline. */
+  readonly against: string;
+  readonly peaks: readonly Peak[];
   readonly notes: readonly Note[];
 }
 
@@ -59,9 +63,19 @@ export function summaryOf(
     breakdown: breakdownOf(view.metric, {
       sum: got.sum,
       money: got.money,
+      base: got.base.sum.covered > 0 ? got.base : null,
+      days: got.plant.days.load.filter((r) => r.start >= from && r.start < to && r.covered > 0)
+        .length,
       kwp: plant.rows.reduce((a, r) => a + r.kwp, 0),
       strings: plant.rows.length,
       elapsed,
+    }),
+    against: got.base.sum.covered > 0 ? against(got.range, view.cmp) : "",
+    peaks: peaksOf(got.plant, {
+      from,
+      to,
+      hours: got.list.some((e) => e.t1 - e.t0 < 24),
+      zone: got.zone,
     }),
     notes: notesOf({
       zone: got.zone,

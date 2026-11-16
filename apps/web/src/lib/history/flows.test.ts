@@ -15,6 +15,7 @@ const rolled =
       end: T0 + (i + 1) * length,
       integral: wh,
       mean: (wh * H) / length,
+      max: null,
       covered: length,
     }));
 

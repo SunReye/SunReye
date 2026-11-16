@@ -1,4 +1,4 @@
-<!-- One line of the breakdown: its colour, label, note and value. -->
+<!-- One line of the breakdown: its colour, label, note and value, with its change under the value. -->
 <script lang="ts">
   import AnimatedNumber from "../components/animated-number.svelte";
   import type { Row } from "./breakdown.ts";
@@ -16,7 +16,7 @@
       <span class="block text-xs text-muted-foreground tabular-nums">{sub}</span>
     {/if}
   </dt>
-  <dd class="text-sm font-semibold whitespace-nowrap tabular-nums">
+  <dd class="text-right text-sm font-semibold whitespace-nowrap tabular-nums">
     <AnimatedNumber
       value={loading ? null : r.value}
       format={r.format}
@@ -24,5 +24,8 @@
       duration={320}
       appear={false}
     />
+    {#if r.change && !loading}
+      <span class="block text-xs font-normal text-muted-foreground">{r.change}</span>
+    {/if}
   </dd>
 </div>

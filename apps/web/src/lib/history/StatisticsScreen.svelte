@@ -43,6 +43,9 @@
       <StatsAside
         label={s.route.label}
         rows={summary?.breakdown ?? []}
+        against={summary?.against ?? ""}
+        peaks={summary?.peaks ?? []}
+        onrange={s.route.open}
         notes={summary?.notes ?? []}
         loading={s.data.loading}
         fresh={s.fresh}
