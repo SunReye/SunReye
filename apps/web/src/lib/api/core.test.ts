@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { afterEach, expect, jest, setSystemTime, test } from "bun:test";
-import { connect, http, type Live, type Transport } from "./core.ts";
+import { type CatalogDevice, connect, http, type Live, type Transport } from "./core.ts";
 import { BASE, event, problem, scripted, sse } from "./core.harness.ts";
 
 async function updates(transport: Transport, count: number): Promise<Live[]> {
@@ -252,3 +252,27 @@ test("a refusal that is no problem document reports its HTTP status", async () =
 });
 
 /** A test core that records each request with its method and body. */
+
+test("the series catalog lists each device with stored history", async () => {
+  const device: CatalogDevice = {
+    id: 3,
+    name: "Garage",
+    removed: true,
+    series: [
+      {
+        series: "pv.mppt.power[2]",
+        kind: "measurement",
+        unit: "W",
+        first: "2026-08-25T00:00:00Z",
+        last: "2026-08-26T12:01:00Z",
+      },
+    ],
+  };
+
+  const transport = scripted(Response.json({ devices: [device] }), problem(401, "auth.required"));
+  const core = connect(transport);
+
+  expect(await core.series()).toEqual([device]);
+  expect(await core.series()).toEqual({ problem: "auth.required" });
+  expect(transport.urls).toEqual([`${BASE}api/v1/series`, `${BASE}api/v1/series`]);
+});
