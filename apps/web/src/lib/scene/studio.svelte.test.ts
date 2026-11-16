@@ -100,7 +100,7 @@ test("a frame draws at every level, its programs sound", () => {
 
     const box = new Mesh(
       new BoxGeometry(4, 3, 4),
-      weathered(new MeshStandardMaterial(), { colour: 0.2, rough: 0.1, relief: 0.01 }),
+      weathered(new MeshStandardMaterial(), { colour: 0.2, rough: 0.1 }),
     );
 
     box.castShadow = box.receiveShadow = true;

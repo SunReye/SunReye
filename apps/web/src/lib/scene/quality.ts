@@ -13,36 +13,43 @@ export type Level = Exclude<Quality, "auto">;
 
 const LEVELS: readonly Level[] = ["low", "medium", "high", "ultra"];
 
-/** What a studio draws at a level. */
+/** What a studio draws at a level. Levels from Mittel up differ in sharpness alone. */
 export interface Look {
   readonly level: Level;
   /** The most device pixels drawn per CSS pixel. */
   readonly pixelRatio: number;
   /** The sun's shadow map, in texels a side. */
   readonly shadowMap: number;
-  /** The ambient-occlusion pass. */
+  /** The ambient-occlusion pass: the full motion tier's, from Mittel up. */
   readonly occlusion: boolean;
-  /** The finishes' weathering and variation: every level's but Niedrig's. */
+  /** The finishes' weathering: the full motion tier's, from Mittel up. */
   readonly weathering: boolean;
-  /** Hoch's: contact-hardening shadows, relief, sky reflections and bloom. */
-  readonly rich: boolean;
-  /** Ultra's: temporal antialiasing, occlusion at full resolution and grass blades. */
+  /** Hoch's: shadows that harden where they touch their caster. */
+  readonly contact: boolean;
+  /** Ultra's: the antialiasing burst, and occlusion at full resolution. */
   readonly finest: boolean;
 }
 
-const BARE = { occlusion: false, weathering: false, rich: false, finest: false } as const;
-const FULL = { occlusion: true, weathering: true, rich: false, finest: false } as const;
+const BARE = { occlusion: false, weathering: false } as const;
+const FULL = { occlusion: true, weathering: true } as const;
 
 const LOOKS: Readonly<Record<Level, Look>> = {
-  low: { level: "low", pixelRatio: 1, shadowMap: 1024, ...BARE },
-  medium: { level: "medium", pixelRatio: 1.5, shadowMap: 2048, ...FULL },
-  high: { level: "high", pixelRatio: 2, shadowMap: 4096, ...FULL, rich: true },
+  low: { level: "low", pixelRatio: 1, shadowMap: 1024, ...BARE, contact: false, finest: false },
+  medium: {
+    level: "medium",
+    pixelRatio: 1.5,
+    shadowMap: 2048,
+    ...FULL,
+    contact: false,
+    finest: false,
+  },
+  high: { level: "high", pixelRatio: 2, shadowMap: 4096, ...FULL, contact: true, finest: false },
   ultra: {
     level: "ultra",
     pixelRatio: Infinity,
     shadowMap: 4096,
     ...FULL,
-    rich: true,
+    contact: true,
     finest: true,
   },
 };
@@ -64,19 +71,19 @@ function measured({ capable: strong, steps }: Device): number {
   return Math.max(0, (strong ? 2 : 1) - steps);
 }
 
-/** Auto: the measured level, and on the lite and still tiers at most Mittel without its
- * occlusion pass, which those tiers drop (ADR 21). */
-function auto(device: Device): Look {
+/** Auto's level: the measured one, on the lite and still tiers at most Mittel. */
+function auto(device: Device): Level {
   const level = measured(device);
 
-  if (device.tier === "full") return LOOKS[LEVELS[level] ?? "medium"];
-
-  return { ...LOOKS[LEVELS[Math.min(level, 1)] ?? "medium"], occlusion: false };
+  return LEVELS[device.tier === "full" ? level : Math.min(level, 1)] ?? "medium";
 }
 
-/** What is drawn for `choice` on this device: a chosen level as it is listed, on any tier. */
+/** What is drawn for `choice` on this device. A chosen level keeps its sharpness on any tier;
+ * occlusion and weathering are the full motion tier's alone (ADR 21). */
 export function drawn(choice: Quality, device: Device): Look {
-  return choice === "auto" ? auto(device) : LOOKS[choice];
+  const look = LOOKS[choice === "auto" ? auto(device) : choice];
+
+  return device.tier === "full" ? look : { ...look, ...BARE };
 }
 
 /**

@@ -1,6 +1,15 @@
 import { afterEach, expect, test } from "vitest";
-import { BoxGeometry, Color, Mesh, MeshStandardMaterial, PerspectiveCamera, Vector3 } from "three";
+import {
+  BoxGeometry,
+  Color,
+  Mesh,
+  MeshStandardMaterial,
+  PerspectiveCamera,
+  PlaneGeometry,
+  Vector3,
+} from "three";
 import { daylight, theme } from "./light.ts";
+import * as finish from "./materials.ts";
 import { drawn, type Level } from "./quality.ts";
 import { Studio } from "./studio.ts";
 
@@ -106,4 +115,72 @@ test("Ultra's burst smooths the edges of the picture it settles on, and changes 
   expect(Math.abs(mean(refined) - mean(settled))).toBeLessThan(0.5);
   // Finer steps along its slanted edges than four samples a pixel give.
   expect(shades(refined)).toBeGreaterThan(shades(settled) * 1.5);
+});
+
+/** A 4 m sheet of each finish side by side under a high sun, nothing casting on them, seen from
+ * straight above. */
+function sheets(level: Level): number[] {
+  const camera = new PerspectiveCamera(40, 1, 0.1, 500);
+  const makes = [finish.tiles, finish.lawn, finish.GROUND.paving, () => finish.plaster("#d8c8b0")];
+
+  camera.position.set(0, 24, 0);
+  camera.up.set(0, 0, -1);
+  camera.lookAt(0, 0, 0);
+  studio?.dispose();
+  studio = new Studio(document.createElement("canvas"), camera, () => look(level));
+  studio.setSize(SIDE, SIDE);
+
+  for (const [i, make] of makes.entries()) {
+    const sheet = new Mesh(new PlaneGeometry(4, 16), make());
+
+    sheet.rotation.x = -Math.PI / 2;
+    sheet.position.set(i * 4 - 6, 0.5, 0);
+    sheet.receiveShadow = true;
+    studio.scene.add(sheet);
+  }
+
+  studio.frame(new Vector3(), 10);
+  studio.light(daylight([0.3, -0.4, 0.86]), theme(false), new Color(0.95, 0.95, 0.96));
+  studio.render();
+
+  return picture(studio);
+}
+
+/** The picture's mean over each block of 16 × 16 pixels: the occlusion pass's noise is drawn
+ * anew for every studio, and averages out. */
+function blocks(pixels: readonly number[]): number[] {
+  const side = SIDE / 16;
+
+  return Array.from({ length: side * side }, (_, block) => {
+    const [left, top] = [(block % side) * 16, Math.floor(block / side) * 16];
+
+    return mean(
+      Array.from(
+        { length: 256 },
+        (__, i) => pixels[(top + Math.floor(i / 16)) * SIDE + left + (i % 16)] ?? 0,
+      ),
+    );
+  });
+}
+
+/** The furthest two pictures' blocks lie apart, in levels of 255. */
+const apart = (a: readonly number[], b: readonly number[]): number =>
+  Math.max(...blocks(a).map((v, i) => Math.abs(v - (blocks(b)[i] ?? 0))));
+
+test("Hoch and Ultra draw every finish in Mittel's colours: a level adds sharpness alone", () => {
+  // One device pixel per CSS pixel, so the levels' pixel ratios draw the same grid.
+  expect(window.devicePixelRatio).toBe(1);
+
+  const medium = sheets("medium");
+
+  // What two studios at one level differ by.
+  expect(apart(sheets("medium"), medium)).toBeLessThan(0.5);
+
+  for (const level of ["high", "ultra"] as const) {
+    expect([level, apart(sheets(level), medium) < 0.5]).toEqual([level, true]);
+  }
+});
+
+test("Niedrig draws each finish as it is, unweathered", () => {
+  expect(apart(sheets("low"), sheets("medium"))).toBeGreaterThan(3);
 });

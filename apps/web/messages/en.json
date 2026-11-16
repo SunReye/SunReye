@@ -234,7 +234,7 @@
   "display_quality_medium": "Medium",
   "display_quality_high": "High",
   "display_quality_ultra": "Ultra",
-  "display_quality_hint": "How richly the 3D house is drawn.",
+  "display_quality_hint": "How sharply the 3D house is drawn.",
   "display_quality_now": "Auto currently draws {level} on this device.",
   "display_quality_low_power": "Low power shows 2D instead of 3D.",
   "settings_device": "Device {id}",

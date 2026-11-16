@@ -21,10 +21,10 @@ import { backdropAt } from "./vignette.ts";
 import { patched } from "./weather.ts";
 
 /** Metres of lawn each way; it fades long before its edge. */
-export const LAWN = 400;
+const LAWN = 400;
 
 /** Metres of lawn per grass texture repeat. */
-export const GRASS = 3;
+const GRASS = 3;
 
 /** An energy flow's colour in the current theme, as linear RGB. */
 export const flowRgb = (flow: Flow): Color => cssColour(flowColour(flow));

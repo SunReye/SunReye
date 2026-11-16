@@ -11,7 +11,6 @@ import {
 } from "three";
 import type { Face, Fitted, OpeningKind, Point } from "../builder/pv.ts";
 import { glazed } from "./materials.ts";
-import { soiling } from "./soiling.ts";
 import { spill } from "./spill.ts";
 
 /** Metres an opening's frame stands proud of its wall. */
@@ -155,8 +154,8 @@ function lit(opening: Fitted): boolean {
   return opening.kind === "frontDoor" || chance(opening) < LIT;
 }
 
-/** Each opening as a mesh named "opening", in order, then the soiling under the windows' sills
- * and the spill of those lit at night, on the lawn or on the one of `roofs` under them. */
+/** Each opening as a mesh named "opening", in order, then the spill of those lit at night, on
+ * the lawn or on the one of `roofs` under them. */
 export function openings(fitted: readonly Fitted[], roofs: readonly Face[]): Object3D[] {
   const finishes = new Map<string, MeshStandardMaterial>();
 
@@ -182,7 +181,7 @@ export function openings(fitted: readonly Fitted[], roofs: readonly Face[]): Obj
     roofs,
   );
 
-  return [...meshes, ...soiling(fitted), ...(spilt === undefined ? [] : [spilt])];
+  return spilt === undefined ? meshes : [...meshes, spilt];
 }
 
 /** Turns the lamps of `drawn` on by `level`, 0 by day to 1 at night. */

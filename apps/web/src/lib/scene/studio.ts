@@ -18,12 +18,12 @@ import {
 } from "three";
 import { toThree } from "../builder/scene.ts";
 import { aim, backdrop, sky } from "./backdrop.ts";
-import { finishIn, refinish } from "./finishes.ts";
 import { CLEAR_SHADOW, untone, type Daylight, type Theme } from "./light.ts";
 import { Passes } from "./passes.ts";
 import { Plot } from "./plot.ts";
 import { gpuOf, type Look } from "./quality.ts";
 import { shade, shadowFor, soften } from "./sun-shadow.ts";
+import { reweather, weatherFinishes } from "./weather.ts";
 
 export class Studio {
   readonly renderer: WebGLRenderer;
@@ -83,11 +83,6 @@ export class Studio {
     this.#apply();
   }
 
-  /** What is drawn: the 3D quality's look. */
-  get look(): Look {
-    return this.#look;
-  }
-
   /** Whether the ambient-occlusion pass runs. */
   get occlusion(): boolean {
     return this.#passes.occlusion;
@@ -112,13 +107,8 @@ export class Studio {
     this.#look = look;
     this.#apply();
     this.setSize(...this.#size);
-    refinish(this.scene, before, look);
-  }
 
-  /** Hoch's reflections and relief on `part`, a build newly on show, or none below Hoch. */
-  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own.
-  dress(part: Object3D): void {
-    finishIn(part, this.#look);
+    if (before.weathering !== look.weathering) reweather(this.scene);
   }
 
   /** Imported surroundings reach `metres` from the plot, 0 for none (plot.ts). */
@@ -168,7 +158,6 @@ export class Studio {
     const backdropped = JSON.stringify([page.r, page.g, page.b, look]);
 
     this.renderer.toneMappingExposure = look.exposure;
-    this.#passes.glint(Math.max(page.r, page.g, page.b), look.exposure);
 
     if (backdropped !== this.#backdropped) {
       this.#backdropped = backdropped;
@@ -275,7 +264,7 @@ export class Studio {
   /** The look's passes, shadow map and finishes. */
   #apply(): void {
     this.#passes.follow(this.#look);
-    finishIn(this.scene, this.#look);
+    weatherFinishes(this.#look.weathering);
     shadowFor(this.renderer, this.#sun, this.#look);
     this.#shade();
   }
