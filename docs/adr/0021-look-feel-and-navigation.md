@@ -1,6 +1,6 @@
 # 21. Look, feel and navigation
 
-Status: accepted (2026-11-10), amended (2026-11-12, 2026-11-13, 2026-11-15)
+Status: accepted (2026-11-10), amended (2026-11-12, 2026-11-13, 2026-11-15, 2026-11-16)
 
 ## Context
 
@@ -36,6 +36,15 @@ The first integration build rendered browser defaults: plain links for navigatio
 - **Live graph:** a power figure's detail sheet opens with v3's live graph (`live-area`, `live-window`, `live-cursor`), restyled here. It shows a fixed two-minute window anchored to the newest sample, so its data, scales and tooltip index change only when a sample lands. Between samples one transform scrolls the marks, on a cursor that eases linearly across the feed's own sample spacing (clamped to 250 ms–5 s) with a slight overshoot, snapped to quarter pixels. The plot keeps a few samples of buffer past its left edge and is downsampled to its pixel budget. Grid power fills diverging around zero.
 - **Chart reading:** the legend shows the values under the pointer; there are no floating tooltips. With a mouse or keyboard, dragging across a chart narrows the range. On touch, a tap drills into a bar and there is no brushing.
 - **Deep analytics** (heatmaps, the hourly-block grid, per-string comparison) live in tabs on detail pages, never on the dashboard.
+
+**History.** One question at a time, over the shared range control.
+- **Card:** four figures answer the range: production, savings, autarky and the plant's state, each with its change against the baseline. The chosen one opens its view below: a one-sentence verdict, its tabs, then the open tab. While the correction has too few days to judge a string, the plant's figure says "learning", not a dash.
+- **Beside the chart** (below it on a phone), in this order: the breakdown, the range's peaks, what stands out, payback.
+  - *Breakdown:* the chosen question's flows. A main row states its change against the baseline under its value, and the card names the baseline once. A baseline of next to nothing carries no change. Over several recorded days, production and the house load state their mean per day.
+  - *Peaks:* the highest power of PV, house load, grid import and feed-in, from the rollups' `max` (ADR 3), each with its hour or, over several days, the day, which a tap opens. They are the range's, not the remembered plant peak of the 2D flow.
+- **Before the record:** the time before the plant's first reading is not a gap. Its bands stay empty and unhatched, and coverage, gap hours and the gap list count from the first reading.
+- **Two-sided charts:** the legend names the upper and the lower side at every width.
+- **Forecast tab:** the sum sets all that was measured against the forecast of the whole range; the accuracy figures judge whole past days alone.
 
 **2D power flow.** Ported from v3 (`dev` at `780b4e2`: `power-flow-diagram`, `power-graph`, `flow-pulse`, `plant-ceiling`) and restyled here.
 - **Layout:** chosen from the hero's aspect ratio. In portrait, sources stack above the hub and sinks below it. In landscape, sources fan in from the left and the grid from the right. Anchors are fractions of a safe box inset by one caption stack, so captions never clip.
