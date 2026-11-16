@@ -105,14 +105,14 @@ export class OverlayView {
 
     const shown = new Map(this.periods.map((p: Shown) => [p.key, p]));
 
-    // A period taken out is gone at once; one added waits for its read.
+    // A period taken out is gone at once; one added, or another range, waits for its read.
     const rows = read.periods.flatMap((p: OverlayPeriod, i): PeriodRow[] => {
       const period = shown.get(p.key);
 
       return period ? [{ period, reading: read.readings[i]! }] : [];
     });
 
-    return rows[0]?.period.key === this.periods[0]?.key ? rows : null;
+    return read.periods[0]?.key === this.periods[0]?.key ? rows : null;
   });
 
   readonly chart: Chart | null = $derived.by(() => {

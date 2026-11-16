@@ -1219,7 +1219,6 @@
   "explore_overlay_year_day": "Same day last year",
   "explore_overlay_year_week": "Same week last year",
   "explore_overlay_date": "Pick another day",
-  "explore_overlay_periods": "Compared periods",
   "explore_overlay_full": "A chart overlays 5 periods. Remove one to pick another.",
   "explore_overlay_first": "{name}, the first chosen series, is overlaid.",
   "explore_overlay_hourly": "Only hourly figures are kept: {names}."

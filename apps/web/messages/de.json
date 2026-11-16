@@ -1219,7 +1219,6 @@
   "explore_overlay_year_day": "Gleicher Tag im Vorjahr",
   "explore_overlay_year_week": "Gleiche Woche im Vorjahr",
   "explore_overlay_date": "Anderen Tag wählen",
-  "explore_overlay_periods": "Verglichene Zeiträume",
   "explore_overlay_full": "Ein Diagramm überlagert 5 Zeiträume. Entferne einen, um einen anderen zu wählen.",
   "explore_overlay_first": "Überlagert wird {name}, die erste gewählte Reihe.",
   "explore_overlay_hourly": "Nur Stundenwerte aufbewahrt: {names}."

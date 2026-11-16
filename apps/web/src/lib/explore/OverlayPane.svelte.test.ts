@@ -236,3 +236,19 @@ test("a series with nothing stored says so", async () => {
     .toBeVisible();
   expect(plant.asked).toEqual([]);
 });
+
+test("any day can be picked from a calendar", async () => {
+  await desk();
+
+  const { screen, went } = await show(TENTH);
+  const chart = screen.getByRole("region", { name: "Überlagern" });
+  // The calendar opens on the running month; its first day has happened.
+  const now = new Date();
+  const month = new Intl.DateTimeFormat("de-DE", { month: "long", year: "numeric" }).format(now);
+  const first = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+
+  await chart.getByRole("button", { name: "Anderen Tag wählen", exact: true }).click();
+  await page.getByRole("button", { name: new RegExp(`, 1\\. ${month}`, "u") }).click();
+
+  await expect.poll(() => went.at(-1)).toMatchObject({ push: true, patch: { vs: first } });
+});
