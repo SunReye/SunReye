@@ -6,7 +6,7 @@
   import { untrack } from "svelte";
   import { PerspectiveCamera } from "three";
   import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-  import { openGarage, type Garage, type ModelLoader } from "../cars/garage.ts";
+  import { openGarage, type ModelLoader } from "../cars/garage.ts";
   import type { Parked } from "../cars/parked.ts";
   import { m } from "../paraglide/messages.js";
   import { Ghost, lit, type Lit, type SceneFailure } from "../scene/stage.svelte.ts";
@@ -18,11 +18,15 @@
     overlaid,
     picking,
     projector,
+    Surrounded,
+    Arrivals,
     type Editing,
     type Hit,
+    type Lie,
     type Painting,
     type Panel,
     type Projector,
+    type Stood,
   } from "./drawing.svelte.ts";
   import type { Geometry, Point } from "./pv.ts";
 
@@ -43,6 +47,9 @@
     onerror,
     editing,
     painting,
+    around,
+    lie,
+    ghosts = false,
   }: {
     geometry: Geometry;
     /** The placed modules. */
@@ -74,6 +81,12 @@
     /** The selected face, whose roof a press lays modules on, or the picked string, which a drag
      * across modules wires. */
     painting?: Painting | undefined;
+    /** The imported surroundings as the crate stood them; they come once the house is drawn. */
+    around?: Stood | undefined;
+    /** Where the import lies now: a drag moves what is drawn whole. */
+    lie?: Lie | null | undefined;
+    /** Whether the hidden imported buildings are drawn see-through, for a tap to show them. */
+    ghosts?: boolean;
   } = $props();
 
   const brushing = new Brushwork();
@@ -81,6 +94,10 @@
   const handled = new Handled();
 
   const ghost = new Ghost();
+
+  const surrounded = new Surrounded();
+
+  const surroundings = { stood: () => around, lie: () => lie, ghosts: () => ghosts };
 
   const source = {
     geometry: () => geometry,
@@ -171,45 +188,6 @@
     return controls;
   }
 
-  /** Parks the cars once `due`, each change after the last; the default body loaded and their
-   * programs compiled first. No car is drawn when the body cannot be read. */
-  function parkLater(
-    canvas: HTMLCanvasElement,
-    opening: Lit["opening"],
-    open: () => Promise<Garage>,
-  ) {
-    let due = $state(false);
-    let parking: Promise<Garage | null> | undefined;
-    let parked: Promise<unknown> = Promise.resolve();
-
-    $effect(() => {
-      const arriving = cars;
-
-      if (due) {
-        parking ??= open().catch(() => null);
-        parked = parked
-          .then(() => parking)
-          .then(
-            (ready) =>
-              ready &&
-              opening.arrive(canvas, ghost, () => {
-                ready.park(arriving);
-              }),
-          )
-          .catch(() => {});
-      }
-    });
-
-    return {
-      due: () => {
-        due = true;
-      },
-      dispose: () => {
-        void parking?.then((ready) => ready?.dispose());
-      },
-    };
-  }
-
   /** The lit studio on `canvas`; null without WebGL2. */
   function studioOn(canvas: HTMLCanvasElement, camera: PerspectiveCamera): Lit | null {
     try {
@@ -229,6 +207,36 @@
 
       return null;
     }
+  }
+
+  /** What comes once the house is on screen: the cars and the imported surroundings, one after
+   * the other, each fading in. */
+  function arrivals(canvas: HTMLCanvasElement, scene: Lit) {
+    const { studio, opening } = scene;
+    const coming = new Arrivals(canvas, ghost, opening);
+
+    const parking = coming.park(
+      () => cars,
+      () =>
+        openGarage(
+          studio.scene,
+          opening.render,
+          untrack(() => model),
+        ),
+    );
+
+    const unsurround = surrounded.attach(scene, surroundings, coming.fade, opening.render);
+
+    return {
+      due: () => {
+        parking.due();
+        surrounded.due();
+      },
+      dispose: () => {
+        unsurround();
+        parking.dispose();
+      },
+    };
   }
 
   /** Draws on a change of geometry, view, sun or theme, a camera move or a resize; nothing before
@@ -253,30 +261,25 @@
     const unpick = picking(canvas, camera, kept.drawn, {
       panels: source.panels,
       onpick: () => onpick,
+      around: surrounded.drawn,
     });
 
-    const parking = parkLater(canvas, opening, () =>
-      openGarage(
-        studio.scene,
-        render,
-        untrack(() => model),
-      ),
-    );
+    const later = arrivals(canvas, scene);
 
     const controls = orbit(canvas, camera, flight, render);
 
-    opening.open(kept.built, () => onready?.(), parking.due).catch(() => {
+    opening.open(kept.built, () => onready?.(), later.due).catch(() => {
       onerror?.("failed");
     });
 
     return () => {
       resize.disconnect();
+      later.dispose();
       unhandle();
       brush.dispose();
       unlay();
       unpick();
       controls.dispose();
-      parking.dispose();
       scene.dispose();
     };
   }

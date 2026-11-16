@@ -1,6 +1,8 @@
-<!-- An obstacle's, a ground surface's or a fence's level in the inspector (ADR 20 Surroundings). -->
+<!-- An obstacle's, a ground surface's, a fence's or the imported surroundings' level in the
+  inspector (ADR 20 Surroundings). -->
 <script lang="ts">
   import FenceFieldset from "./FenceFieldset.svelte";
+  import ImportLevel from "./ImportLevel.svelte";
   import ObstacleFieldset from "./ObstacleFieldset.svelte";
   import type { Scene } from "./pv.ts";
   import SurfaceFieldset from "./SurfaceFieldset.svelte";
@@ -12,7 +14,8 @@
     onchange,
     onremove,
   }: {
-    kind: "obstacle" | "surface" | "fence";
+    kind: "obstacle" | "surface" | "fence" | "import";
+    /** Which of its kind; the imported surroundings are one. */
     index: number;
     scene: Scene;
     onchange: (scene: Scene) => void;
@@ -27,7 +30,9 @@
   const fence = $derived(kind === "fence" ? fences[index] : undefined);
 </script>
 
-{#if obstacle !== undefined}
+{#if kind === "import"}
+  <ImportLevel {scene} {onchange} {onremove} />
+{:else if obstacle !== undefined}
   <ObstacleFieldset
     item={obstacle}
     onchange={(next) => {

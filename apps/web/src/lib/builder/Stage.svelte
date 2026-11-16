@@ -1,6 +1,8 @@
 <script lang="ts" module>
   export type { Editing, Painting } from "./SceneCanvas.svelte";
 
+  export type { Lie, Stood } from "./drawing.svelte.ts";
+
   export type { Hit, Panel } from "./scene.ts";
 </script>
 
@@ -16,6 +18,7 @@
   } from "./camera.ts";
   import type { Geometry, Point, RoofFace } from "./pv.ts";
   import SceneCanvas, { type Editing, type Painting } from "./SceneCanvas.svelte";
+  import type { Lie, Stood } from "./drawing.svelte.ts";
   import type { Hit, Panel } from "./scene.ts";
   import ViewMenu from "./ViewMenu.svelte";
 
@@ -29,6 +32,9 @@
     onpick,
     editing,
     painting,
+    around,
+    lie,
+    ghosts = false,
     onto,
     aspect = 1,
   }: {
@@ -46,6 +52,11 @@
     editing?: Editing | undefined;
     /** The picked string, painted by a drag across modules. */
     painting?: Painting | undefined;
+    /** The imported surroundings as the crate stood them, where they lie now, and whether their
+     * hidden buildings are drawn see-through. */
+    around?: Stood | undefined;
+    lie?: Lie | null | undefined;
+    ghosts?: boolean;
     /** The face the camera flies onto while it is given; it returns to the kept view after. */
     onto?: RoofFace | undefined;
     /** The canvas's width over its height: preset views fit the scene across it. */
@@ -86,6 +97,9 @@
   {onpick}
   {editing}
   {painting}
+  {around}
+  {lie}
+  {ghosts}
 />
 <div class="absolute top-3 right-3">
   <ViewMenu

@@ -80,6 +80,7 @@ export class Studio {
   readonly #sky = sky(1000);
   readonly #skyScene = new Scene();
   readonly #fade = { centre: { value: new Vector2() }, radius: { value: 12 } };
+  readonly #lawn = ground(this.#fade);
   #environment: WebGLRenderTarget | undefined;
   /** What the environment and the backdrop were made for: either is made again only on change. */
   #environed = "";
@@ -110,7 +111,7 @@ export class Studio {
     this.#pmrem = new PMREMGenerator(this.renderer);
     this.#skyScene.add(this.#sky);
     soften(this.#sun);
-    this.scene.add(this.#sun, this.#sun.target, this.#fill, ground(this.#fade));
+    this.scene.add(this.#sun, this.#sun.target, this.#fill, this.#lawn);
 
     // Multisampled HDR, then ambient occlusion, then tone mapping and sRGB.
     this.#composer = new EffectComposer(
@@ -134,6 +135,11 @@ export class Studio {
   follow(tier: MotionTier): void {
     this.#occlusion.enabled = occlusion(tier);
     weatherFinishes(tier === "full");
+  }
+
+  /** Draws the lawn, or leaves it out: imported terrain lies in its place (ADR 20). */
+  showLawn(shown: boolean): void {
+    this.#lawn.visible = shown;
   }
 
   /** Fits the sun's shadow and the lawn's fade to the plot: `centre` in three.js's frame. */

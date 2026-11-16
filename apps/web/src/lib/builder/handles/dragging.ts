@@ -2,6 +2,7 @@
 // ray now, snapped. Pure; the drag slides in a level plane, the pitch in an upright one.
 import type { Pv, Scene } from "../pv.ts";
 import { slide as slideOpening, type Fitter } from "../wall-openings.ts";
+import { align } from "./aligning.ts";
 import { bodyOf, on, ridge, type Body, type Rect, type Round, type Target } from "./body.ts";
 import {
   clamp,
@@ -184,6 +185,12 @@ export interface Crate extends Fitter {
   readonly pv: Pick<Pv, "refit" | "glide">;
 }
 
+/** What a drag is given besides the scene: the crate for a chimney or an opening, and for the
+ * imported surroundings the turns their ring snaps to. */
+export interface Given extends Partial<Crate> {
+  readonly rests?: readonly number[] | undefined;
+}
+
 /** A chimney follows the pointer's level move along its roof face, where the crate lets it. */
 function climb({ scene, target, from, to }: Slide, pv: Pick<Pv, "glide">): Dragged | null {
   const chimneys = scene.chimneys ?? [];
@@ -221,8 +228,11 @@ export function drag(
   target: Target,
   grab: Grab,
   now: Ray,
-  crate?: Crate,
+  given?: Given,
 ): Dragged | null {
+  const { pv, laid } = given ?? {};
+  const crate = pv !== undefined && laid !== undefined ? { pv, laid } : undefined;
+
   // An opening slides in its wall's plane, not a level one.
   if (target.kind === "opening") {
     return crate !== undefined &&
@@ -240,6 +250,10 @@ export function drag(
   const [from, to] = [level(start, grab.height), level(end, grab.height)];
 
   if (from === null || to === null) return null;
+
+  if (target.kind === "import") {
+    return align(scene, grab, [from, to], given?.rests);
+  }
 
   return levelled({ scene, target, from, to }, grab, crate);
 }

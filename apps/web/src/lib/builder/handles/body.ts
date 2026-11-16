@@ -6,7 +6,16 @@ import { turn, world, type Triple } from "./frame.ts";
 
 /** The object the handles sit on. */
 export interface Target {
-  readonly kind: "block" | "obstacle" | "surface" | "fence" | "place" | "chimney" | "opening";
+  readonly kind:
+    | "block"
+    | "obstacle"
+    | "surface"
+    | "fence"
+    | "place"
+    | "chimney"
+    | "opening"
+    /** The imported surroundings, whole: index 0. */
+    | "import";
   readonly index: number;
 }
 
@@ -112,7 +121,8 @@ function blockIn(scene: Scene, index: number): Body | undefined {
   );
 }
 
-/** Each kind's footprint the handles drag; fences, chimneys and openings have none. */
+/** Each kind's footprint the handles drag; fences, chimneys, openings and the imported
+ * surroundings have none. */
 const BODIES: Readonly<
   Record<Target["kind"], ((scene: Scene, index: number) => Body | undefined) | undefined>
 > = {
@@ -127,6 +137,7 @@ const BODIES: Readonly<
   fence: undefined,
   chimney: undefined,
   opening: undefined,
+  import: undefined,
 };
 
 export function bodyOf(scene: Scene, { kind, index }: Target): Body | undefined {

@@ -17,6 +17,15 @@ export { masks } from "./around-ground.ts";
 /** Where the import lies in the scene's frame, and its turn in degrees clockwise from above. */
 export type Lie = Readonly<Record<"x" | "z" | "turn", number>>;
 
+/** What the crate stood around a scene's blocks: the document by `key`, under the scene's
+ * compass bearing `north`, lying at `lie`. */
+export interface Stood {
+  readonly around: Around;
+  readonly key: string;
+  readonly north: number;
+  readonly lie: Lie;
+}
+
 /** The drawn surroundings. */
 export interface Drawn {
   readonly group: Group;
@@ -49,6 +58,7 @@ function merged(
   );
   // A see-through building casts nothing.
   mesh.castShadow = mesh.receiveShadow = material.depthWrite;
+  mesh.userData["seeThrough"] = !material.depthWrite;
 
   return [mesh];
 }
@@ -137,6 +147,12 @@ export function buildingAt(part: Object3D, face: number | null | undefined): num
   const id: unknown = ids[face];
 
   return Number.isInteger(id) ? Number(id) : null;
+}
+
+/** Whether `part` is a hidden building, drawn see-through. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own objects.
+export function seeThrough(part: Object3D): boolean {
+  return part.userData["seeThrough"] === true;
 }
 
 /** Lays the surroundings drawn for the lie `stood` where `now` puts them, without drawing them

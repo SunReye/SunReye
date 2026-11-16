@@ -2,6 +2,7 @@
 // one pointer ray to another makes of the scene, snapped. Pure and three.js-free: rays and points
 // are in three.js's frame (x east, y up, z south, turned by the scene's north).
 import type { Footing, Modules, Scene } from "../pv.ts";
+import { importHandles } from "./aligning.ts";
 import { bodyOf, onWorld, ridge, type Rect, type Round, type Target } from "./body.ts";
 import { wallOf } from "../wall-openings.ts";
 import { turn, world, type Triple } from "./frame.ts";
@@ -13,7 +14,8 @@ export type { Ray, Triple } from "./frame.ts";
 export { drag, type Dragged, type Grab } from "./dragging.ts";
 
 /** What a handle drags: a wall arrow's width, depth or radius, an opening's height, the ridge's
- * pitch, the ring's turn, the footprint's place, or a fence's point. */
+ * pitch, the ring's turn, the footprint's place, or a point: a fence's, or the imported
+ * surroundings' centre. */
 export type Grip = "width" | "depth" | "height" | "radius" | "pitch" | "turn" | "move" | "point";
 
 export interface Handle {
@@ -162,6 +164,8 @@ export function handles(scene: Scene, target: Target, laid: Laid = NONE): Handle
   if (target.kind === "chimney") return chimneyHandles(laid.footings[target.index]);
 
   if (target.kind === "opening") return openingHandles(scene, target.index, laid);
+
+  if (target.kind === "import") return importHandles(scene);
 
   const body = bodyOf(scene, target);
 
