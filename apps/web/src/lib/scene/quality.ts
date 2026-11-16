@@ -22,7 +22,7 @@ export interface Look {
   readonly shadowMap: number;
   /** The ambient-occlusion pass. */
   readonly occlusion: boolean;
-  /** The finishes' large-scale variation. */
+  /** The finishes' weathering and variation: every level's but Niedrig's. */
   readonly weathering: boolean;
   /** Hoch's: contact-hardening shadows, relief, sky reflections and bloom. */
   readonly rich: boolean;
@@ -65,13 +65,13 @@ function measured({ capable: strong, steps }: Device): number {
 }
 
 /** Auto: the measured level, and on the lite and still tiers at most Mittel without its
- * occlusion and weathering, which those tiers drop (ADR 21). */
+ * occlusion pass, which those tiers drop (ADR 21). */
 function auto(device: Device): Look {
   const level = measured(device);
 
   if (device.tier === "full") return LOOKS[LEVELS[level] ?? "medium"];
 
-  return { ...LOOKS[LEVELS[Math.min(level, 1)] ?? "medium"], ...BARE };
+  return { ...LOOKS[LEVELS[Math.min(level, 1)] ?? "medium"], occlusion: false };
 }
 
 /** What is drawn for `choice` on this device: a chosen level as it is listed, on any tier. */

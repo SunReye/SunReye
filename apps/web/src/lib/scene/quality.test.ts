@@ -16,7 +16,7 @@ test("Niedrig draws at a pixel ratio of 1 from a 1024 shadow map, bare", () => {
   });
 });
 
-test("Mittel draws what the full tier drew: a 2048 map, occlusion, weathering, up to 1.5", () => {
+test("Mittel draws from a 2048 map with occlusion and varied finishes, up to 1.5", () => {
   expect(drawn("medium", strong)).toEqual({
     level: "medium",
     pixelRatio: 1.5,
@@ -60,16 +60,23 @@ test("Auto steps down a level per measured strain, never under Niedrig", () => {
   expect(drawn("auto", { ...weak, steps: 1 }).level).toBe("low");
 });
 
-test("the lite and still tiers cap Auto at Mittel and drop its occlusion and weathering", () => {
+test("the lite and still tiers cap Auto at Mittel and drop its occlusion; its finishes still vary", () => {
   for (const tier of ["lite", "still"] as const) {
     expect(drawn("auto", { ...strong, tier })).toMatchObject({
       level: "medium",
       shadowMap: 2048,
       occlusion: false,
-      weathering: false,
+      weathering: true,
       rich: false,
     });
   }
+});
+
+test("Niedrig alone draws each finish plain, on any tier", () => {
+  expect(drawn("auto", { ...weak, steps: 1, tier: "lite" })).toMatchObject({
+    level: "low",
+    weathering: false,
+  });
 });
 
 test("a chosen level stays where it is, whatever the device", () => {
