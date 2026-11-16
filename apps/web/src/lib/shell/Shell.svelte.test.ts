@@ -161,6 +161,19 @@ test("Controls appears only for admins", async () => {
     .toHaveAttribute("href", "#/controls");
 });
 
+test("the rail lists Explore after Controls", async () => {
+  await page.viewport(1280, 800);
+  const screen = await render(Shell, { shell: "rail", current: "/", admin: true, goto, children });
+  const rail = screen.getByRole("navigation", { name: "Hauptnavigation" });
+
+  const routes = rail
+    .getByRole("link")
+    .elements()
+    .map((link) => link.getAttribute("href"));
+
+  expect(routes.indexOf("#/explore")).toBe(routes.indexOf("#/controls") + 1);
+});
+
 test("the shown route is marked current", async () => {
   await page.viewport(1280, 800);
 
