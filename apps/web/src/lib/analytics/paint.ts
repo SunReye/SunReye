@@ -102,6 +102,17 @@ export function paintHeat(canvas: HTMLCanvasElement, what: Painting): () => void
     painter.draw(what);
   };
 
+  const stop = repainted(canvas, redraw);
+
+  return () => {
+    stop();
+    painter.stop();
+  };
+}
+
+/** Calls `redraw` now and when the canvas' size or the theme changes, until the returned stop. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- it is observed.
+export function repainted(canvas: HTMLCanvasElement, redraw: () => void): () => void {
   const sizes = new ResizeObserver(redraw);
   const theme = new MutationObserver(redraw);
 
@@ -115,6 +126,5 @@ export function paintHeat(canvas: HTMLCanvasElement, what: Painting): () => void
   return () => {
     sizes.disconnect();
     theme.disconnect();
-    painter.stop();
   };
 }
