@@ -230,6 +230,14 @@ impl Store {
             .collect())
     }
 
+    /// Whether `device`'s series `name` is a status or a held value; false without history.
+    pub(super) fn carries_named(&self, device: DeviceId, name: &str) -> Result<bool, Error> {
+        match lookup(&self.db, device, name)? {
+            Some((series, _)) => self.carries(device, series),
+            None => Ok(false),
+        }
+    }
+
     /// Whether `series` is a status or a held value. Read from storage, so it holds for a
     /// device that is removed or whose profile is gone (ADR 3).
     fn carries(&self, device: DeviceId, series: i64) -> Result<bool, Error> {

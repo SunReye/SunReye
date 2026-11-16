@@ -755,6 +755,16 @@ impl Reader {
         .await?
     }
 
+    /// Whether `series` is a status or a held value, whose reads carry the last value forward
+    /// (ADR 3); false for a series without history.
+    ///
+    /// # Errors
+    /// The file cannot be read.
+    pub async fn carries(&self, device: DeviceId, series: &Series) -> Result<bool, Error> {
+        let name = series.to_string();
+        request(&self.0, |reply| Request::Carries(device, name, reply)).await?
+    }
+
     /// Every stored forecast of `series` with a target from `from` to before `to`, by target,
     /// then issue.
     ///

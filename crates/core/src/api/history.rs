@@ -85,8 +85,7 @@ struct Point {
     start: String,
     /// RFC 3339, UTC.
     end: String,
-    /// The value weighted by the time it held between `start` and `end`; for a status or a held
-    /// value in an `hour` or a `day`, the last value it held.
+    /// The value weighted by the time it held between `start` and `end`.
     mean: f64,
 }
 
@@ -119,7 +118,14 @@ pub async fn history(
         range,
         now: clock(),
     };
-    let history = if span <= RAW_SPAN {
+    let carries = read
+        .reader
+        .carries(read.device, &read.series)
+        .await
+        .map_err(internal)?;
+    let history = if carries {
+        read.held().await?
+    } else if span <= RAW_SPAN {
         read.short().await?
     } else {
         read.rolled_up(span).await?
@@ -145,16 +151,7 @@ impl Read {
         let points = self.change_points(window.clone()).await?;
         let raw = intervals(&points, range.start..range.end.min(now));
         if raw.len() <= MAX_POINTS {
-            let points = raw.iter().map(|&(start, end, mean)| Point {
-                start: rfc3339(start),
-                end: rfc3339(end),
-                mean,
-            });
-            return Ok(History {
-                tier: Tier::Raw,
-                width: None,
-                points: points.collect(),
-            });
+            return Ok(raw_history(&raw));
         }
         let intervals = intervals(&points, window.start..window.end.min(now));
         Ok(History {
@@ -162,6 +159,18 @@ impl Read {
             width: Some(MINUTE.as_secs()),
             points: buckets(&intervals, window.start, MINUTE),
         })
+    }
+
+    /// A status's or held value's raw intervals at any range, at most 1,500: they have no
+    /// rollups (ADR 3).
+    async fn held(&self) -> Result<History, Problem> {
+        let range = &self.range;
+        let points = self.change_points(range.clone()).await?;
+        let raw = intervals(&points, range.start..range.end.min(self.now));
+        if raw.len() > MAX_POINTS {
+            return Err(RANGE);
+        }
+        Ok(raw_history(&raw))
     }
 
     /// Hourly or daily rollups; the hour in progress is read from change points (ADR 3).
@@ -201,8 +210,22 @@ impl Read {
     }
 }
 
-/// The rollups that end after `from`, as their means, or the value a status or held value
-/// carried. A counter's rollup has no mean.
+/// Intervals as the `raw` tier.
+fn raw_history(raw: &[Interval]) -> History {
+    let points = raw.iter().map(|&(start, end, mean)| Point {
+        start: rfc3339(start),
+        end: rfc3339(end),
+        mean,
+    });
+    History {
+        tier: Tier::Raw,
+        width: None,
+        points: points.collect(),
+    }
+}
+
+/// The rollups that end after `from`, as their means. A counter's rollup has no mean; a status
+/// or held value is read raw, never rolled up.
 fn rolled(rollups: &[Rollup], from: SystemTime) -> Result<Vec<Point>, Problem> {
     rollups
         .iter()
@@ -213,12 +236,8 @@ fn rolled(rollups: &[Rollup], from: SystemTime) -> Result<Vec<Point>, Problem> {
                 end: rfc3339(r.end),
                 mean,
             }),
-            Aggregate::Held { value } => Ok(Point {
-                start: rfc3339(r.start),
-                end: rfc3339(r.end),
-                mean: value,
-            }),
             Aggregate::Counter { .. } => Err(COUNTER),
+            Aggregate::Held { .. } => Err(RANGE),
         })
         .collect()
 }
