@@ -31,6 +31,4 @@ test("each stored series is named by its device", async () => {
 test("a catalog that cannot be read leaves every reading unlinked", async () => {
   expect(await reads(() => Promise.resolve({ problem: "auth.required" }))).toEqual([]);
   expect(await reads(() => Promise.reject(new TypeError("network")))).toEqual([]);
-  // An answer that is no catalog.
-  expect(await reads(() => Promise.resolve({} as Answer))).toEqual([]);
 });

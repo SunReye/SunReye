@@ -8,9 +8,11 @@ import type { Range } from "../range/range.ts";
 import { seriesTable, type Table } from "./csv.ts";
 import { axisOf, sampleAt, tickDigits, valueDigits, type Axis, type Sample } from "./curve.ts";
 import type { Lane, Lanes, LaneSeries } from "./lanes.ts";
-import type { Chosen } from "./picker.ts";
 import { expired, type Reading } from "./read.ts";
 import { layout, yOf, type LaneBox, type LaneScene } from "./scene.ts";
+
+/** A chosen series, as the lanes hold it. */
+type Chosen = LaneSeries["chosen"];
 
 /** The lanes to draw and each drawn series' reading. */
 export interface Loaded {

@@ -85,6 +85,7 @@ test("a status overlaid names each period's state, as the sheet's Readings do", 
   const { screen } = await show(
     "mode=overlay&s=1:inverter.status&range=day&at=2026-11-10&vs=2026-11-09",
   );
+
   const rows = screen
     .getByRole("region", { name: "Überlagern" })
     .getByRole("list", { name: /über die Zeiträume$/u })

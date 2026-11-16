@@ -133,6 +133,7 @@ export function foldTable(
     }));
 
   const bar = { head: headOf(chosen), cells: cellsOf((row) => barOf(row, counter)) };
+
   const extremes = counter
     ? []
     : [
