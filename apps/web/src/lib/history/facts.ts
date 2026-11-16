@@ -8,7 +8,10 @@ import { layoutStrings } from "../live/plant-facts.ts";
 import { dayOfIso } from "../range/calendar.ts";
 
 export type FactsCore = Readonly<
-  Pick<Core, "layout" | "capabilities" | "statistics" | "payback" | "corrections" | "moduleTypes">
+  Pick<
+    Core,
+    "layout" | "capabilities" | "statistics" | "records" | "payback" | "corrections" | "moduleTypes"
+  >
 >;
 
 export interface Facts {
@@ -25,38 +28,29 @@ export interface Facts {
   readonly peaks: ReadonlyMap<number, number>;
 }
 
-const DAY = 86_400_000;
-
+/** Every registered device's published series: the core lists no computed device (ADR 9). */
 async function series(core: FactsCore): Promise<readonly string[]> {
   const caps = await core.capabilities();
 
-  return "devices" in caps ? (caps.devices[String(PLANT)]?.series ?? []) : [];
+  return "devices" in caps ? Object.values(caps.devices).flatMap((d) => d.series) : [];
 }
 
-/** The first month with history, then its first day. */
+/**
+ * The first day of the oldest recorded year. A year is read with a day's margin at each end, for
+ * the plant's offset from UTC, which stays under the core's longest range (ADR 9).
+ */
 async function since(core: FactsCore): Promise<number | null> {
-  const now = new Date();
+  const records = await core.records();
+  const year = "years" in records ? records.years.at(-1)?.year : undefined;
 
-  const months = await core.statistics(
-    PLANT,
-    "load.power",
-    "month",
-    new Date(now.getTime() - 1498 * DAY),
-    now,
-  );
-
-  const month = "points" in months ? months.points[0] : undefined;
-
-  if (month === undefined) return null;
-
-  const from = new Date(month.start);
+  if (year === undefined) return null;
 
   const read = await core.statistics(
     PLANT,
     "load.power",
     "day",
-    from,
-    new Date(Math.min(now.getTime(), from.getTime() + 32 * DAY)),
+    new Date(Date.UTC(year - 1, 11, 31)),
+    new Date(Date.UTC(year + 1, 0, 2)),
   );
 
   const first = "points" in read ? read.points[0] : undefined;

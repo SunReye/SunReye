@@ -6,7 +6,6 @@ import { iso } from "../range/calendar.ts";
 import StatisticsScreen from "./StatisticsScreen.svelte";
 import { at, rollups, series, TODAY } from "./statistics.series.ts";
 
-const PLANT = "4294967294";
 const H = 3_600_000;
 const DAY = 24 * H;
 
@@ -25,7 +24,7 @@ const WIRING = {
 };
 
 export interface Plant {
-  /** Series the plant device publishes beside its powers. */
+  /** The inverter publishes a battery's power beside its own. */
   battery: boolean;
   /** Days since recording began. */
   age: number;
@@ -191,7 +190,8 @@ const READS = new Map<string, (q: Query) => Response>(
     capabilities: () =>
       Response.json({
         devices: {
-          [PLANT]: {
+          // The core lists registered devices only, never the plant.
+          "1": {
             series: [
               "pv.power",
               "load.power",
