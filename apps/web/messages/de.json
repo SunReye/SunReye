@@ -1167,5 +1167,20 @@
   "explore_no_match": "Keine Reihe passt zu „{query}“.",
   "explore_catalog_error": "Die Reihen konnten nicht geladen werden.",
   "explore_catalog_empty": "Noch ist keine Reihe aufgezeichnet.",
-  "explore_pending": "Das Diagramm dieser Ansicht folgt."
+  "explore_pending": "Das Diagramm dieser Ansicht folgt.",
+  "explore_full_series": "Ein Diagramm fasst 6 Reihen. Entferne eine, um eine andere zu wählen.",
+  "explore_full_lanes": "Ein Diagramm fasst 4 Bahnen, eine je Einheit. Wählbar bleiben Reihen der gezeichneten Einheiten.",
+  "explore_left": "Nicht gezeichnet: {names}. Ein Diagramm fasst 6 Reihen in 4 Bahnen, eine je Einheit.",
+  "explore_absent": "Kein gespeicherter Verlauf: {names}.",
+  "explore_hourly": "Von diesem Tag sind nur Stundenwerte aufbewahrt.",
+  "explore_expired": "Zustände und gehaltene Werte reichen nicht so weit zurück.",
+  "explore_failed": "Nicht geladen: {names}.",
+  "explore_many": "Zu viele Wechsel in diesem Zeitraum: {names}. Wähle einen kürzeren.",
+  "explore_states": "Status",
+  "explore_no_unit": "ohne Einheit",
+  "explore_lane": "Bahn {unit}: {series}",
+  "explore_series_chart": "Reihen über die Zeit",
+  "explore_chart_keys": "{chart}. Pfeiltasten bewegen den Zeiger, Umschalt und Pfeiltasten wählen einen Bereich, Eingabe öffnet ihn.",
+  "explore_chart_unread": "Ohne die Liste der Reihen lässt sich das Diagramm nicht zeichnen.",
+  "explore_latest": "zuletzt"
 }
