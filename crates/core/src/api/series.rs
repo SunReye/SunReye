@@ -1,8 +1,7 @@
 //! The series catalog (ADR 22, ADR 9): every device with stored history, present or removed, and
 //! its stored series.
 
-use std::collections::BTreeMap;
-use std::time::SystemTime;
+use std::collections::{BTreeMap, BTreeSet};
 
 use axum::Json;
 use axum::extract::State;
@@ -10,9 +9,10 @@ use serde::Serialize;
 use sunreye_profile::RoleKind;
 use utoipa::ToSchema;
 
-use super::{Problem, ProblemDetails, internal};
+use super::{Problem, ProblemDetails, internal, rfc3339};
 use crate::bus::DeviceId;
-use crate::devices::Devices;
+use crate::devices::{Devices, Named};
+use crate::layout::{Layouts, Version};
 use crate::storage::{Catalogued, Reader};
 use crate::{plant, spot, tariff, weather};
 
@@ -45,6 +45,9 @@ struct CatalogSeries {
     kind: Option<SeriesKind>,
     /// Its symbol, such as `W`, as stored with its history (ADR 3); `null` when it has none.
     unit: Option<String>,
+    /// Whether a computed estimate writes it, such as a parallel string's `pv.string.power`
+    /// under any layout version (ADR 17), so it holds once the device is removed.
+    estimated: bool,
     /// The first stored instant, of a change point or a rollup's start, RFC 3339, UTC.
     first: String,
     /// The last stored instant, a gap's included, RFC 3339, UTC.
@@ -82,15 +85,26 @@ impl From<RoleKind> for SeriesKind {
     ),
 )]
 pub async fn catalog(
-    State((reader, devices)): State<(Reader, Devices)>,
+    State((reader, devices, layouts)): State<(Reader, Devices, Layouts)>,
 ) -> Result<Json<SeriesCatalog>, Problem> {
     let stored = reader.catalog().await.map_err(internal)?;
+    let estimated: BTreeSet<(u32, String)> = layouts
+        .versions()
+        .await
+        .map_err(internal)?
+        .iter()
+        .flat_map(Version::estimated)
+        .flat_map(|(device, ids)| {
+            ids.into_iter()
+                .map(move |id| (device, format!("pv.string.power[{id}]")))
+        })
+        .collect();
     let names: BTreeMap<u32, (String, bool)> = devices
         .names()
         .await
         .map_err(internal)?
         .into_iter()
-        .map(|(id, name, removed)| (id, (name, removed)))
+        .map(|Named { id, name, removed }| (id, (name, removed)))
         .collect();
     let mut listed: Vec<CatalogDevice> = Vec::new();
     for series in stored {
@@ -108,24 +122,20 @@ pub async fn catalog(
             });
         }
         if let Some(device) = listed.last_mut() {
-            device.series.push(view(series));
+            let estimated = estimated.contains(&(id, series.series.clone()));
+            device.series.push(view(series, estimated));
         }
     }
     Ok(Json(SeriesCatalog { devices: listed }))
 }
 
-fn view(stored: Catalogued) -> CatalogSeries {
+fn view(stored: Catalogued, estimated: bool) -> CatalogSeries {
     CatalogSeries {
         series: stored.series,
         kind: stored.kind.map(SeriesKind::from),
         unit: stored.unit,
+        estimated,
         first: rfc3339(stored.first),
         last: rfc3339(stored.last),
     }
-}
-
-fn rfc3339(time: SystemTime) -> String {
-    jiff::Timestamp::try_from(time)
-        .map(|t| t.to_string())
-        .unwrap_or_default()
 }

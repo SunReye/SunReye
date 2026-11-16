@@ -1,27 +1,40 @@
 // Fold mode's state (ADR 22): whether the series folds, the period from the hash route, and the
 // statistics read for the range, one call per fold.
 import type { Period } from "../api/core.ts";
-import { RangeData } from "../range/range-data.svelte.ts";
 import { foldTable } from "./csv.ts";
-import { FOLD_PARAM, foldOf, isCounter, periodOf, periodsOf, rowsOf } from "./fold.ts";
-import type { ModeProps } from "./mode.ts";
-import { same } from "./view.ts";
+import {
+  FOLD_PARAM,
+  foldOf,
+  isCounter,
+  periodOf,
+  periodsOf,
+  rowsOf,
+  type FoldRow,
+} from "./fold.ts";
+import { ModeView } from "./mode-view.svelte.ts";
+import { same, type SeriesRef } from "./view.ts";
 
-/** What the fold reads of its mode's contract. */
-export type FoldInput = Pick<ModeProps, "core" | "route" | "series" | "catalog" | "plots">;
+/** One fold's read: whose and by which period, and its rows, or that it was refused. */
+export interface Folded {
+  readonly ref: SeriesRef;
+  readonly period: Period;
+  readonly zone: string;
+  /** The retry it was read on. */
+  readonly attempt: number;
+  readonly from: number;
+  readonly to: number;
+  readonly failed: boolean;
+  readonly counter: boolean;
+  readonly rows: readonly FoldRow[];
+}
 
-export class Fold {
-  readonly #input: () => FoldInput;
+export class Fold extends ModeView<Folded | null> {
+  readonly state = $derived.by(() => foldOf(this.chosen, this.input().catalog));
 
-  /** A mode of one series takes the first. */
-  readonly chosen = $derived.by(() => this.#input().series[0]!);
-
-  readonly state = $derived.by(() => foldOf(this.chosen, this.#input().catalog));
-
-  readonly periods = $derived.by(() => periodsOf(this.#input().route.range));
+  readonly periods = $derived.by(() => periodsOf(this.input().route.range));
 
   readonly period: Period = $derived.by(() => {
-    const { route } = this.#input();
+    const { route } = this.input();
 
     return periodOf(route.range, route.params);
   });
@@ -29,38 +42,24 @@ export class Fold {
   /** Raised to read again after a refusal. */
   #again = $state(0);
 
-  readonly #data;
-
   /** What was read, while it is still this series' fold by this period; null until then. */
   readonly got = $derived.by(() => {
-    const read = this.#data.current?.data;
+    const read = this.data.current?.data;
 
     return read && same(read.ref, this.chosen.ref) && read.period === this.period ? read : null;
   });
 
   /** The bars, under the range they were read for. */
   readonly table = $derived.by(() => {
-    const [range, got] = [this.#data.current?.range, this.got];
+    const [range, got] = [this.data.current?.range, this.got];
 
     if (!range || !got || got.failed) return null;
 
     return foldTable(range, this.chosen, got.period, got.counter, got.rows);
   });
 
-  constructor(input: () => FoldInput) {
-    this.#input = input;
-
-    this.#data = new RangeData(
-      () => input().route,
-      (from, to) => this.#read(from, to),
-    );
-
-    // The export reads the plot while this pane stands.
-    $effect(() => input().plots(() => this.table));
-  }
-
-  async #read(from: Readonly<Date>, to: Readonly<Date>) {
-    const { core, route } = this.#input();
+  protected async load(from: Readonly<Date>, to: Readonly<Date>): Promise<Folded | null> {
+    const { core, route } = this.input();
 
     const [ref, period, kind, zone] = [
       this.chosen.ref,
@@ -93,7 +92,7 @@ export class Fold {
 
   /** Folds by another period, as a step back can undo; the range's own leaves the route. */
   setPeriod = (next: Period): void => {
-    const { route } = this.#input();
+    const { route } = this.input();
 
     route.patch({ [FOLD_PARAM]: next === this.periods.initial ? null : next }, true);
   };

@@ -3,7 +3,6 @@
 import type { Core } from "../api/core.ts";
 import { parseRange, rangeParams } from "../range/params.ts";
 import { RangeRoute, type Go } from "../range/route.svelte.ts";
-import type { Table } from "./csv.ts";
 import { overlayRange } from "./overlay.ts";
 import { chosenOf, pickerOf, type Chosen, type PickerDevice } from "./picker.ts";
 import {
@@ -18,9 +17,7 @@ import {
 } from "./view.ts";
 
 /** What the screen and its charts read. */
-export type ExploreCore = Readonly<
-  Pick<Core, "timezone" | "series" | "capabilities" | "history" | "statistics">
->;
+export type ExploreCore = Readonly<Pick<Core, "timezone" | "series" | "history" | "statistics">>;
 
 export type CatalogState = "loading" | "ready" | "failed";
 
@@ -29,10 +26,15 @@ export interface ExploreInput {
   /** The hash route's query. */
   readonly params: URLSearchParams;
   readonly go: Go;
+  /** Steps back one history entry, as the browser's back does. */
+  readonly back: () => void;
 }
 
 export class Explore {
   readonly #input: () => ExploreInput;
+
+  /** Whether the open picker is a step this screen pushed: closing it then goes back over it. */
+  #opened = false;
 
   /** Undefined while the core answers, and after it refused. */
   #catalog = $state.raw<readonly PickerDevice[]>();
@@ -64,13 +66,6 @@ export class Explore {
     return own;
   });
 
-  // Which pane named its plot last. Not state: on a switch of mode a leaving pane has read the
-  // state as still its own after the arriving pane wrote it, and cleared the new one's.
-  #pane: (() => Table | null) | null = null;
-
-  /** What the open pane plotted, as it reads it now. */
-  #plotted = $state.raw<(() => Table | null) | null>(null);
-
   readonly route: RangeRoute;
 
   readonly view: ExploreView = $derived.by(() => viewOf(this.route.params));
@@ -95,7 +90,7 @@ export class Explore {
     return this.#catalog === undefined ? "loading" : "ready";
   }
 
-  /** Reads the catalog, and from the capabilities which series are estimates (ADR 17). */
+  /** Reads the catalog. */
   load = async (): Promise<void> => {
     const { core } = this.#input();
 
@@ -103,9 +98,7 @@ export class Explore {
     this.#failed = false;
 
     // An unreachable core rejects; a refusal answers with a problem.
-    const [catalog, caps] = await Promise.all([core.series(), core.capabilities()]).catch(
-      () => [{ problem: "network" }, { problem: "network" }] as const,
-    );
+    const catalog = await core.series().catch(() => ({ problem: "network" }) as const);
 
     if ("problem" in catalog) {
       this.#failed = true;
@@ -113,26 +106,7 @@ export class Explore {
       return;
     }
 
-    this.#catalog = pickerOf(catalog, "devices" in caps ? caps.devices : {});
-  };
-
-  /** The plotted points to export; null while nothing is drawn. */
-  get table(): Table | null {
-    return this.#plotted?.() ?? null;
-  }
-
-  /** A pane names what it plots, and takes that back as it leaves. */
-  plots = (read: () => Table | null): (() => void) => {
-    this.#pane = read;
-    this.#plotted = read;
-
-    return () => {
-      // Another mode's pane may stand already.
-      if (this.#pane !== read) return;
-
-      this.#pane = null;
-      this.#plotted = null;
-    };
+    this.#catalog = pickerOf(catalog);
   };
 
   isChosen = (ref: SeriesRef): boolean => this.view.series.some((r) => same(r, ref));
@@ -144,6 +118,7 @@ export class Explore {
 
   /** A pick in the drawer: it closes on its own entry, so back undoes the pick and the opening. */
   choose = (ref: SeriesRef): void => {
+    this.#opened = false;
     this.route.patch({ s: seriesParam(toggled(this.view.series, ref)), pick: null });
   };
 
@@ -159,10 +134,20 @@ export class Explore {
 
   /** Opens the picker as a step of its own: back closes it. */
   pick = (): void => {
+    this.#opened = true;
     this.route.patch({ pick: "1" }, true);
   };
 
+  /** Closed without a pick: back over the step that opened it, or, opened by address, in place. */
   closePicker = (): void => {
-    if (this.view.picking) this.route.patch({ pick: null });
+    if (!this.view.picking) return;
+
+    const { params, back } = this.#input();
+    const pushed = this.#opened && params.get("pick") === "1";
+
+    this.#opened = false;
+
+    if (pushed) back();
+    else this.route.patch({ pick: null });
   };
 }

@@ -15,7 +15,7 @@ use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
 use super::{COUNTERS, Topologies, Version, energy, in_force, residual};
-use crate::api::{Code, INTERNAL, Problem, ProblemDetails, internal};
+use crate::api::{Code, INTERNAL, Problem, ProblemDetails, internal, rfc3339};
 use crate::bus::{DeviceId, Series};
 use crate::storage::{Aggregate, Reader, Tier};
 
@@ -178,10 +178,4 @@ impl Rollups {
 fn instant(text: &str) -> Result<SystemTime, Problem> {
     let instant: jiff::Timestamp = text.parse().map_err(|_| QUERY)?;
     Ok(instant.into())
-}
-
-fn rfc3339(time: SystemTime) -> String {
-    jiff::Timestamp::try_from(time)
-        .map(|t| t.to_string())
-        .unwrap_or_default()
 }

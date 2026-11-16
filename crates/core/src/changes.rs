@@ -132,10 +132,7 @@ pub(crate) fn seconds(time: SystemTime) -> i64 {
 }
 
 pub(crate) fn rfc3339(seconds: i64) -> String {
-    let time = UNIX_EPOCH + Duration::from_secs(u64::try_from(seconds).unwrap_or(0));
-    jiff::Timestamp::try_from(time)
-        .map(|t| t.to_string())
-        .unwrap_or_default()
+    crate::api::rfc3339(UNIX_EPOCH + Duration::from_secs(u64::try_from(seconds).unwrap_or(0)))
 }
 
 /// One entry of the change log.

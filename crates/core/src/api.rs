@@ -191,7 +191,11 @@ fn stored_routes(api: &Api) -> OpenApiRouter {
             )),
         OpenApiRouter::new()
             .routes(routes!(series::catalog))
-            .with_state((api.history.clone(), api.devices.clone())),
+            .with_state((
+                api.history.clone(),
+                api.devices.clone(),
+                api.layouts.clone(),
+            )),
         OpenApiRouter::new()
             .routes(routes!(battery::capacity))
             .with_state((api.history.clone(), Clock::clone(&api.clock))),
@@ -403,6 +407,14 @@ pub const INTERNAL: Problem = Problem {
 pub fn internal(cause: impl std::fmt::Display) -> Problem {
     tracing::error!("internal: {cause}");
     INTERNAL
+}
+
+/// An instant as the API writes it: RFC 3339, UTC.
+#[must_use]
+pub fn rfc3339(time: std::time::SystemTime) -> String {
+    jiff::Timestamp::try_from(time)
+        .map(|t| t.to_string())
+        .unwrap_or_default()
 }
 
 /// A refusal as `application/problem+json` (RFC 9457): a stable code and no localised text.

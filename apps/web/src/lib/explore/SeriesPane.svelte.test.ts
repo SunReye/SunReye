@@ -93,6 +93,35 @@ test("the legend reads the latest values, and those under the pointer", async ()
   expect(page.getByRole("tooltip").query()).toBeNull();
 });
 
+test("a status lane's legend names the state, as the sheet's Readings do", async () => {
+  await desk();
+
+  plant.history = ({ from, to }) => {
+    const mid = new Date((from + to) / 2).toISOString();
+
+    return {
+      tier: "raw",
+      points: [
+        { start: new Date(from).toISOString(), end: mid, mean: 0 },
+        { start: mid, end: new Date(to).toISOString(), mean: 1 },
+      ],
+    };
+  };
+
+  const { screen } = await show("s=1:inverter.status");
+  const chart = screen.getByRole("region", { name: "Reihen" });
+  const legend = chart.getByRole("list", { name: "Reihen über die Zeit" });
+  const plot = chart.getByRole("group");
+
+  await expect.element(legend.getByText("Normal", { exact: true })).toBeVisible();
+
+  const box = plot.element().getBoundingClientRect();
+
+  await userEvent.hover(plot, { position: { x: box.width * 0.25, y: box.height / 2 } });
+
+  await expect.element(legend.getByText("Standby", { exact: true })).toBeVisible();
+});
+
 test("a mouse drag narrows the range to the hours it crossed", async () => {
   await desk();
 

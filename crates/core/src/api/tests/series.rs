@@ -86,6 +86,7 @@ async fn a_registered_devices_stored_series_are_listed_with_their_bounds() {
                     "series": "pv.mppt.power[2]",
                     "kind": "measurement",
                     "unit": "W",
+                    "estimated": false,
                     "first": instant(0),
                     "last": instant(25),
                 }],
@@ -175,6 +176,7 @@ async fn a_series_is_bounded_by_its_imported_days_before_its_readings() {
                     "series": "grid.power",
                     "kind": "measurement",
                     "unit": "W",
+                    "estimated": false,
                     "first": "2026-08-25T00:00:00Z",
                     "last": instant(60),
                 }],
@@ -241,6 +243,65 @@ async fn an_unregistered_device_is_removed_unless_computed() {
             (tariff::DEVICE.0, false),
             (plant::DEVICE.0, false),
             (weather::DEVICE.0, false),
+        ]
+    );
+}
+
+/// A parallel string's `pv.string.power` is a computed estimate (ADR 17), even once its inverter is
+/// removed; a string alone on its input is measured.
+#[tokio::test]
+async fn a_parallel_strings_power_is_marked_estimated_after_its_device_is_removed() {
+    use super::layout::{ids, string};
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let connection = core.connection(&set_cookie, &gateway()).await;
+    let device = core.deye(&set_cookie, &connection, 0).await;
+    let module_type = core.module_type(&set_cookie).await;
+    let layout = core
+        .put_layout(
+            &set_cookie,
+            "2026-01-01T00:00:00Z",
+            &[
+                string(None, "south", &module_type, 1, 0.0),
+                string(None, "north", &module_type, 1, 180.0),
+                string(None, "second", &module_type, 2, 0.0),
+            ],
+        )
+        .await;
+    let ids = ids(&layout);
+    let id = DeviceId(u32::try_from(device.as_u64().unwrap()).unwrap());
+    let parallel = u32::try_from(ids[0].1).unwrap();
+    let alone = u32::try_from(ids[2].1).unwrap();
+    core.stored(id, ("pv.mppt.power", Some(1)), &[0]).await;
+    // Each a day after the last flush, which a late row would precede.
+    core.stored(id, ("pv.string.power", Some(parallel)), &[86_400])
+        .await;
+    core.stored(id, ("pv.string.power", Some(alone)), &[2 * 86_400])
+        .await;
+    let (status, _) = core
+        .ask(&set_cookie, delete(&format!("/api/v1/devices/{device}")))
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    let body = core.catalog(&set_cookie).await;
+
+    let estimated: Vec<(String, Value)> = body["devices"][0]["series"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| {
+            (
+                s["series"].as_str().unwrap().to_owned(),
+                s["estimated"].clone(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        estimated,
+        vec![
+            ("pv.mppt.power[1]".to_owned(), json!(false)),
+            (format!("pv.string.power[{parallel}]"), json!(true)),
+            (format!("pv.string.power[{alone}]"), json!(false)),
         ]
     );
 }

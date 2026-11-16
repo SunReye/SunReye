@@ -263,6 +263,7 @@ test("the series catalog lists each device with stored history", async () => {
         series: "pv.mppt.power[2]",
         kind: "measurement",
         unit: "W",
+        estimated: false,
         first: "2026-08-25T00:00:00Z",
         last: "2026-08-26T12:01:00Z",
       },

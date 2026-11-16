@@ -77,7 +77,7 @@ impl Core {
     }
 }
 
-fn ids(layout: &Value) -> Vec<(String, u64)> {
+pub(super) fn ids(layout: &Value) -> Vec<(String, u64)> {
     layout["strings"]
         .as_array()
         .unwrap()

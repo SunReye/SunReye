@@ -1,4 +1,4 @@
-// The Explore screen tests' fake core: a plant in UTC with its series catalog and capabilities.
+// The Explore screen tests' fake core: a plant in UTC with its series catalog.
 import { render } from "vitest-browser-svelte";
 import { PLANT, WEATHER } from "../api/computed-devices.ts";
 import {
@@ -12,8 +12,8 @@ import ExploreScreen from "./ExploreScreen.svelte";
 
 const SPAN = { first: "2026-01-01T00:00:00Z", last: "2026-11-15T12:00:00Z" };
 
-const measured = (series: string, unit: string) =>
-  ({ series, unit, kind: "measurement", ...SPAN }) as const;
+const measured = (series: string, unit: string, estimated = false) =>
+  ({ series, unit, kind: "measurement", estimated, ...SPAN }) as const;
 
 const DEVICES: readonly CatalogDevice[] = [
   {
@@ -29,11 +29,11 @@ const DEVICES: readonly CatalogDevice[] = [
     series: [
       measured("pv.power", "W"),
       measured("pv.mppt.power[2]", "W"),
-      measured("pv.string.power[1]", "W"),
+      measured("pv.string.power[1]", "W", true),
       measured("extra.fan", "none"),
       measured("grid.voltage", "V"),
-      { series: "pv.energy.total", unit: "kWh", kind: "counter", ...SPAN },
-      { series: "inverter.status", unit: null, kind: "status", ...SPAN },
+      { series: "pv.energy.total", unit: "kWh", kind: "counter", estimated: false, ...SPAN },
+      { series: "inverter.status", unit: null, kind: "status", estimated: false, ...SPAN },
     ],
   },
   { id: 5, name: "Alter Speicher", removed: true, series: [measured("battery.soc", "%")] },
@@ -145,31 +145,45 @@ function transport(): Transport {
         return Promise.resolve(Response.json(plant[asked.read](asked)));
       }
 
-      if (read === "capabilities")
-        return Promise.resolve(
-          Response.json({
-            devices: {
-              "1": { series: [], estimated: ["pv.string.power[1]"], settings: [], writes: false },
-            },
-          }),
-        );
-
       return Promise.resolve(Response.json({ status: 404, code: "not.found" }, { status: 404 }));
     },
   };
 }
 
-/** The screen at `query`, and every route change it makes. */
+type Patch = Readonly<Record<string, string | null>>;
+
+/**
+ * The screen at `query`, every route change it makes, and its history: each entry's query, the
+ * last the one shown, as the router would keep them.
+ */
 export async function show(query = "") {
-  const went: Readonly<{ patch: Readonly<Record<string, string | null>>; push: boolean }>[] = [];
+  const went: Readonly<{ patch: Patch; push: boolean }>[] = [];
+  const entries = [new URLSearchParams(query)];
 
   const screen = await render(ExploreScreen, {
     core: connect(transport()),
-    params: new URLSearchParams(query),
-    go: (patch: Readonly<Record<string, string | null>>, push: boolean) => {
+    params: entries[0]!,
+    go: (patch: Patch, push: boolean) => {
       went.push({ patch, push });
+
+      const next = new URLSearchParams(entries.at(-1));
+
+      for (const [k, v] of Object.entries(patch)) {
+        if (v === null) next.delete(k);
+        else next.set(k, v);
+      }
+
+      if (push) entries.push(next);
+      else entries[entries.length - 1] = next;
+
+      void screen.rerender({ params: next });
+    },
+    back: () => {
+      entries.pop();
+
+      void screen.rerender({ params: entries.at(-1) ?? new URLSearchParams() });
     },
   });
 
-  return { screen, went };
+  return { screen, went, entries };
 }

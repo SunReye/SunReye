@@ -13,7 +13,7 @@ use utoipa_axum::routes;
 
 use super::days::Costs;
 use super::{BAND, Band, DAY, Days, Schedule, Tariffs, Version, in_force};
-use crate::api::{Clock, Code, Problem, ProblemDetails, internal};
+use crate::api::{Clock, Code, Problem, ProblemDetails, internal, rfc3339};
 
 const BODY: Problem = Problem {
     status: StatusCode::BAD_REQUEST,
@@ -418,12 +418,6 @@ async fn costs(
         days,
         total: total.into(),
     }))
-}
-
-fn rfc3339(time: SystemTime) -> String {
-    jiff::Timestamp::try_from(time)
-        .map(|t| t.to_string())
-        .unwrap_or_default()
 }
 
 fn instant(text: &str) -> Option<SystemTime> {

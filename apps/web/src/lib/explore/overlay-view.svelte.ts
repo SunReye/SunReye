@@ -4,8 +4,7 @@ import { flowColour, roleFlow } from "../energy-colours.ts";
 import { m } from "../paraglide/messages.js";
 import { getLocale } from "../paraglide/runtime.js";
 import { iso } from "../range/calendar.ts";
-import { RangeData } from "../range/range-data.svelte.ts";
-import type { ModeProps } from "./mode.ts";
+import { ModeView } from "./mode-view.svelte.ts";
 import {
   laneOf,
   overlayNotes,
@@ -35,7 +34,7 @@ const AROUND = 176;
 const PLOT_MIN = 160;
 
 /** The periods read, each with its reading drawn from the range's start. */
-interface Loaded {
+export interface Overlaid {
   readonly periods: readonly OverlayPeriod[];
   readonly readings: readonly Reading[];
 }
@@ -49,15 +48,10 @@ const PICKS: Readonly<Record<QuickPick["id"], (week: boolean) => string>> = {
   year: (week) => (week ? m.explore_overlay_year_week() : m.explore_overlay_year_day()),
 };
 
-export class OverlayView {
-  readonly #input: () => ModeProps;
-
-  /** A mode of one series takes the first. */
-  readonly chosen = $derived.by(() => this.#input().series[0]!);
-
+export class OverlayView extends ModeView<Overlaid | null> {
   /** Whether the catalog lists the series: only then is there anything to read. */
   readonly state: "pending" | "unstored" | "read" = $derived.by(() => {
-    if (this.#input().catalog !== "ready") return "pending";
+    if (this.input().catalog !== "ready") return "pending";
 
     return this.chosen.first === null ? "unstored" : "read";
   });
@@ -67,14 +61,14 @@ export class OverlayView {
   readonly #wanted = $derived.by(() => {
     const { ref, kind, first } = this.chosen;
 
-    return `${ref.device}:${ref.series}:${kind}:${first}:${this.#input().periods.join(",")}`;
+    return `${ref.device}:${ref.series}:${kind}:${first}:${this.input().periods.join(",")}`;
   });
 
   readonly #colour = $derived(flowColour(roleFlow(this.chosen.ref.series)));
 
   /** The range and the picked periods, as the route has them now. */
   readonly periods: readonly Shown[] = $derived.by(() => {
-    const { route, periods } = this.#input();
+    const { route, periods } = this.input();
     const { zone, cal } = route.place;
 
     return shownOf(periodsOf(zone, route.range, periods), cal, this.#colour);
@@ -82,7 +76,7 @@ export class OverlayView {
 
   /** The quick picks not drawn yet. */
   readonly picks: readonly Offered[] = $derived.by(() => {
-    const { route, periods } = this.#input();
+    const { route, periods } = this.input();
     const week = route.range.kind === "week";
 
     return picksOf(route.range)
@@ -94,13 +88,11 @@ export class OverlayView {
   readonly full = $derived(this.periods.length >= 5);
 
   /** The last day that can be picked, `2026-11-16`. */
-  readonly lastDay = $derived.by(() => iso(this.#input().route.place.cal.today));
-
-  readonly #data: RangeData<Loaded | null>;
+  readonly lastDay = $derived.by(() => iso(this.input().route.place.cal.today));
 
   /** What was read, as the route names it now; null while the catalog or the range is read. */
   readonly #rows = $derived.by((): readonly PeriodRow[] | null => {
-    const read = this.#data.current?.data;
+    const read = this.data.current?.data;
 
     if (!read) return null;
 
@@ -117,14 +109,14 @@ export class OverlayView {
   });
 
   readonly chart: Chart | null = $derived.by(() => {
-    const [got, rows] = [this.#data.current, this.#rows];
+    const [got, rows] = [this.data.current, this.#rows];
 
     if (!got || !rows) return null;
 
     const from = rows[0]!.period.from;
     const to = from + spanOf(rows.map((r: PeriodRow) => r.period));
-    const height = Math.max(this.#input().height - AROUND, PLOT_MIN);
-    const several = this.#input().series.length > 1;
+    const height = Math.max(this.input().height - AROUND, PLOT_MIN);
+    const several = this.input().series.length > 1;
 
     return {
       from,
@@ -142,14 +134,14 @@ export class OverlayView {
 
   /** Each shown period's points, on the range's clock. */
   readonly table = $derived.by(() => {
-    const [got, rows] = [this.#data.current, this.#rows];
+    const [got, rows] = [this.data.current, this.#rows];
 
     return got && rows ? periodsTable(got.range, this.chosen, rows) : null;
   });
 
   /** Writes an instant of the range as the plant's clock reads it; a week names its day. */
   readonly #clock = $derived.by(() => {
-    const { route } = this.#input();
+    const { route } = this.input();
 
     const options: Intl.DateTimeFormatOptions = {
       timeZone: route.place.zone,
@@ -162,19 +154,8 @@ export class OverlayView {
     return new Intl.DateTimeFormat(getLocale(), options);
   });
 
-  constructor(input: () => ModeProps) {
-    this.#input = input;
-    this.#data = new RangeData(
-      () => input().route,
-      () => this.#load(),
-    );
-
-    // The export reads the plot while this pane stands.
-    $effect(() => input().plots(() => this.table));
-  }
-
-  async #load(): Promise<Loaded | null> {
-    const { core, route, periods: picked } = this.#input();
+  protected async load(): Promise<Overlaid | null> {
+    const { core, route, periods: picked } = this.input();
 
     void this.#wanted;
 
@@ -211,18 +192,18 @@ export class OverlayView {
   }
 
   #pick(days: readonly string[] | null): void {
-    if (days) this.#input().route.patch({ vs: days.join(",") || null }, true);
+    if (days) this.input().route.patch({ vs: days.join(",") || null }, true);
   }
 
   /** Adds the period that holds `day`, as a step back can undo. */
   add = (day: string): void => {
-    const { route, periods } = this.#input();
+    const { route, periods } = this.input();
 
     this.#pick(added(route.range, periods, day));
   };
 
   remove = (period: OverlayPeriod): void => {
-    const { route, periods } = this.#input();
+    const { route, periods } = this.input();
 
     this.#pick(removed(route.range, periods, period));
   };

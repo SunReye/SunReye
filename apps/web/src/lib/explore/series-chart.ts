@@ -3,13 +3,16 @@
 import { m } from "../paraglide/messages.js";
 import type { Edge } from "../range/edges.ts";
 import { num } from "../range/format.ts";
+import { stateName } from "../roles.ts";
 import type { Range } from "../range/range.ts";
 import { seriesTable, type Table } from "./csv.ts";
 import { axisOf, sampleAt, tickDigits, valueDigits, type Axis, type Sample } from "./curve.ts";
 import type { Lane, Lanes, LaneSeries } from "./lanes.ts";
-import type { Chosen } from "./picker.ts";
 import { expired, type Reading } from "./read.ts";
 import { layout, yOf, type LaneBox, type LaneScene } from "./scene.ts";
+
+/** A chosen series, as the lanes hold it. */
+type Chosen = LaneSeries["chosen"];
 
 /** The lanes to draw and each drawn series' reading. */
 export interface Loaded {
@@ -142,9 +145,12 @@ export interface Figure {
   readonly extremes: string | null;
 }
 
-/** A sample as the legend writes it, by its lane's axis and unit. */
-export function written(lane: LaneView, s: Sample | null) {
+/** A sample of `series` as the legend writes it: a status by its state's name, as the sheet's
+ * Readings do, any other value by its lane's axis and unit. */
+export function written(lane: LaneView, series: string, s: Sample | null) {
   if (!s) return { value: "–", extremes: null };
+
+  if (lane.lane.states) return { value: stateName(series, s.v), extremes: null };
 
   const digits = lane.axis ? valueDigits(lane.axis) : 0;
   const unit = lane.lane.unit === null ? "" : ` ${lane.lane.unit}`;
@@ -170,7 +176,11 @@ export function figuresOf(lanes: readonly LaneView[], at: number | null): Figure
         colour: row.colour,
         label: `${estimated ? "≈ " : ""}${label}`,
         device,
-        ...written(lane, at === null ? (curve.samples.at(-1) ?? null) : sampleAt(curve, at)),
+        ...written(
+          lane,
+          ref.series,
+          at === null ? (curve.samples.at(-1) ?? null) : sampleAt(curve, at),
+        ),
       };
     }),
   );

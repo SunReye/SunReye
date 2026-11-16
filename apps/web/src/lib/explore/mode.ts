@@ -1,5 +1,5 @@
 // What each mode's chart is given (ADR 22): the chosen series as the catalog knows them, the range
-// and the overlay's periods. Series (#793), Overlay (#794) and Fold (#795) each fill their pane.
+// and the overlay's periods.
 import type { RangeRoute } from "../range/route.svelte.ts";
 import type { Table } from "./csv.ts";
 import type { CatalogState, ExploreCore } from "./explore.svelte.ts";
@@ -20,9 +20,10 @@ export interface ModeProps {
   periods: readonly string[];
   /** The chart's height in px. */
   height: number;
-  /**
-   * Names what the pane plotted, for the export: read on demand, null with no point drawn. The
-   * pane calls what it returns as it leaves.
-   */
-  plots: (read: () => Table | null) => () => void;
+}
+
+/** A pane's props: its mode's, and how the screen reads what it plotted, for the export. */
+export interface PaneProps extends ModeProps {
+  /** Set by the pane as it is built: what it plotted, null with no point drawn. */
+  plotted?: (() => Table | null) | undefined;
 }

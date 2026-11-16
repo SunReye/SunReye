@@ -64,29 +64,13 @@ impl Policy {
         Self {
             kind,
             unit: match unit {
-                Some(unit) => Some(symbol(unit)),
+                Some(unit) => Some(unit.symbol()),
                 None => None,
             },
             step,
             deadband,
             cadence,
         }
-    }
-}
-
-/// A profile unit's symbol, as profiles spell it.
-#[must_use]
-pub const fn symbol(unit: Unit) -> &'static str {
-    match unit {
-        Unit::Watt => "W",
-        Unit::KilowattHour => "kWh",
-        Unit::Volt => "V",
-        Unit::Ampere => "A",
-        Unit::Hertz => "Hz",
-        Unit::Percent => "%",
-        Unit::Celsius => "°C",
-        Unit::Hour => "h",
-        Unit::Dimensionless => "none",
     }
 }
 

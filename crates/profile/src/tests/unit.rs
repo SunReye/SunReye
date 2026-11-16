@@ -237,3 +237,20 @@ fn the_plants_shares_read_as_watts() {
     let units: Vec<Option<Unit>> = profile.quantities().iter().map(Quantity::unit).collect();
     assert_eq!(units, [Some(Unit::Watt); 6]);
 }
+
+#[test]
+fn a_units_symbol_is_its_profile_spelling() {
+    for unit in [
+        Unit::Watt,
+        Unit::KilowattHour,
+        Unit::Volt,
+        Unit::Ampere,
+        Unit::Hertz,
+        Unit::Percent,
+        Unit::Celsius,
+        Unit::Hour,
+        Unit::Dimensionless,
+    ] {
+        assert_eq!(json!(unit.symbol()), json!(unit));
+    }
+}

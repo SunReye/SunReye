@@ -5,14 +5,20 @@
   import PageTitle from "../components/page-title.svelte";
   import { m } from "../paraglide/messages.js";
   import RangeControl from "../range/RangeControl.svelte";
+  import type { Table } from "./csv.ts";
   import type { Explore } from "./explore.svelte.ts";
   import ModeSwitch from "./ModeSwitch.svelte";
   import { save } from "./save.ts";
   import { OVERLAY_KINDS } from "./overlay.ts";
 
-  let { x }: { x: Explore } = $props();
-
-  const table = $derived(x.table);
+  let {
+    x,
+    table,
+  }: {
+    x: Explore;
+    /** The open mode's plotted points; null while nothing is drawn. */
+    table: Table | null;
+  } = $props();
 </script>
 
 <header

@@ -80,7 +80,7 @@ function byOrder(a: Placed, b: Placed): number {
 const unitOf = (unit: string | null | undefined): string | null =>
   unit === undefined || unit === null || unit === "none" ? null : unit;
 
-function placed(device: number, stored: Listed["series"][number], estimated: boolean) {
+function placed(device: number, stored: Listed["series"][number]) {
   const { namespace, label, order } = describe(stored.series);
 
   const row: PickerSeries = {
@@ -88,7 +88,7 @@ function placed(device: number, stored: Listed["series"][number], estimated: boo
     label,
     unit: unitOf(stored.unit),
     kind: stored.kind ?? null,
-    estimated,
+    estimated: stored.estimated,
     first: stored.first,
     last: stored.last,
   };
@@ -96,11 +96,11 @@ function placed(device: number, stored: Listed["series"][number], estimated: boo
   return { namespace, order, row };
 }
 
-function groupsOf(device: Listed, estimated: readonly string[]): PickerGroup[] {
+function groupsOf(device: Listed): PickerGroup[] {
   const groups = new Map<string, Placed[]>();
 
   for (const stored of device.series) {
-    const { namespace, ...place } = placed(device.id, stored, estimated.includes(stored.series));
+    const { namespace, ...place } = placed(device.id, stored);
 
     groups.set(namespace, [...(groups.get(namespace) ?? []), place]);
   }
@@ -115,20 +115,14 @@ function groupsOf(device: Listed, estimated: readonly string[]): PickerGroup[] {
     }));
 }
 
-/**
- * The picker's devices and series.
- * @param capabilities per device id, the series that are estimates (ADR 17)
- */
-export function pickerOf(
-  catalog: readonly Listed[],
-  capabilities: Readonly<Record<string, { readonly estimated: readonly string[] } | undefined>>,
-): PickerDevice[] {
+/** The picker's devices and series. */
+export function pickerOf(catalog: readonly Listed[]): PickerDevice[] {
   return catalog
     .map((device: Listed) => ({
       id: device.id,
       name: nameOf(device.id, device.name),
       removed: device.removed,
-      groups: groupsOf(device, capabilities[device.id]?.estimated ?? []),
+      groups: groupsOf(device),
     }))
     .toSorted(
       (a: PickerDevice, b: PickerDevice) => rank(a.id) - rank(b.id) || a.name.localeCompare(b.name),

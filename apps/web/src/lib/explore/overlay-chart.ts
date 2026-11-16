@@ -80,10 +80,12 @@ export function periodFigures(
   const last = rows[0]?.reading.curve.samples.at(-1);
   const t = at ?? (last ? last.t1 - 1 : 0);
 
+  const series = lane.lane.series[0]?.chosen.ref.series ?? "";
+
   return rows.map((r: PeriodRow) =>
     Object.assign(
       { key: r.period.key, colour: r.period.colour, label: r.period.name, device: null },
-      written(lane, sampleAt(r.reading.curve, t)),
+      written(lane, series, sampleAt(r.reading.curve, t)),
     ),
   );
 }

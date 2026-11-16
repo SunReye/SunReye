@@ -6,7 +6,7 @@ use rusqlite::{Connection as Db, OptionalExtension, params};
 
 use super::{
     Addressed, Brokering, ChangeRefusal, Chosen, Connection, ConnectionDraft, Device, DeviceDraft,
-    Hosting, Polled, Publish, Reach, Reads, Transport, entry,
+    Hosting, Named, Polled, Publish, Reach, Reads, Transport, entry,
 };
 use crate::changes::{self, Action, Subject};
 use crate::http;
@@ -341,13 +341,19 @@ pub fn devices(db: &Db) -> rusqlite::Result<Vec<Device>> {
     .collect()
 }
 
-/// Every device's name, present or removed, by id: `(id, name, removed)`.
-pub fn names(db: &Db) -> rusqlite::Result<Vec<(u32, String, bool)>> {
+/// Every device's name, present or removed, by id.
+pub fn names(db: &Db) -> rusqlite::Result<Vec<Named>> {
     db.prepare(
         "SELECT id, name, 0 FROM device UNION ALL SELECT id, name, 1 FROM device_tombstone
          ORDER BY id",
     )?
-    .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+    .query_map([], |row| {
+        Ok(Named {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            removed: row.get(2)?,
+        })
+    })?
     .collect()
 }
 
