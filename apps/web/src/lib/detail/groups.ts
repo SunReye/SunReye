@@ -17,6 +17,7 @@
 // Not shown: battery.mode, a raw vendor code ADR 4 gives no values for, and every "*.today"
 // counter (ADR 4: days come from rollups).
 import { m } from "../paraglide/messages.js";
+import { stateName } from "../roles.ts";
 import { consumers, type MeasurementPoint } from "./consumers.ts";
 import { formatFigure } from "./figures.ts";
 import { kept, table, tabled, type Group, type Reader } from "./rows.ts";
@@ -105,12 +106,6 @@ export function string(read: Reader, strings: readonly PvString[], id: number): 
   ];
 }
 
-const STATUS = new Map([
-  [0, m.rd_status_standby],
-  [1, m.rd_status_normal],
-  [2, m.rd_status_fault],
-]);
-
 /** DC in, and the inverter's efficiency and own use while power goes through it. */
 function conversion(read: Reader): Group {
   // The profile's ratio reads 0 while nothing goes in.
@@ -133,7 +128,7 @@ export function inverter(read: Reader): Group[] {
     {
       title: m.rd_state(),
       rows: kept([
-        read.text("inverter.status", (v) => STATUS.get(v)?.() ?? String(v)),
+        read.text("inverter.status", (v) => stateName("inverter.status", v)),
         read.num("inverter.temperature", { unit: "°C", digits: 1 }),
       ]),
     },
@@ -216,13 +211,6 @@ export function house(read: Reader, plant: Reader, points: readonly MeasurementP
   ];
 }
 
-const MODES = new Map([
-  [0, m.rd_mode_off],
-  [1, m.rd_mode_now],
-  [2, m.rd_mode_minpv],
-  [3, m.rd_mode_pv],
-]);
-
 export function generator(read: Reader): Group[] {
   return [
     {
@@ -254,7 +242,7 @@ export function ev(read: Reader): Group[] {
       title: m.rd_session(),
       rows: kept([
         read.num("ev.session.energy", { unit: "kWh", digits: 1 }),
-        read.text("ev.mode", (v) => MODES.get(v)?.() ?? String(v)),
+        read.text("ev.mode", (v) => stateName("ev.mode", v)),
         read.text("ev.battery.boost", (v) => (v === 1 ? m.rd_on() : m.rd_off())),
       ]),
     },

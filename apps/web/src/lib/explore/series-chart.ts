@@ -3,6 +3,7 @@
 import { m } from "../paraglide/messages.js";
 import type { Edge } from "../range/edges.ts";
 import { num } from "../range/format.ts";
+import { stateName } from "../roles.ts";
 import type { Range } from "../range/range.ts";
 import { seriesTable, type Table } from "./csv.ts";
 import { axisOf, sampleAt, tickDigits, valueDigits, type Axis, type Sample } from "./curve.ts";
@@ -158,6 +159,13 @@ export function written(lane: LaneView, s: Sample | null) {
   };
 }
 
+/** A status names its state, as the sheet's Readings do; any other sample is written. */
+function shown(lane: LaneView, series: string, s: Sample | null) {
+  if (!lane.lane.states || !s) return written(lane, s);
+
+  return { value: stateName(series, s.v), extremes: null };
+}
+
 /** The legend's rows at instant `at`; null reads each series' latest value. */
 export function figuresOf(lanes: readonly LaneView[], at: number | null): Figure[] {
   return lanes.flatMap((lane) =>
@@ -170,7 +178,11 @@ export function figuresOf(lanes: readonly LaneView[], at: number | null): Figure
         colour: row.colour,
         label: `${estimated ? "≈ " : ""}${label}`,
         device,
-        ...written(lane, at === null ? (curve.samples.at(-1) ?? null) : sampleAt(curve, at)),
+        ...shown(
+          lane,
+          ref.series,
+          at === null ? (curve.samples.at(-1) ?? null) : sampleAt(curve, at),
+        ),
       };
     }),
   );

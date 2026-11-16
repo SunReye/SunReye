@@ -183,6 +183,32 @@ export function seriesName(series: string): string {
   return namespace === EXTRA ? label : `${namespaceTitle(namespace)} · ${label}`;
 }
 
+/** Each status role's states by value (ADR 4). */
+const STATES = new Map<string, ReadonlyMap<number, () => string>>([
+  [
+    "inverter.status",
+    new Map([
+      [0, m.rd_status_standby],
+      [1, m.rd_status_normal],
+      [2, m.rd_status_fault],
+    ]),
+  ],
+  [
+    "ev.mode",
+    new Map([
+      [0, m.rd_mode_off],
+      [1, m.rd_mode_now],
+      [2, m.rd_mode_minpv],
+      [3, m.rd_mode_pv],
+    ]),
+  ],
+]);
+
+/** A status value as its state's name; a value its role does not name, as the number. */
+export function stateName(series: string, value: number): string {
+  return STATES.get(seriesRole(series))?.get(value)?.() ?? String(value);
+}
+
 /** A signed role's two sides (ADR 4 signs): what its positive and its negative values are. */
 interface Sides {
   readonly words: readonly [() => string, () => string];
