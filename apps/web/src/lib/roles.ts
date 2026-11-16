@@ -1,7 +1,9 @@
 // How the SPA names a series (ADR 4, ADR 22): its role namespace as the group, the label the
 // sheet's Readings give its role, and its index by name. The one source of a series' name: no
 // screen shows a role's series id. A role this table lacks keeps its series id.
+import { flowColour, roleFlow, type Flow } from "./energy-colours.ts";
 import { m } from "./paraglide/messages.js";
+import type { SeriesMeta } from "./range/bands.ts";
 
 /** What an index counts, which names it: an MPPT input, a string, a phase, a measurement point. */
 type Family = "input" | "string" | "phase" | "point";
@@ -163,4 +165,35 @@ export function seriesName(series: string): string {
   const { namespace, label } = describe(series);
 
   return namespace === EXTRA ? label : `${namespaceTitle(namespace)} · ${label}`;
+}
+
+/** A signed role's two sides (ADR 4 signs): what its positive and its negative values are. */
+interface Sides {
+  readonly words: readonly [() => string, () => string];
+  /** A side's flow colour; both sides take the role's own flow where unset. */
+  readonly flows?: readonly [Flow, Flow];
+}
+
+const SIDES = new Map<string, Sides>([
+  ["battery", { words: [m.side_charged, m.side_discharged] }],
+  ["grid", { words: [m.side_imported, m.side_exported], flows: ["import", "export"] }],
+]);
+
+const SIGNED: Sides = { words: [m.side_above, m.side_below] };
+
+/** The upper side's key and the lower side's of a series that runs both ways, named and coloured. */
+export function sidesOf(series: string): readonly [SeriesMeta, SeriesMeta] {
+  const sides = SIDES.get(series.split(".", 1)[0]!) ?? SIGNED;
+  const own = roleFlow(series);
+  const [up, down] = sides.flows ?? [own, own];
+
+  return [
+    { label: sides.words[0](), colour: flowColour(up) },
+    { label: sides.words[1](), colour: flowColour(down) },
+  ];
+}
+
+/** A one-sided series' key: its name, in its role's flow colour. */
+export function keyOf(series: string): SeriesMeta {
+  return { label: seriesName(series), colour: flowColour(roleFlow(series)) };
 }

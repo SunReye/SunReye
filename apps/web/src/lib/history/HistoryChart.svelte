@@ -5,10 +5,10 @@
 -->
 <script lang="ts">
   import type { Core } from "../api/core.ts";
-  import { flowColour, roleFlow } from "../energy-colours.ts";
   import { planned, plannedEnergy, type Planned } from "../forecast/forecast.ts";
   import { m } from "../paraglide/messages.js";
   import BandChart from "../range/BandChart.svelte";
+  import { keyOf, sidesOf } from "../roles.ts";
   import { bandsOf } from "../range/fill.ts";
   import { kwh, num } from "../range/format.ts";
   import { RangeData } from "../range/range-data.svelte.ts";
@@ -52,6 +52,7 @@
     loading: true,
     via: undefined,
     bands: [],
+    up: null,
     down: [],
     sum: { up: [0], down: [] },
     expected: null,
@@ -97,7 +98,9 @@
         return { ...f, ...split(f.value), line: plans ? f.planned : null };
       }),
       expected: plans && figures.reduce((a, f) => a + f.planned, 0),
-      down: signed ? meta : [],
+      // Each side of a series that runs both ways is named for its sign, as charged and discharged.
+      up: signed ? [sidesOf(s)[0]] : null,
+      down: signed ? [sidesOf(s)[1]] : [],
       sum: isPower(s)
         ? { up: [total(figures, 1)], down: signed ? [total(figures, -1)] : [] }
         : split(bandFigure(s, points, ...whole(got.spans)).value),
@@ -109,7 +112,7 @@
     return plans.reduce((sum, p) => sum + plannedEnergy(p, a, b), 0);
   }
 
-  const meta = $derived([{ label: series, colour: flowColour(roleFlow(series)) }]);
+  const meta = $derived([keyOf(series)]);
 
   // A power reads as energy; anything else as its mean, in its own unit.
   const reads = $derived(
@@ -119,7 +122,7 @@
 
 <BandChart
   bands={view.bands}
-  up={meta}
+  up={view.up ?? meta}
   down={view.down}
   via={view.via}
   lineLabel={view.expected === null ? "" : m.range_forecast()}
@@ -127,7 +130,7 @@
   fmt={reads.fmt}
   unit={reads.unit}
   loading={view.loading}
-  label={m.history_chart({ series })}
+  label={m.history_chart({ series: meta[0]!.label })}
   ondrill={data.drill}
   onbrush={data.brush}
 />
