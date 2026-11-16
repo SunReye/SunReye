@@ -1,5 +1,6 @@
 // What Explore shows beside its range, as the hash route holds it (ADR 22): the mode, the chosen
-// series of their devices (`s`), the overlay's earlier periods (`vs`) and the open picker (`pick`).
+// series of their devices (`s`), the overlay's earlier periods (`vs`), the fold's period (`by`) and
+// the open picker (`pick`).
 import { PLANT } from "../api/computed-devices.ts";
 
 export type Mode = "series" | "overlay" | "fold";
@@ -22,8 +23,8 @@ export interface ExploreView {
   readonly picking: boolean;
 }
 
-/** The route's parameters the view owns, beside the range's. */
-export const EXPLORE_PARAMS = ["mode", "s", "vs", "pick"] as const;
+/** The route's parameters the view owns, beside the range's; `by` is the fold's period. */
+export const EXPLORE_PARAMS = ["mode", "s", "vs", "pick", "by"] as const;
 
 /** Opened with nothing chosen: the plant's PV power and house load. */
 const DEFAULT: readonly SeriesRef[] = [
