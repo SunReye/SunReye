@@ -9,7 +9,7 @@ import { narrowed } from "./brush.ts";
 import { lanesOf } from "./lanes.ts";
 import type { ModeProps } from "./mode.ts";
 import { readSeries } from "./read.ts";
-import { lanesView, notesOf, timesOf, type Chart, type Loaded } from "./series-chart.ts";
+import { lanesView, notesOf, plotted, timesOf, type Chart, type Loaded } from "./series-chart.ts";
 
 /** Four lanes on a phone grow the chart instead of flattening each other. */
 const LANE_MIN = 84;
@@ -50,6 +50,13 @@ export class SeriesView {
     };
   });
 
+  /** The drawn series' points, under the range they were read for. */
+  readonly table = $derived.by(() => {
+    const got = this.#data.current;
+
+    return got?.data ? plotted(got.range, got.data) : null;
+  });
+
   /** Writes an instant as the plant's clock reads it. */
   readonly #clock = $derived.by(
     () =>
@@ -69,6 +76,9 @@ export class SeriesView {
       () => input().route,
       (from, to) => this.#load(from, to),
     );
+
+    // The export reads the plot while this pane stands.
+    $effect(() => input().plots(() => this.table));
   }
 
   async #load(from: Readonly<Date>, to: Readonly<Date>): Promise<Loaded | null> {

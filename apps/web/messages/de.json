@@ -1221,5 +1221,6 @@
   "explore_overlay_date": "Anderen Tag wählen",
   "explore_overlay_full": "Ein Diagramm überlagert 5 Zeiträume. Entferne einen, um einen anderen zu wählen.",
   "explore_overlay_first": "Überlagert wird {name}, die erste gewählte Reihe.",
-  "explore_overlay_hourly": "Nur Stundenwerte aufbewahrt: {names}."
+  "explore_overlay_hourly": "Nur Stundenwerte aufbewahrt: {names}.",
+  "explore_export": "Als CSV exportieren"
 }

@@ -1,8 +1,10 @@
 // The Explore screen's state (ADR 22): its range and view from the hash route, the series catalog
 // behind the picker, and what each control does to the route. Nothing is kept outside the route.
+import { untrack } from "svelte";
 import type { Core } from "../api/core.ts";
 import { parseRange, rangeParams } from "../range/params.ts";
 import { RangeRoute, type Go } from "../range/route.svelte.ts";
+import type { Table } from "./csv.ts";
 import { overlayRange } from "./overlay.ts";
 import { chosenOf, pickerOf, type Chosen, type PickerDevice } from "./picker.ts";
 import {
@@ -63,6 +65,9 @@ export class Explore {
     return own;
   });
 
+  /** What the open pane plotted, as it reads it now. */
+  #plotted = $state.raw<(() => Table | null) | null>(null);
+
   readonly route: RangeRoute;
 
   readonly view: ExploreView = $derived.by(() => viewOf(this.route.params));
@@ -106,6 +111,21 @@ export class Explore {
     }
 
     this.#catalog = pickerOf(catalog, "devices" in caps ? caps.devices : {});
+  };
+
+  /** The plotted points to export; null while nothing is drawn. */
+  get table(): Table | null {
+    return this.#plotted?.() ?? null;
+  }
+
+  /** A pane names what it plots, and takes that back as it leaves. */
+  plots = (read: () => Table | null): (() => void) => {
+    this.#plotted = read;
+
+    return () => {
+      // Another mode's pane may stand already.
+      if (untrack(() => this.#plotted) === read) this.#plotted = null;
+    };
   };
 
   isChosen = (ref: SeriesRef): boolean => this.view.series.some((r) => same(r, ref));

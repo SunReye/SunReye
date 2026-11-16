@@ -3,6 +3,8 @@
 import { m } from "../paraglide/messages.js";
 import type { Edge } from "../range/edges.ts";
 import { num } from "../range/format.ts";
+import type { Range } from "../range/range.ts";
+import { seriesTable, type Table } from "./csv.ts";
 import { axisOf, sampleAt, tickDigits, valueDigits, type Axis, type Sample } from "./curve.ts";
 import type { Lane, Lanes, LaneSeries } from "./lanes.ts";
 import type { Chosen } from "./picker.ts";
@@ -203,4 +205,14 @@ export function notesOf({ plan, readings }: Loaded): string[] {
   ];
 
   return said.flatMap(([on, text]) => (on ? [text()] : []));
+}
+
+/** The drawn series' points, for the export. */
+export function plotted(range: Range, { plan, readings }: Loaded): Table | null {
+  const drawn = plan.lanes.flatMap((l) => l.series);
+
+  return seriesTable(
+    range,
+    drawn.map((s, i) => ({ chosen: s.chosen, curve: (readings[i] ?? EMPTY).curve })),
+  );
 }

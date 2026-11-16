@@ -40,6 +40,7 @@
       catalog={x.catalog}
       periods={x.view.periods}
       {height}
+      plots={x.plots}
     />
   {/if}
 </section>
