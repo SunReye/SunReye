@@ -32,3 +32,14 @@ test("a change sends every part of its scene: surfaces, fences, chimneys and ope
     openings: scene.openings,
   });
 });
+
+test("a change sends the scene's imported surroundings, and none for a scene without", () => {
+  const imported = { document: "ab".repeat(32), x: 2, z: -1, turn: 8, hidden: [0, 4] };
+  const scene: Scene = { north: 0, blocks: [], obstacles: [], imported };
+  const change = { appliesFrom: "2026-11-01T00:00:00Z", strings: [] };
+
+  expect(body({ ...change, scene }).scene?.imported).toEqual(imported);
+  expect(body({ ...change, scene: { ...scene, imported: null } }).scene).not.toHaveProperty(
+    "imported",
+  );
+});

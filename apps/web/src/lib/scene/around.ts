@@ -97,7 +97,7 @@ function buildings(
     ...(ghosts
       ? merged(
           hidden,
-          new MeshStandardMaterial({ color: 0x8a8f98, opacity: 0.28, depthWrite: false }),
+          new MeshStandardMaterial({ color: 0x8a8f98, opacity: 0.16, depthWrite: false }),
           finish.REPEAT.render,
         )
       : []),

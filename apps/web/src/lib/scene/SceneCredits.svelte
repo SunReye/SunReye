@@ -11,7 +11,7 @@
 {#if credits.length > 0}
   <p
     aria-label={m.scene_credits()}
-    class="pointer-events-auto max-w-full self-start overflow-x-auto text-[11px] leading-4 whitespace-nowrap text-muted-foreground scroll-fade-x no-scrollbar"
+    class="glass-ambient pointer-events-auto max-w-full self-start overflow-x-auto rounded-sm px-1.5 text-[11px] leading-4 whitespace-nowrap text-muted-foreground no-scrollbar"
   >
     {credits.join(" · ")}
   </p>

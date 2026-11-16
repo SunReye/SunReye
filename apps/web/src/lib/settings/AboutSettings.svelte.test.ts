@@ -37,3 +37,25 @@ test("About also credits the spot prices, as shown beside them", async () => {
     .toHaveAttribute("href", "https://www.smard.de");
   expect(screen.getByRole("link", { name: "CC BY 4.0" }).elements()).toHaveLength(2);
 });
+
+test("About credits the imported surroundings: OpenStreetMap and the terrain's sources", async () => {
+  const screen = await render(AboutSettings);
+
+  await expect.element(screen.getByText("Umgebung in 3D")).toBeVisible();
+  await expect
+    .element(screen.getByRole("link", { name: "© OpenStreetMap contributors" }))
+    .toHaveAttribute("href", "https://www.openstreetmap.org/copyright");
+  await expect
+    .element(
+      screen.getByText(
+        "Europe terrain data produced using Copernicus data and information funded by the European Union - EU-DEM layers",
+      ),
+    )
+    .toBeVisible();
+  expect(
+    screen
+      .getByRole("list", { name: "Geländehöhen aus den Terrain Tiles" })
+      .getByRole("listitem")
+      .elements(),
+  ).toHaveLength(11);
+});
