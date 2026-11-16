@@ -86,3 +86,17 @@ test("a language chosen renders the whole app in it and is kept per browser", as
   expect(document.documentElement.lang).toBe("en");
   expect(localStorage.getItem("PARAGLIDE_LOCALE")).toBe("en");
 });
+
+const themeColor = () =>
+  document.querySelector('meta[name="theme-color"]')?.getAttribute("content");
+
+test("the browser's theme colour follows the theme in use", async () => {
+  localStorage.clear();
+  await render(Layout, { props: { children } });
+
+  await expect.poll(themeColor).toBe("#0e0e10");
+
+  setMode("light");
+
+  await expect.poll(themeColor).toBe("#ffffff");
+});
