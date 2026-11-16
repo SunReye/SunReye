@@ -34,7 +34,7 @@ History (ADR 21) answers four plant questions, and a detail sheet's analytics re
 
 **Reading the chart.** ADR 21's chart reading: the legend shows the values under the pointer, there are no tooltips, a mouse drag narrows the range, touch has no brushing. There is no pinch zoom. Lanes draw on a canvas: six series of 1,500 points are far past the band count at which SVG charts froze the page. Motion follows the tiers.
 
-**Export.** A CSV of the plotted points, built in the browser: one row per point with its RFC 3339 UTC start and end, a plant-local date column for folds of a day or longer, and one column per series or overlay period headed by its series id and unit. Dot decimals, comma separated. The file name carries the range and the tier, such as `sunreye-2026-11-15-bucket60.csv`.
+**Export.** A CSV of the plotted points, built in the browser: one row per point with its RFC 3339 UTC start and end, a plant-local date column for folds of a day or longer, and one column per series or overlay period headed by its series id and unit. Where a series drew a min–max band, and in a measurement's fold, its min and max follow as two more columns. Dot decimals, comma separated. The file name carries the range and the tier, such as `sunreye-2026-11-15-bucket60.csv`.
 
 ## Considered options
 

@@ -83,8 +83,8 @@ test("fold: the bars download, a week by day with its plant-local dates", async 
 
   expect(name).toBe("sunreye-2026-11-02_2026-11-08-day.csv");
   expect(lines.slice(0, 2)).toEqual([
-    `start,end,date,${PV} [W]`,
-    "2026-11-02T00:00:00Z,2026-11-03T00:00:00Z,2026-11-02,200",
+    `start,end,date,${PV} [W],${PV} min [W],${PV} max [W]`,
+    "2026-11-02T00:00:00Z,2026-11-03T00:00:00Z,2026-11-02,200,150,250",
   ]);
   // Seven days and the line's end.
   expect(lines).toHaveLength(9);

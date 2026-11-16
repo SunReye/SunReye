@@ -67,20 +67,28 @@ test("series: mixed tiers keep each point's own interval, and the file names bot
   );
 });
 
-test("series: a longer range is named by its first and last day; a statistic exports its mean", () => {
+test("series: a longer range is named by its first and last day; a band exports its min and max", () => {
   const hours: Curve = {
     draw: "line",
     tier: "hour",
     samples: [{ ...span("00:00", "01:00", 200), lo: 150, hi: 250 }],
   };
 
-  const table = seriesTable(WEEK, [{ chosen: chosen(1, "grid.voltage", "V"), curve: hours }]);
+  const table = seriesTable(WEEK, [
+    { chosen: chosen(1, "grid.voltage", "V"), curve: hours },
+    { chosen: chosen(1, "pv.power", "W"), curve: MINUTES },
+  ]);
 
-  expect(table?.file).toBe("sunreye-2026-11-09_2026-11-15-hour.csv");
+  expect(table?.file).toBe("sunreye-2026-11-09_2026-11-15-bucket60-hour.csv");
+  // A line without a band has no extremes to export.
   expect(csvOf(table!)).toBe(
-    ["start,end,1:grid.voltage [V]", "2026-11-15T00:00:00Z,2026-11-15T01:00:00Z,200", ""].join(
-      "\n",
-    ),
+    [
+      "start,end,1:grid.voltage [V],1:grid.voltage min [V],1:grid.voltage max [V],1:pv.power [W]",
+      "2026-11-15T00:00:00Z,2026-11-15T00:01:00Z,,,,1500.5",
+      "2026-11-15T00:00:00Z,2026-11-15T01:00:00Z,200,150,250,",
+      "2026-11-15T00:01:00Z,2026-11-15T00:02:00Z,,,,-20",
+      "",
+    ].join("\n"),
   );
 });
 
@@ -119,7 +127,7 @@ test("overlay: a column per period by its first day, on the range's clock", () =
   );
 });
 
-test("fold by day: the plant-local date beside the bounds, the bar's mean; a period without is blank", () => {
+test("fold by day: the plant-local date beside the bounds, the mean with its min and max; a period without is blank", () => {
   const rows = rowsOf([
     {
       date: "2026-11-10",
@@ -137,9 +145,9 @@ test("fold by day: the plant-local date beside the bounds, the bar's mean; a per
   expect(table?.file).toBe("sunreye-2026-11-09_2026-11-15-day.csv");
   expect(csvOf(table!)).toBe(
     [
-      "start,end,date,1:pv.power [W]",
-      "2026-11-09T23:00:00Z,2026-11-10T23:00:00Z,2026-11-10,400.25",
-      "2026-11-10T23:00:00Z,2026-11-11T23:00:00Z,2026-11-11,",
+      "start,end,date,1:pv.power [W],1:pv.power min [W],1:pv.power max [W]",
+      "2026-11-09T23:00:00Z,2026-11-10T23:00:00Z,2026-11-10,400.25,0,3000",
+      "2026-11-10T23:00:00Z,2026-11-11T23:00:00Z,2026-11-11,,,",
       "",
     ].join("\n"),
   );

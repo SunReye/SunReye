@@ -28,9 +28,12 @@ export interface Table {
 /** What a header needs of a chosen series. */
 export type Named = Pick<Chosen, "ref" | "unit">;
 
-/** `3:pv.power [W]`: two devices may store one series id, so the device leads as in the route. */
-function headOf({ ref, unit }: Named, period?: string): string {
-  const parts = [`${ref.device}:${ref.series}`, period, unit === null ? undefined : `[${unit}]`];
+/**
+ * `3:pv.power [W]`: two devices may store one series id, so the device leads as in the route.
+ * @param what an overlay's period, or a band's `min` or `max`
+ */
+function headOf({ ref, unit }: Named, what?: string): string {
+  const parts = [`${ref.device}:${ref.series}`, what, unit === null ? undefined : `[${unit}]`];
 
   return parts.filter((part) => part !== undefined).join(" ");
 }
@@ -71,14 +74,32 @@ function curvesTable(range: Range, drawn: readonly (readonly [string, Curve])[])
   );
 }
 
-/** Series mode: each drawn series' samples. */
+/** A curve's band edge as a curve of its own; null where no band was drawn. */
+function edgeOf(curve: Curve, edge: "lo" | "hi"): Curve | null {
+  const banded = curve.samples.filter((s) => s.lo !== undefined && s.hi !== undefined);
+
+  return banded.length === 0
+    ? null
+    : { ...curve, samples: banded.map((s) => ({ t0: s.t0, t1: s.t1, v: s[edge] ?? s.v })) };
+}
+
+/** Series mode: each drawn series' samples, and a band's min and max beside them. */
 export function seriesTable(
   range: Range,
   drawn: readonly { readonly chosen: Named; readonly curve: Curve }[],
 ): Table | null {
   return curvesTable(
     range,
-    drawn.map((d) => [headOf(d.chosen), d.curve]),
+    drawn.flatMap(({ chosen, curve }) => {
+      const [lo, hi] = [edgeOf(curve, "lo"), edgeOf(curve, "hi")];
+
+      return [
+        [headOf(chosen), curve] as const,
+        ...(lo && hi
+          ? [[headOf(chosen, "min"), lo] as const, [headOf(chosen, "max"), hi] as const]
+          : []),
+      ];
+    }),
   );
 }
 
@@ -94,7 +115,7 @@ export function overlayTable(
   );
 }
 
-/** Fold mode: each period's bar, a measurement's mean or a counter's delta. */
+/** Fold mode: each period's bar, a counter's delta, or a measurement's mean with its min and max. */
 export function foldTable(
   range: Range,
   chosen: Named,
@@ -102,15 +123,24 @@ export function foldTable(
   counter: boolean,
   rows: readonly FoldRow[],
 ): Table | null {
-  const cells = rows.map((row) => ({
-    t0: row.start,
-    t1: row.end,
-    v: barOf(row, counter),
-    // An hour is a UTC hour (ADR 9): it has no plant-local date of its own.
-    date: period === "hour" ? null : iso(row.day),
-  }));
+  const cellsOf = (v: (row: FoldRow) => number | null): Cell[] =>
+    rows.map((row) => ({
+      t0: row.start,
+      t1: row.end,
+      v: v(row),
+      // An hour is a UTC hour (ADR 9): it has no plant-local date of its own.
+      date: period === "hour" ? null : iso(row.day),
+    }));
 
-  return tableOf(fileOf(range, period), [{ head: headOf(chosen), cells }]);
+  const bar = { head: headOf(chosen), cells: cellsOf((row) => barOf(row, counter)) };
+  const extremes = counter
+    ? []
+    : [
+        { head: headOf(chosen, "min"), cells: cellsOf((row) => row.min) },
+        { head: headOf(chosen, "max"), cells: cellsOf((row) => row.max) },
+      ];
+
+  return tableOf(fileOf(range, period), [bar, ...extremes]);
 }
 
 /** RFC 3339 in UTC, to the second where the instant is whole. */
