@@ -1,6 +1,6 @@
 //! Beam shade on a placed module's bypass-diode substrings (ADR 20).
 
-use crate::{Input, ModuleType, Occluder, Place, Plane, Point, Sun};
+use crate::{ModuleType, Occluder, Place, Plane, Point, Sun};
 
 /// Sample points per substring: across its strip, and along the module's long side.
 const ACROSS: u32 = 3;
@@ -44,77 +44,6 @@ pub fn shaded_substrings(
         })
         .count();
     u8::try_from(shaded).unwrap_or(parts)
-}
-
-/// The occluders that can stand between one of the input's placed modules and the sun: those
-/// reaching into the modules' way along its ray. Imported surroundings (ADR 20) bring thousands
-/// that never do, and every sample point would ask each of them.
-pub fn facing(input: &Input, sun: Sun, occluders: &[Occluder]) -> Vec<Occluder> {
-    let Some((centre, radius)) = bounds(input) else {
-        return Vec::new();
-    };
-    let ray = direction(sun);
-    occluders
-        .iter()
-        .copied()
-        .filter(|occluder| {
-            let (at, reach) = sphere(occluder);
-            let to = sub(at, centre);
-            let (along, reach) = (dot(to, ray), reach + radius);
-            along >= -reach && along.mul_add(-along, dot(to, to)) <= reach * reach
-        })
-        .collect()
-}
-
-/// A sphere around every placed module of the input: its centre and radius.
-fn bounds(input: &Input) -> Option<(Point, f64)> {
-    let placed = || {
-        input.strings.iter().flat_map(|string| {
-            let half = string.module.width.hypot(string.module.height) / 2.0;
-            let places = string.modules.iter().filter_map(|module| module.place);
-            places.map(move |place| (place.centre, half))
-        })
-    };
-    let span = |axis: usize| {
-        let at = placed().filter_map(|(centre, _)| centre.get(axis).copied());
-        at.fold((f64::INFINITY, f64::NEG_INFINITY), |(low, high), v| {
-            (low.min(v), high.max(v))
-        })
-    };
-    let [(x0, x1), (y0, y1), (z0, z1)] = [span(0), span(1), span(2)];
-    let centre = [x0.midpoint(x1), y0.midpoint(y1), z0.midpoint(z1)];
-    placed()
-        .map(|(at, half)| dot(sub(at, centre), sub(at, centre)).sqrt() + half)
-        .reduce(f64::max)
-        .map(|radius| (centre, radius))
-}
-
-/// A sphere around an occluder: its centre and radius.
-fn sphere(occluder: &Occluder) -> (Point, f64) {
-    match *occluder {
-        Occluder::Triangle([a, b, c]) => {
-            let centre = [0, 1, 2].map(|axis: usize| {
-                let of = |p: Point| p.get(axis).copied().unwrap_or(0.0);
-                (of(a) + of(b) + of(c)) / 3.0
-            });
-            let reach = [a, b, c].map(|p| dot(sub(p, centre), sub(p, centre)));
-            (centre, reach.into_iter().fold(0.0, f64::max).sqrt())
-        }
-        Occluder::Sphere { centre, radius } => (centre, radius),
-        Occluder::Cylinder {
-            base,
-            radius,
-            height,
-        }
-        | Occluder::Cone {
-            base,
-            radius,
-            height,
-        } => (
-            offset(base, [0.0, 0.0, 1.0], height / 2.0),
-            radius.hypot(height / 2.0),
-        ),
-    }
 }
 
 /// Offsets in metres along the short and the long side of one substring's sample points.

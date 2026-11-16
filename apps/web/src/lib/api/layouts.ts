@@ -2,9 +2,6 @@
 import { refusal, type Client, type Problem } from "./client";
 import { body, type LayoutChange } from "./layout-change";
 import type { components } from "./schema";
-import { surroundings, type Surroundings } from "./surroundings";
-
-export type { SurroundingsLoad, SurroundingsStatus } from "./surroundings";
 
 export type Layout = components["schemas"]["Layout"];
 
@@ -16,8 +13,7 @@ export type Datasheet = components["schemas"]["Datasheet"];
 /** One maker's datasheet in the module catalogue, with the power classes it prints (ADR 17). */
 export type CatalogueSheet = components["schemas"]["Sheet"];
 
-/** The layout, and the surroundings its scene may import (ADR 20). */
-export interface Layouts extends Surroundings {
+export interface Layouts {
   /** The PV layout in force now. */
   layout(): Promise<Layout | Problem>;
   /** Every module type. */
@@ -32,7 +28,6 @@ export interface Layouts extends Surroundings {
 
 export function layouts(client: Client): Layouts {
   return {
-    ...surroundings(client),
     layout: async () => {
       const { data, error, response } = await client.GET("/api/v1/layout");
 

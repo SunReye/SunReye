@@ -7,24 +7,19 @@
   import { Pressable } from "../components/ui/pressable/index.js";
   import Plus from "@lucide/svelte/icons/plus";
   import { m } from "../paraglide/messages.js";
-  import type { Draft } from "./modules.ts";
   import type { Pv } from "./pv.ts";
-  import { blocksOf, fill, TEMPLATES, type Template } from "./templates.ts";
+  import { blocksOf, TEMPLATES, type Template } from "./templates.ts";
   import { thumbnail } from "./thumbnail.ts";
 
   let {
     pv,
-    draft,
     clear = 0,
     onpick,
   }: {
     pv: Pick<Pv, "geometry">;
-    /** What a template fills. */
-    draft: Draft;
     /** Pixels at the bottom a sheet keeps covered. */
     clear?: number;
-    /** The draft a template filled; none to start empty. */
-    onpick: (filled?: Draft) => void;
+    onpick: (template: Template) => void;
   } = $props();
 
   const NAMES: Readonly<Record<Template, () => string>> = {
@@ -69,7 +64,7 @@
             <Pressable
               class="flex w-full flex-col overflow-hidden rounded-lg bg-card text-left ring-1 ring-foreground/10 transition-press glow-hover hover:elevation-2 active:elevation-press motion-safe:hover:-translate-y-[3px] motion-safe:active:translate-y-0 motion-safe:active:scale-(--press-scale-soft)"
               onclick={() => {
-                onpick(template === "empty" ? undefined : fill(draft, template));
+                onpick(template);
               }}
             >
               <span class="flex h-32 items-center justify-center bg-muted/40 p-3" aria-hidden="true">
