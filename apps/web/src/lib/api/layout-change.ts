@@ -17,34 +17,33 @@ export function body({
   strings,
   scene,
 }: LayoutChange): components["schemas"]["LayoutChange"] {
-  const { imported } = scene;
-
-  const sent: components["schemas"]["Scene"] = {
-    north: scene.north,
-    blocks: [...scene.blocks],
-    obstacles: [...scene.obstacles],
-    grids: (scene.grids ?? []).map(({ block, face, moduleType, landscape, setback, modules }) => ({
-      block,
-      face,
-      moduleType,
-      landscape,
-      setback,
-      modules: [...modules],
-    })),
-    equipment: [...(scene.equipment ?? [])],
-    carPlaces: [...(scene.carPlaces ?? [])],
-    chimneys: [...(scene.chimneys ?? [])],
-    surfaces: [...(scene.surfaces ?? [])],
-    fences: (scene.fences ?? []).map(({ points, height, finish }) => ({
-      points: [...points],
-      height,
-      finish,
-    })),
-    openings: [...(scene.openings ?? [])],
+  return {
+    appliesFrom,
+    strings: [...strings],
+    scene: {
+      north: scene.north,
+      blocks: [...scene.blocks],
+      obstacles: [...scene.obstacles],
+      grids: (scene.grids ?? []).map(
+        ({ block, face, moduleType, landscape, setback, modules }) => ({
+          block,
+          face,
+          moduleType,
+          landscape,
+          setback,
+          modules: [...modules],
+        }),
+      ),
+      equipment: [...(scene.equipment ?? [])],
+      carPlaces: [...(scene.carPlaces ?? [])],
+      chimneys: [...(scene.chimneys ?? [])],
+      surfaces: [...(scene.surfaces ?? [])],
+      fences: (scene.fences ?? []).map(({ points, height, finish }) => ({
+        points: [...points],
+        height,
+        finish,
+      })),
+      openings: [...(scene.openings ?? [])],
+    },
   };
-
-  // The imported surroundings go with the scene that has them.
-  if (imported) sent.imported = { ...imported, hidden: [...(imported.hidden ?? [])] };
-
-  return { appliesFrom, strings: [...strings], scene: sent };
 }

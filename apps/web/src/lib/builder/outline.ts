@@ -185,18 +185,7 @@ function surroundings({ draft }: Plan): Entry[] {
     }),
   }));
 
-  return [imported(draft), ...obstacles, ...surfaces, ...fences];
-}
-
-/** The imported surroundings' row: always there, as it is where they are loaded. */
-function imported({ scene }: Draft): Entry {
-  return {
-    level: { kind: "import" },
-    label: m.builder_import(),
-    summary: scene.imported
-      ? m.builder_import_summary({ hidden: scene.imported.hidden?.length ?? 0 })
-      : m.builder_import_none(),
-  };
+  return [...obstacles, ...surfaces, ...fences];
 }
 
 function equipment({ draft, devices }: Plan): Entry[] {
@@ -287,7 +276,7 @@ function counts({
 
 /** Whether a level's object is still in the plan: an undo or a removal can take it away. */
 export function exists(level: Level, plan: Plan): boolean {
-  if (level.kind === "root" || level.kind === "section" || level.kind === "import") return true;
+  if (level.kind === "root" || level.kind === "section") return true;
 
   if (level.kind === "face") {
     return plan.laid.roofs.some(({ block, face }) => block === level.block && face === level.face);

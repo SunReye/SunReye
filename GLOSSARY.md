@@ -244,10 +244,6 @@ _Avoid_: Eave depth, soffit
 An upright box standing on one roof face of a block; no module may stand on its footprint.
 _Avoid_: Chimney obstacle, stack
 
-**Imported surroundings**:
-The terrain, neighbouring buildings, trees and ground around the plant, fetched once from open map data for a radius and lined up with the blocks; buildings and trees shade.
-_Avoid_: Map, environment, tiles
-
 **3D quality**:
 How sharply a browser draws the scene (Auto, Niedrig, Mittel, Hoch, Ultra), apart from what moves.
 _Avoid_: Graphics tier, motion tier

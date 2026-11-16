@@ -1,6 +1,5 @@
 //! Strings in parallel on one MPPT input, within the input's limits.
 
-use crate::shade::facing;
 use crate::string::{Curve, peak};
 use crate::{Input, InputEstimate, MpptLimits, Occluder, PvString, Sky};
 
@@ -8,11 +7,10 @@ use crate::{Input, InputEstimate, MpptLimits, Occluder, PvString, Sky};
 /// within its voltage window and current limit. Without limits (ADR 5) nothing is capped.
 #[must_use]
 pub fn input_output(input: &Input, sky: &Sky, occluders: &[Occluder]) -> InputEstimate {
-    let occluders = facing(input, sky.sun, occluders);
     let curves: Vec<Curve> = input
         .strings
         .iter()
-        .map(|s| Curve::new(s, sky, &occluders))
+        .map(|s| Curve::new(s, sky, occluders))
         .collect();
     let nothing = InputEstimate {
         current: 0.0,

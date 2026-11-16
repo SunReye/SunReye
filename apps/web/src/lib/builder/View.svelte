@@ -11,14 +11,8 @@
   import type { Moment } from "./moment.svelte.ts";
   import type { Draft } from "./modules.ts";
   import type { Geometry, Location, RoofFace } from "./pv.ts";
-  import Stage, {
-    type Editing,
-    type Hit,
-    type Painting,
-    type Panel,
-    type Stood,
-  } from "./Stage.svelte";
-  import LowerZones from "./LowerZones.svelte";
+  import Stage, { type Editing, type Hit, type Painting, type Panel } from "./Stage.svelte";
+  import StatusStrip from "./StatusStrip.svelte";
   import TimeSlider from "./TimeSlider.svelte";
 
   let {
@@ -34,8 +28,6 @@
     onpick,
     editing,
     painting,
-    around,
-    ghosts = false,
     roofs = [],
     facing,
     tools,
@@ -58,10 +50,6 @@
     editing?: Editing | undefined;
     /** The picked string, painted by a drag across modules. */
     painting?: Painting | undefined;
-    /** The imported surroundings as the crate stood them. */
-    around?: Stood | undefined;
-    /** Whether the hidden imported buildings are drawn see-through. */
-    ghosts?: boolean;
     roofs?: readonly RoofFace[];
     /** A phone's inspector level: from afar a roof cell is too small for a finger, so the camera
      * flies onto the face whose modules it lays (ADR 20). */
@@ -102,9 +90,6 @@
       {onpick}
       {editing}
       {painting}
-      {around}
-      lie={draft.scene.imported}
-      {ghosts}
       onto={facing && laying(roofs, facing)}
       aspect={width / height}
     />
@@ -117,18 +102,28 @@
     </div>
   </div>
 
-  <LowerZones
-    status={{
-      strings: draft.strings,
-      watts: moment.watts,
-      source: moment.production?.source,
-      cars,
-      devices,
-      located: location !== undefined,
-    }}
-    credits={around?.around.credits ?? []}
-    {clear}
-    {covered}
-    {tools}
-  />
+  <!-- One row: the status line takes what the tools leave, so the two never overlap. -->
+  <div
+    class={[
+      "pointer-events-none absolute inset-x-3 bottom-3 flex items-end gap-2 transition-[opacity,visibility] duration-(--motion-fast) ease-(--motion-ease)",
+      covered && "invisible opacity-0",
+    ]}
+    style:margin-bottom="{clear}px"
+  >
+    <div class="flex min-w-0 flex-1">
+      <StatusStrip
+        strings={draft.strings}
+        watts={moment.watts}
+        source={moment.production?.source}
+        {cars}
+        {devices}
+        located={location !== undefined}
+      />
+    </div>
+    {#if tools}
+      <div class="pointer-events-auto shrink-0">
+        {@render tools()}
+      </div>
+    {/if}
+  </div>
 </div>

@@ -8,7 +8,6 @@ import { pause } from "../scene/prepare.ts";
 import type { Lit } from "../scene/stage.svelte.ts";
 import { freeOverlay, overlay, type Tints } from "./overlay.ts";
 import { Brush, type Brushing, type Painting, type Refused } from "./painting.ts";
-import { ndc } from "./pointer.ts";
 import type { Geometry, Ghost, Point } from "./pv.ts";
 import { buildScene, buildSliced, strike, tint, toThree, type Hit, type Panel } from "./scene.ts";
 
@@ -16,13 +15,7 @@ export type { Hit, Panel } from "./scene.ts";
 
 export { Handled, type Editing } from "./handles/handled.svelte.ts";
 
-export { Surrounded, type Lie, type Stood } from "./surrounded.svelte.ts";
-
-export { Arrivals } from "./arriving.svelte.ts";
-
 export { paintingOf, type Painting } from "./gestures.ts";
-
-export { editingOf } from "./editing.ts";
 
 /** Pixels from the canvas's top left corner. */
 export type Projector = (point: Point) => readonly [number, number] | null;
@@ -96,13 +89,6 @@ export function keep(
   return { drawn: () => drawn, built: built.promise };
 }
 
-/** What a click strikes besides the scene, and who is told. */
-export interface Picked extends Pick<Source, "panels"> {
-  readonly onpick: () => ((hit: Hit) => void) | undefined;
-  /** The imported surroundings drawn around the scene. */
-  readonly around: () => Group | undefined;
-}
-
 /** Further than this many pixels between press and release, the pointer orbited. */
 const CLICK = 5;
 
@@ -111,7 +97,7 @@ export function picking(
   canvas: HTMLCanvasElement,
   camera: PerspectiveCamera,
   drawn: () => Group | undefined,
-  { panels, onpick, around }: Picked,
+  { panels, onpick }: Pick<Source, "panels"> & { onpick: () => ((hit: Hit) => void) | undefined },
 ): () => void {
   let down: readonly [number, number] | undefined;
 
@@ -135,7 +121,10 @@ export function picking(
     // A click may come before the first draw has placed the camera's matrices.
     camera.updateMatrixWorld();
 
-    const hit = strike(group, panels(), camera, ndc(canvas, event), around());
+    const hit = strike(group, panels(), camera, [
+      (event.offsetX / canvas.clientWidth) * 2 - 1,
+      1 - (event.offsetY / canvas.clientHeight) * 2,
+    ]);
 
     if (hit !== null) pick(hit);
   };

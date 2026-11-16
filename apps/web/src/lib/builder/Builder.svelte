@@ -12,7 +12,7 @@
   import PhoneTools from "./PhoneTools.svelte";
   import { Session, type Opening } from "./session.svelte.ts";
   import Templates from "./Templates.svelte";
-  import { provideImporter, provideUploader } from "./upload.ts";
+  import { provideUploader } from "./upload.ts";
   import View from "./View.svelte";
 
   let {
@@ -54,8 +54,6 @@
 
   provideUploader((glb) => core.uploadCarBody(glb));
 
-  provideImporter(session.importing);
-
   const sheet = $derived(phone.current || portrait.current);
 </script>
 
@@ -79,8 +77,6 @@
       {moment}
       clear={sheet ? PEEK : 0}
       covered={sheet && session.expanded}
-      around={session.importing.stood}
-      ghosts={session.level.kind === "import"}
       editing={session.editing}
       painting={session.painting}
       roofs={session.laid.roofs}
@@ -94,7 +90,6 @@
       <Templates
         {pv}
         clear={sheet ? PEEK : 0}
-        draft={session.draft}
         onpick={(template) => {
           session.begin(template);
         }}
