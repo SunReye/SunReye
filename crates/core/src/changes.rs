@@ -39,6 +39,8 @@ pub enum Subject {
     Profile,
     /// A tariff version (ADR 12).
     Tariff,
+    /// A layout version (ADR 17); the state holds its counts of strings and modules.
+    Layout,
     /// The investment payback is measured against (ADR 12), id 0.
     Investment,
     /// The plant timezone (ADR 3), id 0.
@@ -145,7 +147,7 @@ struct LoggedChange {
     /// RFC 3339, UTC.
     applies_from: String,
     actor: String,
-    /// `connection`, `device`, `index`, `location`, `viewer`, `token`, `topology`, `enable`, `profile`, `tariff` or `investment`.
+    /// `connection`, `device`, `index`, `location`, `viewer`, `token`, `topology`, `enable`, `profile`, `tariff`, `layout` or `investment`.
     subject: String,
     /// The subject's id.
     id: u32,

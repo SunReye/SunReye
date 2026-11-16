@@ -519,3 +519,46 @@ async fn a_connection_stored_before_the_poll_cycle_gets_5_s() {
         .unwrap();
     assert_eq!(seconds, 5);
 }
+
+/// A plant saved before one version per date (#785) keeps the newest of each date, and a scene
+/// today's schema rejects is never read.
+#[tokio::test]
+async fn a_layout_keeps_its_newest_version_per_date() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("core.sqlite");
+    let old = rusqlite::Connection::open(&path).unwrap();
+    for sql in &super::thread::MIGRATIONS[..29] {
+        old.execute_batch(sql).unwrap();
+    }
+    old.pragma_update(None, "user_version", 29).unwrap();
+    old.execute_batch(
+        "INSERT INTO module_type (name, pmax, vmp, imp, voc, isc, power_coefficient,
+           voltage_coefficient, current_coefficient, width, height, bypass_diodes)
+         VALUES ('m', 400, 34, 11.76, 41, 12.5, -0.35, -0.27, 0.05, 1.134, 1.722, 3);
+         INSERT INTO pv_string DEFAULT VALUES;
+         INSERT INTO layout (applies_from, changed, actor) VALUES
+           (100, 1, 'admin'), (200, 2, 'admin'), (100, 3, 'admin'), (200, 4, 'admin'),
+           (100, 5, 'admin');
+         INSERT INTO layout_string (layout, string, name, module_type, device, input, modules,
+           optimized, tilt, azimuth, loss)
+         SELECT id, 1, 's', 1, 1, 1, 16, 0, 35, 0, 2 FROM layout;
+         INSERT INTO layout_scene (layout, scene) SELECT id, '{\"imported\": 1}' FROM layout;",
+    )
+    .unwrap();
+    drop(old);
+
+    drop(Storage::open(&path, epoch(), "UTC", &Bus::default()).unwrap());
+
+    let db = rusqlite::Connection::open(&path).unwrap();
+    let ids = |table: &str, column: &str| -> Vec<i64> {
+        db.prepare(&format!("SELECT {column} FROM {table} ORDER BY {column}"))
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap()
+    };
+    assert_eq!(ids("layout", "id"), [4, 5]);
+    assert_eq!(ids("layout_string", "layout"), [4, 5]);
+    assert_eq!(ids("layout_scene", "layout"), [4, 5]);
+}

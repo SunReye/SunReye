@@ -1,5 +1,7 @@
 //! The PV layout (ADR 17): module types and strings with stable ids, applying from a date.
 
+use std::time::{Duration, UNIX_EPOCH};
+
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
 use serde_json::{Value, json};
@@ -806,4 +808,58 @@ async fn openings_are_saved_with_the_scene_and_one_off_its_wall_or_overlapping_i
             (StatusCode::UNPROCESSABLE_ENTITY, &json!("layout.scene"))
         );
     }
+}
+
+#[tokio::test]
+async fn each_stored_layout_change_is_logged_with_its_counts_and_an_equal_one_is_not() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    core.set_clock(UNIX_EPOCH + Duration::from_hours(498_216));
+    let module = core.module_type(&set_cookie).await;
+    let first = core
+        .put_layout(
+            &set_cookie,
+            "2026-11-01T00:00:00Z",
+            &[string(None, "south", &module, 1, 0.0)],
+        )
+        .await;
+    let south = ids(&first)[0].1;
+    let both = [
+        string(Some(south), "south", &module, 1, 0.0),
+        string(None, "east", &module, 2, -90.0),
+    ];
+    let second = core
+        .put_layout(&set_cookie, "2026-11-01T00:00:00Z", &both)
+        .await;
+    let east = ids(&second)[1].1;
+    let same = [
+        string(Some(south), "south", &module, 1, 0.0),
+        string(Some(east), "east", &module, 2, -90.0),
+    ];
+    core.put_layout(&set_cookie, "2026-11-01T00:00:00Z", &same)
+        .await;
+
+    let (_, log) = core.call(&set_cookie, get("/api/v1/changes")).await;
+    let (_, read) = core
+        .call(&set_cookie, get("/api/v1/layout?at=2026-11-01T00:00:00Z"))
+        .await;
+
+    let entry = |action: &str, strings: u32, modules: u32| {
+        json!({
+            "changed": "2026-11-02T00:00:00Z", "appliesFrom": "2026-11-01T00:00:00Z",
+            "actor": "admin", "subject": "layout", "id": 1, "action": action,
+            "state": { "strings": strings, "modules": modules },
+        })
+    };
+    let layout: Vec<&Value> = log["changes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|c| c["subject"] == "layout")
+        .collect();
+    assert_eq!(layout, [&entry("add", 1, 16), &entry("change", 2, 32)]);
+    assert_eq!(
+        ids(&read),
+        [("south".to_owned(), south), ("east".to_owned(), east)]
+    );
 }

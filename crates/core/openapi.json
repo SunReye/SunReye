@@ -2141,7 +2141,7 @@
             "description": "The subject after the change, as its own route reads it; `null` once removed."
           },
           "subject": {
-            "description": "`connection`, `device`, `index`, `location`, `viewer`, `token`, `topology`, `enable`, `profile`, `tariff` or `investment`.",
+            "description": "`connection`, `device`, `index`, `location`, `viewer`, `token`, `topology`, `enable`, `profile`, `tariff`, `layout` or `investment`.",
             "type": "string"
           }
         },
