@@ -2,6 +2,7 @@
  * The 3D quality as reactive state: the rune shell over `./quality`. The choice, the GPU last
  * seen and the levels strain has taken off Auto are kept per browser (ADR 20 Look).
  */
+import { read, write } from "../kept.ts";
 import type { MotionTier } from "../motion/tier.ts";
 import {
   capable,
@@ -19,22 +20,6 @@ export const QUALITY = "sunreye.3d-quality";
 
 const STEPS = "sunreye.3d-strain";
 const GPU = "sunreye.gpu";
-
-function read(key: string): string | null {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function write(key: string, value: string): void {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    // A browser that cannot keep it still honours it for this session.
-  }
-}
 
 export class QualityStore {
   #choice = $state(parseQuality(read(QUALITY)));

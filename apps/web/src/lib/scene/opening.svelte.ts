@@ -135,13 +135,16 @@ export class Opening {
 
       if (this.#held || this.#gone || !this.#studio.refine()) return;
 
-      // Not before the GPU has drawn it: frames queued faster than they are drawn pile up.
-      void gpuIdle(this.#studio.renderer).then(() => {
-        const held = performance.now() - start < BURST_FRAME_MS;
-
-        if (held && burst === this.#burst) this.#refine();
-      });
+      void this.#next(burst, start);
     });
+  }
+
+  /** The burst's next frame, once the GPU has drawn the one begun at `start`, and in time. */
+  async #next(burst: number, start: number): Promise<void> {
+    // Not before the GPU has drawn it: frames queued faster than they are drawn pile up.
+    await gpuIdle(this.#studio.renderer);
+
+    if (performance.now() - start < BURST_FRAME_MS && burst === this.#burst) this.#refine();
   }
 
   /** Ends the burst: a frame of it still on the GPU starts no other. */

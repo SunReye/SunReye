@@ -4,6 +4,7 @@
  * there is no motion setting (the frame watch decides), and the low-power switch forces `still`.
  * The measured strain is kept per device, so a slow wall tablet starts lean the next day.
  */
+import { read, write } from "../kept.ts";
 import { MediaQuery } from "svelte/reactivity";
 import { quality as sceneQuality, type QualityStore } from "../scene/quality.svelte.ts";
 import {
@@ -26,22 +27,6 @@ const SETTLE_MS = 4000;
  * the browser produce frames it would otherwise skip, which is what the lean tiers exist to save.
  */
 const WATCH_WINDOWS = 3;
-
-function read(key: string): string | null {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function write(key: string, value: string): void {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    // A device that cannot persist it still honours it for this session.
-  }
-}
 
 export class MotionStore {
   #strain = $state(parseStrain(read(STRAIN_KEY)));
