@@ -80,12 +80,13 @@ function battery(s: Sum): Row[] {
 
 function cash(t: BreakdownInput): Row[] {
   const s = t.sum;
-  const c = t.money ?? { paid: 0, earned: 0, saved: 0 };
+  const c = t.money ?? { paid: 0, earned: 0, saved: 0, standing: 0 };
 
   return [
     row(
       m.stats_bill_without(),
-      t.money ? c.saved + c.paid - c.earned : null,
+      // Owed with or without the plant, so the standing charge is in both bills.
+      t.money ? c.saved + c.paid - c.earned + c.standing : null,
       money,
       m.stats_house_load({ energy: kwh(s.consumption) }),
     ),
@@ -98,6 +99,13 @@ function cash(t: BreakdownInput): Row[] {
         flowColour("import"),
       ),
       t.base?.money?.paid,
+    ),
+    row(
+      m.tariff_standing(),
+      t.money ? c.standing : null,
+      signed("− "),
+      m.stats_standing_note(),
+      flowColour("house"),
     ),
     row(
       m.stats_feed_in_pay(),

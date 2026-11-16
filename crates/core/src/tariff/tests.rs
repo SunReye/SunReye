@@ -47,6 +47,7 @@ fn night_rate(applies_from: &str) -> Version {
             price: 0.08,
             bands: vec![],
         },
+        standing_charge: 0.0,
     }
 }
 

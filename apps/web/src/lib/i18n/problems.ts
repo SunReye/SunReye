@@ -47,6 +47,7 @@ const TEXTS: Readonly<Record<Code, Text>> = {
   "topology.device": m.problem_topology_device,
   "tariff.none": m.problem_tariff_none,
   "tariff.band": m.problem_tariff_band,
+  "tariff.charge": m.problem_tariff_charge,
   "tariff.past": m.problem_tariff_past,
   "tariff.retention": m.problem_tariff_retention,
   "investment.value": m.problem_investment_value,

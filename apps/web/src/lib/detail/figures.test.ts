@@ -26,7 +26,7 @@ const DAY: Day = {
     { target: at("13:00"), value: 0.193 },
   ],
   weather: { celsius: 21, sky: "sunny" },
-  money: { paid: 0.19, earned: 1.39, saved: 5.93 },
+  money: { paid: 0.19, earned: 1.39, saved: 5.93, standing: 0 },
 };
 
 test("a day figure's sheet leads with today's energy and shows the plant's live power", () => {

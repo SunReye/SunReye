@@ -42,6 +42,8 @@ export interface TariffChange {
   readonly appliesFrom?: string | null;
   readonly import: ScheduleChange;
   readonly export: ScheduleChange;
+  /** EUR a month; none is 0. */
+  readonly standingCharge: number;
 }
 
 export interface Tariffs {
@@ -96,9 +98,13 @@ export function tariffs(client: Client): Tariffs {
   };
 }
 
-/** Both flows' prices as the client sends them. */
+/** Both flows' prices and the standing charge as the client sends them. */
 function prices(change: TariffChange) {
-  return { import: schedule(change.import), export: schedule(change.export) };
+  return {
+    import: schedule(change.import),
+    export: schedule(change.export),
+    standingCharge: change.standingCharge,
+  };
 }
 
 function schedule({ price: base, bands }: ScheduleChange): Schedule {

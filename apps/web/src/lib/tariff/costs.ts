@@ -1,18 +1,18 @@
 // The core's daily costs laid onto a range's bands (ADR 12): savings split into the import they
-// avoided and the feed-in pay, and the import bill.
+// avoided and the feed-in pay, and what was paid: the import bill and the standing charge.
 import type { CostDays } from "../api/tariff";
 import type { Edge } from "../range/edges.ts";
 import { spread, type Fill } from "../range/fill.ts";
 
 type Money = Readonly<CostDays["total"]>;
 
-const NONE: Money = { paid: 0, earned: 0, saved: 0 };
+const NONE: Money = { paid: 0, earned: 0, saved: 0, standing: 0 };
 
-/** Savings above the baseline, avoided import first; the import bill below it. */
+/** Savings above the baseline, avoided import first; the import bill and the standing charge below. */
 export function split(money?: Readonly<CostDays["total"]>) {
-  const { paid, earned, saved } = money ?? NONE;
+  const { paid, earned, saved, standing } = money ?? NONE;
 
-  return { up: [Math.max(0, saved - earned), earned], down: [paid] };
+  return { up: [Math.max(0, saved - earned), earned], down: [paid, standing] };
 }
 
 /** Each band's share of the days it overlaps. */
@@ -25,6 +25,7 @@ export function costBands(
     paid: d.paid,
     earned: d.earned,
     saved: d.saved,
+    standing: d.standing,
     start: Date.parse(d.start),
     end: Date.parse(d.end),
   }));
@@ -34,7 +35,12 @@ export function costBands(
     const part = (key: keyof Money) => spread(spanned, a, b, (d) => d[key]).sum;
 
     return {
-      ...split({ paid: part("paid"), earned: part("earned"), saved: part("saved") }),
+      ...split({
+        paid: part("paid"),
+        earned: part("earned"),
+        saved: part("saved"),
+        standing: part("standing"),
+      }),
       covered: spread(spanned, a, b, () => 0).covered,
       elapsed: Math.max(0, Math.min(b, now) - a),
     };

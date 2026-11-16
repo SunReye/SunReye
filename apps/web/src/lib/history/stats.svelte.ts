@@ -47,7 +47,7 @@ const TIMEOUT_MS = 10_000;
 const DAY = 86_400_000;
 
 async function money(core: StatsCore, from: number, to: number) {
-  if (to <= from) return { days: [], total: { paid: 0, earned: 0, saved: 0 } };
+  if (to <= from) return { days: [], total: { paid: 0, earned: 0, saved: 0, standing: 0 } };
 
   const read = await core.costs(new Date(from), new Date(to));
 

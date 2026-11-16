@@ -177,11 +177,15 @@ export function costs(plant: Plant, span: Span): Answer<"CostDays"> {
       paid,
       earned,
       saved: kwh("load.power", day) * 0.32 - paid + earned,
+      standing: 0,
     });
   }
 
   const sum = (k: "paid" | "earned" | "saved") =>
     days.reduce((a, d: Readonly<Schemas["CostDay"]>) => a + d[k], 0);
 
-  return { days, total: { paid: sum("paid"), earned: sum("earned"), saved: sum("saved") } };
+  return {
+    days,
+    total: { paid: sum("paid"), earned: sum("earned"), saved: sum("saved"), standing: 0 },
+  };
 }

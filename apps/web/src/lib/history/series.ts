@@ -47,7 +47,10 @@ export function costSeries(): Series {
       { label: m.stats_avoided(), colour: flowColour("solar") },
       { label: m.stats_feed_in_pay(), colour: flowColour("export") },
     ],
-    down: [{ label: m.stats_import_cost(), colour: flowColour("import") }],
+    down: [
+      { label: m.stats_import_cost(), colour: flowColour("import") },
+      { label: m.tariff_standing(), colour: flowColour("house") },
+    ],
     groups: [m.stats_savings(), m.stats_costs()],
     label: m.stats_chart_money(),
   };

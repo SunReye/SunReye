@@ -29,11 +29,13 @@ pub fn insert(
         ..version
     };
     tx.execute(
-        "INSERT INTO tariff (applies_from, import_price, export_price) VALUES (?1, ?2, ?3)",
+        "INSERT INTO tariff (applies_from, import_price, export_price, standing_charge)
+         VALUES (?1, ?2, ?3, ?4)",
         params![
             changes::seconds(version.applies_from),
             version.import.price,
-            version.export.price
+            version.export.price,
+            version.standing_charge
         ],
     )?;
     let tariff = tx.last_insert_rowid();
@@ -74,36 +76,40 @@ pub fn versions(db: &Connection) -> rusqlite::Result<Vec<Version>> {
         "SELECT days, start, end, price FROM tariff_band WHERE tariff = ?1 AND flow = ?2
          ORDER BY position",
     )?;
-    let tariffs: Vec<(i64, i64, f64, f64)> = db
+    let tariffs: Vec<(i64, i64, [f64; 3])> = db
         .prepare(
-            "SELECT id, applies_from, import_price, export_price FROM tariff
+            "SELECT id, applies_from, import_price, export_price, standing_charge FROM tariff
              ORDER BY applies_from, id",
         )?
         .query_map([], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+            let prices = [row.get(2)?, row.get(3)?, row.get(4)?];
+            Ok((row.get(0)?, row.get(1)?, prices))
         })?
         .collect::<rusqlite::Result<_>>()?;
     tariffs
         .into_iter()
-        .map(|(tariff, applies_from, import, export)| {
-            let mut schedule = |flow: &str, price: f64| -> rusqlite::Result<Schedule> {
-                let bands = bands
-                    .query_map(params![tariff, flow], |row| {
-                        Ok(Band {
-                            days: Days(row.get(0)?),
-                            from: row.get(1)?,
-                            to: row.get(2)?,
-                            price: row.get(3)?,
-                        })
-                    })?
-                    .collect::<rusqlite::Result<_>>()?;
-                Ok(Schedule { price, bands })
-            };
-            Ok(Version {
-                applies_from: time(applies_from),
-                import: schedule("import", import)?,
-                export: schedule("export", export)?,
-            })
-        })
+        .map(
+            |(tariff, applies_from, [import, export, standing_charge])| {
+                let mut schedule = |flow: &str, price: f64| -> rusqlite::Result<Schedule> {
+                    let bands = bands
+                        .query_map(params![tariff, flow], |row| {
+                            Ok(Band {
+                                days: Days(row.get(0)?),
+                                from: row.get(1)?,
+                                to: row.get(2)?,
+                                price: row.get(3)?,
+                            })
+                        })?
+                        .collect::<rusqlite::Result<_>>()?;
+                    Ok(Schedule { price, bands })
+                };
+                Ok(Version {
+                    applies_from: time(applies_from),
+                    import: schedule("import", import)?,
+                    export: schedule("export", export)?,
+                    standing_charge,
+                })
+            },
+        )
         .collect()
 }

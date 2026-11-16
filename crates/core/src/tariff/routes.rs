@@ -82,6 +82,8 @@ pub(super) struct Tariff {
     import: ScheduleView,
     /// What a kWh fed into the grid earns.
     export: ScheduleView,
+    /// EUR a month, owed whatever is bought; none is 0.
+    standing_charge: f64,
 }
 
 impl From<&Version> for Tariff {
@@ -92,6 +94,7 @@ impl From<&Version> for Tariff {
                 .unwrap_or_default(),
             import: (&version.import).into(),
             export: (&version.export).into(),
+            standing_charge: version.standing_charge,
         }
     }
 }
@@ -186,6 +189,9 @@ struct TariffChange {
     applies_from: Option<String>,
     import: ScheduleView,
     export: ScheduleView,
+    /// EUR a month, from 0 up; none when absent.
+    #[serde(default)]
+    standing_charge: f64,
 }
 
 /// Changes the tariff from an instant on. Editing changes only the future: prices already in force
@@ -208,6 +214,7 @@ async fn change_tariff(
         applies_from,
         import: change.import.try_into()?,
         export: change.export.try_into()?,
+        standing_charge: change.standing_charge,
     };
     let version = tariffs.change(version, now).await?;
     Ok(Json((&version).into()))
@@ -221,6 +228,9 @@ struct Reprice {
     applies_from: String,
     import: ScheduleView,
     export: ScheduleView,
+    /// EUR a month, from 0 up; none when absent.
+    #[serde(default)]
+    standing_charge: f64,
 }
 
 /// Corrects the past: the tariff applies from its date, and the prices and the `cost.*` rates are
@@ -238,6 +248,7 @@ async fn reprice(
         applies_from: instant(&reprice.applies_from).ok_or(BODY)?,
         import: reprice.import.try_into()?,
         export: reprice.export.try_into()?,
+        standing_charge: reprice.standing_charge,
     };
     let version = tariffs.reprice(version, clock()).await?;
     Ok(Json((&version).into()))
@@ -334,6 +345,8 @@ struct Money {
     earned: f64,
     /// The bill without the plant less the bill with it.
     saved: f64,
+    /// The standing charge owed, in no other figure.
+    standing: f64,
 }
 
 impl From<Costs> for Money {
@@ -342,11 +355,13 @@ impl From<Costs> for Money {
             paid,
             earned,
             saved,
+            standing,
         } = costs.cents();
         Self {
             paid,
             earned,
             saved,
+            standing,
         }
     }
 }
@@ -370,13 +385,14 @@ struct CostDays {
 }
 
 /// What the plant paid, earned and saved per plant-local day, from the daily rollups of the
-/// `cost.*` rates; the current day runs to the latest reading.
+/// `cost.*` rates; the current day runs to the latest reading. Each day also owes its share of the
+/// month's standing charge, today up to now, with or without a reading.
 #[utoipa::path(get, path = "/api/v1/costs", params(Span), responses(
     (status = 200, body = CostDays),
     (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
 ))]
 async fn costs(
-    State((tariffs, _)): TariffState,
+    State((tariffs, clock)): TariffState,
     span: Result<Query<Span>, QueryRejection>,
 ) -> Result<Json<CostDays>, Problem> {
     let Query(Span { from, to }) = span.map_err(|_| QUERY)?;
@@ -385,7 +401,7 @@ async fn costs(
     if span.is_zero() || span > SPAN {
         return Err(RANGE);
     }
-    let days = tariffs.days(range).await.map_err(internal)?;
+    let days = tariffs.days(range, clock()).await.map_err(internal)?;
     let mut total = Costs::default();
     let days = days
         .into_iter()

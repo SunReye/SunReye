@@ -545,6 +545,7 @@
           "topology.device",
           "tariff.none",
           "tariff.band",
+          "tariff.charge",
           "tariff.past",
           "tariff.retention",
           "investment.value",
@@ -2268,12 +2269,18 @@
             "description": "The bill without the plant less the bill with it.",
             "format": "double",
             "type": "number"
+          },
+          "standing": {
+            "description": "The standing charge owed, in no other figure.",
+            "format": "double",
+            "type": "number"
           }
         },
         "required": [
           "paid",
           "earned",
-          "saved"
+          "saved",
+          "standing"
         ],
         "type": "object"
       },
@@ -3081,6 +3088,11 @@
           },
           "import": {
             "$ref": "#/components/schemas/ScheduleView"
+          },
+          "standingCharge": {
+            "description": "EUR a month, from 0 up; none when absent.",
+            "format": "double",
+            "type": "number"
           }
         },
         "required": [
@@ -3740,12 +3752,18 @@
           "import": {
             "$ref": "#/components/schemas/ScheduleView",
             "description": "What a kWh bought from the grid costs."
+          },
+          "standingCharge": {
+            "description": "EUR a month, owed whatever is bought; none is 0.",
+            "format": "double",
+            "type": "number"
           }
         },
         "required": [
           "appliesFrom",
           "import",
-          "export"
+          "export",
+          "standingCharge"
         ],
         "type": "object"
       },
@@ -3764,6 +3782,11 @@
           },
           "import": {
             "$ref": "#/components/schemas/ScheduleView"
+          },
+          "standingCharge": {
+            "description": "EUR a month, from 0 up; none when absent.",
+            "format": "double",
+            "type": "number"
           }
         },
         "required": [
@@ -4617,7 +4640,7 @@
             }
           }
         },
-        "summary": "What the plant paid, earned and saved per plant-local day, from the daily rollups of the\n`cost.*` rates; the current day runs to the latest reading."
+        "summary": "What the plant paid, earned and saved per plant-local day, from the daily rollups of the\n`cost.*` rates; the current day runs to the latest reading. Each day also owes its share of the\nmonth's standing charge, today up to now, with or without a reading."
       }
     },
     "/api/v1/devices": {

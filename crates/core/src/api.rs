@@ -503,6 +503,8 @@ pub enum Code {
     TariffNone,
     #[serde(rename = "tariff.band")]
     TariffBand,
+    #[serde(rename = "tariff.charge")]
+    TariffCharge,
     #[serde(rename = "tariff.past")]
     TariffPast,
     #[serde(rename = "tariff.retention")]
