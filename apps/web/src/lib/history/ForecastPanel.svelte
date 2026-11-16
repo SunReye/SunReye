@@ -59,9 +59,10 @@
     via={got.via}
     summary={{
       title: m.range_sum({ range: rangeLabel(got.cal, got.range) }),
-      up: [view.measured],
+      up: [view.total.measured],
       down: [],
-      mark: view.forecast,
+      mark: view.total.forecast,
+      ghost: view.total.forecast,
     }}
     fmt={kwh}
     unit="kWh"

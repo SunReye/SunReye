@@ -130,7 +130,8 @@
   -->
   <dl class="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs @[520px]:gap-x-4">
     {#if r.name}
-      <dt class="hidden w-[4.75rem] shrink-0 text-muted-foreground @[520px]:block">{r.name}</dt>
+      <!-- Named on a phone too, on a line of its own: which side of the baseline is what. -->
+      <dt class="w-full shrink-0 text-muted-foreground @[520px]:w-[4.75rem]">{r.name}</dt>
     {/if}
     {#each r.series as s, i (s.label)}
       <div class="flex min-w-0 items-baseline gap-1.5">

@@ -15,6 +15,8 @@ export interface Rolled {
   /** The unit times hours: Wh for a power. */
   readonly integral: number;
   readonly mean: number;
+  /** The highest reading; null without one. */
+  readonly max: number | null;
   /** How long it had a value, in ms. */
   readonly covered: number;
 }
@@ -28,6 +30,15 @@ export const isPower = (series: string): boolean => /\.power(\[\d+\])?$/u.test(s
 export const periodOf = (r: Range): RollupPeriod =>
   grainOf(r) === "hour" || t0Of(r) % 24 !== 0 || t1Of(r) % 24 !== 0 ? "hour" : "day";
 
+/** [from, to) cut into pieces of a period's longest read. */
+function piecesOf(period: RollupPeriod, from: number, to: number): (readonly [number, number])[] {
+  const pieces: (readonly [number, number])[] = [];
+
+  for (let a = from; a < to; a += PIECE[period]) pieces.push([a, Math.min(to, a + PIECE[period])]);
+
+  return pieces;
+}
+
 /** The series' rollups starting from `from` to before `to`, read in pieces the core serves. */
 export async function rollups(
   core: Readonly<Pick<Core, "statistics">>,
@@ -37,27 +48,24 @@ export async function rollups(
   from: Readonly<Date>,
   to: Readonly<Date>,
 ): Promise<Rolled[]> {
-  const pieces: (readonly [number, number])[] = [];
-
-  for (let a = from.getTime(); a < to.getTime(); a += PIECE[period])
-    pieces.push([a, Math.min(to.getTime(), a + PIECE[period])]);
-
   const reads = await Promise.all(
-    pieces.map((p) => core.statistics(device, series, period, new Date(p[0]), new Date(p[1]))),
+    piecesOf(period, from.getTime(), to.getTime()).map((p) =>
+      core.statistics(device, series, period, new Date(p[0]), new Date(p[1])),
+    ),
   );
 
   const out: Rolled[] = [];
 
   for (const read of reads)
-    if ("points" in read)
-      for (const p of read.points)
-        out.push({
-          start: Date.parse(p.start),
-          end: Date.parse(p.end),
-          integral: p.integral ?? 0,
-          mean: p.mean ?? 0,
-          covered: (p.hours ?? 0) * H,
-        });
+    for (const p of "points" in read ? read.points : [])
+      out.push({
+        start: Date.parse(p.start),
+        end: Date.parse(p.end),
+        integral: p.integral ?? 0,
+        mean: p.mean ?? 0,
+        max: p.max ?? null,
+        covered: (p.hours ?? 0) * H,
+      });
 
   return out;
 }

@@ -88,6 +88,6 @@ test("a series the plant lacks reads as none", async () => {
   expect(plant.hours.charge).toEqual([]);
   expect(plant.load).toEqual([point]);
   expect(plant.days.pv).toEqual([
-    { start: T0, end: T0 + DAY, integral: 900, mean: 37.5, covered: DAY },
+    { start: T0, end: T0 + DAY, integral: 900, mean: 37.5, max: null, covered: DAY },
   ]);
 });

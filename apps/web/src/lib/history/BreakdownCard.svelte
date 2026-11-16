@@ -9,11 +9,14 @@
   let {
     label,
     rows,
+    against,
     loading,
   }: {
     /** The range's label. */
     label: string;
     rows: readonly Row[];
+    /** What the rows' changes are against: "zum Vormonat". */
+    against: string;
     loading: boolean;
   } = $props();
 </script>
@@ -30,5 +33,10 @@
         <BreakdownRow {r} {loading} />
       {/each}
     </dl>
+    {#if against && !loading && rows.some((r) => r.change)}
+      <p class="border-t border-border/60 px-4 py-2 text-xs text-muted-foreground">
+        {m.stats_change_against({ against })}
+      </p>
+    {/if}
   {/if}
 </GlassCard>

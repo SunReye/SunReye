@@ -1,17 +1,25 @@
-<!-- Beside the chart: the breakdown, what stands out, and payback or, in the first week, what fills in. -->
+<!-- Beside the chart: the breakdown, the peaks, what stands out, and payback or, in the first week, what fills in. -->
 <script lang="ts">
   import type { Payback } from "../api/tariff.ts";
   import BreakdownCard from "./BreakdownCard.svelte";
-  import type { Row } from "./breakdown.ts";
   import Filling from "./Filling.svelte";
   import type { Note } from "./notes.ts";
   import NotesCard from "./NotesCard.svelte";
   import PaybackCard from "./PaybackCard.svelte";
+  import PeaksCard from "./PeaksCard.svelte";
+  import type { Range } from "../range/range.ts";
+  import type { Summary } from "./summary.ts";
+
+  const NOTHING: Pick<Summary, "breakdown" | "against" | "peaks" | "notes"> = {
+    breakdown: [],
+    against: "",
+    peaks: [],
+    notes: [],
+  };
 
   let {
     label,
-    rows,
-    notes,
+    summary,
     loading,
     fresh,
     since,
@@ -19,12 +27,13 @@
     payback,
     tucked,
     onnote,
+    onrange,
     onpayback,
   }: {
     /** The range's label. */
     label: string;
-    rows: readonly Row[];
-    notes: readonly Note[];
+    /** Null before the first range is read: the breakdown stands empty. */
+    summary: Summary | null;
     loading: boolean;
     /** Recording began days ago: what fills in replaces payback. */
     fresh: boolean;
@@ -34,15 +43,23 @@
     /** The payback tab says it itself: the card fades, its place stays. */
     tucked: boolean;
     onnote: (note: Note) => void;
+    /** Opens a peak's day. */
+    onrange: (range: Range) => void;
     onpayback: () => void;
   } = $props();
+
+  const shown = $derived(summary ?? NOTHING);
 </script>
 
 <aside class="grid content-start gap-4 sm:max-lg:grid-cols-2">
-  <BreakdownCard {label} {rows} {loading} />
+  <BreakdownCard {label} rows={shown.breakdown} against={shown.against} {loading} />
 
-  {#if notes.length > 0 && !loading}
-    <NotesCard {notes} {onnote} />
+  {#if shown.peaks.length > 0 && !loading}
+    <PeaksCard {label} peaks={shown.peaks} onopen={onrange} />
+  {/if}
+
+  {#if shown.notes.length > 0 && !loading}
+    <NotesCard notes={shown.notes} {onnote} />
   {/if}
 
   {#if fresh}

@@ -50,17 +50,17 @@ function hours(name: string) {
 /** Each recorded hour's or day's rollup of a series starting in [from, to). */
 export function rollups(name: string, period: string, from: number, to: number) {
   const length = period === "hour" ? H : DAY;
-  const sums = new Map<number, readonly [number, number]>();
+  const sums = new Map<number, readonly [number, number, number]>();
 
   for (const { t, mean } of hours(name)) {
     const start = Math.floor(t / length) * length;
-    const [wh, read] = sums.get(start) ?? [0, 0];
+    const [wh, read, max] = sums.get(start) ?? [0, 0, 0];
 
-    if (start >= from && start < to) sums.set(start, [wh + mean, read + 1]);
+    if (start >= from && start < to) sums.set(start, [wh + mean, read + 1, Math.max(max, mean)]);
   }
 
   return [...sums.keys()].map((start) => {
-    const [wh, read] = sums.get(start)!;
+    const [wh, read, max] = sums.get(start)!;
 
     return {
       date: iso(Math.floor(start / DAY)),
@@ -68,6 +68,7 @@ export function rollups(name: string, period: string, from: number, to: number) 
       end: new Date(start + length).toISOString(),
       integral: wh,
       mean: wh / read,
+      max,
       hours: read,
     };
   });
