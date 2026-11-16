@@ -49,6 +49,7 @@ function historyCurve(draw: Draw, got: Stored): Curve {
   return {
     draw,
     tier: got.tier,
+    width: got.width ?? undefined,
     samples: got.points.map((p: Readonly<History["points"][number]>) => ({
       t0: Date.parse(p.start),
       t1: Date.parse(p.end),

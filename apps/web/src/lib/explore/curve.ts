@@ -19,6 +19,8 @@ export interface Sample {
 export interface Curve {
   readonly draw: Draw;
   readonly tier: Tier;
+  /** A `bucket`'s width in seconds. */
+  readonly width?: number | undefined;
   /** In time order, never overlapping; a gap has no sample. */
   readonly samples: readonly Sample[];
 }
