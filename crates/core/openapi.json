@@ -430,6 +430,10 @@
       },
       "CatalogSeries": {
         "properties": {
+          "estimated": {
+            "description": "Whether a computed estimate writes it, such as a parallel string's `pv.string.power`\nunder any layout version (ADR 17), so it holds once the device is removed.",
+            "type": "boolean"
+          },
           "first": {
             "description": "The first stored instant, of a change point or a rollup's start, RFC 3339, UTC.",
             "type": "string"
@@ -463,6 +467,7 @@
         },
         "required": [
           "series",
+          "estimated",
           "first",
           "last"
         ],

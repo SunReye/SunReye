@@ -191,7 +191,11 @@ fn stored_routes(api: &Api) -> OpenApiRouter {
             )),
         OpenApiRouter::new()
             .routes(routes!(series::catalog))
-            .with_state((api.history.clone(), api.devices.clone())),
+            .with_state((
+                api.history.clone(),
+                api.devices.clone(),
+                api.layouts.clone(),
+            )),
         OpenApiRouter::new()
             .routes(routes!(battery::capacity))
             .with_state((api.history.clone(), Clock::clone(&api.clock))),

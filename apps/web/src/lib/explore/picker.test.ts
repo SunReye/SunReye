@@ -5,8 +5,8 @@ import { chosenOf, pickerOf, searched } from "./picker.ts";
 
 const SPAN = { first: "2026-01-01T00:00:00Z", last: "2026-11-15T12:00:00Z" };
 
-const measured = (series: string, unit: string | null = "W") =>
-  ({ series, unit, kind: "measurement", ...SPAN }) as const;
+const measured = (series: string, unit: string | null = "W", estimated = false) =>
+  ({ series, unit, kind: "measurement", estimated, ...SPAN }) as const;
 
 const CATALOG: readonly CatalogDevice[] = [
   { id: 2, name: "Zähler", removed: false, series: [measured("grid.phase.voltage[2]", "V")] },
@@ -18,10 +18,10 @@ const CATALOG: readonly CatalogDevice[] = [
       measured("extra.Lüfter", "none"),
       measured("pv.mppt.power[2]"),
       measured("pv.power"),
-      measured("pv.string.power[1]"),
-      { series: "inverter.status", kind: "status", unit: null, ...SPAN },
-      { series: "pv.energy.total", kind: "counter", unit: "kWh", ...SPAN },
-      { series: "extra.code", kind: null, unit: null, ...SPAN },
+      measured("pv.string.power[1]", "W", true),
+      { series: "inverter.status", kind: "status", unit: null, estimated: false, ...SPAN },
+      { series: "pv.energy.total", kind: "counter", unit: "kWh", estimated: false, ...SPAN },
+      { series: "extra.code", kind: null, unit: null, estimated: false, ...SPAN },
     ],
   },
   { id: 5, name: "Alter Speicher", removed: true, series: [measured("battery.soc", "%")] },
@@ -32,9 +32,7 @@ const CATALOG: readonly CatalogDevice[] = [
   { id: PLANT, name: null, removed: false, series: [measured("pv.power"), measured("load.power")] },
 ];
 
-const ESTIMATED = { "1": { estimated: ["pv.string.power[1]"] } };
-
-const picker = pickerOf(CATALOG, ESTIMATED);
+const picker = pickerOf(CATALOG);
 
 test("the plant comes first, then the registered devices by name, the computed ones and the weather", () => {
   expect(picker.map((d) => d.name)).toEqual([
@@ -70,7 +68,7 @@ test("an indexed series names its index: an MPPT input, a phase", () => {
   expect(phase.ref).toEqual({ device: 2, series: "grid.phase.voltage[2]" });
 });
 
-test("an estimate carries its mark; a series says its unit, and none when it has none", () => {
+test("a series the catalog marks estimated carries its mark; a series says its unit, and none when it has none", () => {
   const [pv] = picker.find((d) => d.id === 1)!.groups;
   const string = pv!.series.find((s) => s.ref.series === "pv.string.power[1]")!;
 

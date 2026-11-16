@@ -12,11 +12,11 @@ const DEVICES: readonly CatalogDevice[] = [
     name: "Deye",
     removed: false,
     series: [
-      { series: "pv.power", unit: "W", kind: "measurement", ...SPAN },
-      { series: "battery.temperature", unit: "°C", kind: "measurement", ...SPAN },
-      { series: "cost.import", unit: "EUR/h", kind: "measurement", ...SPAN },
-      { series: "grid.import.energy", unit: "kWh", kind: "counter", ...SPAN },
-      { series: "inverter.status", unit: "none", kind: "status", ...SPAN },
+      { series: "pv.power", unit: "W", kind: "measurement", estimated: false, ...SPAN },
+      { series: "battery.temperature", unit: "°C", kind: "measurement", estimated: false, ...SPAN },
+      { series: "cost.import", unit: "EUR/h", kind: "measurement", estimated: false, ...SPAN },
+      { series: "grid.import.energy", unit: "kWh", kind: "counter", estimated: false, ...SPAN },
+      { series: "inverter.status", unit: "none", kind: "status", estimated: false, ...SPAN },
     ],
   },
 ];
@@ -71,8 +71,6 @@ function transport(): Transport {
       if (read === "timezone") return Promise.resolve(Response.json({ name: "UTC" }));
 
       if (read === "series") return Promise.resolve(Response.json({ devices: DEVICES }));
-
-      if (read === "capabilities") return Promise.resolve(Response.json({ devices: {} }));
 
       if (read === "statistics" && !plant.refused) {
         plant.asked.push(url.searchParams);

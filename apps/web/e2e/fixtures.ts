@@ -148,6 +148,7 @@ function catalog(start: number): Schemas["SeriesCatalog"] {
           series,
           kind: series.endsWith(".total") ? ("counter" as const) : ("measurement" as const),
           unit: unitOf(series),
+          estimated: false,
           first,
           last,
         })),

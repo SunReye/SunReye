@@ -18,9 +18,7 @@ import {
 } from "./view.ts";
 
 /** What the screen and its charts read. */
-export type ExploreCore = Readonly<
-  Pick<Core, "timezone" | "series" | "capabilities" | "history" | "statistics">
->;
+export type ExploreCore = Readonly<Pick<Core, "timezone" | "series" | "history" | "statistics">>;
 
 export type CatalogState = "loading" | "ready" | "failed";
 
@@ -95,7 +93,7 @@ export class Explore {
     return this.#catalog === undefined ? "loading" : "ready";
   }
 
-  /** Reads the catalog, and from the capabilities which series are estimates (ADR 17). */
+  /** Reads the catalog. */
   load = async (): Promise<void> => {
     const { core } = this.#input();
 
@@ -103,9 +101,7 @@ export class Explore {
     this.#failed = false;
 
     // An unreachable core rejects; a refusal answers with a problem.
-    const [catalog, caps] = await Promise.all([core.series(), core.capabilities()]).catch(
-      () => [{ problem: "network" }, { problem: "network" }] as const,
-    );
+    const catalog = await core.series().catch(() => ({ problem: "network" }) as const);
 
     if ("problem" in catalog) {
       this.#failed = true;
@@ -113,7 +109,7 @@ export class Explore {
       return;
     }
 
-    this.#catalog = pickerOf(catalog, "devices" in caps ? caps.devices : {});
+    this.#catalog = pickerOf(catalog);
   };
 
   /** The plotted points to export; null while nothing is drawn. */

@@ -1235,6 +1235,11 @@ export interface components {
             series: components["schemas"]["CatalogSeries"][];
         };
         CatalogSeries: {
+            /**
+             * @description Whether a computed estimate writes it, such as a parallel string's `pv.string.power`
+             *     under any layout version (ADR 17), so it holds once the device is removed.
+             */
+            estimated: boolean;
             /** @description The first stored instant, of a change point or a rollup's start, RFC 3339, UTC. */
             first: string;
             kind?: components["schemas"]["SeriesKind"] | null;
