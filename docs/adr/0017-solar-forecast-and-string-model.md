@@ -1,6 +1,6 @@
 # 17. Solar forecast and string model
 
-Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12, 2026-11-13, 2026-11-15)
+Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12, 2026-11-13, 2026-11-15, 2026-11-16)
 
 ## Context
 
@@ -17,7 +17,7 @@ Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12, 2026-11-13, 2026
 - kWp is derived: modules × Pmax.
 - A lint warns when parallel strings on one MPPT input differ in module count.
 - Strings and module types have stable ids that are never reused; `pv.string.power` is indexed by string id. A layout change applies from its date, and past estimates keep the layout they were computed with, as for topology (ADR 14).
-- The admin adds module types (`POST /api/v1/module-types`) and puts every string with the instant the change applies from (`PUT /api/v1/layout`); a string without an id is new and gets one. Each change is appended as a version with its author and time, which is its change-log entry (ADR 19). `GET /api/v1/layout?at=` returns the version in force at an instant, now by default. Until device configuration exists, a string may name only an inverter the core knows with its profile.
+- The admin adds module types (`POST /api/v1/module-types`) and puts every string with the instant the change applies from (`PUT /api/v1/layout`); a string without an id is new and gets one. A layout keeps one version per date it applies from: a change from a date that already has one replaces it, and a change equal to the version in force at that date stores nothing. Each stored change appends a change-log entry (ADR 19) with its author, time and date, and the counts of strings and modules, not the layout itself. `GET /api/v1/layout?at=` returns the version in force at an instant, now by default. Until device configuration exists, a string may name only an inverter the core knows with its profile.
 - The plant's location (latitude, longitude) is entered at first-run setup. The admin sets it with `PUT /api/v1/location`; the location module stores it rounded to 0.01° and appends each change to the change log (ADR 19).
 
 **Weather.** A weather computed device stores global, direct and diffuse irradiance, temperature and wind as `weather.*` forecasts (ADR 15) for the plant's location, rounded to 0.01° (about 1 km) before it leaves the home, at 15-minute resolution for today and two more days. Its task fetches on start and hourly while the location is set, and at once when it changes; a handler never fetches. Without a location nothing is fetched. The provider is an adapter at this seam: Open-Meteo forecast, Open-Meteo archive (past weather for learning) and a fake for tests. Archive weather is stored as `weather.*` history, so learning, charts and re-learning after a layout change read it locally.
