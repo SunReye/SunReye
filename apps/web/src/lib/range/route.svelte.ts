@@ -18,7 +18,7 @@ import {
   type Ranged,
   type Via,
 } from "./range.ts";
-import { parseRange, rangeParams, RANGE_PARAMS } from "./params.ts";
+import { parseRange, rangeParams, RANGE_PARAMS, type RangeParams } from "./params.ts";
 import type { Core } from "../api/core.ts";
 import { dayOfIso, iso } from "./calendar.ts";
 import { PlantZone } from "./plant-zone.svelte.ts";
@@ -177,6 +177,11 @@ export class RangeRoute implements Ranged {
   /** The route as the screen sees it, a change made here included. */
   get params(): URLSearchParams {
     return this.#now;
+  }
+
+  /** The range as a link to another screen carries it. */
+  get rangeParams(): RangeParams {
+    return rangeParams(this.place.cal, this.range);
   }
 
   /** Changes the screen's own parameters; `push` adds a history entry, so back returns. */

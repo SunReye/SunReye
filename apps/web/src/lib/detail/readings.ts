@@ -2,6 +2,7 @@
 // this decides. A role the device does not publish gives no row, and a group without rows is
 // dropped. `groups.ts` maps v3's node dialogs onto v5's roles.
 import { PLANT, registered } from "../api/computed-devices.ts";
+import { exploreHash } from "../explore/view.ts";
 import { m } from "../paraglide/messages.js";
 import {
   battery,
@@ -187,6 +188,15 @@ export function nodeReadings(id: string, source: Source): NodeReadings | null {
     ...own,
     groups,
   };
+}
+
+/** Explore on a series at `range` when `stored`, each a `device/series`, holds it (ADR 22). */
+export function exploreLinks(
+  stored: readonly string[],
+  range: Readonly<Record<string, string | null>>,
+): Source["link"] {
+  return (device, series) =>
+    stored.includes(`${device}/${series}`) ? exploreHash({ device, series }, range) : null;
 }
 
 /** "vor 42 s", "vor 4 min", "vor 3 h": how old a reading is. */
