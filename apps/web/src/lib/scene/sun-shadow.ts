@@ -19,11 +19,11 @@ export function soften(sun: DirectionalLight): void {
 
 /** The shadow's softness under a sky that spreads it `spread` times a clear one's. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js sets it in place.
-export function shade(sun: DirectionalLight, { rich }: Look, spread: number): void {
+export function shade(sun: DirectionalLight, { contact }: Look, spread: number): void {
   const { shadow } = sun;
   const { camera } = shadow;
 
-  shadow.radius = rich
+  shadow.radius = contact
     ? penumbra(spread, camera.far - camera.near, camera.right - camera.left, shadow.mapSize.x)
     : spread * CLEAR_SHADOW;
 }
@@ -34,7 +34,7 @@ export function shadowFor(renderer: WebGLRenderer, sun: DirectionalLight, look: 
   const { shadow } = sun;
 
   // Hoch's shadows harden where they touch: sampled from raw depths, three.js's basic map.
-  renderer.shadowMap.type = look.rich ? BasicShadowMap : PCFShadowMap;
+  renderer.shadowMap.type = look.contact ? BasicShadowMap : PCFShadowMap;
 
   if (shadow.mapSize.x === look.shadowMap) return;
 

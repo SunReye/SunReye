@@ -75,7 +75,7 @@ export function lit(
   const opened = new Opening(studio, drawn);
   const { flight } = opened;
   const { render } = opened;
-  const shown = stage(studio, render);
+  const shown = stage(studio);
   const day = $derived(daylight(sky().sun, sky().diffuse));
   let colour = $state(0);
 
@@ -88,7 +88,6 @@ export function lit(
 
   $effect(() => {
     studio.follow(look());
-    shown.dress();
     render();
   });
 

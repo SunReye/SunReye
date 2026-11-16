@@ -249,7 +249,7 @@ The terrain, neighbouring buildings, trees and ground around the plant, fetched 
 _Avoid_: Map, environment, tiles
 
 **3D quality**:
-How richly a browser draws the scene (Auto, Niedrig, Mittel, Hoch, Ultra), apart from what moves.
+How sharply a browser draws the scene (Auto, Niedrig, Mittel, Hoch, Ultra), apart from what moves.
 _Avoid_: Graphics tier, motion tier
 
 **Roof window**:

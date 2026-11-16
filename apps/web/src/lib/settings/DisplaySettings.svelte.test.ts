@@ -116,9 +116,7 @@ test("on Auto the row says which level this device draws; a chosen level needs n
     screen.getByRole("group", { name: "3D-Qualität" }).getByRole("radio", { name: "Hoch" }),
   );
 
-  await expect
-    .element(screen.getByText("Wie detailreich das 3D-Haus gezeichnet wird."))
-    .toBeVisible();
+  await expect.element(screen.getByText("Wie scharf das 3D-Haus gezeichnet wird.")).toBeVisible();
 });
 
 test("with low power on, the row says the 3D scene is not shown", async () => {

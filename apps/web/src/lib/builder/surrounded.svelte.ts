@@ -85,8 +85,6 @@ export class Surrounded {
         : { drawn: buildAround(stood.around, stood.key, ghosts), stood };
 
     if (this.#shown !== undefined) {
-      // In the studio's 3D quality, as the scene itself.
-      studio.dress(this.#shown.drawn.group);
       studio.scene.add(this.#shown.drawn.group);
     }
 

@@ -234,7 +234,7 @@
   "display_quality_medium": "Mittel",
   "display_quality_high": "Hoch",
   "display_quality_ultra": "Ultra",
-  "display_quality_hint": "Wie detailreich das 3D-Haus gezeichnet wird.",
+  "display_quality_hint": "Wie scharf das 3D-Haus gezeichnet wird.",
   "display_quality_now": "Auto zeichnet auf diesem Gerät derzeit {level}.",
   "display_quality_low_power": "Stromsparen zeigt 2D statt 3D.",
   "settings_device": "Gerät {id}",
