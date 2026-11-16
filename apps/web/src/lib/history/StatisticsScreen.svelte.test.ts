@@ -38,7 +38,7 @@ test("the breakdown says what its rows changed against, and the peaks name their
 
   await expect.element(peaks.getByText("PV-Leistung")).toBeVisible();
   await expect.element(peaks.getByText("3,0 kW")).toBeVisible();
-  await expect.element(peaks.getByText("10–11 Uhr").first()).toBeVisible();
+  await expect.element(peaks.getByText("10:00–11:00 Uhr").first()).toBeVisible();
 });
 
 test("over several days a peak names its day and opens it", async () => {

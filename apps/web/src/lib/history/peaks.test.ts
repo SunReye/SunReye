@@ -45,7 +45,7 @@ test("a day names the hour, and opens nothing", () => {
   const peaks = peaksOf(PLANT, { from: T0, to: T0 + 24 * H, hours: true, zone: "UTC" });
 
   expect(peaks.map((p) => [p.label, p.value, p.when, p.range])).toEqual([
-    ["PV-Leistung", 7829, "2–3 Uhr", null],
+    ["PV-Leistung", 7829, "2:00–3:00 Uhr", null],
   ]);
 });
 
