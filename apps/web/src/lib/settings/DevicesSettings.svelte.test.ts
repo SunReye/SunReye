@@ -56,8 +56,12 @@ test("the admin adds a scanned Modbus device after setup, renames it and removes
 
   await screen.getByRole("button", { name: /^Speicher Keller/u }).click();
   await screen.getByRole("button", { name: "Gerät entfernen" }).click();
-  await expect.element(screen.getByText("Sein Verlauf bleibt erhalten.")).toBeVisible();
-  await screen.getByRole("button", { name: "Entfernen", exact: true }).click();
+
+  const confirm = page.getByRole("dialog", { name: "Speicher Keller entfernen" });
+
+  await expect.element(confirm.getByText("Sein Verlauf bleibt erhalten.")).toBeVisible();
+  await confirm.getByRole("button", { name: "Entfernen", exact: true }).click();
+  await expect.element(confirm).not.toBeInTheDocument();
 
   await expect.element(screen.getByRole("button", { name: /^Wechselrichter/u })).toBeVisible();
   expect(screen.getByRole("button", { name: /^Speicher/u }).query()).toBeNull();

@@ -47,6 +47,7 @@
       ask={m.access_revoke_token({ name: token.name })}
       note={m.access_revoke_token_note({ name: token.name })}
       confirm={m.access_revoke()}
+      done={m.access_revoked()}
       onremove={() => remove(token.id)}
     />
   {/snippet}
