@@ -1,11 +1,10 @@
 <!-- A viewer or token under Settings › Users & access; nothing brings it back, so removing asks first. -->
 <script lang="ts">
-  import Refusal from "../setup/Refusal.svelte";
   import Trash2 from "@lucide/svelte/icons/trash-2";
   import type { Problem } from "../api/core";
+  import ConfirmSheet from "../components/confirm-sheet.svelte";
   import { Button } from "#lib/components/ui/button/index.js";
   import * as Item from "#lib/components/ui/item/index.js";
-  import { m } from "../paraglide/messages.js";
 
   let {
     name,
@@ -13,46 +12,35 @@
     ask,
     note,
     confirm,
+    done,
     onremove,
   }: {
     name: string;
     detail?: string;
-    /** The remove button's label. */
+    /** The remove button's label, and the confirm's title. */
     ask: string;
-    /** What removing does, shown while it waits for the confirm. */
+    /** What removing does. */
     note: string;
     confirm: string;
+    /** The toast once it is gone. */
+    done: string;
     onremove: () => Promise<Problem | undefined>;
   } = $props();
 
   let asking = $state(false);
-  let problem = $state.raw<Problem>();
-
-  async function remove(): Promise<void> {
-    problem = await onremove();
-    asking = false;
-  }
 </script>
 
 <Item.Root class="rounded-none border-0" role="listitem">
   <Item.Content>
     <Item.Title class="text-[15px] font-normal">{name}</Item.Title>
-    {#if asking}
-      <Item.Description>{note}</Item.Description>
-    {:else if detail !== undefined}
+    {#if detail !== undefined}
       <Item.Description>{detail}</Item.Description>
     {/if}
-    <Refusal refused={problem} />
   </Item.Content>
   <Item.Actions>
-    {#if asking}
-      <Button variant="ghost" size="sm" onclick={() => (asking = false)}>{m.access_cancel()}</Button
-      >
-      <Button variant="destructive" size="sm" onclick={remove}>{confirm}</Button>
-    {:else}
-      <Button variant="ghost" size="icon-sm" aria-label={ask} onclick={() => (asking = true)}>
-        <Trash2 class="text-muted-foreground" />
-      </Button>
-    {/if}
+    <Button variant="ghost" size="icon-sm" aria-label={ask} onclick={() => (asking = true)}>
+      <Trash2 class="text-muted-foreground" />
+    </Button>
   </Item.Actions>
 </Item.Root>
+<ConfirmSheet bind:open={asking} title={ask} {note} action={confirm} {done} onconfirm={onremove} />

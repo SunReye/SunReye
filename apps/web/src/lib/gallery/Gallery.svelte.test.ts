@@ -63,6 +63,7 @@ test("the gallery shows every primitive built on the kit", async () => {
     "select-field",
     "date-field",
     "combobox-field",
+    "confirm-sheet",
   ]) {
     expect(document.querySelector(`[data-gallery="${name}"]`), name).not.toBeNull();
   }

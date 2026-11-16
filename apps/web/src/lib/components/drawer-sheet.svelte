@@ -11,9 +11,17 @@
   let {
     open = $bindable(false),
     label,
+    titled = false,
     children,
     class: className = "",
-  }: { open?: boolean; label: string; children: Snippet; class?: string } = $props();
+  }: {
+    open?: boolean;
+    label: string;
+    /** Shows the label as the heading. */
+    titled?: boolean;
+    children: Snippet;
+    class?: string;
+  } = $props();
 
   let sheet: HTMLElement | null = $state(null);
 </script>
@@ -29,7 +37,9 @@
     }}
     class="glass-ambient mx-auto max-w-xl outline-none pb-[max(1rem,env(safe-area-inset-bottom))] {className}"
   >
-    <Drawer.Title class="sr-only">{label}</Drawer.Title>
+    <Drawer.Title class={titled ? "px-4 pt-3 pb-3 text-[15px] leading-snug" : "sr-only"}>
+      {label}
+    </Drawer.Title>
     {@render children()}
   </Drawer.Content>
 </Drawer.Root>

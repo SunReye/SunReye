@@ -12,15 +12,23 @@
   let {
     open = $bindable(false),
     label,
+    titled = false,
     children,
     class: className = "",
-  }: { open?: boolean; label: string; children: Snippet; class?: string } = $props();
+  }: {
+    open?: boolean;
+    label: string;
+    /** Shows the label as the heading; a form that names itself keeps it for screen readers. */
+    titled?: boolean;
+    children: Snippet;
+    class?: string;
+  } = $props();
 
   let dialog: HTMLElement | null = $state(null);
 </script>
 
 {#if input.shell === "bar"}
-  <DrawerSheet bind:open {label} class={className}>{@render children()}</DrawerSheet>
+  <DrawerSheet bind:open {label} {titled} class={className}>{@render children()}</DrawerSheet>
 {:else}
   <Dialog.Root bind:open>
     <Dialog.Content
@@ -35,7 +43,9 @@
       }}
       class="glass-ambient flex max-h-[85dvh] flex-col gap-0 overflow-hidden p-0 {className}"
     >
-      <Dialog.Title class="sr-only">{label}</Dialog.Title>
+      <Dialog.Title class={titled ? "px-4 pt-4 text-[15px] leading-snug" : "sr-only"}>
+        {label}
+      </Dialog.Title>
       <!-- The glass keeps its edge; the content scrolls and fades inside it (ADR 21). -->
       <div class="min-h-0 overflow-y-auto py-3 scroll-fade-y no-scrollbar">
         {@render children()}

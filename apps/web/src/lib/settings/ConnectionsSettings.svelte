@@ -85,6 +85,7 @@
         <ConnectionForm {core} connection={open} onsaved={after} />
         <RemoveConfirm
           ask={m.settings_connection_remove()}
+          name={open.name}
           note={m.settings_connection_remove_note()}
           onremove={() => remove(open.id)}
         />
