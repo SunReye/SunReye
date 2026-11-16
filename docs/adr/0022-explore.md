@@ -30,7 +30,7 @@ History (ADR 21) answers four plant questions, and a detail sheet's analytics re
 
 **Reads.** One history or statistics call per series and per overlay period, in parallel; the caps keep a view to about six. There is no batch route. A status or held series' history returns raw intervals at any range while they number at most 1,500 (ADR 9).
 
-**State.** The whole view is in the hash route: devices, series, range, mode and overlay periods, so a view can be bookmarked, sent to a viewer and stepped back through. Nothing is saved on the server or in the browser.
+**State.** The whole view is in the hash route: devices, series, range, mode, overlay periods and the fold's period where it is not the range's default, so a view can be bookmarked, sent to a viewer and stepped back through. Nothing is saved on the server or in the browser.
 
 **Reading the chart.** ADR 21's chart reading: the legend shows the values under the pointer, there are no tooltips, a mouse drag narrows the range, touch has no brushing. There is no pinch zoom. Lanes draw on a canvas: six series of 1,500 points are far past the band count at which SVG charts froze the page. Motion follows the tiers.
 
