@@ -171,3 +171,36 @@ test("a range whose facts fail to read says so in their place, with a retry", as
     .toHaveTextContent("0,45 €");
   await expect.element(alert).not.toBeInTheDocument();
 });
+
+test("the feed-in sheet's facts: the peak, and what feed-in earned", async () => {
+  priced();
+  served.rolled = rolled({
+    [PLANT]: { "grid.export.power": { [at(10)]: [2000, 2600], [at(11)]: [1500, 1900] } },
+    [TARIFF]: { "cost.export.rate": { [at(10)]: [0.16, 0.16], [at(11)]: [0.12, 0.12] } },
+  });
+
+  const sheet = await sheetOf("feedIn", "Einspeisung");
+  const facts = sheet.getByRole("definition");
+
+  await expect
+    .element(facts.filter({ hasText: "10:00–11:00 Uhr" }))
+    .toHaveTextContent("2,6 kW 10:00–11:00 Uhr");
+  await expect.element(sheet.getByText("Vergütung")).toBeVisible();
+  await expect.element(facts.filter({ hasText: "€" })).toHaveTextContent("0,28 €");
+});
+
+test("past a day the peak names its day", async () => {
+  served.rolled = rolled({
+    [PLANT]: {
+      "generator.power": {
+        "2026-11-10T09:00:00Z": [1200, 5400],
+        [at(9)]: [800, 2100],
+      },
+    },
+  });
+
+  const sheet = await sheetOf("generator", "Generator", "range=week&at=2026-11-09");
+  const facts = sheet.getByRole("definition");
+
+  await expect.element(facts.filter({ hasText: "Nov" })).toHaveTextContent("5,4 kW 10. Nov.");
+});
