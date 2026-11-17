@@ -36,10 +36,13 @@ test("the weather's fog closes in round the plot and greys; clear again, it is t
   opened.light(noon, theme(false), page);
 
   const clear = { near: fog.near, far: fog.far, colour: fog.color.getHex() };
+  const backdrop = opened.scene.background;
 
   opened.light(noon, theme(false), page, { ...DRY, fog: 1 });
-  expect([fog.near, fog.far]).toEqual([10, 90]);
+  expect([fog.near, fog.far].map((metres) => Math.round(metres * 10) / 10)).toEqual([1, 35]);
   expect(fog.color.g).toBeLessThan(0.6 * new Color(clear.colour).g);
+  // The backdrop is made anew, in the fog's grey: far things melt into it.
+  expect(opened.scene.background).not.toBe(backdrop);
 
   opened.light(noon, theme(false), page, DRY);
   expect({ near: fog.near, far: fog.far, colour: fog.color.getHex() }).toEqual(clear);

@@ -3,15 +3,19 @@
 import { Fog, type Mesh, Vector2 } from "three";
 import { ground } from "./backdrop.ts";
 import { mix } from "./colour.ts";
-import type { Theme } from "./light.ts";
 import { untone, type Triple } from "./tone.ts";
-import { fogColour, type SceneWeather } from "./weather.ts";
+import type { SceneWeather } from "./weather.ts";
 import { weathered } from "./weathered.ts";
 
 /** Where the fog starts and ends, as radii of the plot and metres past them: far off in clear
- * air, and round the plot in fog, which veils the house and never hides it. */
+ * air, and from the camera on in fog, which veils the house and never hides it. */
 const CLEAR = { near: [4, 40], far: [16, 160] } as const;
-const FOGGED = { near: [1, 0], far: [6, 30] } as const;
+const FOGGED = { near: [0.1, 0], far: [2.5, 10] } as const;
+
+/** Between two distances by how thick the air is, which is their reciprocals: halfway to fog
+ * is far nearer the fog's than the clear air's. */
+const thicken = (clear: number, fogged: number, k: number): number =>
+  1 / mix(1 / clear, 1 / fogged, k);
 
 export class Plot {
   readonly #fade = { centre: { value: new Vector2() }, radius: { value: 12 } };
@@ -36,9 +40,9 @@ export class Plot {
     this.#reach();
   }
 
-  /** The `weather` on the floor and in the fog, which lands on the `page` colour in clear air. */
-  weather(weather: SceneWeather, page: Triple, { dark, exposure }: Theme): void {
-    this.fog.color.setRGB(...untone(fogColour(page, dark, weather.fog), exposure));
+  /** The `weather` on the floor and in the fog, which lands on `air`, the backdrop's colour. */
+  weather(weather: SceneWeather, air: Triple, exposure: number): void {
+    this.fog.color.setRGB(...untone(air, exposure));
     this.mist(weather.fog);
     weathered(this.floor, weather);
   }
@@ -53,7 +57,7 @@ export class Plot {
     const radius = this.#fade.radius.value;
     const at = ([radii, past]: readonly [number, number]): number => radius * radii + past;
 
-    this.fog.near = mix(at(CLEAR.near), at(FOGGED.near), this.#mist);
-    this.fog.far = mix(at(CLEAR.far), at(FOGGED.far), this.#mist);
+    this.fog.near = thicken(at(CLEAR.near), at(FOGGED.near), this.#mist);
+    this.fog.far = thicken(at(CLEAR.far), at(FOGGED.far), this.#mist);
   }
 }

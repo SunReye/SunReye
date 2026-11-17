@@ -13,15 +13,18 @@ test("the fog starts four radii past the plot", () => {
 test("weather fog closes in round the plot, and stays as the plot is fitted again", () => {
   const plot = new Plot();
 
+  const reach = () => [plot.fog.near, plot.fog.far].map((metres) => Math.round(metres * 10) / 10);
+
   plot.fit(0, 0, 10);
   plot.mist(1);
-  expect([plot.fog.near, plot.fog.far]).toEqual([10, 90]);
+  expect(reach()).toEqual([1, 35]);
   plot.fit(0, 0, 20);
-  expect([plot.fog.near, plot.fog.far]).toEqual([20, 150]);
+  expect(reach()).toEqual([2, 60]);
+  // Halfway to fog it is far nearer than halfway between the distances.
   plot.mist(0.5);
-  expect([plot.fog.near, plot.fog.far]).toEqual([70, 315]);
+  expect(reach()).toEqual([3.9, 106.7]);
   plot.mist(0);
-  expect([plot.fog.near, plot.fog.far]).toEqual([120, 480]);
+  expect(reach()).toEqual([120, 480]);
 });
 
 test("the floor is named, so the weather finds it", () => {
