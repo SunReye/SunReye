@@ -21,7 +21,7 @@ export interface Figure {
   readonly today?: Today;
   /** What stands where a figure has no series in history: a chart of today, or the weather by
    * the hour (ADR 23). */
-  readonly chart: "pv" | "price" | "weather" | null;
+  readonly chart: "pv" | "price" | "weather" | "forecast" | null;
 }
 
 const SOLAR = flowColour("solar");
@@ -51,7 +51,7 @@ const FIGURES: Readonly<Record<Fixed, Figure>> = {
   autarky: { colour: flowColour("battery"), node: null, chart: null },
   saved: { colour: SOLAR, node: null, chart: null },
   price: { colour: HOUSE, node: null, chart: "price" },
-  forecast: { colour: SOLAR, node: null, chart: "pv" },
+  forecast: { colour: SOLAR, node: null, chart: "forecast" },
   weather: { colour: SOLAR, node: null, chart: "weather" },
   pv: { colour: SOLAR, node: "pv", chart: "pv" },
   inverter: { colour: SOLAR, node: "inverter", chart: null },
@@ -246,13 +246,6 @@ const only = (stats: readonly Fact[]): Facts => ({ lead: null, stats });
 
 /** Each figure's facts but the price's, which also reads the live spot price. */
 const DAY_FACTS = new Map<string, Read>([
-  [
-    "forecast",
-    (day) => ({
-      lead: kwh(m.detail_left(), day?.pv.remaining ?? null),
-      stats: [kwh(m.detail_total(), day?.pv.total ?? null)],
-    }),
-  ],
   ["weather", weather],
   ["saved", (day) => ({ lead: eur(m.detail_today(), day?.money?.saved ?? null), stats: [] })],
   [

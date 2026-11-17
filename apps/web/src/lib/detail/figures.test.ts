@@ -74,11 +74,9 @@ test("the live spot price wins over the day's when it streams", () => {
   expect(facts("price", DAY, 0.2).lead).toMatchObject({ value: 20 });
 });
 
-test("the forecast leads with what is still to come", () => {
-  const forecast = facts("forecast", DAY);
-
-  expect(forecast.lead).toMatchObject({ value: 18.5, unit: "kWh" });
-  expect(forecast.stats[0]).toMatchObject({ value: 49.7 });
+test("the forecast's energy stands in its day tabs, not in the sheet's head", () => {
+  expect(facts("forecast", DAY)).toEqual({ lead: null, stats: [] });
+  expect(figure("forecast")?.chart).toBe("forecast");
 });
 
 test("money figures read in euros", () => {

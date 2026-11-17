@@ -206,3 +206,25 @@ test("the weather sheet shows the weather by the hour", async () => {
     )
     .toBeVisible();
 });
+
+test("the strip's PV cell opens the forecast's three days, which end on the Forecast screen", async () => {
+  const { screen, onopen } = await show();
+
+  await screen.getByRole("button", { name: /PV noch heute/u }).click();
+
+  expect(onopen).toHaveBeenCalledWith("forecast");
+
+  const { screen: open } = await show("forecast");
+  const sheet = open.getByRole("dialog", { name: "PV-Prognose" });
+  const days = sheet.getByRole("region", { name: "PV-Prognose nach Tagen" });
+
+  // 2026-11-12 is a Thursday.
+  await expect.element(days.getByRole("tab", { name: "Heute" })).toBeVisible();
+  await expect.element(days.getByRole("tab", { name: "Freitag" })).toBeVisible();
+  await expect.element(days.getByRole("tab", { name: "Samstag" })).toBeVisible();
+  await expect
+    .element(sheet.getByRole("link", { name: "Zur Solarprognose · Heute" }))
+    .toHaveAttribute("href", "#/forecast?range=day&at=2026-11-12");
+  // The sheet's one way onward is the Forecast screen.
+  expect(sheet.getByRole("link", { name: /Im Verlauf öffnen/u }).query()).toBeNull();
+});

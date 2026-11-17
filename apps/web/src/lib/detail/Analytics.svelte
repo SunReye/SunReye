@@ -8,9 +8,12 @@
   import type { RangeRoute } from "../range/route.svelte.ts";
 
   /** What the analytics read: the core, the sheet's range and the layout's strings. The weather
-   * detail, which stands in their place, reads `history` (ADR 23). */
+   * detail, which stands in their place, reads `history` (ADR 23); the PV forecast's days read
+   * the `layout` (ADR 21). */
   export interface AnalyticsInput {
-    readonly core: Readonly<Pick<Core, "statistics" | "forecasts" | "moduleTypes" | "corrections" | "history">>;
+    readonly core: Readonly<
+      Pick<Core, "statistics" | "forecasts" | "moduleTypes" | "corrections" | "history" | "layout">
+    >;
     readonly route: RangeRoute;
     readonly strings: readonly PvString[];
   }
