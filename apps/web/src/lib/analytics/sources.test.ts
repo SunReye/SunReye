@@ -42,3 +42,11 @@ test("production and PV expect what the strings' inverters forecast; others expe
   expect(analyticsOf("house", STRINGS)!.forecast).toEqual([]);
   expect(analyticsOf("string-4", STRINGS)!.forecast).toEqual([]);
 });
+
+test("a one-way figure heads with its energy; a two-way one with none", () => {
+  expect(analyticsOf("feedIn", STRINGS)!.energy).toBe("grid.export.power");
+  expect(analyticsOf("production", STRINGS)!.energy).toBe("pv.power");
+  expect(analyticsOf("string-4", STRINGS)!.energy).toBe("pv.string.power[4]");
+  expect(analyticsOf("grid", STRINGS)!.energy).toBeNull();
+  expect(analyticsOf("battery", STRINGS)!.energy).toBeNull();
+});

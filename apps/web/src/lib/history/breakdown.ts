@@ -46,7 +46,7 @@ const row = (
 ): Row => ({ label, value, format, sub, colour, indent, change: "" });
 
 /** In kWh or EUR: below it a baseline carries no change. */
-const NEXT_TO_NOTHING = 0.05;
+export const NEXT_TO_NOTHING = 0.05;
 
 /** The row with its change from `was`; a share changes in percentage points. */
 function against(r: Row, was: number | null | undefined, points = false): Row {

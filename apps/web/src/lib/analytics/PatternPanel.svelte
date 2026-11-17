@@ -33,11 +33,15 @@
     const [range, place, from] = [r.range, r.place, source];
     let live = true;
 
-    void readHeat(core, from, place, range).then((next) => {
-      if (live) heat = next;
+    // A failed read keeps the last grid: the sheet says once that its range could not be read.
+    void readHeat(core, from, place, range).then(
+      (next) => {
+        if (live) heat = next;
 
-      return next;
-    });
+        return next;
+      },
+      () => null,
+    );
 
     return () => {
       live = false;

@@ -1,0 +1,151 @@
+// A measured sheet's head over its range (ADR 21): the figure against the range before it, cut to
+// as much as the range has run, and the record's edges inside it. A range before the first reading
+// reads nothing and says so once.
+import { baselineOf } from "../history/compare.ts";
+import { periodOf } from "../history/history.ts";
+import { RangeData } from "../range/range-data.svelte.ts";
+import { hourInstant, t1Of, type Calendar, type Range } from "../range/range.ts";
+import type { RangeRoute } from "../range/route.svelte.ts";
+import { beforeText, notesOf, versus } from "./head-words.ts";
+import { measureOf, type Measure, type MeasureInput, type Measured } from "./measure.ts";
+
+/** What the head and the analytics show of the range. */
+export interface HeadView {
+  readonly state: "loading" | "error" | "before" | "ready";
+  /** The range's name: "Heute". */
+  readonly label: string;
+  readonly value: number | null;
+  readonly unit: string;
+  readonly digits: number;
+  /** "−12 % vs gestern"; empty without a baseline that has readings. */
+  readonly versus: string;
+  /** Where the record begins or its readings stop inside the range; before it, the one sentence. */
+  readonly notes: readonly string[];
+}
+
+/** The sheet's figure, what it reads through and the record's first readings. */
+export interface HeadInput extends MeasureInput {
+  readonly route: RangeRoute;
+  /** Each stored series' first reading, in ms, by `device/series` (ADR 22). */
+  readonly firsts: ReadonlyMap<string, number>;
+}
+
+interface Read {
+  readonly key: string;
+  readonly first: number | null;
+  readonly zone: string;
+  readonly cal: Calendar;
+  /** The range's name. */
+  readonly label: string;
+  readonly base: Range;
+  /** Up to now, in ms. */
+  readonly from: number;
+  readonly until: number;
+  readonly got: Measured;
+  readonly was: Measured;
+}
+
+const NOTHING: Measured = { value: null, stops: null };
+
+const keyOf = (measure: Readonly<Measure>) => `${measure.device}/${measure.series}`;
+
+/** Where the route stands: its range, the plant's clock, and the range's name. */
+type At = Readonly<Pick<RangeRoute, "range" | "place" | "label">>;
+
+/** The range ends after the first reading. */
+const recorded = (at: At, first: number) =>
+  hourInstant(at.place.zone, t1Of(at.range)).getTime() > first;
+
+/** The one sentence for a range that ends before the first reading; null for any other. */
+const beforeOf = (at: At, first: number | null) =>
+  first === null || recorded(at, first) ? null : beforeText(at.place.zone, first);
+
+/** The head of a range read. */
+const ready = (none: Omit<HeadView, "state">, got: Read): HeadView => ({
+  ...none,
+  state: "ready",
+  label: got.label,
+  value: got.got.value,
+  versus: versus(got.cal, got.base, got.got.value, got.was.value),
+  notes: notesOf({ ...got, stops: got.got.stops }),
+});
+
+export class RangeHead {
+  readonly #input: () => HeadInput;
+  readonly #data: RangeData<Read | null>;
+
+  constructor(input: () => HeadInput) {
+    this.#input = input;
+    this.#data = new RangeData(
+      () => input().route,
+      (from, to, now) => {
+        const { route, firsts } = input();
+        const measure = measureOf(input());
+
+        if (measure === null) return Promise.resolve(null);
+
+        return read(route, measure, firsts.get(keyOf(measure)) ?? null, { from, to, now });
+      },
+    );
+  }
+
+  get view(): HeadView | null {
+    const input = this.#input();
+    const measure = measureOf(input);
+
+    if (measure === null) return null;
+
+    const key = keyOf(measure);
+
+    const none = {
+      label: input.route.label,
+      unit: measure.unit,
+      digits: measure.digits,
+      value: null,
+      versus: "",
+      notes: [],
+    };
+
+    // Known at once, so a step back past the record never draws an empty chart.
+    const before = beforeOf(input.route, input.firsts.get(key) ?? null);
+
+    if (before !== null) return { ...none, state: "before", notes: [before] };
+
+    if (this.#data.failed) return { ...none, state: "error" };
+
+    const data = this.#data.current?.data;
+
+    return data?.key === key ? ready(none, data) : { ...none, state: "loading" };
+  }
+
+  retry = (): void => {
+    this.#data.retry();
+  };
+}
+
+/** The figure over the range and over the one before it, each from the first reading on. */
+async function read(
+  route: At,
+  measure: Readonly<Measure>,
+  first: number | null,
+  span: Readonly<{ from: Readonly<Date>; to: Readonly<Date>; now: number }>,
+): Promise<Read> {
+  const { range, place } = route;
+  const base = baselineOf(place.cal, range, "prev");
+  const ms = (t: number) => hourInstant(place.zone, t).getTime();
+  const [a, b] = [span.from.getTime(), Math.min(span.to.getTime(), span.now)];
+  const [b0, b1] = [ms(base.hours[0]), Math.min(ms(base.hours[1]), span.now)];
+  const period = periodOf(range);
+  const after = (end: number) => first === null || end > first;
+  const at = { key: keyOf(measure), first, zone: place.zone, cal: place.cal, label: route.label };
+  const edges = { ...at, base: base.range, from: a, until: b };
+
+  if (!after(span.to.getTime())) return { ...edges, got: NOTHING, was: NOTHING };
+
+  const [got, was] = await Promise.all([
+    a < b ? measure.read(a, b, period) : NOTHING,
+    b0 < b1 && after(b1) ? measure.read(b0, b1, period) : NOTHING,
+  ]);
+
+  return { ...edges, got, was };
+}

@@ -51,6 +51,8 @@ export interface Served {
   breaks: boolean;
   /** Per device, the series with stored history (ADR 22). */
   stored: Readonly<Record<string, readonly string[]>>;
+  /** Answers a statistics read before the defaults do; undefined passes it on. */
+  rolled: ((read: Asked) => Response | Promise<Response> | undefined) | null;
 }
 
 export const served: Served = {
@@ -59,6 +61,7 @@ export const served: Served = {
   tick: false,
   breaks: false,
   stored: {},
+  rolled: null,
 };
 
 /** The series catalog: each stored series a measurement since the month began. */
@@ -85,11 +88,14 @@ function event(name: string, data: Readonly<{ devices: object; stale?: object }>
   return new TextEncoder().encode(`event: ${name}\ndata: ${JSON.stringify(data)}\n\n`);
 }
 
-/** Each statistics request: device, series and its window. */
-export const asked: Readonly<{ device: string; series: string; from: string; to: string }>[] = [];
+/** One statistics request: device, series, its window and the period it is cut in. */
+export type Asked = Readonly<Record<"device" | "series" | "from" | "to" | "period", string>>;
+
+/** Each statistics request. */
+export const asked: Asked[] = [];
 
 /** One hourly rollup of `watts` from `at`, in ms since the epoch. */
-function rollup(at: number, watts: number) {
+export function rollup(at: number, watts: number) {
   const [start, end] = [new Date(at).toISOString(), new Date(at + 3_600_000).toISOString()];
 
   return { date: start.slice(0, 10), start, end, mean: watts, integral: watts, hours: 1 };
@@ -226,16 +232,19 @@ const ROUTES = new Map<string, () => Response>([
   ],
 ]);
 
-function answer(href: string): Response {
+function answer(href: string): Response | Promise<Response> {
   const { pathname, searchParams: q } = new URL(href);
+
   const read = /^\/api\/v1\/devices\/(\d+)\/statistics$/u.exec(pathname);
 
   if (read) {
     const [device, series] = [read[1]!, q.get("series") ?? ""];
+    const [from, to, period] = [q.get("from") ?? "", q.get("to") ?? "", q.get("period") ?? ""];
+    const one = { device, series, from, to, period };
 
-    asked.push({ device, series, from: q.get("from") ?? "", to: q.get("to") ?? "" });
+    asked.push(one);
 
-    return statistics(device, series, q.get("from") ?? "");
+    return served.rolled?.(one) ?? statistics(device, series, from);
   }
 
   return (ROUTES.get(pathname) ?? (() => Response.json({ points: [] })))();
@@ -254,6 +263,7 @@ export async function prepare(): Promise<void> {
   served.tick = false;
   served.breaks = false;
   served.stored = {};
+  served.rolled = null;
   ROUTES.set("/api/v1/live", stream);
   vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-12T12:20:00Z") });
   await cdp().send("Emulation.setEmulatedMedia", {

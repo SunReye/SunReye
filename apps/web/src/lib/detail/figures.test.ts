@@ -43,9 +43,9 @@ const DAY: Day = {
   money: { paid: 0.19, earned: 1.39, saved: 5.93, standing: 0 },
 };
 
-test("a day figure's sheet leads with today's energy and shows the plant's live power", () => {
-  expect(figure("production")).toMatchObject({ today: "production", node: "pv", chart: "pv" });
-  expect(figure("purchase")).toMatchObject({ today: "purchase", node: "grid" });
+test("a day figure's sheet shows the plant's live power", () => {
+  expect(figure("production")).toMatchObject({ node: "pv", chart: "pv" });
+  expect(figure("purchase")).toMatchObject({ node: "grid" });
 });
 
 test("a node's sheet is that node's, signed figures diverging", () => {

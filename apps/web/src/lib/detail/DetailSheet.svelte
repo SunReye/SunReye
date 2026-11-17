@@ -165,6 +165,7 @@
     {day}
     spot={values[SPOT]}
     input={{ core, route, strings }}
+    firsts={stored}
     {onopen}
   />
 {/snippet}
