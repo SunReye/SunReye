@@ -603,6 +603,17 @@ async fn capabilities_report_the_profile_table_the_wasm_reports() {
                     "estimated": [], "series": [], "writes": false, "settings": [],
                     "maxInputVoltage": 800.0,
                 },
+                // The weather device's fixed role set (ADR 15, 23).
+                "4294967295": {
+                    "estimated": [], "writes": false, "settings": [],
+                    "series": [
+                        "weather.ghi", "weather.dni", "weather.dhi", "weather.temperature",
+                        "weather.wind", "weather.code", "weather.precipitation", "weather.snowfall",
+                        "weather.visibility", "weather.humidity", "weather.wind_direction",
+                        "weather.gusts", "weather.apparent_temperature", "weather.sunshine",
+                        "weather.cloud_cover", "weather.snow_depth",
+                    ],
+                },
             },
         })
     );

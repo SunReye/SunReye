@@ -260,6 +260,11 @@ const QUANTITIES: [Quantity; 16] = [
     },
 ];
 
+/// The roles the weather device stores, as capabilities report them (ADR 15).
+pub fn roles() -> impl Iterator<Item = &'static str> {
+    QUANTITIES.iter().map(|q| q.role)
+}
+
 /// The weather device. Only its own task fetches; everyone else reads the forecast store.
 pub struct Weather<P> {
     provider: P,
