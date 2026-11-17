@@ -1,8 +1,9 @@
 // The time slider's instant (ADR 20): the day and time the admin picks, the sun then and each
 // string's production. It reads the draft and never writes it: nothing changes the scene.
 import { today } from "./day.ts";
-import { load, spanOf, wattsAt, type Day, type Reading } from "./moment.ts";
+import { load, shareAt, spanOf, wattsAt, type Day, type Reading } from "./moment.ts";
 import { sunAt, type Point } from "./pv.ts";
+import { sceneWeather, type SceneWeather } from "../scene/weather.ts";
 import { readWeather, weatherAt, type Weather, type WeatherRead } from "../weather/weather.ts";
 
 const MINUTE = 60_000;
@@ -75,6 +76,15 @@ export class Moment {
     const { pv, location } = this.#reading();
 
     return location === undefined || Number.isNaN(this.at) ? null : sunAt(pv, location, this.at);
+  }
+
+  /** The scene's weather at the instant, without its fog: faces and edges stay exact (ADR 23
+   * "Builder"). Snow covers the modules only where the day's production was measured. */
+  get scene(): SceneWeather {
+    const { draft, moduleTypes } = this.#reading();
+    const share = shareAt(this.production, draft.strings, moduleTypes, this.at);
+
+    return { ...sceneWeather(this.weather, { sun: this.sun, share }), fog: 0 };
   }
 
   /** Each string's watts at the instant, null without a value. */

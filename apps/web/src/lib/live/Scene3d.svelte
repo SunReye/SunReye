@@ -83,6 +83,7 @@
         {model}
         {location}
         diffuse={sky.weather.cloud}
+        weather={sky.scene}
         {locked}
         {top}
         {onselect}
