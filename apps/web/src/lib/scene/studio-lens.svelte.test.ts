@@ -47,6 +47,12 @@ afterEach(() => {
 function picture(opened: Studio): number[] {
   opened.render();
 
+  return onCanvas(opened);
+}
+
+/** What is on the canvas, as its green channel. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own.
+function onCanvas(opened: Studio): number[] {
   const gl = opened.renderer.getContext();
   const pixels = new Uint8Array(SIDE * SIDE * 4);
 
@@ -211,4 +217,24 @@ test("warmed, the glass first shows without a program made then", () => {
   opened.lens(RAIN, 1);
   opened.render();
   expect(opened.renderer.info.programs?.length).toBe(made);
+});
+
+test("frost stands through Ultra's refining burst: a picture the loop has left keeps it", () => {
+  const opened = open(false, "ultra");
+  const clear = picture(opened);
+
+  opened.lens(FROST, 5);
+  picture(opened);
+
+  let frames = 0;
+
+  while (opened.refine()) frames += 1;
+
+  expect(frames).toBeGreaterThan(0);
+
+  const { middle: within, around } = differing(onCanvas(opened), clear);
+
+  expect(around).toBeGreaterThan(SIDE * 2);
+  // The burst smooths edges in the middle, and puts nothing of the lens there.
+  expect(within).toBeLessThan((SIDE * SIDE) / 4 / 10);
 });

@@ -30,7 +30,7 @@ export class Opening {
   /** A change waits for the loop's next frame: the picture is not the last one moved on. */
   #changed = false;
   readonly #unwatch: () => void;
-  /** The lens glass as it fades, and its hold on the loop while anything is on it or to come. */
+  /** The lens glass as it fades, and its hold on the loop while anything on it moves or fades. */
   readonly #lens = new Fade();
   #glazing: (() => void) | undefined;
 
@@ -93,8 +93,8 @@ export class Opening {
    * Shows what moves with the `weather`, read as it changes (ADR 23). What falls is shown as
    * the motion tier does: it moves in the loop on full, lite draws a sparse still field, still
    * draws none. The glass is put on the lens: it fades in and out in the loop, which it keeps
-   * until the lens is clear again; off the full tier, where nothing loops, the lens is cleared
-   * at once. Call during a component's set-up.
+   * until the lens is clear again or frost alone stands on it; off the full tier, where nothing
+   * loops, the lens is cleared at once. Call during a component's set-up.
    */
   moves(weather: { readonly falling: Falling | null; readonly glass: Glass | null }): void {
     $effect(() => {
@@ -126,7 +126,6 @@ export class Opening {
 
   /** Once `built`, prepares, draws the first frame, calls `ready` once it is drawn, and `due`
    * when idle after. */
-  // fallow-ignore-next-line unused-class-member -- SceneCanvas calls it through `Lit["opening"]`.
   async open(built: Readonly<Promise<void>>, ready: () => void, due: () => void): Promise<void> {
     await built;
     await pause();
@@ -202,14 +201,20 @@ export class Opening {
   #glaze(target: Glass | null): void {
     this.#lens.aim(target);
 
-    if (this.#lens.clear) return;
+    if (this.#resting()) return;
 
     this.#glazing ??= this.loop.keep((seconds) => {
       this.#studio.lens(this.#lens.at(seconds), seconds);
 
-      // Faded out: the loop's last frame is drawn through a clear lens.
-      if (this.#lens.clear) this.#unglaze();
+      // The loop's last frame is drawn through the lens as it stands.
+      if (this.#resting()) this.#unglaze();
     });
+  }
+
+  /** Whether the lens owes no frame: it is clear, or frost alone has faded in and stands drawn
+   * (ADR 23 "Motion": the loop stops when the weather turns dry). */
+  #resting(): boolean {
+    return this.#lens.clear || this.#lens.still;
   }
 
   #unglaze(): void {
