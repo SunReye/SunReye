@@ -1,6 +1,6 @@
 <!-- What stands still under a day of the PV forecast sheet (ADR 21 "Details by drilling down"):
-  its sunshine and its best window, today alone how the forecast holds, then the way on to the
-  Forecast screen on that day. -->
+  one row of its sunshine and its best window, today also how the forecast holds, then the way on
+  to the Forecast screen on that day. -->
 <script lang="ts">
   import DetailStats from "../detail/DetailStats.svelte";
   import OnwardLink from "../detail/OnwardLink.svelte";
@@ -24,14 +24,15 @@
     now: number;
   } = $props();
 
-  const stats = $derived(dayFacts(day, day.sunshine, zone));
+  const stats = $derived([
+    ...dayFacts(day, day.sunshine, zone),
+    ...(at === 0 ? holdFacts(track) : []),
+  ]);
+
   const link = $derived(onward(zone, now, at, day.start));
 </script>
 
 {#if stats.length > 0}
-  <div data-day-facts><DetailStats {stats} /></div>
-{/if}
-{#if at === 0}
-  <div data-track><DetailStats stats={holdFacts(track)} /></div>
+  <div data-facts><DetailStats {stats} /></div>
 {/if}
 <OnwardLink href={link.href}>{link.label}</OnwardLink>

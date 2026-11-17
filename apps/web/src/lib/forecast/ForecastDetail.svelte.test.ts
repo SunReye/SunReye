@@ -1,6 +1,6 @@
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
 import { expect, test } from "vitest";
-import { userEvent } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import { INPUTS, show, STRINGS } from "./forecast-detail.harness.ts";
 
 /** Each line's name and expected energy, as its bar's row reads. */
@@ -17,6 +17,9 @@ function figure(group: string, term: string): string | undefined {
   return dd instanceof HTMLElement ? dd.innerText.replaceAll(/\s+/gu, " ").trim() : undefined;
 }
 
+/** The facts row's cells. */
+const row = () => [...document.querySelectorAll<HTMLElement>("[data-facts] dl > div")];
+
 const headline = () =>
   document.querySelector<HTMLElement>("[data-energy]")?.innerText.replaceAll(/\s+/gu, " ").trim();
 
@@ -29,6 +32,8 @@ test("today heads with what is still to come of the day's total", async () => {
   // Measured against the forecast, one chart.
   await expect.element(screen.getByRole("img", { name: "Leistung" })).toBeVisible();
   await expect.element(screen.getByText("Prognose", { exact: true })).toBeVisible();
+  // Its row states its range, which the head does not.
+  await expect.element(screen.getByText(/^0 – 2,0\skW$/u)).toBeVisible();
 });
 
 test("each string's expected energy is a small bar, the sky stands by three hours", async () => {
@@ -44,33 +49,54 @@ test("each string's expected energy is a small bar, the sky stands by three hour
   ).toEqual([38, 19, 19]);
   // Eight marks over the day, each with the sky's icon.
   expect(document.querySelectorAll("[data-hours] svg.lucide")).toHaveLength(8);
-  await expect.poll(() => figure("day-facts", "Sonnenschein")).toBe("3,0 h");
+  await expect.poll(() => figure("facts", "Sonnenschein")).toBe("3,0 h");
 });
 
 test("the best window is the day's three hours that make the most", async () => {
   await show();
 
-  await expect.poll(() => figure("day-facts", "Beste 3 h")).toBe("10–13 Uhr");
-  await expect.poll(() => figure("day-facts", "Ertrag darin")).toBe("6,0 kWh");
+  await expect.poll(() => figure("facts", "Beste 3 h")).toBe("10–13 Uhr");
 });
 
 test("today alone says how the forecast holds: so far, and over the whole days before", async () => {
   const { screen } = await show();
 
   // 3 kWh measured of 5 kWh forecast by 12:30; 15 and 10 kWh against 12 kWh on the days before.
-  await expect.poll(() => figure("track", "Heute bisher")).toBe("−40 %");
-  expect(figure("track", "Ø Abweichung")).toBe("21 %");
-  expect(figure("track", "Ganze Tage")).toBe("2");
+  await expect.poll(() => figure("facts", "Heute bisher")).toBe("−40 %");
+  expect(figure("facts", "Ø Abweichung")).toBe("21 %");
 
   await screen.getByRole("tab", { name: "Sonntag" }).click();
 
-  await expect.poll(() => document.querySelector("[data-track]")).toBeNull();
+  await expect.poll(() => figure("facts", "Heute bisher")).toBeUndefined();
+  expect(figure("facts", "Ø Abweichung")).toBeUndefined();
+});
+
+test("today's facts are one row on a narrow phone: the sky's sunshine, the best window, the forecast's hold", async () => {
+  await show();
+  await page.viewport(360, 800);
+
+  await expect
+    .poll(() => row().map((cell) => cell.querySelector("dt")?.textContent.trim()))
+    .toEqual(["Sonnenschein", "Beste 3 h", "Heute bisher", "Ø Abweichung"]);
+  expect(document.querySelectorAll("[data-facts] dl")).toHaveLength(1);
+  // The figures count up to their values.
+  await expect.poll(() => figure("facts", "Sonnenschein")).toBe("3,0 h");
+  // One line inside the screen, nothing cut short.
+  expect(new Set(row().map((cell) => Math.round(cell.getBoundingClientRect().top))).size).toBe(1);
+  expect(Math.max(...row().map((cell) => cell.getBoundingClientRect().right))).toBeLessThanOrEqual(
+    360,
+  );
+  expect(
+    row().filter((cell) =>
+      [...cell.querySelectorAll<HTMLElement>("dt, dd")].some((t) => t.scrollWidth > t.clientWidth),
+    ),
+  ).toEqual([]);
 });
 
 test("as the hour goes on less is still to come, and so far stays as of its read", async () => {
   const { asked, later } = await show();
 
-  await expect.poll(() => figure("track", "Heute bisher")).toBe("−40 %");
+  await expect.poll(() => figure("facts", "Heute bisher")).toBe("−40 %");
 
   const reads = asked.length;
 
@@ -79,7 +105,7 @@ test("as the hour goes on less is still to come, and so far stays as of its read
   // Half an hour of 2 kW is gone from what is to come.
   await expect.poll(headline).toBe("2,5 kWh noch heute");
   // The measurement is the read's, so its forecast is too.
-  expect(figure("track", "Heute bisher")).toBe("−40 %");
+  expect(figure("facts", "Heute bisher")).toBe("−40 %");
   expect(asked).toHaveLength(reads);
 });
 
@@ -94,8 +120,10 @@ test("a later day heads with its expected total, its peak and its change against
   // The forecast alone.
   await expect.element(screen.getByRole("img", { name: "Prognose" })).toBeVisible();
   expect(lines()).toEqual(["Süd 10,5 kWh", "Nord 5,3 kWh", "Ost 5,3 kWh"]);
-  await expect.poll(() => figure("day-facts", "Sonnenschein")).toBe("1,0 h");
-  expect(figure("day-facts", "Beste 3 h")).toBe("11–14 Uhr");
+  await expect.poll(() => figure("facts", "Sonnenschein")).toBe("1,0 h");
+  expect(figure("facts", "Beste 3 h")).toBe("11–14 Uhr");
+  // The head states the peak; the chart's row does not again.
+  expect(screen.getByText(/^0 – /u).query()).toBeNull();
 
   await screen.getByRole("tab", { name: "Montag" }).click();
 

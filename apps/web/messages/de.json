@@ -560,7 +560,6 @@
   "ahead_peak_at": "Spitze · {time}",
   "ahead_window": "Beste {hours} h",
   "ahead_window_hours": "{from}–{to} Uhr",
-  "ahead_window_yield": "Ertrag darin",
   "ahead_sofar": "Heute bisher",
   "ahead_error": "Ø Abweichung",
   "ahead_per_string": "Erwartet je String",

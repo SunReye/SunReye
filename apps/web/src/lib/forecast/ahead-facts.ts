@@ -1,6 +1,6 @@
-// What stands under a day of the PV forecast sheet (ADR 21 "Details by drilling down"): its
-// sunshine and its best window, today how the forecast holds, and the way on to the Forecast
-// screen. In the SPA's locale.
+// What stands under a day of the PV forecast sheet (ADR 21 "Details by drilling down"): one row of
+// its sunshine and its best window, today also how the forecast holds, and the way on to the
+// Forecast screen. In the SPA's locale.
 import type { Fact } from "../detail/figures.ts";
 import { accuracyText } from "../history/forecast.ts";
 import { delta } from "../history/words.ts";
@@ -47,19 +47,17 @@ export function dayFacts(day: Readonly<AheadDay>, sunshine: number | null, zone:
               to: hourOf(day.window.to),
             }),
           },
-          { label: m.ahead_window_yield(), value: day.window.kwh, unit: "kWh", digits: 1 },
         ]),
   ];
 }
 
-/** How the forecast holds: today so far, then the whole days before it. */
+/** How the forecast holds: today so far, then over the whole days before it. */
 export function holdFacts(track: Readonly<Track>): Fact[] {
-  const [error, , days] = accuracyText(track.accuracy, false);
+  const [error] = accuracyText(track.accuracy, false);
 
   return [
     { label: m.ahead_sofar(), text: delta(track.sofar) },
     { label: m.ahead_error(), text: error },
-    { label: m.stats_forecast_days(), text: days },
   ];
 }
 

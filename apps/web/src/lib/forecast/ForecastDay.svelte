@@ -44,8 +44,11 @@
     new Intl.DateTimeFormat(getLocale(), { hour: "2-digit", minute: "2-digit", timeZone: zone }),
   );
 
-  /** The curve's highest power, measured or forecast, as its row's figure. */
+  /** The curve's highest power, measured or forecast, as its row's figure: today's alone, as a
+   * later day's head states its peak. */
   const highest = $derived.by(() => {
+    if (!today) return null;
+
     const kw = Math.max(0, ...day.rows.map((r) => Math.max(r.forecast ?? 0, r.actual ?? 0)));
 
     return kw > 0 ? `0 – ${formatPower(kw * 1000)}` : null;

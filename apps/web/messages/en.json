@@ -560,7 +560,6 @@
   "ahead_peak_at": "Peak · {time}",
   "ahead_window": "Best {hours} h",
   "ahead_window_hours": "{from}:00–{to}:00",
-  "ahead_window_yield": "Yield in it",
   "ahead_sofar": "Today so far",
   "ahead_error": "Mean deviation",
   "ahead_per_string": "Expected per string",
