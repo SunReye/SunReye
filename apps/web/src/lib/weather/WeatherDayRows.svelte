@@ -91,7 +91,7 @@
 
   <WeatherRow
     label={m.rd_temperature()}
-    also={{ label: m.wx_apparent_temperature(), colour: WARM, dashed: true }}
+    also={{ label: m.weather_apparent_temperature(), colour: WARM, dashed: true }}
     figure={range("celsius", "°C")}
   >
     <HourLines
@@ -106,22 +106,22 @@
   </WeatherRow>
 
   <WeatherRow
-    label={m.wx_precipitation()}
-    also={snows ? { label: m.wx_snowfall(), colour: SNOW } : null}
+    label={m.weather_precipitation()}
+    also={snows ? { label: m.weather_snowfall(), colour: SNOW } : null}
     figure={fallen}
   >
-    <HourBars hours={day.hours} label={m.wx_precipitation()} />
+    <HourBars hours={day.hours} label={m.weather_precipitation()} />
   </WeatherRow>
 
   <WeatherRow
-    label={m.wx_cloud_cover()}
-    also={indexed ? { label: m.wx_clearness(), colour: WARM } : null}
+    label={m.weather_cloud_cover()}
+    also={indexed ? { label: m.weather_clear_sky_index(), colour: WARM } : null}
     figure={range("cover", "%")}
   >
     <HourLines
       hours={sky}
       {span}
-      label={m.wx_cloud_cover()}
+      label={m.weather_cloud_cover()}
       domain={[0, 100]}
       lines={[
         { of: "cover", colour: PLAIN, filled: true },
@@ -132,7 +132,7 @@
 
   <WeatherRow
     label={m.explore_wind()}
-    also={{ label: m.wx_gusts(), colour: PLAIN, dashed: true }}
+    also={{ label: m.weather_gusts(), colour: PLAIN, dashed: true }}
     figure={range("wind", "m/s")}
   >
     <HourLines
@@ -161,11 +161,11 @@
     </HourMarks>
   </WeatherRow>
 
-  <WeatherRow label={m.wx_humidity()} figure={range("humidity", "%")}>
+  <WeatherRow label={m.weather_humidity()} figure={range("humidity", "%")}>
     <HourLines
       hours={day.hours}
       {span}
-      label={m.wx_humidity()}
+      label={m.weather_humidity()}
       domain={[0, 100]}
       lines={[{ of: "humidity", colour: PLAIN }]}
     />

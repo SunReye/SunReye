@@ -53,12 +53,12 @@
     const all: (Fact & { value: number | null })[] = [
       { label: m.weather_sunshine(), value: of.sunshine, unit: "h", digits: 1 },
       {
-        label: m.wx_snow_depth(),
+        label: m.weather_snow_depth(),
         value: of.snowDepth === null ? null : of.snowDepth * 100,
         unit: "cm",
         digits: 0,
       },
-      { label: m.wx_visibility(), value: of.visibility, unit: "m", digits: 0 },
+      { label: m.weather_visibility(), value: of.visibility, unit: "m", digits: 0 },
     ];
 
     // A row that does not matter is absent, not empty.
