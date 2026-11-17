@@ -168,7 +168,9 @@ fn insert(
         "INSERT INTO saved_view (name, query) VALUES (?1, ?2)",
         params![name, query],
     )?;
-    let id = u32::try_from(tx.last_insert_rowid()).unwrap_or(u32::MAX);
+    let rowid = tx.last_insert_rowid();
+    let id =
+        u32::try_from(rowid).map_err(|_| rusqlite::Error::IntegralValueOutOfRange(0, rowid))?;
     let view = SavedView { id, name, query };
     log(&tx, id, Action::Add, Some(&view), changed)?;
     tx.commit()?;
