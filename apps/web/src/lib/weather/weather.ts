@@ -51,6 +51,14 @@ const INDEX = { closed: 0.25, clear: 1 };
 /** Under this global irradiance in W/m² the light tells nothing of the clouds. */
 export const DARK = 1;
 
+/** Metres of snow depth from which snow lies (ADR 23), as in the core. */
+const SNOW_LIES = 0.01;
+
+/** Whether snow `depth` m deep lies; not without a depth. */
+export function snowLies(depth: number | null): depth is number {
+  return depth !== null && depth >= SNOW_LIES;
+}
+
 /** Each stored series the weather is read from, and where the core has it. */
 const SERIES = [
   { role: "weather.clearness", history: true, forecasts: false },

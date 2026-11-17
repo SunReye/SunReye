@@ -2,7 +2,8 @@
 // the ground is, whether snow lies and covers the modules, thunder, and what falls. Pure: the studio and the
 // drawn scene apply it, and nothing here moves.
 import type { Point } from "../builder/pv.ts";
-import type { Weather } from "../weather/weather.ts";
+import { codeKind } from "../weather-code.ts";
+import { snowLies, type Weather } from "../weather/weather.ts";
 import { mix, smoothstep } from "./colour.ts";
 import type { Triple } from "./tone.ts";
 
@@ -73,9 +74,6 @@ const FOG_CODE_METRES = 1000;
 /** The ground dries over about an hour. */
 const DRIES = 3_600_000;
 
-/** Metres of snow depth from which snow lies, as in the core. */
-const SNOW_DEPTH = 0.01;
-
 /**
  * Degrees of sun from which missing clear-sky indices tell of snow. The core measures none under
  * 5°, and the index that stands for an instant is of a quarter up to 35 minutes before it, when
@@ -94,7 +92,7 @@ function fogAt(metres: number): number {
 }
 
 function fogOf({ code, visibility }: Weather): number {
-  const coded = code === 45 || code === 48 ? FOG_CODE_METRES : Infinity;
+  const coded = codeKind(code) === "fog" ? FOG_CODE_METRES : Infinity;
 
   return fogAt(Math.min(visibility ?? Infinity, coded));
 }
@@ -187,7 +185,7 @@ export function fogColour(page: Triple, dark: boolean, fog: number): [number, nu
 /** The scene's weather for the `weather` at an instant and what the `plant` reads then. */
 export function sceneWeather(weather: Weather, plant: Plant = UNKNOWN): SceneWeather {
   const { code, dry, snowDepth } = weather;
-  const snow = snowDepth !== null && snowDepth >= SNOW_DEPTH;
+  const snow = snowLies(snowDepth);
   const falling = fallingOf(weather);
 
   return {
@@ -195,7 +193,7 @@ export function sceneWeather(weather: Weather, plant: Plant = UNKNOWN): SceneWea
     wet: dry === null ? 0 : 1 - smoothstep(0, DRIES, dry),
     snow,
     covered: coveredBy(weather, snow, plant),
-    thunder: code !== null && code >= 95 && code <= 99,
+    thunder: codeKind(code) === "thunder",
     falling,
     glass: glassOf(weather, falling),
   };

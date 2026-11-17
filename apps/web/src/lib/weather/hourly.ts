@@ -2,8 +2,9 @@
 // zone, as the weather detail draws them. What was measured stands for an hour; the forecast
 // for the rest. Pure.
 import { plantMidnight } from "../plant-day.ts";
+import { codeKind } from "../weather-code.ts";
 import { skyOf, type Sky } from "./sky.ts";
-import type { DetailRole, Held, WeatherSources } from "./weather.ts";
+import { snowLies, type DetailRole, type Held, type WeatherSources } from "./weather.ts";
 
 /** One plant hour's weather; null where nothing stored covers it. */
 export interface Hour {
@@ -49,12 +50,6 @@ const HOUR = 3_600_000;
 
 /** The sunshine's slot: its seconds are per quarter (ADR 23). */
 const SLOT = 900_000;
-
-/** From this depth in m snow lies (ADR 23). */
-const LIES = 0.01;
-
-/** The weather codes of fog. */
-const FOG: ReadonlySet<number> = new Set([45, 48]);
 
 /** A value and how long it was in force inside a span, in ms. */
 interface Part {
@@ -130,7 +125,7 @@ function reading(sources: WeatherSources, at: number): Reading {
     // A value stands for each slot it is held over: a rollup is the mean of its slots.
     sunshine: sunshine.length === 0 ? null : sum(sunshine.map((p) => (p.value * p.ms) / SLOT)),
     snowDepth: most(values(stored("weather.snow_depth"))),
-    fog: code !== null && FOG.has(code) ? least(values(stored("weather.visibility"))) : null,
+    fog: codeKind(code) === "fog" ? least(values(stored("weather.visibility"))) : null,
   };
 }
 
@@ -147,7 +142,7 @@ function day(sources: WeatherSources, start: number, end: number): WeatherDay {
     end,
     hours: read.map((r) => r.hour),
     sunshine: sunshine.length === 0 ? null : sum(sunshine) / 3600,
-    snowDepth: depth !== null && depth >= LIES ? depth : null,
+    snowDepth: snowLies(depth) ? depth : null,
     visibility: least(known(read.map((r) => r.fog))),
   };
 }

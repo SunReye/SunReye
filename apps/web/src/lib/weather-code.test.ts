@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { WEATHER_CODES, weatherWord } from "./weather-code.ts";
+import { codeKind, WEATHER_CODES, weatherWord } from "./weather-code.ts";
 
 test("a weather code is written as its word: the sky's by ADR 23, the rest by intensity", () => {
   expect([0, 1, 2, 3].map((code) => weatherWord(code))).toEqual([
@@ -27,4 +27,16 @@ test.each(["de", "en"] as const)("no two codes share a word in %s", (locale) => 
   const words = [...WEATHER_CODES.keys()].map((code) => weatherWord(code, locale));
 
   expect(new Set(words).size).toBe(words.length);
+});
+
+const kinds = (...codes: readonly number[]) => codes.map((code) => codeKind(code));
+
+test("a code tells what falls or hangs: fog at 45 and 48, thunder from 95 to 99, nothing past the table", () => {
+  expect(kinds(45, 48)).toEqual(["fog", "fog"]);
+  expect(kinds(51, 57, 61, 67)).toEqual(["drizzle", "drizzle", "rain", "rain"]);
+  expect(kinds(71, 77, 85, 86)).toEqual(["snow", "snow", "snow", "snow"]);
+  expect(kinds(80, 82)).toEqual(["showers", "showers"]);
+  expect(kinds(95, 96, 99)).toEqual(["thunder", "thunder", "thunder"]);
+  expect(kinds(0, 3, 44, 49, 87, 94, 100)).toEqual([null, null, null, null, null, null, null]);
+  expect(codeKind(null)).toBeNull();
 });

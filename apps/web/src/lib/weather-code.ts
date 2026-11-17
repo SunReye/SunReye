@@ -1,5 +1,6 @@
-// A weather code (ADR 23) as its word: the WMO codes Open-Meteo serves, each named in the viewer's
-// language. The one table of them: Explore's bands and the dashboard's weather cell read it.
+// A weather code (ADR 23): the WMO codes Open-Meteo serves, each named in the viewer's language,
+// and what each says falls or hangs. The one table and the one reading of them: Explore's bands,
+// the dashboard's weather cell, the weather detail and the scene read it.
 import { m } from "./paraglide/messages.js";
 import type { Locale } from "./paraglide/runtime.js";
 
@@ -39,4 +40,25 @@ export const WEATHER_CODES: ReadonlyMap<number, typeof m.weather_code_0> = new M
 /** A code's word in the locale in use, or in `locale`; null for a code the table lacks. */
 export function weatherWord(code: number, locale?: Locale): string | null {
   return WEATHER_CODES.get(code)?.({}, locale && { locale }) ?? null;
+}
+
+/** What a code says falls or hangs. */
+export type CodeKind = "fog" | "drizzle" | "rain" | "snow" | "showers" | "thunder";
+
+/** The codes from each first to each last, both included; the codes under 45 only tell the cloud. */
+const KINDS: readonly (readonly [number, number, CodeKind])[] = [
+  [45, 48, "fog"],
+  [51, 57, "drizzle"],
+  [61, 67, "rain"],
+  [71, 77, "snow"],
+  [80, 82, "showers"],
+  [85, 86, "snow"],
+  [95, 99, "thunder"],
+];
+
+/** What `code` says falls or hangs; null for a dry code, one past the table or none. */
+export function codeKind(code: number | null): CodeKind | null {
+  if (code === null) return null;
+
+  return KINDS.find(([first, last]) => code >= first && code <= last)?.[2] ?? null;
 }

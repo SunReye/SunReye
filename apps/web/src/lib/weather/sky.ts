@@ -1,5 +1,6 @@
 // The sky in a word (ADR 23 "Dashboard"): what the weather code says falls or hangs, else how
 // closed the sky is. Pure.
+import { codeKind } from "../weather-code.ts";
 import { DARK, type Weather } from "./weather.ts";
 
 export type Sky =
@@ -22,19 +23,6 @@ const FAIR = 0.45;
 const CLOUDY = 0.65;
 const OVERCAST = 0.85;
 
-/** WMO weather codes from each first code on, as Open-Meteo serves them; the codes under 45
- * only tell the cloud. */
-const CODES: readonly (readonly [number, Sky | null])[] = [
-  [95, "thunder"],
-  [87, null],
-  [85, "snow"],
-  [80, "showers"],
-  [71, "snow"],
-  [61, "rain"],
-  [51, "drizzle"],
-  [45, "fog"],
-];
-
 /** The codes 0 to 3: clear, mainly clear, partly cloudy, overcast. */
 const BY_CODE: readonly Sky[] = ["sunny", "fair", "cloudy", "overcast"];
 
@@ -46,13 +34,6 @@ function byCloud(cloud: number): Sky {
   return cloud >= FAIR ? "fair" : "sunny";
 }
 
-/** What the code says falls or hangs; null for a dry code or none. */
-function falling(code: number | null): Sky | null {
-  if (code === null) return null;
-
-  return CODES.find(([first]) => code >= first)?.[1] ?? null;
-}
-
 /** How open a dry sky is: by its cloud, else by its code. */
 function openness(code: number | null, cloud: number | null): Sky | null {
   if (cloud !== null) return byCloud(cloud);
@@ -62,7 +43,7 @@ function openness(code: number | null, cloud: number | null): Sky | null {
 
 /** The word for `weather`'s sky; null where neither a code nor a cloud value tells. */
 export function skyOf({ code, cloud, ghi }: Pick<Weather, "code" | "cloud" | "ghi">): Sky | null {
-  const wet = falling(code);
+  const wet = codeKind(code);
 
   if (wet !== null) return wet;
 
