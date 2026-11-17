@@ -61,3 +61,19 @@ test("the detail's history ends where it is told: a day or less is read raw, not
     );
   }
 });
+
+test("a detail that shows less reads only the series it names", async () => {
+  asked.length = 0;
+
+  await readWeatherSources(fake(), at("00:00"), new Date("2026-11-17T00:00:00Z"), at("13:00"), [
+    "weather.code",
+    "weather.sunshine",
+  ]);
+
+  expect(asked.map((line) => line.split(" ").slice(0, 3).join(" ")).toSorted()).toEqual([
+    `forecasts ${WEATHER} weather.code`,
+    `forecasts ${WEATHER} weather.sunshine`,
+    `history ${WEATHER} weather.code`,
+    `history ${WEATHER} weather.sunshine`,
+  ]);
+});
