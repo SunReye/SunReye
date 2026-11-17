@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, expect, test } from "vitest";
 import "../../app.css";
 import {
+  asked,
   fetched,
   INVERTER,
   prepare,
@@ -98,4 +99,25 @@ test("the forecast fact reads the whole range, past today", async () => {
   expect(fetched).toContain(
     "/api/v1/devices/1/forecasts pv.string.power[1] 2026-11-09T00:00:00.000Z",
   );
+});
+
+test("the inverter's sheet states its range's highest temperature where its profile maps one", async () => {
+  served.publishes = ["inverter.temperature"];
+  served.rolled = inverter({ "inverter.temperature": [hour(9, 38, 41), hour(11, 47, 52)] });
+
+  const sheet = await sheetOf("inverter", "Wechselrichter");
+  const hottest = sheet.getByRole("definition").filter({ hasText: "°C" });
+
+  await expect
+    .element(sheet.getByRole("term").filter({ hasText: "Max. Temperatur" }))
+    .toBeVisible();
+  await expect.element(hottest).toHaveTextContent("52 °C 11:00–12:00 Uhr");
+});
+
+test("an inverter whose profile maps no temperature states none", async () => {
+  const sheet = await sheetOf("inverter", "Wechselrichter");
+
+  await expect.element(sheet.getByRole("term").filter({ hasText: "Spitze" })).toBeVisible();
+  expect(sheet.getByRole("term").filter({ hasText: "Temperatur" }).elements()).toHaveLength(0);
+  expect(asked.some((a) => a.series === "inverter.temperature")).toBe(false);
 });

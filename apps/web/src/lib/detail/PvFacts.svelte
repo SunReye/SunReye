@@ -8,12 +8,21 @@
   import DetailStats from "./DetailStats.svelte";
   import { pvFacts, readPv } from "./pv-range.ts";
 
-  let { analytics, input }: { analytics: Analytics; input: AnalyticsInput } = $props();
+  let {
+    analytics,
+    inverter,
+    input,
+  }: {
+    analytics: Analytics;
+    /** The inverter's sheet, which also states its temperature. */
+    inverter: boolean;
+    input: AnalyticsInput;
+  } = $props();
 
   const data = new RangeData(
     () => input.route,
     (from, to, now) => {
-      const [core, a, period] = [input.core, analytics, periodOf(input.route.range)];
+      const [core, a, period] = [input.core, { ...analytics, inverter }, periodOf(input.route.range)];
 
       const [a0, b] = [from.getTime(), to.getTime()];
 

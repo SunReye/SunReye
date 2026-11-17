@@ -9,13 +9,15 @@
 
   /** What the analytics read: the core, the sheet's range and the layout's strings. The weather
    * detail, which stands in their place, reads `history` (ADR 23); the PV forecast's days read
-   * the `layout` (ADR 21); the savings read `costs` and `payback` (ADR 12). */
+   * the `layout` (ADR 21); the savings read `costs` and `payback` (ADR 12); the inverter's facts
+   * read which profiles map a temperature from `capabilities`. */
   export interface AnalyticsInput {
     readonly core: Readonly<
       Pick<
         Core,
         | "statistics"
         | "forecasts"
+        | "capabilities"
         | "moduleTypes"
         | "corrections"
         | "history"
@@ -74,7 +76,7 @@
       {#if analytics}
         <AnalyticsTabs {id} {title} {colour} {analytics} {input} />
         {#if isPv(id)}
-          <PvFacts {analytics} {input} />
+          <PvFacts {analytics} inverter={id === "inverter"} {input} />
         {/if}
       {:else}
         <AutarkyPanel {input} />
