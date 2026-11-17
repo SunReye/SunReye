@@ -779,6 +779,7 @@
   "detail_to_grid": "ins Netz",
   "detail_best": "Am besten",
   "detail_worst": "Am schwächsten",
+  "detail_no_tariff_short": "Kein Tarif",
   "detail_pv_covered": "Direkt aus PV",
   "detail_month_mean": "Ø 30 Tage",
   "heat_by_time": "{name} nach Tageszeit",

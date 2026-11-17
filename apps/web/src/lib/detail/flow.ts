@@ -81,7 +81,7 @@ function coveredOf(flows: Rollups | null): Fact {
 function moneyOf(money: Flow["money"], read: Readonly<FlowRead> | null, priced: boolean): Fact[] {
   if (money === null) return [];
 
-  if (!priced) return [{ label: money.label(), text: m.stats_tariff_none() }];
+  if (!priced) return [{ label: money.label(), text: m.detail_no_tariff_short() }];
 
   return [euros(money.label(), sumOf(read?.money ?? null))];
 }

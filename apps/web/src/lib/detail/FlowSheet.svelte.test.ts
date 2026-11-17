@@ -116,7 +116,11 @@ test("without a tariff in force the purchase sheet says so in place of its euros
 
   await expect.element(facts.filter({ hasText: "9:00–10:00 Uhr" })).toBeVisible();
   await expect.element(sheet.getByText("Kosten")).toBeVisible();
-  await expect.element(facts.filter({ hasText: "Kein Tarif" })).toBeVisible();
+  // Short enough for a third of the sheet.
+  const none = facts.filter({ hasText: "Kein Tarif" });
+
+  await expect.element(none).toBeVisible();
+  expect(none.element().textContent?.trim()).toBe("Kein Tarif");
 });
 
 test("the purchase sheet charts the price bought at by hour, in cents", async () => {

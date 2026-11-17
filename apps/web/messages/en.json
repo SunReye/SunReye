@@ -779,6 +779,7 @@
   "detail_to_grid": "to the grid",
   "detail_best": "Best",
   "detail_worst": "Worst",
+  "detail_no_tariff_short": "No tariff",
   "detail_pv_covered": "Straight from PV",
   "detail_month_mean": "30-day mean",
   "heat_by_time": "{name} by time of day",
