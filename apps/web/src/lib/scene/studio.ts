@@ -18,7 +18,7 @@ import {
 } from "three";
 import { toThree } from "../builder/scene.ts";
 import { aim, backdrop, sky } from "./backdrop.ts";
-import { CLEAR_SHADOW, type Daylight, type Theme } from "./light.ts";
+import type { Daylight, Theme } from "./light.ts";
 import { Passes } from "./passes.ts";
 import { Plot } from "./plot.ts";
 import { gpuOf, type Look } from "./quality.ts";
@@ -31,8 +31,6 @@ export class Studio {
 
   readonly #passes: Passes;
   #look: Look;
-  /** The shadow's spread under the sky last lit: 1 when clear. */
-  #spread = 1;
   readonly #sun = new DirectionalLight(0xffffff, 3);
   /** A faint sky and ground bounce on top of the image-based light; at night, the sky itself. */
   readonly #fill = new HemisphereLight();
@@ -128,8 +126,7 @@ export class Studio {
     this.#toward.set(...toThree(day.toward));
     this.#sun.color.setRGB(day.colour.r, day.colour.g, day.colour.b);
     this.#sun.intensity = day.intensity;
-    this.#spread = day.shadow / CLEAR_SHADOW;
-    this.#shade();
+    this.#sun.shadow.intensity = day.shadow;
     this.#fill.color.setRGB(day.fill.sky.r, day.fill.sky.g, day.fill.sky.b);
     this.#fill.groundColor.setRGB(day.fill.ground.r, day.fill.ground.g, day.fill.ground.b);
     this.#fill.intensity = day.fill.intensity;
@@ -254,7 +251,7 @@ export class Studio {
   }
 
   #shade(): void {
-    shade(this.#sun, this.#look, this.#spread);
+    shade(this.#sun, this.#look);
   }
 
   #distance(): number {

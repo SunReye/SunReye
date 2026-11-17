@@ -28,11 +28,9 @@ test("a chunk without the basic sampling is refused, not left hard", () => {
 test("a penumbra is 2.8 cm wide per metre between caster and receiver, in texels", () => {
   // A 50 m wide, 100 m deep shadow camera on a 4096 map: a texel is 1.22 cm across and a metre
   // is a hundredth of the depth, so a caster 6 m off softens its edge over 6 × 2.8 / 1.22 texels.
-  const perDepth = penumbra(1, 100, 50, 4096);
+  const perDepth = penumbra(100, 50, 4096);
 
   expect(perDepth * 0.06).toBeCloseTo((6 * 2.8) / (5000 / 4096), 5);
-  // Under cloud it spreads.
-  expect(penumbra(3, 100, 50, 4096)).toBeCloseTo(perDepth * 3, 5);
 });
 
 test("the offset a shadow is looked up at is turned toward the camera, and only that", () => {

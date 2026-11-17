@@ -35,7 +35,7 @@ export interface Daylight {
   readonly clouds: Clouds;
   /** How hazy the sky model is: 1 at a low sun, 0 at a high one. */
   readonly haze: number;
-  /** The shadow's blur radius in shadow-map texels: wider under cloud. */
+  /** How strong the cast shadow is: 1 under a clear sky, 0 under a closed one. */
   readonly shadow: number;
   /** The moon lights the plant. */
   readonly night: boolean;
@@ -102,12 +102,6 @@ const SKY = { light: 0.45, most: 10 };
  * so a white model keeps its form on a grey day. */
 const THROUGH = 0.35;
 
-/** The shadow's blur radius under a clear sky and a closed one. */
-const SHADOW = { clear: 3.5, closed: 9 };
-
-/** The radius under a clear sky: what a shadow's spread under cloud is measured against. */
-export const CLEAR_SHADOW = SHADOW.clear;
-
 /** The diffuse fractions where cloud starts to show and where the sky is closed: the dashboard
  * calls 0.45 partly cloudy and 0.8 cloudy. */
 const CLOUD = [0.25, 0.85] as const;
@@ -161,7 +155,7 @@ function twilight(sky: Sky): Daylight {
       sky: environment * skylight(sky.elevation, sky.clouds.coverage),
     }),
     glow: 0,
-    shadow: SHADOW.clear,
+    shadow: 1,
     night: true,
   };
 }
@@ -199,7 +193,7 @@ function day(sky: Sky, cloud: number): Daylight {
     environment,
     fill: fill(tint, FAINT.day, FLOOR.day, { ...direct, sky: environment * model }),
     glow: mix(LOW.glow, HIGH.glow, k) * risen,
-    shadow: mix(SHADOW.clear, SHADOW.closed, cloud),
+    shadow: 1 - cloud,
     night: false,
   };
 }

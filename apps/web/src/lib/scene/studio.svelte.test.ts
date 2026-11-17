@@ -202,7 +202,7 @@ test("light and dark themes change the background, the fog and the exposure", ()
   );
 });
 
-test("an overcast sky blurs the sun's shadow and dims the sun, with the one light", () => {
+test("an overcast sky fades the sun's shadow out and dims the sun, with the one light", () => {
   const opened = open();
   const page = new Color(0.95, 0.95, 0.96);
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own objects.
@@ -211,12 +211,11 @@ test("an overcast sky blurs the sun's shadow and dims the sun, with the one ligh
   opened.light(daylight([0, -0.5, 0.866]), theme(false), page);
 
   const [clear] = suns();
-  const before = { radius: clear?.shadow.radius ?? 0, intensity: clear?.intensity ?? 0 };
+  const before = { shadow: clear?.shadow.intensity, intensity: clear?.intensity ?? 0 };
 
   opened.light(daylight([0, -0.5, 0.866], 1), theme(false), page);
 
-  expect(suns()).toHaveLength(1);
-  expect(suns()[0]?.shadow.radius).toBeGreaterThan(before.radius);
+  expect([suns().length, before.shadow, suns()[0]?.shadow.intensity]).toEqual([1, 1, 0]);
   expect(suns()[0]?.intensity).toBeLessThan(before.intensity);
 });
 

@@ -55,9 +55,30 @@ test("overcast, a third of the sun's own light is left: a soft key light under t
 
   expect(overcast.intensity / clear.intensity).toBeGreaterThan(0.25);
   expect(overcast.intensity / clear.intensity).toBeLessThan(0.5);
-  expect(overcast.shadow).toBeGreaterThan(2 * clear.shadow);
   // The sky leads: the sun adds under half of what it gives a shadowed face.
   expect(overcast.intensity * luma(overcast.colour)).toBeLessThan(0.5 * ambientOf(overcast));
+});
+
+test("the sun's cast shadow fades out as the sky closes: whole when clear, none when overcast", () => {
+  expect(daylight(south(60)).shadow).toBe(1);
+  expect(daylight(south(60), 0.95).shadow).toBe(0);
+  // The sun still models the faces: one turned to it stays brighter than one in the shade.
+  expect(lightOf(daylight(south(60), 0.95))).toBeGreaterThan(
+    1.2 * ambientOf(daylight(south(60), 0.95)),
+  );
+
+  let last = 1;
+
+  for (let hundredths = 0; hundredths <= 100; hundredths++) {
+    const { shadow } = daylight(south(40), hundredths / 100);
+
+    expect(shadow).toBeGreaterThanOrEqual(0);
+    expect(shadow).toBeLessThanOrEqual(last);
+    last = shadow;
+  }
+
+  // Half closed, half a shadow.
+  expect(daylight(south(40), 0.55).shadow).toBeCloseTo(0.5, 5);
 });
 
 test("a partly cloudy sky lies between the clear and the overcast one", () => {

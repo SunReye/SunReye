@@ -1,9 +1,11 @@
 // The sun's shadow for a 3D quality (ADR 20 Look, Rendering quality): its map's size, and below
 // Hoch three.js's blur by one radius, in Hoch a penumbra that widens with the caster's distance.
 import { BasicShadowMap, type DirectionalLight, PCFShadowMap, type WebGLRenderer } from "three";
-import { CLEAR_SHADOW } from "./light.ts";
 import type { Look } from "./quality.ts";
 import { penumbra, softShadows } from "./soft-shadow.ts";
+
+/** The blur radius below Hoch, in shadow-map texels. */
+const RADIUS = 3.5;
 
 /** Soft shadows: PCF with a radius, as r187 dropped PCFSoftShadowMap. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js sets it up in place.
@@ -17,15 +19,15 @@ export function soften(sun: DirectionalLight): void {
   softShadows();
 }
 
-/** The shadow's softness under a sky that spreads it `spread` times a clear one's. */
+/** The shadow's softness. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js sets it in place.
-export function shade(sun: DirectionalLight, { contact }: Look, spread: number): void {
+export function shade(sun: DirectionalLight, { contact }: Look): void {
   const { shadow } = sun;
   const { camera } = shadow;
 
   shadow.radius = contact
-    ? penumbra(spread, camera.far - camera.near, camera.right - camera.left, shadow.mapSize.x)
-    : spread * CLEAR_SHADOW;
+    ? penumbra(camera.far - camera.near, camera.right - camera.left, shadow.mapSize.x)
+    : RADIUS;
 }
 
 /** The shadow map `look` draws from, sampled its way. */
