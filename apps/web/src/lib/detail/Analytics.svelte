@@ -37,6 +37,8 @@
   import AnalyticsTabs from "./AnalyticsTabs.svelte";
   import AutarkyPanel from "./AutarkyPanel.svelte";
   import type { HeadView } from "./head.svelte.ts";
+  import PvFacts from "./PvFacts.svelte";
+  import { isPv } from "./pv-range.ts";
   import RangeState from "./RangeState.svelte";
 
   let {
@@ -71,6 +73,9 @@
     <RangeState {head} {onretry}>
       {#if analytics}
         <AnalyticsTabs {id} {title} {colour} {analytics} {input} />
+        {#if isPv(id)}
+          <PvFacts {analytics} {input} />
+        {/if}
       {:else}
         <AutarkyPanel {input} />
       {/if}

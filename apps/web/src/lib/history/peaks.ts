@@ -45,6 +45,13 @@ function highest(rolled: readonly Rolled[], from: number, to: number): Rolled | 
   return best;
 }
 
+/** When a peak read from the rollup starting at `start` fell: its hour, or past a day its day. */
+export function whenOf(start: number, hours: boolean, zone: string): string {
+  const { day, hour } = plantNow(zone, new Date(start));
+
+  return hours ? m.stats_peak_hour({ from: hour, to: hour + 1 }) : fmt("dayShort", day);
+}
+
 /** Each flow's peak over the range; a flow that never ran has none. */
 export function peaksOf(plant: Plant, at: PeakInput): Peak[] {
   const rollups = at.hours ? plant.hours : plant.days;
@@ -54,15 +61,13 @@ export function peaksOf(plant: Plant, at: PeakInput): Peak[] {
 
     if (top === null) return [];
 
-    const { day, hour } = plantNow(at.zone, new Date(top.start));
-
     return [
       {
         label: label(),
         value: top.max ?? 0,
-        when: at.hours ? m.stats_peak_hour({ from: hour, to: hour + 1 }) : fmt("dayShort", day),
+        when: whenOf(top.start, at.hours, at.zone),
         colour: flowColour(colour),
-        range: at.hours ? null : rangeFor("day", day),
+        range: at.hours ? null : rangeFor("day", plantNow(at.zone, new Date(top.start)).day),
       },
     ];
   });

@@ -2,7 +2,16 @@
 // with time, actual against forecast, and the inverter's temperature where its profile maps one.
 import { afterEach, beforeEach, expect, test } from "vitest";
 import "../../app.css";
-import { fetched, prepare, restore, show } from "./detail.harness.ts";
+import {
+  fetched,
+  INVERTER,
+  prepare,
+  restore,
+  rollup,
+  served,
+  show,
+  type Asked,
+} from "./detail.harness.ts";
 
 beforeEach(prepare);
 
@@ -18,4 +27,56 @@ test("a string's overview sets today against its own forecast, read from its inv
   expect(fetched).toContain(
     "/api/v1/devices/1/forecasts pv.string.power[1] 2026-11-12T00:00:00.000Z",
   );
+});
+
+/** An hourly rollup from `h` o'clock on `day`: `wh` made, at most `max`. */
+const hour = (h: number, wh: number, max: number, day = "2026-11-12") => ({
+  ...rollup(Date.parse(`${day}T${String(h).padStart(2, "0")}:00:00Z`), wh),
+  max,
+});
+
+/** String 1 made 4 kWh today, its peak 2.6 kW from 10:00. */
+const SOUTH = [hour(9, 1000, 1800), hour(10, 2000, 2600), hour(11, 1000, 1500)];
+
+/** Answers each of `series` on the inverter with its rollups, whatever period is asked for. */
+const inverter =
+  (series: Readonly<Record<string, readonly Readonly<{ start: string }>[]>>) =>
+  (a: Asked): Response | undefined => {
+    const points = series[a.series];
+
+    if (a.device !== INVERTER || points === undefined) return undefined;
+
+    return Response.json({
+      points: points.filter((p) => p.start >= a.from && p.start < a.to),
+      period: a.period,
+    });
+  };
+
+async function sheetOf(id: string, name: string, route = "") {
+  const { screen } = await show(id, route);
+  const sheet = screen.getByRole("dialog", { name });
+
+  await expect.element(sheet).toBeVisible();
+
+  return sheet;
+}
+
+test("the facts row states the range's peak with its hour", async () => {
+  served.rolled = inverter({ "pv.string.power[1]": SOUTH });
+
+  const sheet = await sheetOf("string-1", "Süd");
+  const peak = sheet.getByRole("definition").filter({ hasText: "10:00–11:00 Uhr" });
+
+  await expect.element(peak).toHaveTextContent("2,6 kW 10:00–11:00 Uhr");
+});
+
+test("past a day the peak names its day", async () => {
+  served.rolled = inverter({
+    "pv.string.power[1]": [hour(0, 9000, 2100, "2026-11-10"), hour(0, 8000, 3100, "2026-11-11")],
+  });
+
+  const sheet = await sheetOf("string-1", "Süd", "range=week");
+  const peak = sheet.getByRole("definition").filter({ hasText: "11. Nov." });
+
+  await expect.element(peak).toHaveTextContent("3,1 kW 11. Nov.");
 });
