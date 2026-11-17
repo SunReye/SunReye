@@ -118,3 +118,34 @@ test("without a tariff in force the purchase sheet says so in place of its euros
   await expect.element(sheet.getByText("Kosten")).toBeVisible();
   await expect.element(facts.filter({ hasText: "Kein Tarif" })).toBeVisible();
 });
+
+test("the purchase sheet charts the price bought at by hour, in cents", async () => {
+  priced();
+  served.rolled = rolled({
+    ...BOUGHT,
+    [TARIFF]: {
+      ...BOUGHT[TARIFF],
+      "price.import": { [at(8)]: [0.3, 0.3], [at(9)]: [0.2, 0.2] },
+    },
+  });
+
+  const sheet = await sheetOf("purchase", "Bezug");
+
+  await expect
+    .element(sheet.getByRole("group", { name: /Bezugspreis über die Zeit/u }))
+    .toBeVisible();
+  // At rest the legend reads the range's mean price.
+  await expect.element(sheet.getByText("25,00 ct/kWh")).toBeVisible();
+});
+
+test("the consumption sheet charts no price", async () => {
+  priced();
+  served.rolled = rolled(DREW);
+
+  const sheet = await sheetOf("consumption", "Verbrauch");
+
+  const charts = sheet.getByRole("group", { name: /über die Zeit/u });
+
+  await expect.element(charts).toBeVisible();
+  expect(charts.elements()).toHaveLength(1);
+});

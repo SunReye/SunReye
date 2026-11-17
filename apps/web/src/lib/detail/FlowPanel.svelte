@@ -1,8 +1,11 @@
 <!--
-  A flow sheet's range below its tabs (ADR 21 "Sheet content"): one row of facts, the peak with
-  its time and, for feed-in and purchase, their euros.
+  A flow sheet's range below its tabs (ADR 21 "Sheet content"): the purchase's price by band while
+  a tariff is in force, then one row of facts, the peak with its time and, for the house the share
+  PV covered, for feed-in and purchase their euros.
 -->
 <script lang="ts">
+  import { TARIFF } from "../api/computed-devices.ts";
+  import HistoryChart from "../history/HistoryChart.svelte";
   import type { AnalyticsInput } from "./Analytics.svelte";
   import DetailStats from "./DetailStats.svelte";
   import type { Flow } from "./flow.ts";
@@ -35,6 +38,9 @@
   };
 </script>
 
+{#if flow.price && priced}
+  <HistoryChart core={input.core} device={TARIFF} series="price.import" route={input.route} />
+{/if}
 <RangeState head={range.failed ? FAILED : null} onretry={range.retry}>
   <!-- The facts row spans the sheet, as every sheet's does. -->
   <div class="-mx-5 -mb-4 pt-2 sm:-mx-6">

@@ -13,6 +13,8 @@ export interface Flow {
   readonly series: string;
   /** The house load: what share PV covered directly, as the autarky sheet's bar reads it. */
   readonly cover: boolean;
+  /** The import price is charted by band. */
+  readonly price: boolean;
   readonly money: { readonly series: string; readonly label: () => string } | null;
 }
 
@@ -20,11 +22,11 @@ const PAID = { series: "cost.import.rate", label: m.detail_paid };
 const EARNED = { series: "cost.export.rate", label: m.detail_earned };
 
 const FLOWS = new Map<string, Flow>([
-  ["consumption", { series: "load.power", cover: true, money: null }],
-  ["house", { series: "load.power", cover: true, money: null }],
-  ["feedIn", { series: "grid.export.power", cover: false, money: EARNED }],
-  ["purchase", { series: "grid.import.power", cover: false, money: PAID }],
-  ["generator", { series: "generator.power", cover: false, money: null }],
+  ["consumption", { series: "load.power", cover: true, price: false, money: null }],
+  ["house", { series: "load.power", cover: true, price: false, money: null }],
+  ["feedIn", { series: "grid.export.power", cover: false, price: false, money: EARNED }],
+  ["purchase", { series: "grid.import.power", cover: false, price: true, money: PAID }],
+  ["generator", { series: "generator.power", cover: false, price: false, money: null }],
 ]);
 
 /** The flow sheet `id` is; null for any other. */
