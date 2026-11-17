@@ -2,14 +2,17 @@ import { flushSync } from "svelte";
 import { afterEach, expect, test, vi } from "vitest";
 import { PerspectiveCamera } from "three";
 import { motion } from "../motion/tier.svelte.ts";
+import { weatherEffects } from "./effects.svelte.ts";
 import { quality } from "./quality.svelte.ts";
 import { lit, type Lit, type Sky } from "./stage.svelte.ts";
 import { Studio } from "./studio.ts";
-import { DRY, type Falling, type Glass } from "./weather.ts";
+import { DRY, type Falling, type Glass, type SceneWeather } from "./weather.ts";
 
 const RAIN: Falling = { kind: "rain", density: 1, wind: [2, 0] };
 
 const FROST: Glass = { rain: 0, snow: 0, frost: 1 };
+
+const DROPS: Glass = { rain: 1, snow: 0, frost: 0 };
 
 const noop = (): void => {};
 
@@ -19,6 +22,7 @@ afterEach(() => {
   close?.();
   close = undefined;
   quality.choice = "auto";
+  weatherEffects.on = true;
   vi.restoreAllMocks();
   localStorage.clear();
 });
@@ -31,6 +35,7 @@ function watched() {
     drawn: vi.spyOn(Studio.prototype, "render"),
     fell: vi.spyOn(Studio.prototype, "fall"),
     glazed: vi.spyOn(Studio.prototype, "lens"),
+    lit: vi.spyOn(Studio.prototype, "light"),
   };
 }
 
@@ -39,6 +44,7 @@ async function open() {
   const canvas = document.createElement("canvas");
   let falling = $state.raw<Falling | null>(null);
   let glass = $state.raw<Glass | null>(null);
+  let ground = $state.raw<Partial<SceneWeather>>({});
   let scene: Lit | undefined;
   const seen = { labels: 0 };
   const asked = watched();
@@ -50,7 +56,7 @@ async function open() {
     scene = lit(
       canvas,
       new PerspectiveCamera(40, 1, 0.1, 5000),
-      (): Sky => ({ sun: null, diffuse: null, weather: { ...DRY, falling, glass } }),
+      (): Sky => ({ sun: null, diffuse: null, weather: { ...DRY, ...ground, falling, glass } }),
       () => {
         seen.labels += 1;
       },
@@ -79,6 +85,10 @@ async function open() {
     },
     lens: (next: Glass | null): void => {
       glass = next;
+      flushSync();
+    },
+    under: (next: Partial<SceneWeather>): void => {
+      ground = next;
       flushSync();
     },
   };
@@ -238,5 +248,33 @@ test("still clears the lens at once and never loops for it", async () => {
 
   motion.lowPower = false;
   flushSync();
+  expect(loop.running).toBe(true);
+}, 60_000);
+
+test("the Wettereffekte switch, off, leaves the weather's light alone, at once; on, the weather is back", async () => {
+  const { loop, fell, lit, weather, lens, under } = await open();
+  const storm = { fog: 0.6, wet: 1, snow: true, covered: true, thunder: true };
+
+  under(storm);
+  weather(RAIN);
+  lens(DROPS);
+  expect(loop.running).toBe(true);
+  expect(lit.mock.lastCall?.[3]).toMatchObject(storm);
+
+  const [day] = lit.mock.lastCall ?? [];
+
+  weatherEffects.on = false;
+  flushSync();
+  expect(fell.mock.lastCall).toEqual([null, false]);
+  expect(lit.mock.lastCall?.[3]).toEqual({ ...DRY, thunder: true });
+  // Thunder darkens the day as before.
+  expect(lit.mock.lastCall?.[0]).toEqual(day);
+  // What was on the lens fades out, and the loop stops.
+  await expect.poll(() => loop.running, { timeout: 30_000 }).toBe(false);
+
+  weatherEffects.on = true;
+  flushSync();
+  expect(fell.mock.lastCall).toEqual([RAIN, false]);
+  expect(lit.mock.lastCall?.[3]).toMatchObject(storm);
   expect(loop.running).toBe(true);
 }, 60_000);

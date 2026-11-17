@@ -5,11 +5,13 @@ import type { Group, PerspectiveCamera } from "three";
 import type { Glow } from "../builder/scene.ts";
 import { motion } from "../motion/tier.svelte.ts";
 import { cssColour, flowRgb } from "./backdrop.ts";
+import { weatherEffects } from "./effects.svelte.ts";
 import { daylight, theme } from "./light.ts";
 import { easeGlow } from "./live-glow.svelte.ts";
 import { Opening } from "./opening.svelte.ts";
 import { stage, type SceneWeather, type Staged } from "./staged.ts";
 import { openStudio, type Opened } from "./studio-look.svelte.ts";
+import { lightAlone } from "./weather.ts";
 
 /** Follows mode-watcher's class on the root element. */
 const themed = createSubscriber((update) => {
@@ -91,7 +93,10 @@ function steadied(sky: () => Sky, glazing: () => boolean) {
   let glazed: NonNullable<Sky["weather"]>["glass"] = null;
 
   const weather = $derived.by(() => {
-    last = same(last, sky().weather);
+    const given = sky().weather;
+
+    // Its light alone while this browser's Wettereffekte switch is off (ADR 23 "Off switch").
+    last = same(last, given === undefined || weatherEffects.on ? given : lightAlone(given));
 
     return last;
   });
