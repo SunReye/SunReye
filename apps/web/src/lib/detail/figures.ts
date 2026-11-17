@@ -240,7 +240,6 @@ const only = (stats: readonly Fact[]): Facts => ({ lead: null, stats });
 /** Each figure's facts but the price's, which also reads the live spot price. */
 const DAY_FACTS = new Map<string, Read>([
   ["weather", weather],
-  ["saved", (day) => ({ lead: eur(m.detail_today(), day?.money?.saved ?? null), stats: [] })],
   [
     "autarky",
     (day) => ({

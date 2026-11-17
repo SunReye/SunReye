@@ -12,10 +12,11 @@ export { INVERTER };
 
 export const PLANT = "4294967294";
 const SPOT = "4294967292";
+export const TARIFF = "4294967293";
 export const BATTERY = "2";
 
 /** Midday: the plant's totals, an inverter with two inputs and a battery. */
-const LIVE = {
+export const LIVE = {
   [PLANT]: {
     "pv.power": 4200,
     "load.power": 900,
@@ -47,7 +48,7 @@ const STRINGS = [
 
 /** What the core streams: the live values, and each stale value's age in seconds. */
 export interface Served {
-  live: typeof LIVE;
+  live: Readonly<Record<string, Readonly<Record<string, number>>>>;
   stale: Readonly<Record<string, Readonly<Record<string, number>>>> | undefined;
   /** A second frame, a second after the snapshot: the plant importing. */
   tick: boolean;
@@ -59,6 +60,10 @@ export interface Served {
   last: string;
   /** Answers a statistics read before the defaults do; undefined passes it on. */
   rolled: ((read: Asked) => Response | Promise<Response> | undefined) | null;
+  /** Answers a costs read from `from` to before `to`, RFC 3339; null for none. */
+  costs: ((from: string, to: string) => Response | Promise<Response>) | null;
+  /** The payback the admin reads (ADR 12); null for a refusal. */
+  payback: object | null;
 }
 
 export const served: Served = {
@@ -69,6 +74,8 @@ export const served: Served = {
   stored: {},
   last: "2026-11-12T12:00:00Z",
   rolled: null,
+  costs: null,
+  payback: null,
 };
 
 /** The series catalog: each stored series a measurement since the month began. */
@@ -184,10 +191,15 @@ const ROUTES = new Map<string, () => Response>([
   ["/api/v1/module-types", () => Response.json({ moduleTypes: [{ id: 1, name: "M", pmax: 300 }] })],
   ["/api/v1/corrections", () => Response.json(CORRECTIONS)],
   [
-    "/api/v1/costs",
-    () => Response.json({ days: [], total: { paid: 0.32, earned: 0.33, saved: 2.1 } }),
+    "/api/v1/payback",
+    () =>
+      served.payback === null
+        ? Response.json({ status: 403, code: "auth.forbidden" }, { status: 403 })
+        : Response.json(served.payback),
   ],
 ]);
+
+const NO_COSTS = { days: [], total: { paid: 0.32, earned: 0.33, saved: 2.1, standing: 0 } };
 
 /** A statistics request's device, series, window and period, read from its URL. */
 function askedOf(device: string, q: Readonly<URLSearchParams>): Asked {
@@ -217,6 +229,9 @@ function answer(href: string): Response | Promise<Response> {
 
   fetched.push(`${pathname} ${q.get("series") ?? ""} ${q.get("from") ?? ""}`);
 
+  if (pathname === "/api/v1/costs")
+    return served.costs?.(q.get("from") ?? "", q.get("to") ?? "") ?? Response.json(NO_COSTS);
+
   return (ROUTES.get(pathname) ?? (() => Response.json({ points: [] })))();
 }
 
@@ -235,6 +250,8 @@ export async function prepare(): Promise<void> {
   served.breaks = false;
   served.stored = {};
   served.rolled = null;
+  served.costs = null;
+  served.payback = null;
   served.last = "2026-11-12T12:00:00Z";
   vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-12T12:20:00Z") });
   await cdp().send("Emulation.setEmulatedMedia", {
@@ -249,8 +266,8 @@ export async function restore(): Promise<void> {
   await cdp().send("Emulation.setEmulatedMedia", { features: [] });
 }
 
-/** The dashboard with sheet `detail` open, its hash route's query `route`. */
-export async function show(detail: string | null = null, route = "") {
+/** The dashboard with sheet `detail` open, its hash route's query `route`, to a viewer or the admin. */
+export async function show(detail: string | null = null, route = "", admin = false) {
   const onopen = vi.fn<(id: string) => void>();
   const onclose = vi.fn<() => void>();
 
@@ -259,7 +276,7 @@ export async function show(detail: string | null = null, route = "") {
   const screen = await render(Dashboard, {
     core: connect(transport),
     layout: null,
-    admin: false,
+    admin,
     detail,
     onopen,
     onclose,
