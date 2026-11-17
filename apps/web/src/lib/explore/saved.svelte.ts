@@ -45,7 +45,7 @@ export class Saved {
   constructor(input: () => SavedInput, route: () => RangeRoute) {
     this.#input = input;
     this.#route = route;
-    // The route reaches a view by a tap, a step back or an address alike.
+    // A step back or an address reaches a view outside Saved, and `marked` reads #last: no derived.
     $effect(() => {
       if (this.marked) this.#last = this.marked.id;
     });
