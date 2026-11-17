@@ -97,6 +97,9 @@ export type Asked = Readonly<Record<"device" | "series" | "from" | "to" | "perio
 /** Each statistics request. */
 export const asked: Asked[] = [];
 
+/** Each other request, as `/api/v1/devices/4294967295/history weather.code 2026-11-12T00:00:00.000Z`. */
+export const fetched: string[] = [];
+
 /** One hourly rollup of `watts` from `at`, in ms since the epoch. */
 export function rollup(at: number, watts: number) {
   const [start, end] = [new Date(at).toISOString(), new Date(at + 3_600_000).toISOString()];
@@ -247,6 +250,8 @@ function answer(href: string): Response | Promise<Response> {
     return served.rolled?.(one) ?? statistics(device, series, from);
   }
 
+  fetched.push(`${pathname} ${q.get("series") ?? ""} ${q.get("from") ?? ""}`);
+
   return (ROUTES.get(pathname) ?? (() => Response.json({ points: [] })))();
 }
 
@@ -260,6 +265,7 @@ export async function prepare(): Promise<void> {
   served.live = LIVE;
   served.stale = undefined;
   asked.length = 0;
+  fetched.length = 0;
   served.tick = false;
   served.breaks = false;
   served.stored = {};

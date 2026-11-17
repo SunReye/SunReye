@@ -119,3 +119,10 @@ test("the day's peak is a power in watts, written by the shared power format", (
 
   expect(peak).toMatchObject({ value: 8600, unit: "W" });
 });
+
+test("the weather leads with now's temperature; its facts stand in its day tabs", () => {
+  expect(facts("weather", DAY)).toEqual({
+    lead: { label: "jetzt", value: 21, unit: "°C", digits: 0 },
+    stats: [],
+  });
+});

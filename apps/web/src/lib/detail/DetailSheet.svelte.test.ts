@@ -3,7 +3,7 @@ import { cdp, page, userEvent } from "vitest/browser";
 import "../../app.css";
 import { pull } from "../components/drawer.harness.ts";
 import { unfaded } from "../scroll-fade.harness.ts";
-import { asked, BATTERY, prepare, restore, served, show } from "./detail.harness.ts";
+import { asked, BATTERY, fetched, prepare, restore, served, show } from "./detail.harness.ts";
 
 beforeEach(prepare);
 
@@ -195,8 +195,17 @@ test("the strip's weather cell opens the weather detail", async () => {
   expect(onopen).toHaveBeenCalledWith("weather");
 });
 
-test("the weather sheet shows the weather by the hour", async () => {
-  const { screen } = await show("weather");
+test("the weather sheet shows the weather by the hour, read once", async () => {
+  const { screen } = await show();
+
+  // Opened from a dashboard that has read its day, as the cell opens it.
+  await expect
+    .poll(() =>
+      fetched.some((read) => read.startsWith("/api/v1/devices/4294967295/history weather.code")),
+    )
+    .toBe(true);
+  await screen.rerender({ detail: "weather" });
+
   const sheet = screen.getByRole("dialog", { name: "Wetter" });
 
   // The fake core stores no weather.
@@ -205,6 +214,12 @@ test("the weather sheet shows the weather by the hour", async () => {
       sheet.getByRole("region", { name: "Wetter nach Stunden" }).getByText("Keine Wetterdaten"),
     )
     .toBeVisible();
+  // The layout landing in the sheet does not read the days again.
+  expect(
+    fetched.filter(
+      (read) => read === "/api/v1/devices/4294967295/history weather.code 2026-11-12T00:00:00.000Z",
+    ),
+  ).toHaveLength(1);
 });
 
 test("the strip's PV cell opens the forecast's three days, which end on the Forecast screen", async () => {
