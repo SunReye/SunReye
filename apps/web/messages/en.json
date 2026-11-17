@@ -223,6 +223,8 @@
   "display_theme": "Theme",
   "display_dark": "Dark",
   "display_light": "Light",
+  "display_weather_effects": "Weather effects",
+  "display_weather_effects_hint": "Rain, snow, fog and drops on the lens in the 3D scene.",
   "display_low_power": "Low power",
   "display_low_power_hint": "Nothing moves, glass turns solid, 2D instead of 3D.",
   "display_haptics": "Haptic feedback",

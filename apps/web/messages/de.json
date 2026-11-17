@@ -223,6 +223,8 @@
   "display_theme": "Erscheinungsbild",
   "display_dark": "Dunkel",
   "display_light": "Hell",
+  "display_weather_effects": "Wettereffekte",
+  "display_weather_effects_hint": "Regen, Schnee, Nebel und Tropfen auf der Linse in der 3D-Szene.",
   "display_low_power": "Stromsparen",
   "display_low_power_hint": "Nichts bewegt sich, Glas wird deckend, 2D statt 3D.",
   "display_haptics": "Haptisches Feedback",

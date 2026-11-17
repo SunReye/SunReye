@@ -7,11 +7,13 @@ import { HAPTICS } from "../haptics.ts";
 import { language } from "../i18n/language.svelte.ts";
 import { LOW_POWER } from "../motion/tier.ts";
 import { motion } from "../motion/tier.svelte.ts";
+import { WEATHER_EFFECTS, weatherEffects } from "../scene/effects.svelte.ts";
 import { QUALITY, quality } from "../scene/quality.svelte.ts";
 import DisplaySettings from "./DisplaySettings.svelte";
 
 afterEach(async () => {
   quality.choice = "auto";
+  weatherEffects.on = true;
   motion.lowPower = false;
   await language.choose("de");
   localStorage.clear();
@@ -125,4 +127,26 @@ test("with low power on, the row says the 3D scene is not shown", async () => {
   await userEvent.click(screen.getByRole("switch", { name: /^Stromsparen/u }));
 
   await expect.element(screen.getByText("Stromsparen zeigt 2D statt 3D.")).toBeVisible();
+});
+
+test("the Wettereffekte switch is on by default, kept per browser and read at once", async () => {
+  const screen = await display();
+  const effects = screen.getByRole("switch", { name: /^Wettereffekte/u });
+
+  await expect.element(effects).toBeChecked();
+  await expect
+    .element(screen.getByText("Regen, Schnee, Nebel und Tropfen auf der Linse in der 3D-Szene."))
+    .toBeVisible();
+
+  await userEvent.click(effects);
+
+  await expect.element(effects).not.toBeChecked();
+  expect(weatherEffects.on).toBe(false);
+  expect(localStorage.getItem(WEATHER_EFFECTS)).toBe("off");
+
+  await userEvent.click(effects);
+
+  await expect.element(effects).toBeChecked();
+  expect(weatherEffects.on).toBe(true);
+  expect(localStorage.getItem(WEATHER_EFFECTS)).toBe("on");
 });

@@ -1,4 +1,4 @@
-<!-- Settings › Display (ADR 21): this browser's theme, language, 3D quality (ADR 20), low-power and haptics switches. -->
+<!-- Settings › Display (ADR 21): this browser's theme, language, 3D quality (ADR 20), weather effects (ADR 23), low-power and haptics switches. -->
 <script lang="ts">
   import { setMode, userPrefersMode } from "mode-watcher";
   import { MediaQuery } from "svelte/reactivity";
@@ -10,6 +10,7 @@
   import { HAPTICS, haptics, hapticsOn } from "../haptics.ts";
   import { motion } from "../motion/tier.svelte.ts";
   import { m } from "../paraglide/messages.js";
+  import { weatherEffects } from "../scene/effects.svelte.ts";
 
   const touch = new MediaQuery("(pointer: coarse)");
   const reduce = new MediaQuery("(prefers-reduced-motion: reduce)");
@@ -59,6 +60,15 @@
     />
     <LanguageRow />
     <QualityRow />
+    <ToggleRow
+      label={m.display_weather_effects()}
+      hint={m.display_weather_effects_hint()}
+      checked={weatherEffects.on}
+      onchange={(on) => {
+        weatherEffects.on = on;
+        haptics.selection();
+      }}
+    />
     <ToggleRow
       label={m.display_low_power()}
       hint={m.display_low_power_hint()}
