@@ -36,6 +36,8 @@ const DAY: Day = {
     windDirection: 200,
     celsius: 21,
     ghi: 500,
+    clearness: null,
+    dry: null,
   },
   money: { paid: 0.19, earned: 1.39, saved: 5.93, standing: 0 },
 };

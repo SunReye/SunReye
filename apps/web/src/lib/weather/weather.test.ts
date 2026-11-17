@@ -65,6 +65,8 @@ const NONE: Weather = {
   windDirection: null,
   celsius: null,
   ghi: null,
+  clearness: null,
+  dry: null,
 };
 
 test("without stored weather an instant has none", async () => {
@@ -98,6 +100,8 @@ test("the weather at an instant is each forecast quantity in force then", async 
     windDirection: 250,
     celsius: 4.1,
     ghi: 60,
+    clearness: null,
+    dry: 0,
   });
 });
 
@@ -252,4 +256,40 @@ test("a refused or failed read is no weather for its quantity", async () => {
   );
 
   expect(weatherAt(weather, at("12:05"))).toEqual({ ...NONE, code: 45 });
+});
+
+test("the clear-sky index itself is told apart from the forecast's cloud: null where none stands", async () => {
+  const weather = await read({
+    history: { "weather.clearness": intervals(["11:45", "12:00", 0.4]) },
+    forecasts: { "weather.cloud_cover": targets(["12:00", 100], ["13:00", 100]) },
+  });
+
+  expect(weatherAt(weather, at("12:07"))).toMatchObject({ clearness: 0.4 });
+  expect(weatherAt(weather, at("12:30"))).toMatchObject({ clearness: null, cloud: 1 });
+});
+
+test("an instant knows how long it has been dry: 0 while it falls, then since it last fell", async () => {
+  const weather = await read({
+    history: {
+      "weather.precipitation": intervals(
+        ["09:00", "09:15", 0],
+        ["09:15", "09:30", 0.3],
+        ["09:30", "09:45", 0],
+      ),
+    },
+    forecasts: {
+      // Archived as dry: history wins over the rain once forecast for that quarter.
+      "weather.precipitation": targets(["09:30", 1.2], ["09:45", 0], ["14:00", 0.5], ["14:15", 0]),
+    },
+  });
+
+  const dry = (time: string) => weatherAt(weather, at(time)).dry;
+
+  // Nothing has fallen yet in what was read.
+  expect(dry("09:10")).toBeNull();
+  expect(dry("09:20")).toBe(0);
+  expect(dry("09:50")).toBe(20 * 60_000);
+  expect(dry("13:59")).toBe((4 * 60 + 29) * 60_000);
+  expect(dry("14:05")).toBe(0);
+  expect(dry("14:45")).toBe(30 * 60_000);
 });

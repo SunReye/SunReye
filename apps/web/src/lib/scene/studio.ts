@@ -23,7 +23,7 @@ import { Passes } from "./passes.ts";
 import { Plot } from "./plot.ts";
 import { gpuOf, type Look } from "./quality.ts";
 import { shade, shadowFor, soften } from "./sun-shadow.ts";
-import { untone } from "./tone.ts";
+import { DRY, fogColour, type SceneWeather } from "./weather.ts";
 
 export class Studio {
   readonly renderer: WebGLRenderer;
@@ -121,8 +121,9 @@ export class Studio {
     this.#shade();
   }
 
-  /** Sun or moon, sky, environment, backdrop, fog and exposure for the time and the theme. */
-  light(day: Daylight, look: Theme, page: Readonly<Color>): void {
+  /** Sun or moon, sky, environment, backdrop, fog and exposure for the time and the theme, and
+   * the `weather`'s fog, which greys backdrop and fog alike, and floor (ADR 23). */
+  light(day: Daylight, look: Theme, page: Readonly<Color>, weather?: SceneWeather): void {
     this.#toward.set(...toThree(day.toward));
     this.#sun.color.setRGB(day.colour.r, day.colour.g, day.colour.b);
     this.#sun.intensity = day.intensity;
@@ -135,20 +136,21 @@ export class Studio {
     if (this.#held === undefined) this.#environ(day, look);
     else this.#held = [day, look];
 
-    const untoned = new Color(...untone([page.r, page.g, page.b], look.exposure));
-
-    const backdropped = JSON.stringify([page.r, page.g, page.b, look]);
+    // The air's colour: the page's, greyed by the weather's fog, a twentieth at a time.
+    const falling = weather ?? DRY;
+    const air = fogColour([page.r, page.g, page.b], look.dark, Math.round(falling.fog * 20) / 20);
+    const backdropped = JSON.stringify([air, look]);
 
     this.renderer.toneMappingExposure = look.exposure;
 
     if (backdropped !== this.#backdropped) {
       this.#backdropped = backdropped;
       this.#backdrop?.dispose();
-      this.#backdrop = backdrop(new Color(page.r, page.g, page.b), look.exposure, look.dark);
+      this.#backdrop = backdrop(new Color(...air), look.exposure, look.dark);
       this.scene.background = this.#backdrop;
     }
 
-    this.#plot.fog.color.copy(untoned);
+    this.#plot.weather(falling, air, look.exposure);
   }
 
   setSize(width: number, height: number): void {

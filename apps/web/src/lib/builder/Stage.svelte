@@ -14,6 +14,7 @@
     presetView,
     type View,
   } from "./camera.ts";
+  import type { SceneWeather } from "../scene/weather.ts";
   import type { Geometry, Point, RoofFace } from "./pv.ts";
   import SceneCanvas, { type Editing, type Painting } from "./SceneCanvas.svelte";
   import type { Hit, Panel } from "./scene.ts";
@@ -25,6 +26,7 @@
     panels,
     sun,
     diffuse,
+    weather,
     cars,
     onpick,
     editing,
@@ -39,6 +41,8 @@
     sun?: Point | null;
     /** How diffuse the sky's light is then, 0 to 1; null without weather for the instant. */
     diffuse?: number | null;
+    /** Wet ground, lying snow and thunder then (ADR 23). */
+    weather?: SceneWeather | undefined;
     /** The connected cars. */
     cars: readonly Parked[];
     onpick?: ((hit: Hit) => void) | undefined;
@@ -79,6 +83,7 @@
   {panels}
   {sun}
   {diffuse}
+  {weather}
   {cars}
   {model}
   {view}

@@ -28,6 +28,10 @@ export interface Weather {
   readonly celsius: number | null;
   /** Global horizontal irradiance in W/m²: under 1 it is night. */
   readonly ghi: number | null;
+  /** The clear-sky index that stands for the instant: null where the core measured none. */
+  readonly clearness: number | null;
+  /** Ms since precipitation last fell, 0 while it falls; null where none fell in what was read. */
+  readonly dry: number | null;
 }
 
 const MINUTE = 60_000;
@@ -143,6 +147,18 @@ export async function readWeather(
 
 const clamp = (value: number) => Math.min(1, Math.max(0, value));
 
+/** How long it has been dry at `at`: history's quarters count over the forecast's for them. */
+function dryAt(fallen: readonly Held[], at: number): number | null {
+  const ends = fallen.flatMap((held) => {
+    const fell = held.value > 0 && held.from <= at;
+    const counts = fallen.find(({ from, to }) => from <= held.from && held.from < to) === held;
+
+    return fell && counts ? [held.to] : [];
+  });
+
+  return ends.length === 0 ? null : Math.max(0, at - Math.max(...ends));
+}
+
 /** The weather at `at`, ms since 1970: each quantity's value in force then. */
 export function weatherAt(read: WeatherRead | undefined, at: number): Weather {
   // History is listed first, so it wins over the forecast.
@@ -173,5 +189,7 @@ export function weatherAt(read: WeatherRead | undefined, at: number): Weather {
     windDirection: held("weather.wind_direction"),
     celsius: held("weather.temperature"),
     ghi,
+    clearness: index,
+    dry: dryAt(read?.["weather.precipitation"] ?? [], at),
   };
 }
