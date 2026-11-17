@@ -5,21 +5,24 @@
   import RangeControl from "../range/RangeControl.svelte";
   import type { Table } from "./csv.ts";
   import type { Explore } from "./explore.svelte.ts";
-  import ExportButton from "./ExportButton.svelte";
+  import ExploreActions from "./ExploreActions.svelte";
   import FullscreenButton from "./FullscreenButton.svelte";
   import ModeSwitch from "./ModeSwitch.svelte";
   import { OVERLAY_KINDS } from "./overlay.ts";
 
   let {
     x,
+    admin,
     table,
     full,
     onfull,
   }: {
     x: Explore;
+    /** The admin's menu stands where a viewer has the export: the row has room for one of them. */
+    admin: boolean;
     /** The open mode's plotted points; null while nothing is drawn. */
     table: Table | null;
-    /** Whether the chart is fullscreen: the title and the export are left out. */
+    /** Whether the chart is fullscreen: the title, the export and the menu are left out. */
     full: boolean;
     onfull: () => void;
   } = $props();
@@ -44,7 +47,12 @@
     class="order-2 ml-auto flex items-center gap-1.5 sm:gap-2 lg:order-3 lg:col-start-3 lg:justify-self-end"
   >
     {#if !full}
-      <ExportButton {table} />
+      <ExploreActions
+        {admin}
+        {table}
+        saved={x.saved}
+        labels={x.chosen.map((each) => each.label)}
+      />
     {/if}
     <ModeSwitch mode={x.view.mode} onchange={x.setMode} />
     <FullscreenButton {full} onchange={onfull} />

@@ -9,18 +9,26 @@
   import type { Go } from "../range/route.svelte.ts";
   import ChartArea from "./ChartArea.svelte";
   import type { Table } from "./csv.ts";
+  import ExploreChips from "./ExploreChips.svelte";
   import { Explore, type ExploreCore } from "./explore.svelte.ts";
   import ExploreHeader from "./ExploreHeader.svelte";
   import { Fullscreen } from "./fullscreen.svelte.ts";
   import PickerShell from "./PickerShell.svelte";
-  import SeriesChips from "./SeriesChips.svelte";
 
   let {
     core,
+    admin,
     params,
     go,
     back,
-  }: { core: ExploreCore; params: URLSearchParams; go: Go; back: () => void } = $props();
+  }: {
+    core: ExploreCore;
+    /** The admin saves, renames and deletes views; a viewer opens them. */
+    admin: boolean;
+    params: URLSearchParams;
+    go: Go;
+    back: () => void;
+  } = $props();
 
   const x = new Explore(() => ({ core, params, go, back }));
 
@@ -67,7 +75,7 @@
   {@attach full.watch}
   class={["flex w-full flex-col gap-4 px-3 pt-4 sm:px-4 lg:gap-5 lg:px-6 lg:pt-6", look.main]}
 >
-  <ExploreHeader {x} table={plotted?.() ?? null} full={full.on} onfull={full.toggle} />
+  <ExploreHeader {x} {admin} table={plotted?.() ?? null} full={full.on} onfull={full.toggle} />
 
   <div class={["grid gap-4 lg:gap-6", look.panes]}>
     {#if !full.on}
@@ -75,12 +83,15 @@
     {/if}
 
     <Card.Root class={["glass-ambient min-w-0 gap-4 px-3 py-4 sm:px-5", look.card]}>
-      {#if !full.on}
-        <SeriesChips chosen={x.chosen} onremove={x.toggle} onadd={add} />
+      <!-- Opened with nothing chosen, the first saved view decides what is read (ADR 22). -->
+      {#if !x.saved.opening}
+        {#if !full.on}
+          <ExploreChips {x} onadd={add} />
+        {/if}
+        <div class={look.chart} bind:clientHeight={room}>
+          <ChartArea {core} {x} {fill} bind:plotted />
+        </div>
       {/if}
-      <div class={look.chart} bind:clientHeight={room}>
-        <ChartArea {core} {x} {fill} bind:plotted />
-      </div>
     </Card.Root>
   </div>
 </main>
