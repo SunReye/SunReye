@@ -32,7 +32,7 @@ use crate::layout::{Layouts, Version, in_force};
 use crate::location::Location;
 use crate::solar::{self, Key};
 use crate::storage::{self, Aggregate, Database, Reader, Storage, Tier};
-use crate::weather::{self, Archive, Error, Past, Slot};
+use crate::weather::{self, Archive, Error, Past, Slot, midnight, utc_date};
 
 const HOUR: Duration = Duration::from_hours(1);
 const DAY: Duration = Duration::from_hours(24);
@@ -219,6 +219,12 @@ impl<A: Archive> Learner<A> {
         let day = utc_date(learned).to_string();
         c.database.run(move |db| save(db, &grids, &day)).await?;
         Ok(())
+    }
+
+    /// Fetches the archive's new quantities once over the weather history stored before them
+    /// (ADR 23), while the plant's `location` is set.
+    pub async fn backfill(&self, storage: &Storage, location: watch::Receiver<Option<Location>>) {
+        self.past.backfill(storage, location).await;
     }
 
     /// The grid learned for an inverter's MPPT input.
@@ -533,18 +539,6 @@ fn window(through: Option<Date>, now: SystemTime) -> Option<(Date, Date)> {
             .ok()?,
     };
     (first <= last).then_some((first, last))
-}
-
-fn utc_date(time: SystemTime) -> Date {
-    jiff::Timestamp::try_from(time)
-        .unwrap_or(jiff::Timestamp::UNIX_EPOCH)
-        .to_zoned(TimeZone::UTC)
-        .date()
-}
-
-fn midnight(day: Date) -> SystemTime {
-    day.to_zoned(TimeZone::UTC)
-        .map_or(UNIX_EPOCH, |z| SystemTime::from(z.timestamp()))
 }
 
 /// The plant-local month and hour an hour starts in.

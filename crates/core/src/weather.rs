@@ -7,9 +7,10 @@ mod open_meteo;
 
 use std::fmt;
 use std::future::Future;
-use std::ops::ControlFlow;
+use std::ops::{ControlFlow, Range};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use rusqlite::OptionalExtension;
 use sunreye_profile::RoleKind;
 
 use tokio::sync::watch;
@@ -24,6 +25,10 @@ pub use open_meteo::parse_archive;
 pub use open_meteo::{OpenMeteo, OpenMeteoArchive};
 
 const HOUR: Duration = Duration::from_secs(3600);
+/// Days the backfill fetches in one request.
+const CHUNK_DAYS: i64 = 30;
+/// The backfill's first wait after a refused request.
+const BACKOFF: Duration = Duration::from_secs(60);
 
 /// The weather device's id: computed devices count down from the top, registered devices up
 /// from 1 (ADR 15).
@@ -396,35 +401,161 @@ impl<A: Archive> Past<A> {
         let (Some(first), Some(last)) = (slots.first(), slots.last()) else {
             return Ok(());
         };
-        let hours: Vec<SystemTime> = hours(first.target, last.target + HOUR).collect();
         let archived = QUANTITIES
             .iter()
             .zip(self.series)
             .filter(|(q, _)| q.archived);
+        let end = last.target + HOUR;
         for (quantity, series) in archived {
-            let policy = Policy::new(quantity.kind, None, quantity.step, HOUR);
-            let policy = quantity.unit.map_or(policy, |unit| policy.in_unit(unit));
-            storage.declare(self.device, series, policy).await?;
-            let mut points: Vec<ChangePoint> = hours
-                .iter()
-                .map(|&time| ChangePoint {
-                    time,
-                    value: slots
-                        .iter()
-                        .find(|s| s.target == time)
-                        .and_then(|s| (quantity.value)(s)),
-                })
-                .collect();
+            let mut points = hourly(quantity, &slots, first.target..end);
             // Past the last hour nothing is known.
             points.push(ChangePoint {
-                time: last.target + HOUR,
+                time: end,
                 value: None,
             });
-            let range = first.target..last.target + HOUR + Duration::from_secs(1);
-            storage.replace(self.device, series, range, points).await?;
+            let range = first.target..end + Duration::from_secs(1);
+            self.replace(storage, (quantity, series), range, points)
+                .await?;
         }
         Ok(())
     }
+
+    /// Once after the upgrade (ADR 23), while the plant's `location` is set: fetches the archive
+    /// for the quantities the PV model does not read over the span weather history covered
+    /// then, newest first in 30-day chunks. Each chunk stored is recorded, so a restart resumes;
+    /// a refused request is retried after a wait that doubles up to an hour. Returns when all is
+    /// fetched, or once storage or the location stops.
+    pub async fn backfill(
+        &self,
+        storage: &Storage,
+        mut location: watch::Receiver<Option<Location>>,
+    ) {
+        let mut wait = BACKOFF;
+        loop {
+            let Some(at) = location
+                .wait_for(Option::is_some)
+                .await
+                .ok()
+                .and_then(|at| *at)
+            else {
+                return;
+            };
+            match self.chunk(storage, at).await {
+                Ok(ControlFlow::Break(())) | Err(Error::Storage(storage::Error::Stopped)) => return,
+                Ok(ControlFlow::Continue(())) => wait = BACKOFF,
+                Err(Error::Storage(e)) => {
+                    tracing::warn!("weather backfill: {e}");
+                    return;
+                }
+                Err(e) => {
+                    tracing::warn!("weather backfill: {e}");
+                    // Armed only after storage, so no timer is pending while it waits on it.
+                    tokio::time::sleep(wait).await;
+                    wait = (wait * 2).min(HOUR);
+                }
+            }
+        }
+    }
+
+    /// Fetches and stores the newest chunk left; breaks once none is.
+    async fn chunk(&self, storage: &Storage, location: Location) -> Result<ControlFlow<()>, Error> {
+        let Some((start, until)) = self.left(storage).await? else {
+            return Ok(ControlFlow::Break(()));
+        };
+        let database = storage.database();
+        if until <= start {
+            database
+                .run(|db| db.execute("DELETE FROM weather_backfill", []))
+                .await?;
+            return Ok(ControlFlow::Break(()));
+        }
+        let last = utc_date(until - Duration::from_secs(1));
+        let first = utc_date(start).max(last - jiff::Span::new().days(CHUNK_DAYS - 1));
+        let slots = self.archive.fetch(location.rounded(), first, last).await?;
+        let from = midnight(first).max(start);
+        let detail = QUANTITIES[MODEL..]
+            .iter()
+            .zip(&self.series[MODEL..])
+            .filter(|(q, _)| q.archived);
+        for (quantity, &series) in detail {
+            // No gap at `until`: newer history may start there.
+            let points = hourly(quantity, &slots, from..until);
+            self.replace(storage, (quantity, series), from..until, points)
+                .await?;
+        }
+        let until = seconds(from);
+        database
+            .run(move |db| db.execute("UPDATE weather_backfill SET until = ?1", [until]))
+            .await?;
+        Ok(ControlFlow::Continue(()))
+    }
+
+    /// What is left to fetch; none once all is. The span is taken on the first call: from the
+    /// first stored irradiance to the first stored weather code, else to the last irradiance.
+    async fn left(&self, storage: &Storage) -> Result<Option<(SystemTime, SystemTime)>, Error> {
+        let database = storage.database();
+        let row = database
+            .run(|db| {
+                db.query_row("SELECT start, until FROM weather_backfill", [], |row| {
+                    Ok((row.get::<_, Option<i64>>(0)?, row.get::<_, Option<i64>>(1)?))
+                })
+                .optional()
+            })
+            .await?;
+        match row {
+            None => Ok(None),
+            Some((Some(start), Some(until))) => Ok(Some((instant(start), instant(until)))),
+            Some(_) => {
+                let catalog = storage.reader().catalog().await?;
+                let bounds = |role: &str| {
+                    catalog
+                        .iter()
+                        .find(|c| c.device == self.device && c.series == role)
+                        .map(|c| (c.first, c.last))
+                };
+                let (start, until) = match (bounds("weather.ghi"), bounds("weather.code")) {
+                    (None, _) => (UNIX_EPOCH, UNIX_EPOCH),
+                    (Some((first, _)), Some((code, _))) => (first, code),
+                    (Some((first, last)), None) => (first, last),
+                };
+                let span = [seconds(start), seconds(until)];
+                database
+                    .run(move |db| {
+                        db.execute("UPDATE weather_backfill SET start = ?1, until = ?2", span)
+                    })
+                    .await?;
+                Ok(Some((start, until)))
+            }
+        }
+    }
+
+    /// Declares `quantity` and replaces its history within `range` with `points`.
+    async fn replace(
+        &self,
+        storage: &Storage,
+        (quantity, series): (&Quantity, SeriesId),
+        range: Range<SystemTime>,
+        points: Vec<ChangePoint>,
+    ) -> Result<(), Error> {
+        let policy = Policy::new(quantity.kind, None, quantity.step, HOUR);
+        let policy = quantity.unit.map_or(policy, |unit| policy.in_unit(unit));
+        storage.declare(self.device, series, policy).await?;
+        storage.replace(self.device, series, range, points).await?;
+        Ok(())
+    }
+}
+
+/// The value of `quantity` in `slots` at each whole hour of `span`, a gap where they lack it.
+fn hourly(quantity: &Quantity, slots: &[Slot], span: Range<SystemTime>) -> Vec<ChangePoint> {
+    hours(span.start, span.end)
+        .map(|time| ChangePoint {
+            time,
+            value: slots
+                .iter()
+                .find(|s| s.target == time)
+                .and_then(|s| (quantity.value)(s)),
+        })
+        .collect()
 }
 
 /// The stored weather of `device` at each whole hour from `from` to before `to` that has
@@ -463,6 +594,28 @@ pub async fn archived(
             })
         })
         .collect())
+}
+
+/// The UTC day `time` falls on.
+pub(crate) fn utc_date(time: SystemTime) -> jiff::civil::Date {
+    jiff::Timestamp::try_from(time)
+        .unwrap_or(jiff::Timestamp::UNIX_EPOCH)
+        .to_zoned(jiff::tz::TimeZone::UTC)
+        .date()
+}
+
+/// The start of the UTC `day`.
+pub(crate) fn midnight(day: jiff::civil::Date) -> SystemTime {
+    day.to_zoned(jiff::tz::TimeZone::UTC)
+        .map_or(UNIX_EPOCH, |z| SystemTime::from(z.timestamp()))
+}
+
+fn seconds(time: SystemTime) -> i64 {
+    jiff::Timestamp::try_from(time).map_or(0, jiff::Timestamp::as_second)
+}
+
+fn instant(seconds: i64) -> SystemTime {
+    jiff::Timestamp::from_second(seconds).map_or(UNIX_EPOCH, SystemTime::from)
 }
 
 /// The whole hours from `from` to before `to`.

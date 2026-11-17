@@ -13,6 +13,8 @@ use crate::location::Location;
 use crate::storage::Storage;
 
 const DEVICE: DeviceId = DeviceId(3);
+
+mod backfill;
 /// 2026-11-09 11:00 UTC.
 const NOON: u64 = 1_794_222_000;
 
