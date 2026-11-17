@@ -8,7 +8,7 @@ import type { Band } from "../range/bands.ts";
 import type { Edge } from "../range/edges.ts";
 import { bandsOf, spread } from "../range/fill.ts";
 import { kwh } from "../range/format.ts";
-import type { Calendar, Range } from "../range/range.ts";
+import { hourInstant, t0Of, t1Of, type Calendar, type Range } from "../range/range.ts";
 import { plannedEnergy, type Planned } from "./forecast.ts";
 
 /** What one line's range holds: its bands, and the sums the headline and the legend share. */
@@ -18,6 +18,8 @@ export interface Judged {
   readonly made: number;
   /** kWh forecast for the time measured, where a forecast exists. */
   readonly planned: number;
+  /** Measured over `planned`, less 1, the band in progress included; null without a forecast. */
+  readonly versus: number | null;
   /** kWh still expected from now to the range's end. */
   readonly ahead: number;
   /** kWh measured per stacked part (an MPPT input), or the one total when not stacked. */
@@ -36,6 +38,14 @@ export interface Judging {
   readonly now: number;
   readonly measured: readonly Rolled[];
   readonly forecast: readonly Planned[];
+  /**
+   * The accuracy's whole past days, each [start, end) in ms (`pastDays`), and their day rollups:
+   * a range's bands may be hours or months.
+   */
+  readonly days: Readonly<{
+    spans: readonly (readonly [number, number])[];
+    measured: readonly Rolled[];
+  }>;
   /** The stacked parts' measurements, each less the parts beside it from the same input. */
   readonly parts?: readonly Readonly<{
     measured: readonly Rolled[];
@@ -44,20 +54,29 @@ export interface Judging {
   }>[];
 }
 
-/**
- * Measured against forecast per band: a band with readings carries the forecast for its measured
- * time as its mark, a band not over yet its whole forecast as a faint bar. Whole days measured
- * against a forecast count towards the accuracy.
- */
+/** The whole plant days of `range` that are over by `now`, each [start, end) in ms. */
+export function pastDays(zone: string, range: Readonly<Range>, now: number): [number, number][] {
+  const out: [number, number][] = [];
+
+  for (let d = Math.ceil(t0Of(range) / 24); (d + 1) * 24 <= t1Of(range); d += 1) {
+    const [a, b] = [hourInstant(zone, d * 24).getTime(), hourInstant(zone, (d + 1) * 24).getTime()];
+
+    if (b <= now) out.push([a, b]);
+  }
+
+  return out;
+}
+
 /** One band's kWh: measured, forecast for its measured time, for all of it, and from now on. */
 function weigh(j: Readonly<Judging>, a: number, b: number) {
   const f = bandFigure(j.series, j.measured, a, b);
   const measured = f.covered > 0;
   const until = Math.min(b, j.now);
-  // Compared only where the forecast covers the time measured: a layout laid out mid-day has a
-  // forecast for the rest of that day alone, against the whole day's production.
+  // Compared only where the forecast covers the band's time so far: a layout laid out mid-day has
+  // a forecast for the rest of that day alone, against the whole day's production. A rollup says
+  // how long it was read, not when, so readings over fewer hours prove nothing.
   const forecast = spread(j.forecast, a, until, () => 0).covered;
-  const comparable = measured && forecast >= f.covered * 0.95;
+  const comparable = measured && forecast >= (until - a) * 0.95;
 
   return {
     covered: f.covered,
@@ -69,10 +88,8 @@ function weigh(j: Readonly<Judging>, a: number, b: number) {
 }
 
 /** A whole past day measured against a forecast: its deviation, as a share of the forecast. */
-const deviation = (edge: Readonly<Edge>, value: number, sofar: number): number | null =>
-  sofar > 0 && edge.state === "past" && edge.t1 - edge.t0 === 24
-    ? Math.abs(value / sofar - 1)
-    : null;
+const deviation = (value: number, sofar: number): number | null =>
+  sofar > 0 ? Math.abs(value / sofar - 1) : null;
 
 /** One band's measured kWh per stacked part; the total alone without two or more parts. */
 function stack(j: Readonly<Judging>, total: number, a: number, b: number): number[] {
@@ -102,22 +119,51 @@ function keptOf(j: Readonly<Judging>, shares: readonly number[]): number[] {
   return shares.flatMap((share, k) => (parts[k]?.optional === true && share < 0.05 ? [] : [k]));
 }
 
+/** The whole past days judged so far: their deviations and their kWh measured and forecast. */
+interface Days {
+  readonly error: number;
+  readonly count: number;
+  readonly made: number;
+  readonly planned: number;
+}
+
+/** The whole past days' deviations and their kWh measured and forecast. */
+function daysOf(j: Readonly<Judging>): Days {
+  let [error, count, made, planned] = [0, 0, 0, 0];
+  const day = { ...j, measured: j.days.measured };
+
+  for (const [a, b] of j.days.spans) {
+    const w = weigh(day, a, b);
+    const dev = deviation(w.value, w.sofar);
+
+    if (dev === null) continue;
+
+    [error, count, made, planned] = [error + dev, count + 1, made + w.value, planned + w.sofar];
+  }
+
+  return { error, count, made, planned };
+}
+
+/** The accuracy over whole past days alone (ADR 21 "Forecast tab"), the bias included. */
+const accuracyOf = (days: Readonly<Days>): Accuracy => ({
+  error: days.count > 0 ? days.error / days.count : null,
+  bias: days.planned > 0 ? days.made / days.planned - 1 : null,
+  days: days.count,
+});
+
 export function judge(j: Readonly<Judging>): Judged {
-  const sums = { made: 0, compared: 0, sofar: 0, ahead: 0, error: 0, days: 0 };
+  const sums = { made: 0, compared: 0, sofar: 0, ahead: 0 };
   const shares: number[] = [];
 
   const bands = bandsOf(j.list, (edge, i) => {
     const [a, b] = j.spans[i]!;
     const w = weigh(j, a, b);
-    const dev = deviation(edge, w.value, w.sofar);
     const compared = w.sofar > 0;
 
     sums.made += w.value;
     sums.ahead += w.rest;
     sums.compared += compared ? w.value : 0;
     sums.sofar += w.sofar;
-
-    if (dev !== null) [sums.error, sums.days] = [sums.error + dev, sums.days + 1];
 
     const up = stack(j, w.value, a, b);
 
@@ -142,14 +188,11 @@ export function judge(j: Readonly<Judging>): Judged {
         : bands.map((band) => Object.assign(band, { up: kept.map((k) => band.up[k] ?? 0) })),
     made: sums.made,
     planned: sums.sofar,
+    versus: sums.sofar > 0 ? sums.compared / sums.sofar - 1 : null,
     ahead: sums.ahead,
     shares: kept.map((k) => shares[k] ?? 0),
     kept,
-    accuracy: {
-      error: sums.days > 0 ? sums.error / sums.days : null,
-      bias: sums.sofar > 0 ? sums.compared / sums.sofar - 1 : null,
-      days: sums.days,
-    },
+    accuracy: accuracyOf(daysOf(j)),
   };
 }
 
@@ -171,7 +214,7 @@ export function summaryOf(
 export function headline(
   cal: Readonly<Calendar>,
   range: Readonly<Range>,
-  j: Readonly<Pick<Judged, "made" | "ahead" | "accuracy">>,
+  j: Readonly<Pick<Judged, "made" | "ahead" | "versus">>,
 ): string {
   const when = phrase(cal, range);
   // A figure never breaks from its unit.
@@ -182,9 +225,9 @@ export function headline(
   if (j.made <= 0)
     return j.ahead > 0 ? m.forecast_verdict_ahead({ when, ahead }) : m.forecast_verdict_none();
 
-  if (j.accuracy.bias === null) return m.forecast_verdict_made({ when, made }) + still;
+  if (j.versus === null) return m.forecast_verdict_made({ when, made }) + still;
 
-  const share = Math.round(j.accuracy.bias * 100);
+  const share = Math.round(j.versus * 100);
 
   const said =
     share === 0

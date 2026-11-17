@@ -3,7 +3,7 @@ import { expect, test } from "bun:test";
 import type { Rolled } from "../history/history.ts";
 import { daySpans } from "../weather/hourly.ts";
 import { aheadDays, powerAt, track } from "./ahead.ts";
-import { held } from "./forecast.ts";
+import { forecastTargets, held } from "./forecast.ts";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -113,6 +113,32 @@ test("today so far is measured against its forecast; the accuracy judges whole p
   expect(judged.accuracy.error).toBeCloseTo((0.25 + 1 / 6) / 2);
 });
 
+/** 1.5 kW from 08:00 to 15:00, then 0.4 kW to 17:00: 11.3 kWh a day. */
+const NOVEMBER = (hour: number) =>
+  hour >= 8 && hour < 15 ? 1500 : hour >= 15 && hour < 17 ? 400 : 0;
+
+test("a day whose forecast begins in its evening is left out, however few hours were measured", () => {
+  // `NOVEMBER` from four days before today on. The first stored target is that first day's 15:00,
+  // when the layout came in: 0.8 kWh forecast there. Readings cover the 9 daylight hours alone,
+  // as when the plant reads nothing at night.
+  const firstTarget = START - 4 * DAY + 15 * HOUR;
+  const points = [];
+
+  for (let at = firstTarget; at < START + 3 * DAY; at += HOUR)
+    points.push({
+      target: new Date(at).toISOString(),
+      value: NOVEMBER(new Date(at).getUTCHours()),
+    });
+
+  const measured = [-4, -3, -2, -1].map((d) => rolled(d, d === -4 ? 7.872 : 11.3, 9));
+  const judged = track("UTC", NOW, measured, held(points));
+
+  // Judged against its 0.8 kWh evening, the first day alone would read 884 % off and the four
+  // days 221 %, the figure the live plant showed.
+  expect(judged.accuracy.days).toBe(3);
+  expect(judged.accuracy.error).toBeCloseTo(0);
+});
+
 test("without a measurement today there is nothing to set against the forecast", () => {
   const judged = track("UTC", NOW, [], PLANT);
 
@@ -125,4 +151,31 @@ test("a forecast's power holds from its target to the next", () => {
   expect(powerAt(PLANT, START + 14 * HOUR)).toBe(0);
   // Past the last target's hour nothing is forecast.
   expect(powerAt(PLANT, START + 3 * DAY)).toBeNull();
+});
+
+test("a read refused in any of its pieces holds no forecast, not one with a hole", async () => {
+  const asked: number[] = [];
+
+  const core = {
+    forecasts: (_device: number, _series: string, from: Readonly<Date>) => {
+      asked.push(from.getTime());
+
+      return Promise.resolve(
+        asked.length === 2
+          ? { problem: "forecast.range" }
+          : { points: [{ target: from.toISOString(), issued: from.toISOString(), value: 1 }] },
+      );
+    },
+  };
+
+  const read = await forecastTargets(
+    core,
+    1,
+    "pv.power",
+    new Date(START),
+    new Date(START + 33 * DAY),
+  );
+
+  expect(asked).toHaveLength(3);
+  expect(read).toEqual([]);
 });
