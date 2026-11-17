@@ -9,6 +9,7 @@
   import AnalyticsTabs from "./AnalyticsTabs.svelte";
   import AutarkyPanel from "./AutarkyPanel.svelte";
   import BatteryPanel from "./BatteryPanel.svelte";
+  import EvPanel from "./EvPanel.svelte";
   import { flowOf } from "./flow.ts";
   import FlowPanel from "./FlowPanel.svelte";
   import PvFacts from "./PvFacts.svelte";
@@ -42,7 +43,9 @@
   <BatteryPanel {id} {title} {colour} {analytics} {input} />
 {:else}
   <AnalyticsTabs {id} {title} {colour} {analytics} {input} />
-  {#if flow}
+  {#if analytics.series === "ev.charge.power"}
+    <EvPanel {input} device={analytics.device} />
+  {:else if flow}
     <FlowPanel {input} {flow} {priced} />
   {:else if isPv(id)}
     <PvFacts {analytics} inverter={id === "inverter"} {input} />
