@@ -16,6 +16,7 @@ mod routes;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::ops::ControlFlow;
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use jiff::civil::Date;
@@ -27,7 +28,7 @@ use tokio::time::Instant;
 
 pub use grid::{Cell, Grid, Hour};
 
-use crate::bus::{Bus, DeviceId, Series};
+use crate::bus::{DeviceId, Series};
 use crate::layout::{Layouts, Version, in_force};
 use crate::location::Location;
 use crate::solar::{self, Key};
@@ -88,7 +89,7 @@ const RECENT: Duration = Duration::from_hours(30 * 24);
 
 /// The correction learner, the one writer of the learned grids.
 pub struct Learner<A> {
-    past: Past<A>,
+    past: Arc<Past<A>>,
     corrections: Corrections,
 }
 
@@ -121,16 +122,11 @@ pub struct Recent {
 }
 
 impl<A: Archive> Learner<A> {
-    /// Learns from `archive`, storing its weather under the weather device `weather`.
-    pub fn new(
-        archive: A,
-        weather: DeviceId,
-        layouts: Layouts,
-        storage: &Storage,
-        bus: &Bus,
-    ) -> Self {
+    /// Learns from the archive weather `past` fetches and stores under the weather device
+    /// `weather`.
+    pub fn new(past: Arc<Past<A>>, weather: DeviceId, layouts: Layouts, storage: &Storage) -> Self {
         Self {
-            past: Past::new(archive, weather, bus),
+            past,
             corrections: Corrections::new(layouts, weather, storage),
         }
     }
@@ -220,12 +216,6 @@ impl<A: Archive> Learner<A> {
         let day = utc_day::of(learned).to_string();
         c.database.run(move |db| save(db, &grids, &day)).await?;
         Ok(())
-    }
-
-    /// Fetches the archive's new quantities once over the weather history stored before them
-    /// (ADR 23), while the plant's `location` is set.
-    pub async fn backfill(&self, storage: &Storage, location: watch::Receiver<Option<Location>>) {
-        self.past.backfill(storage, location).await;
     }
 
     /// The grid learned for an inverter's MPPT input.
