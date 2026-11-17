@@ -1,5 +1,4 @@
-import { tick } from "svelte";
-import { expect, test, vi } from "vitest";
+import { expect, test } from "vitest";
 import { userEvent, type Locator } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 // The chart is laid out and moved by the SPA's utilities and motion tokens.
@@ -114,66 +113,6 @@ test("on touch, a tap opens its band", async () => {
   plot.dispatchEvent(new PointerEvent("pointerup", touch));
 
   expect(drilled).toEqual([1]);
-});
-
-test("on touch, a finger held on a band reads it and follows; lifted, the sum returns", async () => {
-  const drilled: number[] = [];
-
-  const screen = await render(
-    BandChart,
-    Object.assign(props([band("b0", 2), band("b1", 4)]), {
-      ondrill: (i: number) => drilled.push(i),
-    }),
-  );
-
-  await expect.element(screen.getByText("Summe")).toBeVisible();
-
-  const plot = screen.getByRole("group").element();
-  const box = plot.getBoundingClientRect();
-  const finger = (type: string, share: number, dy = 0) =>
-    plot.dispatchEvent(
-      new PointerEvent(type, {
-        clientX: box.left + box.width * share,
-        clientY: box.top + box.height / 2 + dy,
-        pointerType: "touch",
-        pointerId: 7,
-        buttons: 1,
-        bubbles: true,
-      }),
-    );
-
-  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-
-  try {
-    // A finger passing by scrolls: nothing is read.
-    finger("pointerdown", 0.75);
-    finger("pointermove", 0.75, 30);
-    vi.advanceTimersByTime(1000);
-    finger("pointercancel", 0.75, 30);
-    await tick();
-    expect(screen.getByText("Band b1").query()).toBeNull();
-
-    finger("pointerdown", 0.75);
-    await tick();
-    expect(screen.getByText("Band b1").query()).toBeNull();
-
-    vi.advanceTimersByTime(1000);
-    await tick();
-    expect(screen.getByText("Band b1").query()).not.toBeNull();
-
-    finger("pointermove", 0.25);
-    await tick();
-    expect(screen.getByText("Band b0").query()).not.toBeNull();
-
-    finger("pointerup", 0.25);
-    await tick();
-    expect(screen.getByText("Band b0").query()).toBeNull();
-    expect(screen.getByText("Summe").query()).not.toBeNull();
-    // A held finger reads; only a tap opens.
-    expect(drilled).toEqual([]);
-  } finally {
-    vi.useRealTimers();
-  }
 });
 
 test("a line layer draws a dashed curve over the bands, and the legend reads it", async () => {

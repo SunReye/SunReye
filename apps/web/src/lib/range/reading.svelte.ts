@@ -50,7 +50,9 @@ export class Reading {
         this.pinned = at !== null;
         this.#set(at);
       },
-      (at) => this.#drill(at),
+      (at) => {
+        this.#drill(at);
+      },
     );
   }
 
