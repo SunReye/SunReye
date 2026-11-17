@@ -1,6 +1,8 @@
 // Reading a detail's charts by the day (ADR 21 "Chart reading", ADR 23 "Dashboard"): which of
 // the day's slots is under the pointer. A mouse reads where it hovers. A finger reads once it is
 // held, then leads; one that moves first scrolls the sheet, and one lifted before it held taps.
+// A drawer leaves a finger alone while it rests or reads: vaul keeps a finger it took once, so the
+// mark comes at touch-down, not with the reading.
 
 /** What a handler reads of a pointer event. */
 type Pointer = Readonly<Pick<PointerEvent, "clientX" | "clientY" | "pointerType">> & {
@@ -13,6 +15,9 @@ const HOLD_MS = 250;
 /** How far a resting finger may wander, in px. */
 const SLACK = 8;
 
+/** What a vaul drawer does not drag by. */
+const NO_DRAG = "data-vaul-no-drag";
+
 export class PointerReading {
   readonly #slots: () => number;
   readonly #read: () => number | null;
@@ -21,6 +26,9 @@ export class PointerReading {
   #held:
     | { readonly x: number; readonly y: number; readonly slot: number; readonly timer: number }
     | undefined;
+
+  /** What the finger rests or reads on, marked so the drawer leaves it alone. */
+  #marked: Element | undefined;
 
   /**
    * @param slots how many equal slots the day is read in, such as its hours, at an input
@@ -60,6 +68,8 @@ export class PointerReading {
   #drop(): void {
     clearTimeout(this.#held?.timer);
     this.#held = undefined;
+    this.#marked?.removeAttribute(NO_DRAG);
+    this.#marked = undefined;
   }
 
   down = (e: Pointer): void => {
@@ -68,6 +78,9 @@ export class PointerReading {
     this.#drop();
 
     const slot = this.#over(e);
+
+    this.#marked = e.currentTarget;
+    this.#marked.setAttribute(NO_DRAG, "");
 
     const timer = window.setTimeout(() => {
       this.at = slot;
