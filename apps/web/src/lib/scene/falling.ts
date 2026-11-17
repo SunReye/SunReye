@@ -33,7 +33,7 @@ export function velocityOf({ kind, wind: [east, north] }: Falling): [number, num
 }
 
 /** The whole field: this many streaks and flakes in the box. */
-const COUNT = { rain: 9000, snow: 12_000 } as const;
+const COUNT = { rain: 16_000, snow: 20_000 } as const;
 
 /** The lite tier's sparse field, as a share of what falls. */
 const SPARSE = 0.25;
@@ -41,16 +41,17 @@ const SPARSE = 0.25;
 /** Seconds of its fall a streak is long: a camera's exposure. */
 const EXPOSURE = 0.06;
 
-/** What falls as it lands on screen, by theme: linear, and how opaque. Grey on the light page,
- * where white would not show; pale on the dark one, and never glowing. */
+/** What falls as it lands on screen, by theme: linear, and how opaque. Rain is dark on the light
+ * page, where white would not show, and pale on the dark one, never glowing. A flake is white
+ * above and its `rim` shade below, which sets it off the white page. */
 const SHADE = {
   rain: {
-    light: { colour: [0.1, 0.12, 0.16], opacity: 0.6 },
-    dark: { colour: [0.3, 0.34, 0.4], opacity: 0.5 },
+    light: { colour: [0.035, 0.05, 0.085], rim: [0, 0, 0], opacity: 0.9 },
+    dark: { colour: [0.3, 0.34, 0.4], rim: [0, 0, 0], opacity: 0.5 },
   },
   snow: {
-    light: { colour: [0.48, 0.54, 0.64], opacity: 0.9 },
-    dark: { colour: [0.42, 0.45, 0.5], opacity: 0.85 },
+    light: { colour: [0.9, 0.92, 0.95], rim: [0.3, 0.37, 0.52], opacity: 0.95 },
+    dark: { colour: [0.9, 0.92, 0.95], rim: [0.45, 0.5, 0.6], opacity: 0.9 },
   },
 } as const;
 
@@ -105,7 +106,12 @@ interface Shared {
 function material(shaders: typeof RAIN, shared: Shared): ShaderMaterial {
   return new ShaderMaterial({
     ...shaders,
-    uniforms: { ...shared, uColour: { value: new Vector3() }, uOpacity: { value: 1 } },
+    uniforms: {
+      ...shared,
+      uColour: { value: new Vector3() },
+      uRim: { value: new Vector3() },
+      uOpacity: { value: 1 },
+    },
     transparent: true,
     depthWrite: false,
   });
@@ -188,10 +194,12 @@ export class Fall {
       [this.#rain, SHADE.rain],
       [this.#snow, SHADE.snow],
     ] as const) {
-      const { colour, opacity } = dark ? shades.dark : shades.light;
-      const { uColour, uOpacity } = part.material.uniforms;
+      const { colour, rim, opacity } = dark ? shades.dark : shades.light;
+      const { uColour, uRim, uOpacity } = part.material.uniforms;
 
       if (uColour?.value instanceof Vector3) uColour.value.set(...untone(colour, exposure));
+
+      if (uRim?.value instanceof Vector3) uRim.value.set(...untone(rim, exposure));
 
       if (uOpacity !== undefined) uOpacity.value = opacity;
     }

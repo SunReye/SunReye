@@ -2,7 +2,7 @@
 // by one offset and wrapped round the box, so nothing is uploaded per frame.
 
 /** A flake's width in metres: far over a real one's, which no screen would show. */
-const FLAKE = 0.11;
+const FLAKE = 0.2;
 
 /** Positions in the box wrap round it: what leaves below comes in above. */
 const PLACED = `
@@ -22,8 +22,9 @@ const RAIN_VERTEX = `
   varying float vAlpha;
 
   void main() {
-    // The tail trails where the drop came from, and fades out.
-    vAlpha = 1.0 - tail;
+    // The tail trails where the drop came from, and fades, though not away: on the light page
+    // half a streak would be lost.
+    vAlpha = 1.0 - 0.6 * tail;
     gl_Position = projectionMatrix * viewMatrix * vec4(placed(position) - tail * uStreak, 1.0);
   }
 `;
@@ -47,10 +48,10 @@ const SNOW_VERTEX = `
 
     float size = ${FLAKE.toFixed(3)} * (0.6 + 0.8 * seed) * projectionMatrix[1][1] * uPixels / -seen.z;
 
-    // Under a pixel and a half it thins instead of shrinking away.
-    vAlpha = min(1.0, size / 1.5);
+    // Under two pixels it thins instead of shrinking away.
+    vAlpha = min(1.0, size / 2.0);
     // And a flake before the camera's nose is no blot.
-    gl_PointSize = clamp(size, 1.5, 12.0);
+    gl_PointSize = clamp(size, 2.0, 18.0);
   }
 `;
 
@@ -66,18 +67,24 @@ const RAIN_FRAGMENT = `
 
 const SNOW_FRAGMENT = `
   uniform vec3 uColour;
+  uniform vec3 uRim;
   uniform float uOpacity;
   varying float vAlpha;
 
   void main() {
-    float soft = 1.0 - smoothstep(0.2, 0.5, length(gl_PointCoord - 0.5));
+    vec2 at = (gl_PointCoord - 0.5) * 2.0;
+    float off = length(at);
+    // Lit from above: white on top, shaded below. White on a white page shows by its shade
+    // alone, and a rim round it would make a bubble of it.
+    float lit = smoothstep(-0.7, 0.45, -at.y) * (1.0 - 0.35 * off);
+    float soft = 1.0 - smoothstep(0.55, 1.0, off);
 
-    gl_FragColor = vec4(uColour, uOpacity * vAlpha * soft);
+    gl_FragColor = vec4(mix(uRim, uColour, lit), uOpacity * vAlpha * soft);
   }
 `;
 
 /** A streak: a line from the drop back along its fall. */
 export const RAIN = { vertexShader: RAIN_VERTEX, fragmentShader: RAIN_FRAGMENT };
 
-/** A flake: a soft point, its size in metres. */
+/** A flake: a soft point, white above and shaded below, its size in metres. */
 export const SNOW = { vertexShader: SNOW_VERTEX, fragmentShader: SNOW_FRAGMENT };

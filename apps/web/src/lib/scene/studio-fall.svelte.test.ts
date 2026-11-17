@@ -111,3 +111,39 @@ test("the more falls the denser the field, and the sparse one is a fraction of i
   expect(shown(SNOW, true)).toBeLessThan(whole * 0.5);
   expect(shown(SNOW, true)).toBeGreaterThan(0);
 });
+
+/** By how much each pixel's green changes once `falling` is in the air, on the light or dark page. */
+function changes(falling: Falling, dark: boolean) {
+  const opened = open(dark);
+  const dry = picture(opened);
+
+  opened.fall(falling, false);
+
+  const lit = picture(opened);
+
+  return { by: lit.map((green, i) => green - (dry[i] ?? 0)), lit };
+}
+
+/** How many pixels change by more than `levels` of 255. */
+const marked = (by: readonly number[], levels: number): number =>
+  by.filter((change) => Math.abs(change) > levels).length;
+
+test("rain reads on the light page: its streaks stand clearly apart from it", () => {
+  const { by } = changes(RAIN, false);
+
+  // Well over a twentieth of the picture, by more than a faint tint.
+  expect(marked(by, 12)).toBeGreaterThan((SIDE * SIDE) / 20);
+});
+
+test("snow reads on the white page by its shaded side, and its flakes are white", () => {
+  const light = changes(SNOW, false);
+
+  expect(marked(light.by, 12)).toBeGreaterThan((SIDE * SIDE) / 80);
+  // A shade, not a blot.
+  expect(Math.min(...light.by)).toBeGreaterThan(-110);
+
+  const dark = changes(SNOW, true);
+  const flakes = dark.lit.filter((_, i) => (dark.by[i] ?? 0) > 12);
+
+  expect(Math.max(...flakes)).toBeGreaterThan(225);
+});
