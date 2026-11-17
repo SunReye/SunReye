@@ -171,6 +171,10 @@ test("a day's offsets resolve against the range in force", () => {
   ]);
 });
 
+test("a year before 29 February is 28 February", () => {
+  expect(keysOf(day("2028-02-29"), ["-1y"])).toEqual(["2028-02-29", "2027-02-28"]);
+});
+
 test("a week's offsets are the week before and the same ISO week last year", () => {
   expect(keysOf(week("2026-11-16"), ["-1w", "-1y"])).toEqual([
     "2026-11-16",

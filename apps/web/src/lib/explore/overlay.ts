@@ -45,8 +45,11 @@ function yearBefore(range: Range): number {
   if (kindOf(range) === "week") return weekOfYear(yearOf(range.from + 3) - 1, isoWeek(range.from));
 
   const d = civil(range.from);
+  const month = d.getUTCMonth();
+  // 29 February a year before is the 28th: day 0 of the next month is its last.
+  const last = civil(dayOf(d.getUTCFullYear() - 1, month + 1, 0)).getUTCDate();
 
-  return dayOf(d.getUTCFullYear() - 1, d.getUTCMonth(), d.getUTCDate());
+  return dayOf(d.getUTCFullYear() - 1, month, Math.min(d.getUTCDate(), last));
 }
 
 /** A quick pick as the route holds it: an offset from the range, so a current range stays relative. */
