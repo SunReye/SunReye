@@ -11,12 +11,14 @@ import { weathered } from "./weathered.ts";
 const CLEAR = { near: [4, 40], far: [16, 160] } as const;
 
 /** The nearest the weather's fog ends, as radii of the plot and metres past them: beyond the
- * plot's far side as the camera frames it, so fog veils the house and never hides it. */
-const VEILED = [6, 10] as const;
+ * plot's far side, 3.5 radii from the camera that frames it, so fog veils the house and never
+ * hides it. */
+const VEILED = [4.5, 5] as const;
 
-/** The share of the visibility at which linear fog is whole: a thing is seen to the visibility
- * by a twentieth of its contrast, and the eye has lost it in the grey well before. */
-const WHOLE = 1 / 3;
+/** The share of the visibility at which linear fog is whole. Air takes a thing's contrast by
+ * the distance's exponent, down to a fiftieth at the visibility (Koschmieder): a line from the
+ * camera with that slope is whole at the visibility over ln 50, about a quarter of it. */
+const WHOLE = 1 / Math.log(50);
 
 export class Plot {
   readonly #fade = { centre: { value: new Vector2() }, radius: { value: 12 } };
@@ -54,15 +56,16 @@ export class Plot {
     this.#reach();
   }
 
-  /** In metres from the camera, as the air is: the weather's fog ends at a third of its
-   * visibility and starts at the camera, so it deepens across the plot; thinner air starts
-   * farther off, up to clear air's own distances. */
+  /** In metres from the camera, as the air is: the weather's fog ends at about a quarter of its
+   * visibility and starts next to the camera, so it deepens across the plot. Thinner air starts
+   * farther off, by the square of how far it ends, up to clear air's own distances. */
   #reach(): void {
     const radius = this.#fade.radius.value;
     const at = ([radii, past]: readonly [number, number]): number => radius * radii + past;
-    const far = Math.min(at(CLEAR.far), Math.max(fogMetres(this.#mist) * WHOLE, at(VEILED)));
+    const clear = at(CLEAR.far);
+    const far = Math.min(clear, Math.max(fogMetres(this.#mist) * WHOLE, at(VEILED)));
 
     this.fog.far = far;
-    this.fog.near = Math.min(at(CLEAR.near), far * (1 - this.#mist));
+    this.fog.near = at(CLEAR.near) * (far / clear) ** 2;
   }
 }
