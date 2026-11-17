@@ -43,6 +43,10 @@ test("opening a view sets its parameters and clears every other the route held",
   });
 });
 
+test("opening a view saved on a day names the day, whatever range the route held", () => {
+  expect(opening("s=1:pv.power")).toMatchObject({ range: "day", at: null, from: null, to: null });
+});
+
 test("a route is bare while it names nothing of the range or the view", () => {
   expect(bare(params(""))).toBe(true);
   expect(bare(params("later=1"))).toBe(true);

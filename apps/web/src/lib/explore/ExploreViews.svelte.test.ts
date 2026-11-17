@@ -132,3 +132,24 @@ test("twenty views stay one row that scrolls inside the card on a phone", async 
   expect(row.scrollWidth).toBeGreaterThan(row.clientWidth);
   expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390);
 });
+
+test("a view saved on today opens on today, from any range", async () => {
+  await desk();
+  kept.views = [{ id: 1, name: "Heute im Haus", query: "s=4294967294%3Aload.power" }];
+
+  const { went } = await show("range=month&at=2026-10-15&s=1:pv.power");
+  const chip = saved().getByRole("button", { name: "Heute im Haus" });
+
+  await chip.click();
+
+  await expect.element(chip).toHaveAttribute("aria-pressed", "true");
+  await expect.element(page.getByRole("radio", { name: "Tag" })).toBeChecked();
+  await expect.poll(() => went.at(-1)?.patch).toMatchObject({ at: null });
+
+  // The house load was read for a day, never for the month the screen was on or the route's default.
+  const days = plant.asked
+    .filter((asked) => asked.series === "load.power")
+    .map((asked) => (asked.to - asked.from) / 86_400_000);
+
+  expect([...new Set(days)]).toEqual([1]);
+});

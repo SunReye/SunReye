@@ -49,7 +49,12 @@ export function queryOf(p: Readonly<URLSearchParams>): string {
 export function opening(query: string): Parameters<Go>[0] {
   const view = held(new URLSearchParams(query));
 
-  return { ...Object.fromEntries(KEYS.map((key) => [key, view.get(key) ?? null])), pick: null };
+  return {
+    ...Object.fromEntries(KEYS.map((key) => [key, view.get(key) ?? null])),
+    // Named, as the range reads a route without one as a month until the address has followed.
+    range: view.get("range") ?? "day",
+    pick: null,
+  };
 }
 
 /** Whether a route names nothing of the range or the view: Explore opened from More. */

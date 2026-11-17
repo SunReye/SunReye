@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "vitest";
-import { page, userEvent } from "vitest/browser";
+import { cdp, page, userEvent } from "vitest/browser";
 // The screen is laid out by the SPA's utilities.
 import "../../app.css";
 import { reset, show } from "./explore.harness.ts";
@@ -176,4 +176,31 @@ test("on a phone the admin's menu stands in one row with the title, the mode swi
 
   expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(8);
   expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390);
+});
+
+// Last: touch emulation cannot be undone (pointer stays `none`).
+test("under the bar the name is asked in a drawer, and the view is saved from it", async () => {
+  await page.viewport(390, 844);
+  await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: true });
+
+  try {
+    await show("s=1:pv.mppt.power[2]", { admin: true });
+    await pick("Ansicht speichern");
+
+    const drawer = page.getByRole("dialog", { name: "Ansicht speichern" });
+
+    await expect.element(drawer).toHaveAttribute("data-slot", "drawer-content");
+    await expect
+      .element(drawer.getByRole("textbox", { name: "Name" }))
+      .toHaveValue("PV · Eingang 2 · Leistung");
+    await drawer.getByRole("button", { name: "Speichern" }).click();
+
+    await expect.element(drawer).not.toBeInTheDocument();
+    await expect
+      .element(saved().getByRole("button", { name: "PV · Eingang 2 · Leistung" }))
+      .toHaveAttribute("aria-pressed", "true");
+    expect(kept.views).toHaveLength(1);
+  } finally {
+    await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: false });
+  }
 });
