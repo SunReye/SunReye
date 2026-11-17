@@ -34,6 +34,7 @@ use crate::spot::SpotZone;
 use crate::storage::{Problem, Storage};
 use crate::tariff::Tariffs;
 use crate::topology::Topologies;
+use crate::views::Views;
 use crate::weather;
 
 mod access;
@@ -68,6 +69,7 @@ mod tariff;
 mod tokens;
 mod topology;
 mod viewers;
+mod views;
 mod zone;
 
 /// The owner's Deye as device 1.
@@ -171,6 +173,7 @@ impl Core {
             topologies: Topologies::new(storage.database()),
             tariffs: Tariffs::new(&storage, &bus, storage.zones().watch()),
             cars: CarBodies::new(path.with_file_name("cars")),
+            views: Views::new(storage.database()),
             storage: storage.settings(),
             logs: logs.clone(),
             clock: Arc::new(move || set.lock().unwrap().unwrap_or_else(SystemTime::now)),
@@ -265,6 +268,7 @@ async fn a_route_missing_from_the_openapi_document_fails_the_contract_test() {
         topologies: Topologies::new(storage.database()),
         tariffs: Tariffs::new(&storage, &Bus::default(), storage.zones().watch()),
         cars: CarBodies::new(dir.path().join("cars")),
+        views: Views::new(storage.database()),
         storage: storage.settings(),
         logs: Logs::default(),
         clock: Arc::new(SystemTime::now),
