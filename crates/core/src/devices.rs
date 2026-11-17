@@ -272,6 +272,15 @@ pub struct Device {
     pub draft: DeviceDraft,
 }
 
+/// A device's name, present or removed (ADR 3).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Named {
+    pub id: u32,
+    /// A removed device's from its tombstone.
+    pub name: String,
+    pub removed: bool,
+}
+
 /// A device where it sits behind its connection, and what it is read as.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Addressed {
@@ -464,6 +473,15 @@ impl Devices {
     /// The file cannot be read.
     pub async fn devices(&self) -> Result<Vec<Device>, storage::Error> {
         self.database.run(store::devices).await
+    }
+
+    /// Every device's name, present or removed, by id. A removed one is named by its tombstone
+    /// (ADR 3).
+    ///
+    /// # Errors
+    /// The file cannot be read.
+    pub async fn names(&self) -> Result<Vec<Named>, storage::Error> {
+        self.database.run(store::names).await
     }
 
     /// Every device with its series, its writes switch and its settings, by id.

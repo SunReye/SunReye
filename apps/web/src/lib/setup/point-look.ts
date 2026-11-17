@@ -4,6 +4,7 @@ import { flowColour, roleFlow } from "../energy-colours.ts";
 import { KIND_ICONS, type EquipmentKind } from "../equipment-kinds.ts";
 import type { NodeState } from "../flow/schematic.ts";
 import { m } from "../paraglide/messages.js";
+import { seriesName } from "../roles.ts";
 import { ROOT } from "./topology.ts";
 
 interface Look {
@@ -32,7 +33,7 @@ export function roleOf(point: PointDraft): string {
 
 /** A role's plain word, the name a new point starts with. */
 export function roleWord(role: string): string {
-  return LOOKS.get(role)?.word() ?? role;
+  return LOOKS.get(role)?.word() ?? seriesName(role);
 }
 
 export function iconOf(role: string): (typeof KIND_ICONS)[EquipmentKind] {

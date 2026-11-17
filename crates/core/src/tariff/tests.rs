@@ -468,3 +468,42 @@ async fn no_cost_is_published_from_a_silent_plant() {
             .all(|at| ["2026-03-29T03:59:00Z", "2026-03-29T04:00:30Z"].contains(at))
     );
 }
+
+/// Prices in EUR/kWh; the rates in EUR/h, so their rollups are EUR (ADR 12).
+#[tokio::test(start_paused = true)]
+async fn the_prices_and_rates_are_catalogued_with_their_units() {
+    let mut site = site("2026-03-29T03:59:50Z");
+    site.until("price.import", 0.20).await;
+    site.plant("2026-03-29T03:59:50Z", 2000.0, -500.0);
+    site.plant("2026-03-29T03:59:55Z", 2000.0, -500.0);
+    site.until("cost.import.rate", 0.60).await;
+
+    // Storage hears the bus on its own task: asked until all five series are history.
+    let mut units: Vec<(String, Option<String>)> = Vec::new();
+    while units.len() < 5 {
+        tokio::task::yield_now().await;
+        units = frozen(async {
+            site.storage
+                .tick(instant("2026-03-29T04:02:00Z"))
+                .await
+                .unwrap();
+            site.storage.reader().catalog().await.unwrap()
+        })
+        .into_iter()
+        .filter(|c| c.device == DEVICE)
+        .map(|c| (c.series, c.unit))
+        .collect();
+    }
+
+    let unit = |series: &str, unit: &str| (series.to_owned(), Some(unit.to_owned()));
+    assert_eq!(
+        units,
+        [
+            unit("cost.export.rate", "EUR/h"),
+            unit("cost.import.rate", "EUR/h"),
+            unit("cost.savings.rate", "EUR/h"),
+            unit("price.export", "EUR/kWh"),
+            unit("price.import", "EUR/kWh"),
+        ]
+    );
+}

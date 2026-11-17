@@ -5,11 +5,10 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::Json;
 use axum::extract::State;
-use jiff::Timestamp;
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use super::{Clock, Problem, ProblemDetails, internal};
+use super::{Clock, Problem, ProblemDetails, internal, rfc3339};
 use crate::battery;
 use crate::bus::Series;
 use crate::plant;
@@ -48,12 +47,6 @@ struct CapacityMeasurement {
     /// RFC 3339: when the discharge ended.
     end: String,
     kwh: f64,
-}
-
-fn rfc3339(time: SystemTime) -> String {
-    Timestamp::try_from(time)
-        .map(|t| t.to_string())
-        .unwrap_or_default()
 }
 
 async fn rollups(

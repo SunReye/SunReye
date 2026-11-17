@@ -45,6 +45,7 @@ impl Core {
         let series = self.bus.intern(role, None);
         let policy = Policy {
             kind,
+            unit: None,
             step: 0.5,
             deadband: 0.0,
             cadence: Duration::from_secs(HOUR),

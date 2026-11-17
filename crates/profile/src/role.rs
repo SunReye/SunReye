@@ -27,6 +27,24 @@ pub enum Unit {
     Dimensionless,
 }
 
+impl Unit {
+    /// Its symbol, as profiles spell it.
+    #[must_use]
+    pub const fn symbol(self) -> &'static str {
+        match self {
+            Self::Watt => "W",
+            Self::KilowattHour => "kWh",
+            Self::Volt => "V",
+            Self::Ampere => "A",
+            Self::Hertz => "Hz",
+            Self::Percent => "%",
+            Self::Celsius => "°C",
+            Self::Hour => "h",
+            Self::Dimensionless => "none",
+        }
+    }
+}
+
 /// What a quantity's values are (ADR 4): a named role's kind, or the one an extra declares.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -55,6 +73,7 @@ pub enum StorageClass {
 }
 
 /// The kind of a named role; a role ADR 4 lacks is a measurement.
+#[must_use]
 pub fn kind(role: &str) -> RoleKind {
     match role {
         "battery.mode" | "inverter.status" | "ev.connected" | "ev.charging" | "ev.mode"

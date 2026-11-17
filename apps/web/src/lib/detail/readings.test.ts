@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { ago, nodeReadings, type Source } from "./readings.ts";
+import { ago, exploreLinks, nodeReadings, type Source } from "./readings.ts";
 
 const NOW = 1_000_000;
 const INVERTER = 1;
@@ -47,6 +47,7 @@ function plant(patch: Partial<Source> = {}): Source {
     points: [],
     now: NOW,
     status: "live",
+    link: () => null,
     series: {
       [`${PLANT}/grid.power`]: [{ t: NOW, v: PLANT }],
       [`${INVERTER}/pv.string.power[3]`]: [{ t: NOW, v: INVERTER }],
@@ -253,4 +254,34 @@ test("a node's live graph draws its own figure: the plant's total, or its device
 
 test("a string on no known device has nothing to draw", () => {
   expect(read("string-9")?.points).toEqual([]);
+});
+
+/** Only the battery's temperature and the plant's heat pump have stored history. */
+const link = exploreLinks(["2/battery.temperature", `${PLANT}/point.power[2]`], {
+  range: "week",
+  at: null,
+});
+
+test("a reading with stored history links to Explore at the range, one without does not", () => {
+  const s = plant({ link });
+
+  expect(row("battery", "battery.temperature", s)?.href).toBe(
+    "#/explore?range=week&s=2%3Abattery.temperature",
+  );
+  expect(row("battery", "battery.cycles", s)?.href).toBeUndefined();
+});
+
+test("a consumer's reading links on the plant, which stores it", () => {
+  const s = plant({
+    link,
+    values: { ...plant().values, [PLANT]: { "load.power": 900, "point.power[2]": 600 } },
+    points: [
+      { id: 1, name: "Netz", parent: null, contested: false, claims: [] },
+      { id: 2, name: "Wärmepumpe", parent: 1, contested: false, claims: [] },
+    ],
+  });
+
+  expect(row("house", "point.power[2]", s)?.href).toBe(
+    `#/explore?range=week&s=${PLANT}%3Apoint.power%5B2%5D`,
+  );
 });

@@ -1,4 +1,5 @@
 // A device's latest values as detail-sheet rows and tables (ADR 21). Pure.
+import { roleLabel, seriesRole } from "../roles.ts";
 import type { ByDevice } from "../api/frames.ts";
 
 export interface Row {
@@ -15,6 +16,8 @@ export interface Row {
   readonly age?: number;
   /** The detail this row opens. */
   readonly to?: string;
+  /** Explore on its series, when it has stored history (ADR 22). */
+  readonly href?: string;
 }
 
 /** Indexed readings side by side: one line per MPPT input or phase, one column per role. */
@@ -37,7 +40,8 @@ export interface Group {
 
 /** How a number reads: its label, unit and digits, scaled from the role's unit. */
 export interface Format {
-  readonly label: string;
+  /** The role's own label (ADR 4) where absent. */
+  readonly label?: string;
   readonly unit: string;
   readonly digits: number;
   /** From the role's unit to the shown one; 1 when absent. */
@@ -53,7 +57,7 @@ export interface Reader {
   readonly indices: (roles: readonly string[]) => number[];
   readonly raw: (key: string) => number | undefined;
   readonly num: (key: string, format: Format) => Row | null;
-  readonly text: (key: string, label: string, say: (v: number) => string) => Row | null;
+  readonly text: (key: string, say: (v: number) => string) => Row | null;
 }
 
 /** What a reader reads from. */
@@ -65,6 +69,8 @@ export interface Readings {
   readonly estimated: Readonly<Record<string, readonly string[]>>;
   /** The clock ages are counted against, epoch ms. */
   readonly now: number;
+  /** The Explore route of a device's series; null without stored history (ADR 22). */
+  readonly link: (device: number, series: string) => string | null;
 }
 
 const INDEXED = /^(?<role>.+)\[(?<index>\d+)\]$/u;
@@ -80,6 +86,12 @@ function indices(keys: readonly string[], roles: readonly string[]): number[] {
   }
 
   return [...found].toSorted((a, b) => a - b);
+}
+
+function linked(source: Readings, device: number, key: string): { href?: string } {
+  const href = source.link(device, key);
+
+  return href === null ? {} : { href };
 }
 
 /** Reads `device`'s values; `quiet` leaves ages to the one notice above the list. */
@@ -105,21 +117,30 @@ export function reader(source: Readings, device: number, quiet: boolean): Reader
 
       return {
         key,
-        label,
+        label: label ?? roleLabel(seriesRole(key)),
         value: Math.abs(v) * scale,
         unit,
         digits,
         ...(estimated.has(key) && { est: true }),
         ...age(key),
         ...(to !== undefined && { to }),
+        ...linked(source, device, key),
       };
     },
-    text: (key, label, say) => {
+    text: (key, say) => {
       const v = values[key];
 
       if (v === undefined) return null;
 
-      return { key, label, text: say(v), unit: "", digits: 0, ...age(key) };
+      return {
+        key,
+        label: roleLabel(key),
+        text: say(v),
+        unit: "",
+        digits: 0,
+        ...age(key),
+        ...linked(source, device, key),
+      };
     },
   };
 }
@@ -144,7 +165,7 @@ export function table(
   if (used.length === 0) return undefined;
 
   return {
-    cols: used.map((c) => ({ label: c.label, unit: c.unit })),
+    cols: used.map((c) => ({ label: c.label ?? roleLabel(c.role), unit: c.unit })),
     rows: lines.map((index) => ({
       key: String(index),
       label: label(index),

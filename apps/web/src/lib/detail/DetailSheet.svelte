@@ -6,13 +6,13 @@
   import * as Sheet from "#lib/components/ui/sheet/index.js";
   import { SPOT, type Core, type Live, type PvString } from "../api/core.ts";
   import DrawerSheet from "../components/drawer-sheet.svelte";
-  import { estimatedSeries, layoutStrings } from "../live/plant-facts.ts";
+  import { estimatedSeries, layoutStrings, storedSeries } from "../live/plant-facts.ts";
   import type { Day } from "../dashboard/day.ts";
   import { RangeRoute, type Go } from "../range/route.svelte.ts";
   import { input } from "../shell/input.svelte.ts";
   import DetailBody from "./DetailBody.svelte";
   import { figure, titleOf } from "./figures.ts";
-  import { nodeReadings, type Source } from "./readings.ts";
+  import { exploreLinks, nodeReadings, type Source } from "./readings.ts";
 
   let {
     id,
@@ -38,6 +38,7 @@
       | "moduleTypes"
       | "corrections"
       | "topology"
+      | "series"
     >;
     live: Live | undefined;
     /** The live stream's last two minutes, for a sheet's live graph. */
@@ -87,6 +88,9 @@
   /** The topology's points, which viewers read too (ADR 9, 14). */
   let points = $state.raw<Source["points"]>([]);
 
+  /** The series with stored history, each `device/series` (ADR 22); none until the catalog is read. */
+  let stored = $state.raw<readonly string[]>([]);
+
   let now = $state(Date.now());
 
   // Read once a sheet first opens: the dashboard itself needs neither.
@@ -106,6 +110,7 @@
         return null;
       })
       .catch(() => null);
+    void storedSeries(core).then((next) => (stored = next));
   });
 
   $effect(() => {
@@ -138,6 +143,7 @@
     now,
     status,
     series,
+    link: exploreLinks(stored, route.rangeParams),
   });
 
   const node = $derived(spec.node === null ? null : nodeReadings(spec.node, source));

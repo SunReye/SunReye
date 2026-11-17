@@ -12,3 +12,8 @@ export function routeParams(): URLSearchParams {
 export const routeGo: Go = (patch, push) => {
   void goto(patchHash(page.url, patch), { replace: !push, reset: false });
 };
+
+/** One history entry back, as the browser's back does. */
+export const routeBack = (): void => {
+  history.back();
+};

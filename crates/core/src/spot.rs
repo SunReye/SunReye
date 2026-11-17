@@ -229,7 +229,7 @@ impl<P: Provider> SpotPrices<P> {
         };
         if !*declared {
             *declared = true;
-            let policy = Policy::new(RoleKind::Measurement, None, STEP, SLOT);
+            let policy = Policy::new(RoleKind::Measurement, None, STEP, SLOT).in_unit("EUR/kWh");
             // A refusal, such as another step, stands until a restart.
             if let Err(e) = storage
                 .declarer()

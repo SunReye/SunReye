@@ -15,6 +15,9 @@ export type Forecasts = components["schemas"]["Forecasts"];
 
 export type Statistics = components["schemas"]["Statistics"];
 
+/** A device with stored history, present or removed, and its stored series (ADR 22). */
+export type CatalogDevice = components["schemas"]["CatalogDevice"];
+
 /** A UTC hour or a plant-local calendar period statistics are cut in (ADR 3, 9). */
 export type Period = components["schemas"]["Period"];
 
@@ -94,6 +97,8 @@ export interface Core extends Setup, CarBodies, Imports, PvModel, Tariffs, Plant
     from: Date,
     to: Date,
   ): Promise<Statistics | Problem>;
+  /** Every device with stored history, present or removed, with its stored series, by id. */
+  series(): Promise<readonly CatalogDevice[] | Problem>;
   /** The latest forecast of each target of one series from `from` to before `to`. */
   forecasts(device: number, series: string, from: Date, to: Date): Promise<Forecasts | Problem>;
   /** Every registered device; admin only. */
@@ -166,6 +171,18 @@ export function connect(transport: Transport): Core {
     ...status(client),
     ...tariffs(client),
     ...plantRecords(client),
+    ...catalog(client),
+  };
+}
+
+/** The series catalog (ADR 22). */
+function catalog(client: Client): Pick<Core, "series"> {
+  return {
+    series: async () => {
+      const { data, error, response } = await client.GET("/api/v1/series");
+
+      return data ? data.devices : refusal(error, response.status);
+    },
   };
 }
 

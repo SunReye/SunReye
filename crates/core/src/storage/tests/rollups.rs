@@ -249,6 +249,7 @@ async fn a_counter_rolls_up_its_delta_and_a_reset_is_never_negative() {
     let total = plant.bus.intern("pv.energy.total", None);
     let counter = Policy {
         kind: RoleKind::Counter,
+        unit: None,
         step: 0.1,
         deadband: 0.0,
         cadence: Duration::from_secs(60),
@@ -364,6 +365,7 @@ async fn a_low_reading_at_the_end_of_an_hour_is_not_a_reset_in_the_next() {
     let total = plant.bus.intern("pv.energy.total", None);
     let counter = Policy {
         kind: RoleKind::Counter,
+        unit: None,
         step: 0.1,
         deadband: 0.0,
         cadence: Duration::from_secs(60),

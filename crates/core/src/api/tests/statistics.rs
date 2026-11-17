@@ -30,6 +30,7 @@ async fn berlin(role: &str, kind: RoleKind) -> (TempDir, Core, String) {
     assert_eq!(status, StatusCode::OK);
     let policy = Policy {
         kind,
+        unit: None,
         step: 0.5,
         deadband: 0.0,
         cadence: Duration::from_hours(1),

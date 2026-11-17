@@ -395,6 +395,84 @@
         ],
         "type": "object"
       },
+      "CatalogDevice": {
+        "properties": {
+          "id": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "description": "Its registry name, a removed device's from its tombstone; `null` for a computed device\n(ADR 15), which the SPA names by its id, or one removed before tombstones were kept.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "removed": {
+            "description": "Whether it was removed; its history stays.",
+            "type": "boolean"
+          },
+          "series": {
+            "description": "By name.",
+            "items": {
+              "$ref": "#/components/schemas/CatalogSeries"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "removed",
+          "series"
+        ],
+        "type": "object"
+      },
+      "CatalogSeries": {
+        "properties": {
+          "estimated": {
+            "description": "Whether a computed estimate writes it, such as a parallel string's `pv.string.power`\nunder any layout version (ADR 17), so it holds once the device is removed.",
+            "type": "boolean"
+          },
+          "first": {
+            "description": "The first stored instant, of a change point or a rollup's start, RFC 3339, UTC.",
+            "type": "string"
+          },
+          "kind": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SeriesKind",
+                "description": "`null` for a series last declared before kinds were stored."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "last": {
+            "description": "The last stored instant, a gap's included, RFC 3339, UTC.",
+            "type": "string"
+          },
+          "series": {
+            "description": "Such as `pv.mppt.power[2]`.",
+            "type": "string"
+          },
+          "unit": {
+            "description": "Its symbol, such as `W`, as stored with its history (ADR 3); `null` when it has none.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "series",
+          "estimated",
+          "first",
+          "last"
+        ],
+        "type": "object"
+      },
       "Catalogue": {
         "properties": {
           "profiles": {
@@ -2681,7 +2759,7 @@
             "type": "string"
           },
           "mean": {
-            "description": "The value weighted by the time it held between `start` and `end`; for a status or a held\nvalue in an `hour` or a `day`, the last value it held.",
+            "description": "The value weighted by the time it held between `start` and `end`.",
             "format": "double",
             "type": "number"
           },
@@ -3414,6 +3492,31 @@
         "enum": [
           "read",
           "admin"
+        ],
+        "type": "string"
+      },
+      "SeriesCatalog": {
+        "description": "Every device with stored history, by id.",
+        "properties": {
+          "devices": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogDevice"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "devices"
+        ],
+        "type": "object"
+      },
+      "SeriesKind": {
+        "description": "What a series' values are (ADR 4).",
+        "enum": [
+          "measurement",
+          "counter",
+          "status",
+          "held"
         ],
         "type": "string"
       },
@@ -6203,6 +6306,32 @@
           }
         },
         "summary": "Scans the local network for devices and proposes a profile and unit id for each (ADR 6). Read\nonly; an endpoint already configured is not touched."
+      }
+    },
+    "/api/v1/series": {
+      "get": {
+        "operationId": "catalog",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeriesCatalog"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Every device with a stored change point or rollup, present or removed, and each of its\nstored series with its kind, unit and first and last stored instant. Forecasts are not history\nand are not listed."
       }
     },
     "/api/v1/session": {
