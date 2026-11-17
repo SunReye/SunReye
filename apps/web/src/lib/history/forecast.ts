@@ -3,7 +3,7 @@
 import type { Core } from "../api/core.ts";
 import { combined, type Target } from "../dashboard/today.ts";
 import { forecastTargets, held } from "../forecast/forecast.ts";
-import { judge } from "../forecast/judge.ts";
+import { judge, pastDays } from "../forecast/judge.ts";
 import type { Band } from "../range/bands.ts";
 import { bandsOf, intervals, spread } from "../range/fill.ts";
 import { num } from "../range/format.ts";
@@ -76,17 +76,16 @@ export function forecastView(got: Loaded, targets: readonly Target[]): ForecastV
     };
   });
 
-  // A range's bands share one length: under a day they read the hourly rollups.
-  const first = got.list[0];
-  const rollups = first && first.t1 - first.t0 < 24 ? got.plant.hours : got.plant.days;
+  const measured = got.plant.days.pv;
 
   const { accuracy } = judge({
     series: "pv.power",
     list: got.list,
     spans: got.spans,
     now: got.now,
-    measured: rollups.pv,
+    measured,
     forecast: held(targets),
+    days: { spans: pastDays(got.zone, got.range, got.now), measured },
   });
 
   return { bands, total, accuracy };

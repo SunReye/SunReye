@@ -7,7 +7,7 @@ import { change } from "../history/words.ts";
 import { edges } from "../range/edges.ts";
 import { calendar, customRange, hourInstant } from "../range/range.ts";
 import { plannedEnergy, type Planned } from "./forecast.ts";
-import { judge } from "./judge.ts";
+import { judge, pastDays } from "./judge.ts";
 
 const HOUR = 3_600_000;
 
@@ -130,13 +130,15 @@ export function track(
   forecast: readonly Planned[],
 ): Track {
   const cal = calendar(zone, new Date(now));
-  const list = edges(cal, customRange(cal, cal.today - PAST_DAYS, cal.today + 1), "day");
+  const range = customRange(cal, cal.today - PAST_DAYS, cal.today + 1);
+  const list = edges(cal, range, "day");
 
   const spans = list.map(
     (e) => [hourInstant(zone, e.t0).getTime(), hourInstant(zone, e.t1).getTime()] as const,
   );
 
-  const judged = judge({ series: "pv.power", list, spans, now, measured, forecast });
+  const days = { spans: pastDays(zone, range, now), measured };
+  const judged = judge({ series: "pv.power", list, spans, now, measured, forecast, days });
   const today = judged.bands.at(-1);
   const mark = today?.mark ?? null;
 

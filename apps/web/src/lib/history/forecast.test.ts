@@ -79,6 +79,31 @@ test("accuracy judges whole past days alone", () => {
   expect(view.accuracy.bias).toBeCloseTo(-0.2);
 });
 
+test("a past day and a year judge their whole past days, whatever their bands", () => {
+  for (const kind of ["day", "year"] as const) {
+    const range = rangeFor(kind, MONDAY);
+    const list = edges(CAL, range);
+
+    const view = forecastView(
+      {
+        ...loaded(),
+        range,
+        list,
+        spans: list.map((e) => [
+          hourInstant(ZONE, e.t0).getTime(),
+          hourInstant(ZONE, e.t1).getTime(),
+        ]),
+      },
+      TARGETS,
+    );
+
+    // Monday: 8 kWh against 10, by hours or inside November.
+    expect(view.accuracy.days).toBe(1);
+    expect(view.accuracy.error).toBeCloseTo(0.2);
+    expect(view.accuracy.bias).toBeCloseTo(-0.2);
+  }
+});
+
 /** 1.5 kW from 08:00 to 15:00, then 0.4 kW to 17:00: 11.3 kWh a day. */
 const NOVEMBER = (h: number) => (h >= 8 && h < 15 ? 1500 : h >= 15 && h < 17 ? 400 : 0);
 

@@ -8,7 +8,7 @@ import type { Band } from "../range/bands.ts";
 import type { Edge } from "../range/edges.ts";
 import { bandsOf, spread } from "../range/fill.ts";
 import { kwh } from "../range/format.ts";
-import type { Calendar, Range } from "../range/range.ts";
+import { hourInstant, t0Of, t1Of, type Calendar, type Range } from "../range/range.ts";
 import { plannedEnergy, type Planned } from "./forecast.ts";
 
 /** What one line's range holds: its bands, and the sums the headline and the legend share. */
@@ -38,6 +38,14 @@ export interface Judging {
   readonly now: number;
   readonly measured: readonly Rolled[];
   readonly forecast: readonly Planned[];
+  /**
+   * The accuracy's whole past days, each [start, end) in ms (`pastDays`), and their day rollups:
+   * a range's bands may be hours or months.
+   */
+  readonly days: Readonly<{
+    spans: readonly (readonly [number, number])[];
+    measured: readonly Rolled[];
+  }>;
   /** The stacked parts' measurements, each less the parts beside it from the same input. */
   readonly parts?: readonly Readonly<{
     measured: readonly Rolled[];
@@ -46,11 +54,19 @@ export interface Judging {
   }>[];
 }
 
-/**
- * Measured against forecast per band: a band with readings carries the forecast for its measured
- * time as its mark, a band not over yet its whole forecast as a faint bar. Whole days measured
- * against a forecast count towards the accuracy.
- */
+/** The whole plant days of `range` that are over by `now`, each [start, end) in ms. */
+export function pastDays(zone: string, range: Readonly<Range>, now: number): [number, number][] {
+  const out: [number, number][] = [];
+
+  for (let d = Math.ceil(t0Of(range) / 24); (d + 1) * 24 <= t1Of(range); d += 1) {
+    const [a, b] = [hourInstant(zone, d * 24).getTime(), hourInstant(zone, (d + 1) * 24).getTime()];
+
+    if (b <= now) out.push([a, b]);
+  }
+
+  return out;
+}
+
 /** One band's kWh: measured, forecast for its measured time, for all of it, and from now on. */
 function weigh(j: Readonly<Judging>, a: number, b: number) {
   const f = bandFigure(j.series, j.measured, a, b);
@@ -72,10 +88,8 @@ function weigh(j: Readonly<Judging>, a: number, b: number) {
 }
 
 /** A whole past day measured against a forecast: its deviation, as a share of the forecast. */
-const deviation = (edge: Readonly<Edge>, value: number, sofar: number): number | null =>
-  sofar > 0 && edge.state === "past" && edge.t1 - edge.t0 === 24
-    ? Math.abs(value / sofar - 1)
-    : null;
+const deviation = (value: number, sofar: number): number | null =>
+  sofar > 0 ? Math.abs(value / sofar - 1) : null;
 
 /** One band's measured kWh per stacked part; the total alone without two or more parts. */
 function stack(j: Readonly<Judging>, total: number, a: number, b: number): number[] {
@@ -113,22 +127,21 @@ interface Days {
   readonly planned: number;
 }
 
-/** `days` with a band that is a whole past day measured against a forecast; any other is left out. */
-function countDay(
-  days: Readonly<Days>,
-  edge: Readonly<Edge>,
-  w: Readonly<ReturnType<typeof weigh>>,
-): Days {
-  const dev = deviation(edge, w.value, w.sofar);
+/** The whole past days' deviations and their kWh measured and forecast. */
+function daysOf(j: Readonly<Judging>): Days {
+  let [error, count, made, planned] = [0, 0, 0, 0];
+  const day = { ...j, measured: j.days.measured };
 
-  return dev === null
-    ? days
-    : {
-        error: days.error + dev,
-        count: days.count + 1,
-        made: days.made + w.value,
-        planned: days.planned + w.sofar,
-      };
+  for (const [a, b] of j.days.spans) {
+    const w = weigh(day, a, b);
+    const dev = deviation(w.value, w.sofar);
+
+    if (dev === null) continue;
+
+    [error, count, made, planned] = [error + dev, count + 1, made + w.value, planned + w.sofar];
+  }
+
+  return { error, count, made, planned };
 }
 
 /** The accuracy over whole past days alone (ADR 21 "Forecast tab"), the bias included. */
@@ -140,7 +153,6 @@ const accuracyOf = (days: Readonly<Days>): Accuracy => ({
 
 export function judge(j: Readonly<Judging>): Judged {
   const sums = { made: 0, compared: 0, sofar: 0, ahead: 0 };
-  let days: Days = { error: 0, count: 0, made: 0, planned: 0 };
   const shares: number[] = [];
 
   const bands = bandsOf(j.list, (edge, i) => {
@@ -152,7 +164,6 @@ export function judge(j: Readonly<Judging>): Judged {
     sums.ahead += w.rest;
     sums.compared += compared ? w.value : 0;
     sums.sofar += w.sofar;
-    days = countDay(days, edge, w);
 
     const up = stack(j, w.value, a, b);
 
@@ -181,7 +192,7 @@ export function judge(j: Readonly<Judging>): Judged {
     ahead: sums.ahead,
     shares: kept.map((k) => shares[k] ?? 0),
     kept,
-    accuracy: accuracyOf(days),
+    accuracy: accuracyOf(daysOf(j)),
   };
 }
 

@@ -6,7 +6,7 @@ import { RangeData } from "../range/range-data.svelte.ts";
 import { rangeKey } from "../range/range.ts";
 import type { RangeRoute } from "../range/route.svelte.ts";
 import { planned, type Part } from "./forecast.ts";
-import { headline, judge, summaryOf } from "./judge.ts";
+import { headline, judge, pastDays, summaryOf } from "./judge.ts";
 
 export class ForecastData {
   readonly #data: RangeData<Awaited<ReturnType<typeof read>>>;
@@ -41,7 +41,7 @@ export class ForecastData {
       (from, to, now) => {
         const { core, device, series, parts, route } = input();
 
-        return read(core, device, series, parts, periodOf(route.range), from, to, now);
+        return read(core, device, series, parts, route, from, to, now);
       },
     );
   }
@@ -79,23 +79,28 @@ async function read(
   device: number,
   series: string,
   parts: readonly Part[],
-  period: ReturnType<typeof periodOf>,
+  route: Readonly<Pick<RangeRoute, "range" | "place">>,
   from: Readonly<Date>,
   to: Readonly<Date>,
   now: number,
 ) {
   const until = Math.min(to.getTime(), now);
+  const period = periodOf(route.range);
 
-  const measuredOf = (s: string) =>
-    from.getTime() < until ? rollups(core, device, s, period, from, new Date(until)) : [];
+  const measuredOf = (s: string, p = period) =>
+    from.getTime() < until ? rollups(core, device, s, p, from, new Date(until)) : [];
 
   const names = [...new Set(parts.flatMap((p) => [p.series, ...p.minus]))];
 
-  const [measured, forecast, ...rolled] = await Promise.all([
+  const [measured, daily, forecast, ...rolled] = await Promise.all([
     measuredOf(series),
+    // The accuracy judges whole days, whatever the bands are.
+    period === "day" ? null : measuredOf(series, "day"),
     planned(core, device, series, from, to),
     ...names.map((s) => measuredOf(s)),
   ]);
+
+  const spans = pastDays(route.place.zone, route.range, now);
 
   const of = (s: string) => rolled[names.indexOf(s)] ?? [];
 
@@ -103,6 +108,7 @@ async function read(
     series,
     measured,
     forecast,
+    days: { spans, measured: daily ?? measured },
     parts: parts.map((p) => ({
       measured: of(p.series),
       minus: p.minus.map(of),
