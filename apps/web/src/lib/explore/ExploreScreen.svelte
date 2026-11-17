@@ -9,17 +9,26 @@
   import type { Go } from "../range/route.svelte.ts";
   import ChartArea from "./ChartArea.svelte";
   import type { Table } from "./csv.ts";
+  import ExploreChips from "./ExploreChips.svelte";
   import { Explore, type ExploreCore } from "./explore.svelte.ts";
   import ExploreHeader from "./ExploreHeader.svelte";
+  import { Fullscreen } from "./fullscreen.svelte.ts";
   import PickerShell from "./PickerShell.svelte";
-  import SeriesChips from "./SeriesChips.svelte";
 
   let {
     core,
+    admin,
     params,
     go,
     back,
-  }: { core: ExploreCore; params: URLSearchParams; go: Go; back: () => void } = $props();
+  }: {
+    core: ExploreCore;
+    /** The admin saves, renames and deletes views; a viewer opens them. */
+    admin: boolean;
+    params: URLSearchParams;
+    go: Go;
+    back: () => void;
+  } = $props();
 
   const x = new Explore(() => ({ core, params, go, back }));
 
@@ -30,6 +39,31 @@
 
   let plotted = $state.raw<() => Table | null>();
 
+  const full = new Fullscreen();
+
+  /** The room the chart has in fullscreen, in px. */
+  let room = $state(0);
+
+  /** At rest the page's column; in fullscreen over the bar and rail (z-40), under the body's overlays. */
+  const REST = {
+    main: "mx-auto max-w-[1320px] pb-6",
+    panes: "lg:grid-cols-[320px_minmax(0,1fr)]",
+    card: "self-start",
+    chart: "",
+  };
+
+  const FULL = {
+    main: "fixed inset-0 z-45 bg-background pb-[max(1rem,env(safe-area-inset-bottom))]",
+    panes: "min-h-0 flex-1 grid-rows-[minmax(0,1fr)]",
+    card: "min-h-0",
+    // Sized by the card, not by the chart in it, so it shrinks again; lanes at their least scroll.
+    chart: "min-h-0 flex-1 overflow-y-auto",
+  };
+
+  const look = $derived(full.on ? FULL : REST);
+
+  const fill = $derived(full.on && room > 0 ? room : undefined);
+
   /** "Add series": beside the pane its search takes the focus; below 1024 px the picker opens. */
   function add(): void {
     if (paned.current) search?.focus();
@@ -38,16 +72,26 @@
 </script>
 
 <main
-  class="mx-auto flex w-full max-w-[1320px] flex-col gap-4 px-3 pt-4 pb-6 sm:px-4 lg:gap-5 lg:px-6 lg:pt-6"
+  {@attach full.watch}
+  class={["flex w-full flex-col gap-4 px-3 pt-4 sm:px-4 lg:gap-5 lg:px-6 lg:pt-6", look.main]}
 >
-  <ExploreHeader {x} table={plotted?.() ?? null} />
+  <ExploreHeader {x} {admin} table={plotted?.() ?? null} full={full.on} onfull={full.toggle} />
 
-  <div class="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)] lg:gap-6">
-    <PickerShell {x} paned={paned.current} bind:search />
+  <div class={["grid gap-4 lg:gap-6", look.panes]}>
+    {#if !full.on}
+      <PickerShell {x} paned={paned.current} bind:search />
+    {/if}
 
-    <Card.Root class="glass-ambient min-w-0 gap-4 self-start px-3 py-4 sm:px-5">
-      <SeriesChips chosen={x.chosen} onremove={x.toggle} onadd={add} />
-      <ChartArea {core} {x} bind:plotted />
+    <Card.Root class={["glass-ambient min-w-0 gap-4 px-3 py-4 sm:px-5", look.card]}>
+      <!-- Opened with nothing chosen, the first saved view decides what is read (ADR 22). -->
+      {#if !x.saved.opening}
+        {#if !full.on}
+          <ExploreChips {x} onadd={add} />
+        {/if}
+        <div class={look.chart} bind:clientHeight={room}>
+          <ChartArea {core} {x} {fill} full={full.on} bind:plotted />
+        </div>
+      {/if}
     </Card.Root>
   </div>
 </main>

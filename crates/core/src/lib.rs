@@ -37,6 +37,7 @@ pub mod sunspec;
 pub mod tariff;
 pub mod topology;
 pub mod transport;
+pub mod views;
 pub mod weather;
 pub mod zone;
 

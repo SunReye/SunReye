@@ -31,6 +31,7 @@ use crate::spot::{self, SpotPrices, SpotZone};
 use crate::storage::{self, Storage};
 use crate::tariff::{TariffDevice, Tariffs};
 use crate::topology::Topologies;
+use crate::views::Views;
 use crate::weather::{self, Archive, Provider, Weather};
 
 const DEFAULT_LISTEN: SocketAddr =
@@ -311,6 +312,7 @@ pub async fn serve(
         topologies,
         tariffs,
         cars,
+        views: Views::new(storage.database()),
         storage: storage.settings(),
         logs: boot.logs,
         clock: std::sync::Arc::new(SystemTime::now),

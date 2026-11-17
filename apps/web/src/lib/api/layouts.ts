@@ -1,4 +1,5 @@
-// The PV layout and its module types (ADR 17, 20).
+// The PV layout, its module types and the uploaded car bodies the scene draws (ADR 17, 20).
+import { carBodies, type CarBodies } from "./car-bodies";
 import { refusal, type Client, type Problem } from "./client";
 import { body, type LayoutChange } from "./layout-change";
 import type { components } from "./schema";
@@ -13,7 +14,7 @@ export type Datasheet = components["schemas"]["Datasheet"];
 /** One maker's datasheet in the module catalogue, with the power classes it prints (ADR 17). */
 export type CatalogueSheet = components["schemas"]["Sheet"];
 
-export interface Layouts {
+export interface Layouts extends CarBodies {
   /** The PV layout in force now. */
   layout(): Promise<Layout | Problem>;
   /** Every module type. */
@@ -28,6 +29,7 @@ export interface Layouts {
 
 export function layouts(client: Client): Layouts {
   return {
+    ...carBodies(client),
     layout: async () => {
       const { data, error, response } = await client.GET("/api/v1/layout");
 

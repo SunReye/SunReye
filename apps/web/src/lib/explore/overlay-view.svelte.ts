@@ -80,7 +80,7 @@ export class OverlayView extends ModeView<Overlaid | null> {
     const week = route.range.kind === "week";
 
     return picksOf(route.range)
-      .filter((pick: QuickPick) => added(route.range, periods, pick.day) !== null)
+      .filter((pick: QuickPick) => added(route.range, periods, pick.entry) !== null)
       .map((pick: QuickPick) => Object.assign({}, pick, { text: PICKS[pick.id](week) }));
   });
 
@@ -191,15 +191,15 @@ export class OverlayView extends ModeView<Overlaid | null> {
     return rows && lane ? periodFigures(lane, rows, at) : [];
   }
 
-  #pick(days: readonly string[] | null): void {
-    if (days) this.input().route.patch({ vs: days.join(",") || null }, true);
+  #pick(entries: readonly string[] | null): void {
+    if (entries) this.input().route.patch({ vs: entries.join(",") || null }, true);
   }
 
-  /** Adds the period that holds `day`, as a step back can undo. */
-  add = (day: string): void => {
+  /** Adds the period a date or a quick pick's offset names, as a step back can undo. */
+  add = (entry: string): void => {
     const { route, periods } = this.input();
 
-    this.#pick(added(route.range, periods, day));
+    this.#pick(added(route.range, periods, entry));
   };
 
   remove = (period: OverlayPeriod): void => {

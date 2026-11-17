@@ -117,18 +117,14 @@ test("the export follows the open mode through every switch, and ends with the l
   await expect.element(button).toBeDisabled();
 });
 
-test("on a phone the export stands in one row with the title and the mode switch", async () => {
-  await page.viewport(360, 740);
-
-  const { screen } = await show();
-  const button = screen.getByRole("button", { name: "Als CSV exportieren" });
-
-  await expect.element(button).toBeVisible();
-
-  const tops = [
+/** The header's controls and its title, each by the middle of its height. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the browser's locator.
+function rows(screen: Awaited<ReturnType<typeof show>>["screen"]) {
+  const [title, ...controls] = [
     screen.getByRole("heading", { name: "Erkunden", level: 1 }),
-    button,
+    screen.getByRole("button", { name: "Als CSV exportieren" }),
     screen.getByRole("group", { name: "Ansicht" }),
+    screen.getByRole("button", { name: "Vollbild", exact: true }),
     // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the browser's locator.
   ].map((locator) => {
     const box = locator.element().getBoundingClientRect();
@@ -136,7 +132,34 @@ test("on a phone the export stands in one row with the title and the mode switch
     return box.top + box.height / 2;
   });
 
+  return { title: title!, controls };
+}
+
+test("on a phone the export stands in one row with the title, the mode switch and fullscreen", async () => {
+  await page.viewport(390, 844);
+
+  const { screen } = await show();
+
+  await expect.element(screen.getByRole("button", { name: "Als CSV exportieren" })).toBeVisible();
+
+  const { title, controls } = rows(screen);
+  const tops = [title, ...controls];
+
   expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(8);
+  expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390);
+});
+
+test("on a phone too narrow for that the controls share a row of their own under the title", async () => {
+  await page.viewport(360, 740);
+
+  const { screen } = await show();
+
+  await expect.element(screen.getByRole("button", { name: "Als CSV exportieren" })).toBeVisible();
+
+  const { title, controls } = rows(screen);
+
+  expect(Math.max(...controls) - Math.min(...controls)).toBeLessThanOrEqual(8);
+  expect(Math.min(...controls)).toBeGreaterThan(title + 8);
   expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(360);
 });
 

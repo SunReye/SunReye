@@ -2,6 +2,7 @@
 // series of their devices (`s`), the overlay's earlier periods (`vs`), the fold's period (`by`) and
 // the open picker (`pick`).
 import { PLANT } from "../api/computed-devices.ts";
+import { isPeriod } from "./overlay.ts";
 
 export type Mode = "series" | "overlay" | "fold";
 
@@ -17,7 +18,10 @@ export interface SeriesRef {
 export interface ExploreView {
   readonly mode: Mode;
   readonly series: readonly SeriesRef[];
-  /** The overlay's earlier periods, each by a plant-local day in it, `2026-11-14`. */
+  /**
+   * The overlay's earlier periods, each by a plant-local day in it, `2026-11-14`, or by a quick
+   * pick's offset from the range, `-1d`, `-1w` or `-1y`, so a current range stays relative.
+   */
   readonly periods: readonly string[];
   /** The picker is open; a screen wide enough for its pane shows it anyway. */
   readonly picking: boolean;
@@ -65,13 +69,11 @@ function seriesOf(named: string | null): readonly SeriesRef[] {
   return found;
 }
 
-const DAY = /^\d{4}-\d{2}-\d{2}$/u;
-
 export function viewOf(p: Readonly<URLSearchParams>): ExploreView {
   return {
     mode: MODES.find((mode) => mode === p.get("mode")) ?? "series",
     series: seriesOf(p.get("s")),
-    periods: (p.get("vs") ?? "").split(",").filter((day) => DAY.test(day)),
+    periods: (p.get("vs") ?? "").split(",").filter((entry) => isPeriod(entry)),
     picking: p.get("pick") === "1",
   };
 }

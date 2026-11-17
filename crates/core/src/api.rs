@@ -37,6 +37,7 @@ use crate::spot::SpotZone;
 use crate::storage;
 use crate::tariff::Tariffs;
 use crate::topology::Topologies;
+use crate::views::Views;
 
 const ROUTE: Problem = Problem {
     status: StatusCode::NOT_FOUND,
@@ -76,6 +77,8 @@ pub struct Api {
     pub topologies: Topologies,
     pub tariffs: Tariffs,
     pub cars: CarBodies,
+    /// Explore's saved views (ADR 22).
+    pub views: Views,
     /// The plant timezone and change-point retention.
     pub storage: storage::Settings,
     pub imports: Imports,
@@ -106,6 +109,7 @@ pub fn router(api: Api) -> Router {
         api.tariffs.routes(Clock::clone(&api.clock)),
         api.changes.routes(),
         api.cars.routes(),
+        api.views.routes(Clock::clone(&api.clock)),
         api.location.routes(Clock::clone(&api.clock)),
         api.spot.routes(Clock::clone(&api.clock)),
         storage_routes(api.storage, &api.clock),
@@ -461,6 +465,18 @@ pub enum Code {
     TokenNone,
     #[serde(rename = "token.value")]
     TokenValue,
+    /// No saved view has the id.
+    #[serde(rename = "views.none")]
+    ViewsNone,
+    /// Another saved view holds the name.
+    #[serde(rename = "views.name")]
+    ViewsName,
+    /// Twenty views are saved.
+    #[serde(rename = "views.full")]
+    ViewsFull,
+    /// A blank or overlong name, or a query past 2 KB.
+    #[serde(rename = "views.value")]
+    ViewsValue,
     #[serde(rename = "history.range")]
     HistoryRange,
     #[serde(rename = "history.counter")]

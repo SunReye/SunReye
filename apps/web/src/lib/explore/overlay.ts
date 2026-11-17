@@ -2,7 +2,7 @@
 // own plant-local start. A period runs in real time from there, so a 23-hour day ends early and a
 // 25-hour day draws its repeated hour twice, in order. Pure: the pane renders, this decides.
 import { plantInstant } from "../plant-day.ts";
-import { civil, dayOf, dayOfIso, iso } from "../range/calendar.ts";
+import { civil, dayOf, dayOfIso, iso, isoWeek, yearOf } from "../range/calendar.ts";
 import { isCurrent, rangeFor, type Calendar, type Kind, type Range } from "../range/range.ts";
 import type { Curve } from "./curve.ts";
 
@@ -32,9 +32,52 @@ export interface OverlayPeriod {
   readonly to: number;
 }
 
-/** The periods the picked days stand for, as their first days: each once, never the range's own. */
+/** Monday of ISO week `week` of `year`, or of its last week when it has fewer. */
+function weekOfYear(year: number, week: number): number {
+  const jan4 = dayOf(year, 0, 4);
+  const first = jan4 - ((civil(jan4).getUTCDay() + 6) % 7);
+
+  return first + 7 * (Math.min(week, isoWeek(dayOf(year, 11, 28))) - 1);
+}
+
+/** The range's period a year before: the same date, or for a week the same ISO week. */
+function yearBefore(range: Range): number {
+  if (kindOf(range) === "week") return weekOfYear(yearOf(range.from + 3) - 1, isoWeek(range.from));
+
+  const d = civil(range.from);
+  const month = d.getUTCMonth();
+  // 29 February a year before is the 28th: day 0 of the next month is its last.
+  const last = civil(dayOf(d.getUTCFullYear() - 1, month + 1, 0)).getUTCDate();
+
+  return dayOf(d.getUTCFullYear() - 1, month, Math.min(d.getUTCDate(), last));
+}
+
+/** A quick pick as the route holds it: an offset from the range, so a current range stays relative. */
+const OFFSETS = {
+  "-1d": (range: Range) => range.from - 1,
+  "-1w": (range: Range) => range.from - 7,
+  "-1y": yearBefore,
+} as const;
+
+export type Offset = keyof typeof OFFSETS;
+
+const isOffset = (entry: string): entry is Offset => Object.hasOwn(OFFSETS, entry);
+
+/** Whether a route entry names a period: an offset or a date. */
+export const isPeriod = (entry: string): boolean =>
+  isOffset(entry) || /^\d{4}-\d{2}-\d{2}$/u.test(entry);
+
+/** A day in the period a route entry names: an offset from the range, or a date as it is. */
+const dayIn = (range: Range, entry: string): number =>
+  isOffset(entry) ? OFFSETS[entry](range) : dayOfIso(entry);
+
+/** The first day of the period an entry names. */
+const startOf = (range: Range, entry: string): number =>
+  rangeFor(kindOf(range), dayIn(range, entry)).from;
+
+/** The periods the picked entries stand for, as their first days: each once, never the range's own. */
 function firstDays(range: Range, picked: readonly string[]): number[] {
-  const days = picked.map((day) => rangeFor(kindOf(range), dayOfIso(day)).from);
+  const days = picked.map((entry) => startOf(range, entry));
 
   return [...new Set(days)].filter((from) => from !== range.from).slice(0, MAX_PICKED);
 }
@@ -68,40 +111,33 @@ export function aligned(curve: Curve, period: OverlayPeriod, onto: number): Curv
 
 export interface QuickPick {
   readonly id: "day" | "week" | "year";
-  /** A day in the period it picks. */
-  readonly day: string;
+  /** The offset the route holds it by, `-1d`. */
+  readonly entry: Offset;
 }
 
 /** The quick picks beside any date: the day before, the week before, the same day last year. */
 export function picksOf(range: Range): QuickPick[] {
-  const from = range.from;
-  const week: QuickPick = { id: "week", day: iso(from - 7) };
-
-  // 52 weeks back is a Monday again.
-  if (kindOf(range) === "week") return [week, { id: "year", day: iso(from - 364) }];
-
-  const d = civil(from);
-
-  return [
-    { id: "day", day: iso(from - 1) },
-    week,
-    { id: "year", day: iso(dayOf(d.getUTCFullYear() - 1, d.getUTCMonth(), d.getUTCDate())) },
+  const picks: QuickPick[] = [
+    { id: "week", entry: "-1w" },
+    { id: "year", entry: "-1y" },
   ];
+
+  return kindOf(range) === "week" ? picks : [{ id: "day", entry: "-1d" }, ...picks];
 }
 
-/** The picked days with `day`'s period; null when it is drawn already or the chart is full. */
-export function added(range: Range, picked: readonly string[], day: string): string[] | null {
+/** The picked entries with `entry`'s period; null when it is drawn already or the chart is full. */
+export function added(range: Range, picked: readonly string[], entry: string): string[] | null {
   const had = firstDays(range, picked);
-  const from = rangeFor(kindOf(range), dayOfIso(day)).from;
+  const from = startOf(range, entry);
 
   if (from === range.from || had.includes(from) || had.length >= MAX_PICKED) return null;
 
-  return [...picked, day];
+  return [...picked, entry];
 }
 
-/** The picked days without those in `period`. */
+/** The picked entries without those that name `period`. */
 export function removed(range: Range, picked: readonly string[], period: OverlayPeriod): string[] {
-  return picked.filter((day) => rangeFor(kindOf(range), dayOfIso(day)).from !== period.range.from);
+  return picked.filter((entry) => startOf(range, entry) !== period.range.from);
 }
 
 /** OverlayPeriod `i`'s colour: the range in the series' own, each earlier one fainter. */

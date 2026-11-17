@@ -597,6 +597,10 @@
           "viewer.value",
           "token.none",
           "token.value",
+          "views.none",
+          "views.name",
+          "views.full",
+          "views.value",
           "history.range",
           "history.counter",
           "forecast.range",
@@ -3323,6 +3327,61 @@
           "up",
           "width",
           "length"
+        ],
+        "type": "object"
+      },
+      "SavedView": {
+        "description": "A saved view.",
+        "properties": {
+          "id": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "query"
+        ],
+        "type": "object"
+      },
+      "SavedViewDraft": {
+        "description": "A view as the admin saves it.",
+        "properties": {
+          "name": {
+            "description": "Unique, not blank, at most 256 bytes of UTF-8.",
+            "type": "string"
+          },
+          "query": {
+            "description": "Explore's route query, at most 2,048 bytes of UTF-8, kept as given.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "query"
+        ],
+        "type": "object"
+      },
+      "SavedViews": {
+        "description": "Every saved view, in the order saved.",
+        "properties": {
+          "views": {
+            "items": {
+              "$ref": "#/components/schemas/SavedView"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "views"
         ],
         "type": "object"
       },
@@ -6884,6 +6943,141 @@
           }
         },
         "summary": "Removes a viewer and ends its sessions."
+      }
+    },
+    "/api/v1/views": {
+      "get": {
+        "operationId": "list_views",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedViews"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "add_view",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavedViewDraft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Saves a view after the others; a taken name is refused before a full list."
+      }
+    },
+    "/api/v1/views/{id}": {
+      "delete": {
+        "operationId": "remove_view",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Removes a view."
+      },
+      "put": {
+        "operationId": "change_view",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavedViewDraft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Replaces a view's name and query; it keeps its place."
       }
     },
     "/api/v1/writes": {
