@@ -141,8 +141,8 @@ export class Studio {
     else this.#held = [day, look];
 
     // The air's colour: the page's, greyed by the weather's fog, a twentieth at a time.
-    const sky = weather ?? DRY;
-    const air = fogColour([page.r, page.g, page.b], look.dark, Math.round(sky.fog * 20) / 20);
+    const given = weather ?? DRY;
+    const air = fogColour([page.r, page.g, page.b], look.dark, Math.round(given.fog * 20) / 20);
     const backdropped = JSON.stringify([air, look]);
 
     this.renderer.toneMappingExposure = look.exposure;
@@ -154,7 +154,7 @@ export class Studio {
       this.scene.background = this.#backdrop;
     }
 
-    this.#plot.weather(sky, air, look.exposure);
+    this.#plot.weather(given, air, look.exposure);
     this.#fall.tint(look.dark, look.exposure);
   }
 

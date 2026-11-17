@@ -70,7 +70,9 @@ test("nothing loops until something kept shows; then it draws 30 times a second 
 
   const times: number[] = [];
 
-  loop.keep((seconds) => times.push(seconds));
+  loop.keep((seconds) => {
+    times.push(seconds);
+  });
   expect(loop.running).toBe(true);
   screen.run(60);
   expect(seen.draws).toBe(30);
@@ -125,7 +127,9 @@ test("a paused loop asks for no frame, and its clock stands until it runs again"
   const { screen, seen, loop } = open();
   const times: number[] = [];
 
-  loop.keep((seconds) => times.push(seconds));
+  loop.keep((seconds) => {
+    times.push(seconds);
+  });
   screen.run(60);
   loop.pause("hidden", true);
   loop.pause("off screen", true);
@@ -150,7 +154,9 @@ test("a frame that stalls moves the clock a tenth of a second at most", () => {
   const { screen, loop } = open();
   const times: number[] = [];
 
-  loop.keep((seconds) => times.push(seconds));
+  loop.keep((seconds) => {
+    times.push(seconds);
+  });
   screen.run(3);
   screen.run(1, 3000);
   expect((times.at(-1) ?? 0) - (times.at(-2) ?? 0)).toBeCloseTo(0.1, 2);

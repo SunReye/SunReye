@@ -130,12 +130,17 @@ export class Loop {
 
 /** Pauses `loop` while `canvas` cannot be seen: the tab is hidden, or the canvas is off screen.
  * The disposer stops watching. */
-// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the browser's own, only watched.
-export function pauseUnseen(loop: Loop, canvas: HTMLCanvasElement): () => void {
+export function pauseUnseen(
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- it is paused.
+  loop: Loop,
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the browser's own, only watched.
+  canvas: HTMLCanvasElement,
+): () => void {
   const hidden = (): void => {
     loop.pause("hidden", document.visibilityState === "hidden");
   };
 
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the browser's own entries.
   const screen = new IntersectionObserver((entries) => {
     loop.pause("off screen", entries.at(-1)?.isIntersecting === false);
   });

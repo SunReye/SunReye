@@ -150,10 +150,10 @@ test("snow falls while snowfall does, whole from 3 cm/h, and its water is not ra
   expect(falling({ snowfall: 0, precipitation: 2 })?.kind).toBe("rain");
 });
 
-test("what falls is carried away from where the wind blows from", () => {
-  const carried = (wind: number, windDirection: number | null) =>
-    falling({ precipitation: 2, wind, windDirection })?.wind;
+const carried = (wind: number, windDirection: number | null) =>
+  falling({ precipitation: 2, wind, windDirection })?.wind;
 
+test("what falls is carried away from where the wind blows from", () => {
   // East, north: a west wind carries east, a north wind south.
   expect(carried(5, 270)).toEqual([5, 0]);
   expect(carried(5, 0)).toEqual([0, -5]);

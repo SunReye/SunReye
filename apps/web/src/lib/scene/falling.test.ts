@@ -4,6 +4,9 @@ import { velocityOf } from "./falling.ts";
 
 const speed = (v: readonly number[]) => Math.hypot(...v);
 
+/** Metres aside per metre down. */
+const slant = (v: readonly [number, number, number]) => Math.hypot(v[0], v[2]) / -v[1];
+
 test("rain streaks down fast and snow drifts down slowly, in three.js's frame", () => {
   const rain = velocityOf({ kind: "rain", density: 1, wind: [0, 0] });
   const snow = velocityOf({ kind: "snow", density: 1, wind: [0, 0] });
@@ -23,8 +26,6 @@ test("the wind slants what falls the way it carries it, snow further than rain",
   expect(rain[0]).toBeGreaterThan(0);
   expect(rain[2]).toBeLessThan(0);
   expect(rain[0]).toBe(-rain[2]);
-
-  const slant = (v: readonly [number, number, number]) => Math.hypot(v[0], v[2]) / -v[1];
 
   expect(slant(rain)).toBeGreaterThan(0.4);
   expect(slant(snow)).toBeGreaterThan(slant(rain));

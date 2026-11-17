@@ -12,8 +12,9 @@ import {
   ShaderMaterial,
   Vector3,
 } from "three";
-import { toThree } from "../builder/panels.ts";
-import { type Triple, untone } from "./tone.ts";
+import { toThree } from "../builder/scene.ts";
+import { RAIN, SNOW } from "./falling-shaders.ts";
+import { untone } from "./tone.ts";
 import type { Falling } from "./weather.ts";
 
 /** Metres a second down, and how much of the wind's speed carries it. */
@@ -40,9 +41,6 @@ const SPARSE = 0.25;
 /** Seconds of its fall a streak is long: a camera's exposure. */
 const EXPOSURE = 0.06;
 
-/** A flake's width in metres: far over a real one's, which no screen would show. */
-const FLAKE = 0.11;
-
 /** What falls as it lands on screen, by theme: linear, and how opaque. Grey on the light page,
  * where white would not show; pale on the dark one, and never glowing. */
 const SHADE = {
@@ -56,90 +54,17 @@ const SHADE = {
   },
 } as const;
 
-/** Positions in the box wrap round it: what leaves below comes in above. */
-const PLACED = /* glsl */ `
-  uniform vec3 uBox;
-  uniform vec3 uOrigin;
-  uniform vec3 uOffset;
-
-  vec3 placed(vec3 seeded) {
-    return mod(seeded * uBox + uOffset, uBox) + uOrigin;
-  }
-`;
-
-const RAIN_VERTEX = /* glsl */ `
-  ${PLACED}
-  uniform vec3 uStreak;
-  attribute float tail;
-  varying float vAlpha;
-
-  void main() {
-    // The tail trails where the drop came from, and fades out.
-    vAlpha = 1.0 - tail;
-    gl_Position = projectionMatrix * viewMatrix * vec4(placed(position) - tail * uStreak, 1.0);
-  }
-`;
-
-const SNOW_VERTEX = /* glsl */ `
-  ${PLACED}
-  uniform float uPixels;
-  attribute float seed;
-  varying float vAlpha;
-
-  void main() {
-    vec3 at = placed(position);
-
-    // It sways as it sinks: by its height, so it never jumps where the box wraps.
-    at.x += sin(at.y * 1.7 + seed * 6.283) * 0.25;
-    at.z += cos(at.y * 1.3 + seed * 12.566) * 0.25;
-
-    vec4 seen = viewMatrix * vec4(at, 1.0);
-
-    gl_Position = projectionMatrix * seen;
-
-    float size = ${FLAKE.toFixed(3)} * (0.6 + 0.8 * seed) * projectionMatrix[1][1] * uPixels / -seen.z;
-
-    // Under a pixel and a half it thins instead of shrinking away.
-    vAlpha = min(1.0, size / 1.5);
-    // And a flake before the camera's nose is no blot.
-    gl_PointSize = clamp(size, 1.5, 12.0);
-  }
-`;
-
-const RAIN_FRAGMENT = /* glsl */ `
-  uniform vec3 uColour;
-  uniform float uOpacity;
-  varying float vAlpha;
-
-  void main() {
-    gl_FragColor = vec4(uColour, uOpacity * vAlpha);
-  }
-`;
-
-const SNOW_FRAGMENT = /* glsl */ `
-  uniform vec3 uColour;
-  uniform float uOpacity;
-  varying float vAlpha;
-
-  void main() {
-    float soft = 1.0 - smoothstep(0.2, 0.5, length(gl_PointCoord - 0.5));
-
-    gl_FragColor = vec4(uColour, uOpacity * vAlpha * soft);
-  }
-`;
-
 /** A seeded generator: the same field in every browser and on every draw. */
 function seeded(seed: number): () => number {
   let state = seed;
 
   return () => {
-    state = (state + 0x6d2b79f5) | 0;
+    state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
 
-    let t = Math.imul(state ^ (state >>> 15), 1 | state);
+    // The low bits of such a state repeat early: mixed down from the high ones.
+    const mixed = Math.imul(state ^ (state >>> 15), 0x2c1b3c6d) >>> 0;
 
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    return ((mixed ^ (mixed >>> 12)) >>> 0) / 4_294_967_296;
   };
 }
 
@@ -167,10 +92,19 @@ function field(count: number, copies: number, seed: number): BufferGeometry {
   return geometry;
 }
 
-function material(vertexShader: string, fragmentShader: string, shared: object): ShaderMaterial {
+/** The box rain and snow fall in, and where they have fallen to: one for both. */
+interface Shared {
+  readonly uBox: { readonly value: Vector3 };
+  readonly uOrigin: { readonly value: Vector3 };
+  readonly uOffset: { readonly value: Vector3 };
+  readonly uStreak: { readonly value: Vector3 };
+  readonly uPixels: { value: number };
+}
+
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- shared with the shaders.
+function material(shaders: typeof RAIN, shared: Shared): ShaderMaterial {
   return new ShaderMaterial({
-    vertexShader,
-    fragmentShader,
+    ...shaders,
     uniforms: { ...shared, uColour: { value: new Vector3() }, uOpacity: { value: 1 } },
     transparent: true,
     depthWrite: false,
@@ -181,6 +115,7 @@ function material(vertexShader: string, fragmentShader: string, shared: object):
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own object.
 function unstruck<T extends Object3D>(part: T): T {
   part.raycast = () => {};
+
   part.frustumCulled = false;
   part.visible = false;
 
@@ -188,8 +123,7 @@ function unstruck<T extends Object3D>(part: T): T {
 }
 
 export class Fall {
-  /** Rain and snow share the box they fall in. */
-  readonly #shared = {
+  readonly #shared: Shared = {
     uBox: { value: new Vector3(1, 1, 1) },
     uOrigin: { value: new Vector3() },
     uOffset: { value: new Vector3() },
@@ -201,7 +135,7 @@ export class Fall {
   readonly #snow: Points<BufferGeometry, ShaderMaterial>;
   /** What the scene draws: nothing of it while dry. */
   readonly object = new Group();
-  #velocity: Triple = [0, 0, 0];
+  #velocity: readonly [number, number, number] = [0, 0, 0];
   #seconds = 0;
 
   constructor() {
@@ -210,14 +144,13 @@ export class Fall {
     // Each streak's second end is its tail.
     streaks.setAttribute(
       "tail",
-      new BufferAttribute(Float32Array.from({ length: COUNT.rain * 2 }, (_, i) => i % 2), 1),
+      new BufferAttribute(
+        Float32Array.from({ length: COUNT.rain * 2 }, (_, i) => i % 2),
+        1,
+      ),
     );
-    this.#rain = unstruck(
-      new LineSegments(streaks, material(RAIN_VERTEX, RAIN_FRAGMENT, this.#shared)),
-    );
-    this.#snow = unstruck(
-      new Points(field(COUNT.snow, 1, 2023), material(SNOW_VERTEX, SNOW_FRAGMENT, this.#shared)),
-    );
+    this.#rain = unstruck(new LineSegments(streaks, material(RAIN, this.#shared)));
+    this.#snow = unstruck(new Points(field(COUNT.snow, 1, 2023), material(SNOW, this.#shared)));
     this.object.name = "falling";
     this.object.add(this.#rain, this.#snow);
   }

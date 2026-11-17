@@ -7,10 +7,8 @@ import { motion } from "../motion/tier.svelte.ts";
 import { cssColour, flowRgb } from "./backdrop.ts";
 import { daylight, theme } from "./light.ts";
 import { easeGlow } from "./live-glow.svelte.ts";
-import type { Loop } from "./loop.ts";
 import { Opening } from "./opening.svelte.ts";
 import { stage, type SceneWeather, type Staged } from "./staged.ts";
-import type { Falling } from "./weather.ts";
 import { openStudio, type Opened } from "./studio-look.svelte.ts";
 
 /** Follows mode-watcher's class on the root element. */
@@ -65,7 +63,7 @@ export interface Lit {
    * frames a second at most, on the full tier alone, and not while the tab is hidden or the
    * canvas off screen.
    */
-  readonly loop: Pick<Loop, "keep" | "running">;
+  readonly loop: Pick<Opening["loop"], "keep" | "running">;
   /** Frees the drawn group and the studio. */
   readonly dispose: () => void;
 }
@@ -88,7 +86,7 @@ function steadied(sky: () => Sky) {
   const sun = $derived(sky().sun);
   const diffuse = $derived(sky().diffuse);
   let last: Sky["weather"];
-  let fell: Falling | null = null;
+  let fell: NonNullable<Sky["weather"]>["falling"] = null;
 
   const weather = $derived.by(() => {
     last = same(last, sky().weather);
@@ -130,18 +128,16 @@ export function lit(
 ): Lit {
   const { studio, look, close } = openStudio(canvas, camera);
   const opened = new Opening(studio, drawn);
-  const { flight } = opened;
-  const { render } = opened;
+  const { flight, render } = opened;
   const shown = stage(studio);
   const steady = steadied(sky);
   const day = $derived(steady.day);
-  const weather = $derived(steady.weather);
   let colour = $state(0);
 
   $effect(() => {
-    studio.light(day, theme(dark()), cssColour("var(--background)"), weather);
+    studio.light(day, theme(dark()), cssColour("var(--background)"), steady.weather);
     shown.lamp(day.lamps);
-    shown.weather(weather);
+    shown.weather(steady.weather);
     colour = flowRgb("solar").getHex();
     render();
   });
@@ -151,25 +147,7 @@ export function lit(
     render();
   });
 
-  // What falls is the motion tier's (ADR 23): it moves on full, lite draws a sparse still field,
-  // still draws none.
-  $effect(() => {
-    const { falling } = steady;
-    const { tier } = motion;
-
-    studio.fall(tier === "still" ? null : falling, tier === "lite");
-    render();
-
-    return falling !== null && tier === "full"
-      ? opened.loop.keep((seconds) => {
-          studio.drift(seconds);
-        })
-      : undefined;
-  });
-
-  $effect(() => {
-    opened.loop.pause("tier", motion.tier !== "full");
-  });
+  opened.falls(() => steady.falling);
 
   const glow = (): Glow => ({ colour, daylight: day.glow });
 

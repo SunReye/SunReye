@@ -8,6 +8,8 @@ import { DRY, type Falling } from "./weather.ts";
 
 const RAIN: Falling = { kind: "rain", density: 1, wind: [2, 0] };
 
+const noop = (): void => {};
+
 let close: (() => void) | undefined;
 
 afterEach(() => {
@@ -32,11 +34,14 @@ async function open() {
   document.body.append(canvas);
 
   const unmount = $effect.root(() => {
-    const sky = (): Sky => ({ sun: null, diffuse: null, weather: { ...DRY, falling } });
-
-    scene = lit(canvas, new PerspectiveCamera(40, 1, 0.1, 5000), sky, () => {
-      seen.labels += 1;
-    });
+    scene = lit(
+      canvas,
+      new PerspectiveCamera(40, 1, 0.1, 5000),
+      (): Sky => ({ sun: null, diffuse: null, weather: { ...DRY, falling } }),
+      () => {
+        seen.labels += 1;
+      },
+    );
     scene.studio.setSize(64, 64);
   });
 
@@ -48,11 +53,7 @@ async function open() {
 
   if (scene === undefined) throw new TypeError("no scene");
 
-  await scene.opening.open(
-    Promise.resolve(),
-    () => {},
-    () => {},
-  );
+  await scene.opening.open(Promise.resolve(), noop, noop);
 
   return {
     canvas,
@@ -61,7 +62,7 @@ async function open() {
     counted,
     drawn,
     fell,
-    weather(next: Falling | null) {
+    weather: (next: Falling | null): void => {
       falling = next;
       flushSync();
     },

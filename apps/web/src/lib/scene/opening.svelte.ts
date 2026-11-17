@@ -7,6 +7,7 @@ import { Loop, pauseUnseen } from "./loop.ts";
 import { ahead, gpuIdle, nextFrame, pause, prepare } from "./prepare.ts";
 import type { Ghost } from "./stage.svelte.ts";
 import type { Studio } from "./studio.ts";
+import type { Falling } from "./weather.ts";
 import { idle } from "./warm.ts";
 
 /** A burst frame slower than this ends the burst: three frames at 60 Hz. */
@@ -83,6 +84,31 @@ export class Opening {
       if (this.#paint(now)) this.render();
     });
   };
+
+  /**
+   * Shows what `falling` gives as the motion tier does (ADR 23): it moves in the loop on full,
+   * lite draws a sparse still field, still draws none. Call during a component's set-up.
+   */
+  falls(falling: () => Falling | null): void {
+    $effect(() => {
+      const fell = falling();
+      const { tier } = motion;
+
+      this.#studio.fall(tier === "still" ? null : fell, tier === "lite");
+      this.render();
+
+      return fell !== null && tier === "full"
+        ? this.loop.keep((seconds) => {
+            this.#studio.drift(seconds);
+          })
+        : undefined;
+    });
+
+    // The loop is the full tier's, whoever keeps it.
+    $effect(() => {
+      this.loop.pause("tier", motion.tier !== "full");
+    });
+  }
 
   /** Once `built`, prepares, draws the first frame, calls `ready` once it is drawn, and `due`
    * when idle after. */
