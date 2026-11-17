@@ -40,7 +40,9 @@
     let current = true;
 
     void (async () => {
-      const read = await readWeatherSources(core, new Date(start), new Date(end));
+      // History to the close of the hour in progress: today's alone, so it is read raw.
+      const measuredTo = new Date((hour + 1) * HOUR);
+      const read = await readWeatherSources(core, new Date(start), new Date(end), measuredTo);
 
       if (current) sources = read;
     })();

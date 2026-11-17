@@ -143,13 +143,13 @@ type Stored = Readonly<{ role: DetailRole; past: readonly Held[]; ahead: readonl
 function stored(
   core: WeatherReader,
   series: readonly (typeof SERIES | typeof DETAIL)[number][],
-  span: Span,
+  spans: Readonly<{ past: Span; ahead: Span }>,
 ): Promise<readonly Stored[]> {
   return Promise.all(
     series.map(async ({ role, history, forecasts }) => {
       const [past, ahead] = await Promise.all([
-        source(history, () => measured(core, role, span)),
-        source(forecasts, () => forecast(core, role, span)),
+        source(history, () => measured(core, role, spans.past)),
+        source(forecasts, () => forecast(core, role, spans.ahead)),
       ]);
 
       return { role, past, ahead };
@@ -168,18 +168,25 @@ export async function readWeather(
   from: Readonly<Date>,
   to: Readonly<Date>,
 ): Promise<WeatherRead> {
-  const read = await stored(core, SERIES, spanOf(from, to));
+  const span = spanOf(from, to);
+  const read = await stored(core, SERIES, { past: span, ahead: span });
 
   return Object.fromEntries(read.map(({ role, past, ahead }) => [role, [...past, ...ahead]]));
 }
 
-/** The weather detail's read from `from` to before `to`: every series, its sources apart. */
+/**
+ * The weather detail's read from `from` to before `to`: every series, its sources apart.
+ * @param measuredTo where history ends. A day or less of it is read raw; a longer span comes as
+ * hourly means, which blur the wind's direction and its gusts.
+ */
 export async function readWeatherSources(
   core: WeatherReader,
   from: Readonly<Date>,
   to: Readonly<Date>,
+  measuredTo: Readonly<Date>,
 ): Promise<WeatherSources> {
-  const read = await stored(core, [...SERIES, ...DETAIL], spanOf(from, to));
+  const spans = { past: spanOf(from, measuredTo), ahead: spanOf(from, to) };
+  const read = await stored(core, [...SERIES, ...DETAIL], spans);
 
   return {
     measured: Object.fromEntries(read.map(({ role, past }) => [role, past])),
