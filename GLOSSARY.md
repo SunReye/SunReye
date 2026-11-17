@@ -136,6 +136,10 @@ _Avoid_: Comparison (History's baseline is a different thing)
 One series' statistics per hour, day, week or month.
 _Avoid_: Aggregation, rollup (stored), summary
 
+**Saved view**:
+A named Explore view the admin keeps for the whole plant, shown to everyone who opens Explore.
+_Avoid_: Favourite, preset, dashboard
+
 **Self-consumption**:
 The share of the PV energy used on site rather than fed in, over a day or longer.
 _Avoid_: Self-use, own consumption (a measurement point's own consumption is something else)

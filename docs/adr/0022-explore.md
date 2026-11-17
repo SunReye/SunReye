@@ -8,12 +8,12 @@ History (ADR 21) answers four plant questions, and a detail sheet's analytics re
 
 ## Decision
 
-**Screen.** Explore is a screen of its own. It is listed in More and on the rail (ADR 21), and every reading row of a detail sheet whose series has stored history opens it on that device and series at the sheet's range; a row without history is no link. Opened from More with nothing chosen, it shows the plant's PV power and house load for today, so it is never blank. Its header holds the shared range control and one mode switch: Series · Overlay · Fold. The chosen series stand below as removable chips, then "Add series". A viewer uses it as the admin does (ADR 9).
+**Screen.** Explore is a screen of its own. It is listed in More and on the rail (ADR 21), and every reading row of a detail sheet whose series has stored history opens it on that device and series at the sheet's range; a row without history is no link. Opened from More with nothing chosen, it opens the first saved view, or with none saved the plant's PV power and house load for today, so it is never blank. Its header holds the shared range control, one mode switch (Series · Overlay · Fold) and a fullscreen button. The saved views stand above as chips; the chosen series stand below as removable chips, then "Add series". A viewer uses it as the admin does (ADR 9).
 
 **Jobs.**
 
 - **Series:** up to 6 series, of any devices, on one time axis. Series of one unit share a **lane**; there are at most 4 lanes, stacked, with one pointer across them.
-- **Overlay:** one series over up to 5 periods: the range and those picked. Quick picks are the day before, the week before and the same day last year; any date can be picked. Days align on elapsed time from the plant-local midnight: a 23-hour day ends early, and a 25-hour day plots its repeated hour twice, in order. Weeks align Monday to Sunday. Months and years are not overlaid; the fold answers them. In Overlay the range control offers day and week alone; switching in from a longer range opens today if it lies in the range, else the range's last day. Earlier periods are receding tints of the series' colour; the diverging pair stays for under and over (ADR 21). Switching to Overlay with several series chosen keeps the first.
+- **Overlay:** one series over up to 5 periods: the range and those picked. Quick picks are the day before, the week before and the same day last year; any date can be picked. A quick pick is held as an offset from the range (`vs=-1d,-1w,-1y`), a picked date as that date, so a bookmarked overlay of today compares today tomorrow too. Days align on elapsed time from the plant-local midnight: a 23-hour day ends early, and a 25-hour day plots its repeated hour twice, in order. Weeks align Monday to Sunday. Months and years are not overlaid; the fold answers them. In Overlay the range control offers day and week alone; switching in from a longer range opens today if it lies in the range, else the range's last day. Earlier periods are receding tints of the series' colour; the diverging pair stays for under and over (ADR 21). Switching to Overlay with several series chosen keeps the first.
 - **Fold:** one series' statistics per period (ADR 9): hour, day, week or month, defaulting to hours for a day, days for a week or month and months for a year. Hours are offered for a range of at most eight days: past that the table is hundreds of rows. Bars of the mean with min–max whiskers for a measurement, or of the delta for a counter, above a sortable table of mean, min, max, energy or delta, and hours with a value. Statuses and held values have no fold.
 
 **Drawing by kind** (ADR 4).
@@ -30,7 +30,11 @@ History (ADR 21) answers four plant questions, and a detail sheet's analytics re
 
 **Reads.** One history or statistics call per series and per overlay period, in parallel; the caps keep a view to about six. There is no batch route. A status or held series' history returns raw intervals at any range while they number at most 1,500 (ADR 9).
 
-**State.** The whole view is in the hash route: devices, series, range, mode, overlay periods and the fold's period where it is not the range's default, so a view can be bookmarked, sent to a viewer and stepped back through. Nothing is saved on the server or in the browser.
+**State.** The whole view is in the hash route: devices, series, range, mode, overlay periods and the fold's period where it is not the range's default, so a view can be bookmarked, sent to a viewer and stepped back through. A current day, week, month or year carries no date, so it stays relative to now. Nothing is saved in the browser.
+
+**Saved views.** The admin keeps up to 20 named views for the whole plant; viewers see and open them. A saved view is a name and Explore's route query, which the core stores as an opaque string of at most 2 KB, so it is relative wherever the route is; the SPA ignores parameters it does not know. They stand as chips in the order saved; a tap opens one, and its chip is marked while the route matches it. Saving pre-fills the name from the series' labels; a name already taken asks to replace that view. The header's menu, beside the export, offers the admin "Ansicht speichern", or after changing an open view "Ansicht aktualisieren" and "Als neue Ansicht speichern", and on the marked chip "Umbenennen" and "Löschen", the latter confirmed. A series gone from the catalog shows as a struck-through chip saying it no longer exists, and the rest draws. They are served by a `views` module (ADR 9) and logged as configuration (ADR 19). They are not on the Dashboard.
+
+**Fullscreen.** The header's fullscreen button, labelled "Vollbild" and "Vollbild beenden", puts the chart area into the browser's fullscreen: the chart, its legend, the range control and the mode switch; the picker, the chips and the export are hidden. Where the browser cannot make an element fullscreen, as iPhone Safari cannot, the chart area fills the window over the bar and rail instead. Esc or the button leaves it. Fullscreen is not in the route: a browser enters it only on a gesture.
 
 **Reading the chart.** ADR 21's chart reading: the legend shows the values under the pointer, there are no tooltips, a mouse drag narrows the range, touch has no brushing. There is no pinch zoom. Lanes draw on a canvas: six series of 1,500 points are far past the band count at which SVG charts froze the page. Motion follows the tiers.
 
@@ -45,9 +49,11 @@ History (ADR 21) answers four plant questions, and a detail sheet's analytics re
 - **Overlaying several series over several periods.** Rejected: 6 series over 5 periods cannot be read.
 - **A batch history route.** Rejected until a second consumer needs one: the caps bound the fan-out.
 - **Statuses fetched a day per call.** Rejected for a raw read at any range: a status changes rarely, so 1,500 intervals cover weeks.
-- **Saved views on the server.** Rejected: the hash route already carries a view, and nothing asks for a list of them.
+- **Saved views per account, or in the browser.** Rejected: per account adds the first write a viewer may make, for a household that watches the same views; the browser loses them per device and shares none.
+- **Saved views typed in the core.** Rejected: the route already is the view's format; an opaque string lets the SPA grow it without migrating stored data.
+- **A Dashboard card per saved view.** Out until asked: the Dashboard's layout is fixed (ADR 21).
 - **Scatter plots, formulas, derived series and anomaly detection.** Out until a real use asks.
 
 ## Consequences
 
-The catalog is a published route; its fields only grow. A device's name reaches viewers through it, as its figures already do.
+The catalog and the views route are published; their fields only grow. A saved view's route query is a stored format: a parameter, once written, keeps its meaning. A device's name reaches viewers through it, as its figures already do.
