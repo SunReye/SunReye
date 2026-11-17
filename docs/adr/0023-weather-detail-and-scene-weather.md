@@ -1,6 +1,6 @@
 # 23. Weather detail and scene weather
 
-Status: accepted (2026-11-17)
+Status: accepted (2026-11-17), amended (2026-11-17)
 
 ## Context
 
@@ -20,11 +20,11 @@ The weather device (ADR 17) stores irradiance, temperature and wind. The scene's
 | `weather.wind_direction` | ° (0 north, 90 east) | 1 | 15 min |
 | `weather.gusts` | m/s | 0.01 | 15 min |
 | `weather.apparent_temperature` | °C | 0.1 | 15 min |
-| `weather.sunshine` | s per slot | 1 | 15 min |
+| `weather.sunshine` | s per hour | 1 | hourly |
 | `weather.cloud_cover` | % | 1 | hourly |
 | `weather.snow_depth` | m | 0.001 | hourly |
 
-One Open-Meteo request asks for `minutely_15` and `hourly` together. A quantity the provider has only hourly is stored at hourly targets in the same store, and a reader holds a value until the next target, an hour at most. The archive has no visibility and no thunderstorms: past fog comes from the code alone. Cloud layers, rain apart from snow, showers, freezing level and lightning are not stored. Once after the upgrade, a background job fetches the archive for the new quantities over the whole span weather history already covers.
+One Open-Meteo request asks for `minutely_15` and `hourly` together. Sunshine is summed into hours, so the forecast and the archive share one scale. A quantity the provider has only hourly is stored at hourly targets in the same store, and a reader holds a value until the next target, an hour at most. The archive has no visibility and no thunderstorms: past fog comes from the code alone. Cloud layers, rain apart from snow, showers, freezing level and lightning are not stored. Once after the upgrade, a background job fetches the archive for the new quantities over the whole span weather history already covers.
 
 **Clear-sky index.** The weather device stores `weather.clearness` as history: over each 15 minutes, the plant's measured PV energy divided by the energy the `pv` crate models for a clear sky with each input's correction applied (ADR 17). It is plant-wide: the inputs at their AC limit or without readings leave both sums. It is null with the sun under 5°, with no input left, or while the modules are snow-covered. The same job computes it back over stored PV history.
 
@@ -38,15 +38,15 @@ One Open-Meteo request asks for `minutely_15` and `hourly` together. A quantity 
 
 - *Rain and snow:* particles drawn in the scene's own render, without a pass. Their density follows precipitation or snowfall; they slant with the wind's speed and direction; snow drifts, rain streaks. They move on the full tier only; lite draws a sparse still field; still and reduced motion draw none.
 - *Lens glass:* one fragment pass after tone mapping, at reduced resolution. Rain beads and runs down it and refracts the scene; snow settles at its edges and melts; frost creeps in from the corners below about 0 °C in humid air. It is sparse and weighted to the edges, so the middle of the plant stays readable, and fades in and out with the weather. Full tier only, and off at *Niedrig*. Labels, the inspector and hit-testing sit above it: it bends only the rendered scene.
-- *Fog:* the scene's distance fog thickens toward grey as visibility falls, or on codes 45 and 48.
+- *Fog:* the scene's distance fog thickens toward grey as visibility falls, or on codes 45 and 48, scaled to the plant's own distances so it deepens away from the camera; the backdrop greys with it, so the floor no longer lands on the page colour while fog stands.
 - *Wet ground:* the ground and roofs darken while precipitation is above 0 and dry back over about an hour.
 - *Lying snow:* the ground and roofs whiten while snow depth is at least 1 cm; snow-covered modules are drawn white.
-- *Thunder:* codes 95–99 darken the sky. No lightning flashes.
+- *Thunder:* codes 95–99 close the sky and dim the whole scene's light by about a third. No lightning flashes.
 - On every tier the light, fog, wet ground and lying snow carry the weather.
 
 **Motion.** Amending ADR 20's "no continuous loop": while moving particles or glass are shown, on the full tier, the scene renders in a loop capped at 30 fps. The loop pauses while the tab is hidden or the canvas is off screen, and stops when the weather turns dry. The frame watch (ADR 21) counts its frames, so a device that struggles drops to lite, where nothing loops.
 
-**Builder.** While the admin edits, the builder leaves out glass, particles and fog, so faces and edges stay exact. The light and lying snow follow the instant shown.
+**Builder.** While the admin edits, the builder leaves out glass, particles, fog and wet ground, so faces and edges stay exact. The light and lying snow follow the instant shown. Outside editing, its time slider shows the weather as the dashboard does.
 
 **Off switch.** A per-browser *Wettereffekte* switch under Settings › Display, on by default, removes particles, glass, fog, wet ground and lying snow. The weather light stays: it is how the scene is lit. Reduced motion and the low-power switch still force the still tier. The 2D flow draws no weather.
 
@@ -67,4 +67,4 @@ One Open-Meteo request asks for `minutely_15` and `hourly` together. A quantity 
 
 ## Consequences
 
-The weather device's role set and the clear-sky index are published; Open-Meteo's code table becomes part of the API's meaning. The weather fetch grows by an hourly block. The scene gains a render loop and a post pass, both bounded to the full tier and wet weather. Snow-covered modules no longer read as a closed sky.
+The weather device's role set and the clear-sky index are published; Open-Meteo's code table becomes part of the API's meaning. The weather fetch grows by an hourly block. The clear-sky index is not recomputed when the layout or a correction changes; past quarters keep the index of their time. The scene gains a render loop and a post pass, both bounded to the full tier and wet weather. Snow-covered modules no longer read as a closed sky.
