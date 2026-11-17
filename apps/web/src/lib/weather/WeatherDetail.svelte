@@ -4,6 +4,7 @@
   snow lies and its visibility on fog. It reads the weather device alone.
 -->
 <script lang="ts">
+  import { untrack } from "svelte";
   import { Skeleton } from "#lib/components/ui/skeleton/index.js";
   import type { Day } from "../dashboard/day.ts";
   import { m } from "../paraglide/messages.js";
@@ -47,11 +48,13 @@
 
     const end = daySpans(zone, new Date(start), DAYS).at(-1)?.[1] ?? start;
     let current = true;
+    // Read once an hour: the sheet hands the same core over anew as its own reads land.
+    const reader = untrack(() => core);
 
     void (async () => {
       // History to the close of the hour in progress: today's alone, so it is read raw.
       const measuredTo = new Date((hour + 1) * HOUR);
-      const read = await readWeatherSources(core, new Date(start), new Date(end), measuredTo);
+      const read = await readWeatherSources(reader, new Date(start), new Date(end), measuredTo);
 
       if (current) sources = read;
     })();
