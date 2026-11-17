@@ -7,6 +7,7 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import type { ClassValue, HTMLAttributes } from "svelte/elements";
+  import { cn } from "#lib/utils.js";
   import { PointerReading } from "./pointer-reading.ts";
 
   let {
@@ -36,7 +37,7 @@
 <div
   role="presentation"
   {...rest}
-  class={["relative touch-pan-y select-none", className]}
+  class={cn("relative touch-pan-y select-none", className)}
   data-vaul-no-drag={read === null ? undefined : ""}
   onpointerdown={reading.down}
   onpointermove={reading.move}
