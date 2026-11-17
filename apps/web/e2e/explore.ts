@@ -71,7 +71,7 @@ export const OVERLAY: Journey = {
   act: async (page) => {
     await tap(page, "Tag davor");
     await page.getByRole("img", { name: "Bahn W: Heute, Gestern" }).waitFor();
-    await page.waitForFunction(() => /vs=\d{4}-\d{2}-\d{2}/u.test(location.hash));
+    await page.waitForFunction(() => location.hash.includes("vs=-1d"));
 
     const plot = page.getByRole("group", { name: /^PV · Leistung über die Zeiträume/u });
     const legend = page.getByRole("list", { name: "PV · Leistung über die Zeiträume" });

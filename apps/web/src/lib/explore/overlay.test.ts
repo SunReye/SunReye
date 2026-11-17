@@ -137,20 +137,73 @@ test("an aligned statistic keeps its extremes", () => {
   ]);
 });
 
-test("a day offers the day before, the week before and the same day last year", () => {
+test("a day offers the day before, the week before and the same day last year, as offsets", () => {
   expect(picksOf(day("2026-11-16"))).toEqual([
-    { id: "day", day: "2026-11-15" },
-    { id: "week", day: "2026-11-09" },
-    { id: "year", day: "2025-11-16" },
+    { id: "day", entry: "-1d" },
+    { id: "week", entry: "-1w" },
+    { id: "year", entry: "-1y" },
   ]);
 });
 
-test("a week offers the week before and the same week last year", () => {
+test("a week offers the week before and the same week last year, as offsets", () => {
   expect(picksOf(week("2026-11-16"))).toEqual([
-    { id: "week", day: "2026-11-09" },
-    // 52 weeks back, so it is a Monday again.
-    { id: "year", day: "2025-11-17" },
+    { id: "week", entry: "-1w" },
+    { id: "year", entry: "-1y" },
   ]);
+});
+
+const keysOf = (r: Range, picked: readonly string[]) =>
+  periodsOf(ZONE, r, picked).map((p) => p.key);
+
+test("a day's offsets resolve against the range in force", () => {
+  expect(keysOf(day("2026-11-16"), ["-1d", "-1w", "-1y"])).toEqual([
+    "2026-11-16",
+    "2026-11-15",
+    "2026-11-09",
+    "2025-11-16",
+  ]);
+  // The same route a day later compares that day.
+  expect(keysOf(day("2026-11-17"), ["-1d", "-1w", "-1y"])).toEqual([
+    "2026-11-17",
+    "2026-11-16",
+    "2026-11-10",
+    "2025-11-17",
+  ]);
+});
+
+test("a week's offsets are the week before and the same ISO week last year", () => {
+  expect(keysOf(week("2026-11-16"), ["-1w", "-1y"])).toEqual([
+    "2026-11-16",
+    "2026-11-09",
+    "2025-11-17",
+  ]);
+  // Week 1 of 2027 against week 1 of 2026, which begins in 2025.
+  expect(keysOf(week("2027-01-04"), ["-1w", "-1y"])).toEqual([
+    "2027-01-04",
+    "2026-12-28",
+    "2025-12-29",
+  ]);
+  // Week 53 of 2026: 2025 has none, so its last week stands in.
+  expect(keysOf(week("2026-12-28"), ["-1w", "-1y"])).toEqual([
+    "2026-12-28",
+    "2026-12-21",
+    "2025-12-22",
+  ]);
+});
+
+test("an offset and a date of one period are one period", () => {
+  const got = periodsOf(ZONE, day("2026-11-16"), ["-1d", "2026-11-15"]);
+
+  expect(got.map((p) => p.key)).toEqual(["2026-11-16", "2026-11-15"]);
+  expect(added(day("2026-11-16"), ["2026-11-15"], "-1d")).toBeNull();
+  expect(added(day("2026-11-16"), ["2026-11-09"], "-1d")).toEqual(["2026-11-09", "-1d"]);
+});
+
+test("removing a period removes the offset that names it", () => {
+  const range = day("2026-11-16");
+  const [, before] = periodsOf(ZONE, range, ["-1d", "-1w"]);
+
+  expect(removed(range, ["-1d", "-1w", "2026-11-15"], before!)).toEqual(["-1w"]);
 });
 
 test("a picked period joins the others once, and never past four", () => {
