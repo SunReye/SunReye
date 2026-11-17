@@ -1,6 +1,6 @@
 <!--
   The weather detail's days (ADR 23 "Dashboard"): a tab each, today first, then the day's sunshine,
-  its snow depth while snow lies and its visibility on fog.
+  its snow depth while snow lies and its visibility on fog. A switch slides the days by their order.
 -->
 <script lang="ts">
   import * as Tabs from "#lib/components/ui/tabs/index.js";
@@ -9,6 +9,7 @@
   import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
   import { getLocale } from "../paraglide/runtime.js";
+  import { daySlide } from "./day-slide.ts";
   import type { WeatherDay } from "./hourly.ts";
   import WeatherDayRows from "./WeatherDayRows.svelte";
 
@@ -33,6 +34,7 @@
   const tabs = $derived(
     days.map((d, i) => ({
       id: String(d.start),
+      start: d.start,
       // A day's middle is on its date in any zone.
       name: i === 0 ? m.dash_today() : weekday.format(d.start + 12 * HOUR),
       day: d,
@@ -41,6 +43,10 @@
 
   let chosen = $state<string>();
   const tab = $derived(tabs.find((t) => t.id === chosen) ?? tabs[0]);
+
+  // The day at mount is where the first slide starts from; the transitions follow every later one.
+  // svelte-ignore state_referenced_locally
+  const { enter, leave } = daySlide(tab?.start ?? 0);
 
   function choose(id: string): void {
     if (id === tab?.id) return;
@@ -76,13 +82,20 @@
           <Tabs.Trigger value={t.id}>{t.name}</Tabs.Trigger>
         {/each}
       </Tabs.List>
-      {#each tabs as t (t.id)}
-        <Tabs.Content value={t.id} class="pt-3">
-          {#if t.id === tab.id}
-            <WeatherDayRows day={t.day} {now} {zone} />
-          {/if}
-        </Tabs.Content>
-      {/each}
+      <!-- One panel and one grid cell, so nothing reflows: the leaving and the arriving day slide
+        through it. -->
+      <Tabs.Content value={tab.id} class="grid overflow-x-clip pt-3">
+        {#key tab.id}
+          <div
+            class="col-start-1 row-start-1 min-w-0"
+            data-day
+            in:enter={tab.start}
+            out:leave={tab.start}
+          >
+            <WeatherDayRows day={tab.day} {now} {zone} />
+          </div>
+        {/key}
+      </Tabs.Content>
     </Tabs.Root>
   </section>
 
