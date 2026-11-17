@@ -20,6 +20,8 @@ const HOUR = 3_600_000;
 const SKY = ["weather.code", "weather.ghi", "weather.sunshine"] as const;
 
 export interface Ahead {
+  /** When it was read, ms since 1970: what was measured is as of then. */
+  readonly asOf: number;
   /** Today and the days after it, each [start, end) in ms since 1970. */
   readonly spans: readonly (readonly [number, number])[];
   /** The plant's forecast targets, which the day curves draw. */
@@ -79,6 +81,7 @@ export async function readAhead(
   const inputs = byString.every((line) => line.planned.length === 0);
 
   return {
+    asOf: now.getTime(),
     spans,
     targets,
     read: {

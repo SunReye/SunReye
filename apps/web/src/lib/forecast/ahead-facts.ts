@@ -12,9 +12,26 @@ import { WINDOW_HOURS, type AheadDay, type Track } from "./ahead.ts";
 
 const HOUR = 3_600_000;
 
-/** A day's sunshine in hours and its best window; a row that does not matter is absent. */
-export function dayFacts(day: Readonly<AheadDay>, sunshine: number | null): Fact[] {
-  const hourOf = (at: number) => Math.round((at - day.start) / HOUR);
+/** The hour of the plant's clock at an instant: a day the clocks change has 23 or 25. */
+function clockHour(zone: string, at: number): number {
+  const clock = new Intl.DateTimeFormat("en", {
+    hour: "numeric",
+    hourCycle: "h23",
+    timeZone: zone,
+  });
+
+  return Number(
+    clock.formatToParts(at).find((part: Readonly<Intl.DateTimeFormatPart>) => part.type === "hour")
+      ?.value ?? 0,
+  );
+}
+
+/**
+ * A day's sunshine in hours and its best window by the clock of the plant's `zone`; a row that
+ * does not matter is absent.
+ */
+export function dayFacts(day: Readonly<AheadDay>, sunshine: number | null, zone: string): Fact[] {
+  const hourOf = (at: number) => clockHour(zone, at);
 
   return [
     ...(sunshine === null

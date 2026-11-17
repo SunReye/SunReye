@@ -51,6 +51,7 @@ export function shown(
   return {
     days,
     top: Math.max(0, ...days.flatMap((day) => day.lines.map((line) => line.kwh))),
-    track: track(zone, now, ahead.measured, plant),
+    // Measured as of the read, so judged as of it: the forecast so far must not run ahead.
+    track: track(zone, ahead.asOf, ahead.measured, plant),
   };
 }

@@ -67,6 +67,22 @@ test("today alone says how the forecast holds: so far, and over the whole days b
   await expect.poll(() => document.querySelector("[data-track]")).toBeNull();
 });
 
+test("as the hour goes on less is still to come, and so far stays as of its read", async () => {
+  const { asked, later } = await show();
+
+  await expect.poll(() => figure("track", "Heute bisher")).toBe("−40 %");
+
+  const reads = asked.length;
+
+  await later(15);
+
+  // Half an hour of 2 kW is gone from what is to come.
+  await expect.poll(headline).toBe("2,5 kWh noch heute");
+  // The measurement is the read's, so its forecast is too.
+  expect(figure("track", "Heute bisher")).toBe("−40 %");
+  expect(asked).toHaveLength(reads);
+});
+
 test("a later day heads with its expected total, its peak and its change against today", async () => {
   const { screen } = await show();
 

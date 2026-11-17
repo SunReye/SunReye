@@ -8,6 +8,7 @@
 </script>
 
 <script lang="ts">
+  import { untrack } from "svelte";
   import { Skeleton } from "#lib/components/ui/skeleton/index.js";
   import type { Day } from "../dashboard/day.ts";
   import DayTabs from "../detail/DayTabs.svelte";
@@ -47,7 +48,12 @@
 
     let current = true;
 
-    void readAhead(core, zone, new Date(start), new Date(hour * HOUR))
+    // Read as of the dashboard's last read, which the figures of what was measured stand for.
+    // Neither it nor the core reads again inside the hour: the sheet hands the same core over
+    // anew as its own reads land.
+    const [reader, asOf] = untrack(() => [core, read?.now.getTime() ?? hour * HOUR]);
+
+    void readAhead(reader, zone, new Date(start), new Date(asOf))
       .catch(() => null)
       .then((got) => {
         if (current) ahead = got;

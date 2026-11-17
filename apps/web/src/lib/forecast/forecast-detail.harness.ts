@@ -144,11 +144,11 @@ function fake(stored: Readonly<Record<string, Watts>>) {
   return { core, asked };
 }
 
-/** Today as the dashboard read it: 1.2 kW measured from 10:00 to 12:30. */
-const today = (stored: Readonly<Record<string, Watts>>) => ({
+/** Today as the dashboard read it at `now`: 1.2 kW measured from 10:00 to 12:30. */
+const today = (stored: Readonly<Record<string, Watts>>, now = NOW) => ({
   zone: "UTC",
   start: new Date(START),
-  now: new Date(NOW),
+  now: new Date(now),
   rows: dayRows(
     [{ start: iso(START + 10 * HOUR), end: iso(NOW), mean: 1200 }],
     targets(stored["pv.power"], START, START + DAY).points,
@@ -161,5 +161,9 @@ export async function show(stored: Parameters<typeof fake>[0] = STRINGS) {
   const { core, asked } = fake(stored);
   const screen = await render(ForecastDetail, { core, day: today(stored) });
 
-  return { screen, asked };
+  /** The dashboard reads today again, `minutes` after 12:30. */
+  const later = (minutes: number) =>
+    screen.rerender({ core, day: today(stored, NOW + minutes * 60_000) });
+
+  return { screen, asked, later };
 }

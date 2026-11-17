@@ -24,7 +24,7 @@
     now: number;
   } = $props();
 
-  const stats = $derived(dayFacts(day, day.sunshine));
+  const stats = $derived(dayFacts(day, day.sunshine, zone));
   const link = $derived(onward(zone, now, at, day.start));
 </script>
 
