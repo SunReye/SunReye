@@ -142,3 +142,41 @@ test("the plant's PV, measured whole, carries no ≈", async () => {
   expect(sheet.getByLabelText("geschätzt").elements()).toHaveLength(0);
   expect(sheet.getByText("≈").elements()).toHaveLength(0);
 });
+
+test("a failed temperature read leaves the peak and forecast standing", async () => {
+  served.publishes = ["inverter.temperature"];
+  served.rolled = (a) =>
+    a.series === "inverter.temperature"
+      ? Response.json({ status: 500, code: "store.failed" }, { status: 500 })
+      : undefined;
+
+  const sheet = await sheetOf("inverter", "Wechselrichter");
+
+  await expect.element(sheet.getByRole("term").filter({ hasText: "Spitze" })).toBeVisible();
+  await expect
+    .element(sheet.getByRole("term").filter({ hasText: "Max. Temperatur" }))
+    .toBeVisible();
+  // A dash over the hidden zero that holds its width.
+  await expect
+    .element(sheet.getByRole("definition").filter({ hasText: "°C" }))
+    .toHaveTextContent("0–– °C");
+});
+
+test("another string's sheet never shows the last one's facts while it reads", async () => {
+  const south = inverter({ "pv.string.power[1]": SOUTH });
+
+  served.rolled = (a) =>
+    a.series === "pv.string.power[2]" ? new Promise<Response>(() => {}) : south(a);
+
+  const { screen } = await show("string-1");
+
+  await expect
+    .element(screen.getByRole("definition").filter({ hasText: "10:00–11:00 Uhr" }))
+    .toBeVisible();
+  await screen.rerender({ detail: "string-2" });
+  await expect.element(screen.getByRole("dialog", { name: "Nord" })).toBeVisible();
+
+  await expect
+    .element(screen.getByRole("definition").filter({ hasText: "10:00–11:00 Uhr" }))
+    .not.toBeInTheDocument();
+});

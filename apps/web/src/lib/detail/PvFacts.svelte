@@ -19,23 +19,27 @@
     input: AnalyticsInput;
   } = $props();
 
+  // A sheet keeps this row while another figure opens: only its own read is shown.
+  const key = $derived(`${analytics.device}/${analytics.series}`);
+
   const data = new RangeData(
     () => input.route,
     (from, to, now) => {
       const [core, a, period] = [input.core, { ...analytics, inverter }, periodOf(input.route.range)];
+      const [a0, b, at] = [from.getTime(), to.getTime(), key];
 
-      const [a0, b] = [from.getTime(), to.getTime()];
-
-      return readPv(core, a, { from: a0, until: Math.min(b, now), to: b, period });
+      return readPv(core, a, { from: a0, until: Math.min(b, now), to: b, period }).then(
+        (read) => ({ key: at, read }),
+      );
     },
   );
 
   const stats = $derived.by(() => {
     const got = data.current;
 
-    if (got === undefined) return null;
+    if (got === undefined || data.failed || got.data.key !== key) return null;
 
-    return pvFacts(got.data, {
+    return pvFacts(got.data.read, {
       hours: grainOf(got.range) === "hour",
       zone: input.route.place.zone,
     });

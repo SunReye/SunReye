@@ -113,7 +113,10 @@ export async function readPv(core: PvCore, a: PvSource, span: Readonly<PvSpan>):
     ran ? rollups(strict(core), a.device, a.series, span.period, from, until) : [],
     forecastOf(core, a, span),
     supported,
-    a.inverter && ran ? supported.then((s) => hottestOf(core, s, span)) : undefined,
+    // A failed temperature read states none, and leaves the peak and forecast standing.
+    a.inverter && ran
+      ? supported.then((s) => hottestOf(core, s, span)).catch(() => null)
+      : undefined,
   ]);
 
   const estimated = support[String(a.device)]?.estimated.includes(a.series) === true;
