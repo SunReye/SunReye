@@ -5,6 +5,7 @@
 pub mod fake;
 mod open_meteo;
 
+use std::collections::HashMap;
 use std::fmt;
 use std::future::Future;
 use std::ops::{ControlFlow, Range};
@@ -121,14 +122,19 @@ impl From<storage::Error> for Error {
     }
 }
 
-/// The irradiance the backfill's span starts with, and the first of the roles of ADR 23.
+/// What the PV model reads.
 const GHI: &str = "weather.ghi";
+const DNI: &str = "weather.dni";
+const DHI: &str = "weather.dhi";
+const TEMPERATURE: &str = "weather.temperature";
+const WIND: &str = "weather.wind";
+/// The first of ADR 23's roles: where it starts, the backfill's span ends.
 const CODE: &str = "weather.code";
 /// Snow depth, which the clear-sky index reads.
 pub const SNOW_DEPTH: &str = "weather.snow_depth";
 
 /// One stored quantity: its role, its kind, its unit's symbol, the step it is stored in, its
-/// value in a slot and whether the archive has it.
+/// value in a slot, whether the archive has it and whether the PV model reads it.
 struct Quantity {
     role: &'static str,
     kind: RoleKind,
@@ -136,10 +142,9 @@ struct Quantity {
     step: f64,
     value: fn(&Slot) -> Option<f64>,
     archived: bool,
+    /// The correction learner fetches these from the start (ADR 17); the backfill the rest.
+    model: bool,
 }
-
-/// The quantities the PV model reads lead [`QUANTITIES`].
-const MODEL: usize = 5;
 
 const QUANTITIES: [Quantity; 16] = [
     Quantity {
@@ -149,38 +154,43 @@ const QUANTITIES: [Quantity; 16] = [
         step: 0.1,
         value: |s| Some(s.ghi),
         archived: true,
+        model: true,
     },
     Quantity {
-        role: "weather.dni",
+        role: DNI,
         kind: RoleKind::Measurement,
         unit: Some("W/m²"),
         step: 0.1,
         value: |s| Some(s.dni),
         archived: true,
+        model: true,
     },
     Quantity {
-        role: "weather.dhi",
+        role: DHI,
         kind: RoleKind::Measurement,
         unit: Some("W/m²"),
         step: 0.1,
         value: |s| Some(s.dhi),
         archived: true,
+        model: true,
     },
     Quantity {
-        role: "weather.temperature",
+        role: TEMPERATURE,
         kind: RoleKind::Measurement,
         unit: Some("°C"),
         step: 0.1,
         value: |s| Some(s.temperature),
         archived: true,
+        model: true,
     },
     Quantity {
-        role: "weather.wind",
+        role: WIND,
         kind: RoleKind::Measurement,
         unit: Some("m/s"),
         step: 0.01,
         value: |s| s.wind,
         archived: true,
+        model: true,
     },
     Quantity {
         role: CODE,
@@ -189,6 +199,7 @@ const QUANTITIES: [Quantity; 16] = [
         step: 1.0,
         value: |s| s.detail.code,
         archived: true,
+        model: false,
     },
     Quantity {
         role: "weather.precipitation",
@@ -197,6 +208,7 @@ const QUANTITIES: [Quantity; 16] = [
         step: 0.01,
         value: |s| s.detail.precipitation,
         archived: true,
+        model: false,
     },
     Quantity {
         role: "weather.snowfall",
@@ -205,6 +217,7 @@ const QUANTITIES: [Quantity; 16] = [
         step: 0.01,
         value: |s| s.detail.snowfall,
         archived: true,
+        model: false,
     },
     Quantity {
         role: "weather.visibility",
@@ -213,6 +226,7 @@ const QUANTITIES: [Quantity; 16] = [
         step: 1.0,
         value: |s| s.detail.visibility,
         archived: false,
+        model: false,
     },
     Quantity {
         role: "weather.humidity",
@@ -221,6 +235,7 @@ const QUANTITIES: [Quantity; 16] = [
         step: 0.1,
         value: |s| s.detail.humidity,
         archived: true,
+        model: false,
     },
     Quantity {
         role: "weather.wind_direction",
@@ -229,6 +244,7 @@ const QUANTITIES: [Quantity; 16] = [
         step: 1.0,
         value: |s| s.detail.wind_direction,
         archived: true,
+        model: false,
     },
     Quantity {
         role: "weather.gusts",
@@ -237,6 +253,7 @@ const QUANTITIES: [Quantity; 16] = [
         step: 0.01,
         value: |s| s.detail.gusts,
         archived: true,
+        model: false,
     },
     Quantity {
         role: "weather.apparent_temperature",
@@ -245,6 +262,7 @@ const QUANTITIES: [Quantity; 16] = [
         step: 0.1,
         value: |s| s.detail.apparent_temperature,
         archived: true,
+        model: false,
     },
     Quantity {
         role: "weather.sunshine",
@@ -253,6 +271,7 @@ const QUANTITIES: [Quantity; 16] = [
         step: 1.0,
         value: |s| s.detail.sunshine,
         archived: true,
+        model: false,
     },
     Quantity {
         role: "weather.cloud_cover",
@@ -261,6 +280,7 @@ const QUANTITIES: [Quantity; 16] = [
         step: 1.0,
         value: |s| s.detail.cloud_cover,
         archived: true,
+        model: false,
     },
     Quantity {
         role: SNOW_DEPTH,
@@ -269,6 +289,7 @@ const QUANTITIES: [Quantity; 16] = [
         step: 0.001,
         value: |s| s.detail.snow_depth,
         archived: true,
+        model: false,
     },
 ];
 
@@ -486,10 +507,10 @@ impl<A: Archive> Past<A> {
         let first = utc_day::of(start).max(last - jiff::Span::new().days(CHUNK_DAYS - 1));
         let slots = self.archive.fetch(location.rounded(), first, last).await?;
         let from = utc_day::start(first).max(start);
-        let detail = QUANTITIES[MODEL..]
+        let detail = QUANTITIES
             .iter()
-            .zip(&self.series[MODEL..])
-            .filter(|(q, _)| q.archived);
+            .zip(&self.series)
+            .filter(|(q, _)| q.archived && !q.model);
         for (quantity, &series) in detail {
             // No gap at `until`: newer history may start there.
             let points = hourly(quantity, &slots, from..until);
@@ -582,27 +603,28 @@ pub async fn archived(
     from: SystemTime,
     to: SystemTime,
 ) -> Result<Vec<Slot>, storage::Error> {
-    let mut stored = Vec::with_capacity(MODEL);
-    for quantity in &QUANTITIES[..MODEL] {
+    let mut stored = HashMap::new();
+    for quantity in QUANTITIES.iter().filter(|q| q.model) {
         let series = Series {
             role: quantity.role.to_owned(),
             index: None,
         };
-        stored.push(reader.history(device, &series, from, to).await?);
+        let points = reader.history(device, &series, from, to).await?;
+        stored.insert(quantity.role, points);
     }
-    let at = |i: usize, time: SystemTime| {
-        let points: &Vec<ChangePoint> = stored.get(i)?;
+    let at = |role: &str, time: SystemTime| {
+        let points: &Vec<ChangePoint> = stored.get(role)?;
         points.iter().rev().find(|p| p.time <= time)?.value
     };
     Ok(hours(from, to)
         .filter_map(|target| {
             Some(Slot {
                 target,
-                ghi: at(0, target)?,
-                dni: at(1, target)?,
-                dhi: at(2, target)?,
-                temperature: at(3, target)?,
-                wind: at(4, target),
+                ghi: at(GHI, target)?,
+                dni: at(DNI, target)?,
+                dhi: at(DHI, target)?,
+                temperature: at(TEMPERATURE, target)?,
+                wind: at(WIND, target),
                 detail: Detail::default(),
             })
         })
