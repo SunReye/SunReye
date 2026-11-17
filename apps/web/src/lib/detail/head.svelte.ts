@@ -26,6 +26,17 @@ export interface HeadView {
   readonly notes: readonly string[];
 }
 
+/** A range whose own read failed, though the head's did not: it says so with a retry. */
+export const FAILED: HeadView = {
+  state: "error",
+  label: "",
+  value: null,
+  unit: "",
+  digits: 0,
+  versus: "",
+  notes: [],
+};
+
 /** The sheet's figure, what it reads through and the record's edges. */
 export interface HeadInput extends MeasureInput {
   readonly route: RangeRoute;
