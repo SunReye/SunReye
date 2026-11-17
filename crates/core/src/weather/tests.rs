@@ -13,6 +13,8 @@ use crate::location::Location;
 use crate::storage::Storage;
 
 const DEVICE: DeviceId = DeviceId(3);
+
+mod backfill;
 /// 2026-11-09 11:00 UTC.
 const NOON: u64 = 1_794_222_000;
 
@@ -279,7 +281,30 @@ fn open_meteo_reads_irradiance_temperature_and_wind_every_15_minutes() {
     assert_eq!(slots.first().unwrap().target, at(1_794_178_800));
     assert_eq!(slots.last().unwrap().target, at(1_794_437_100));
     let noon = slots.iter().find(|s| s.target == at(NOON)).unwrap();
-    assert_eq!(*noon, slot(NOON, 200.8));
+    assert_eq!(
+        *noon,
+        Slot {
+            target: at(NOON),
+            ghi: 232.7,
+            dni: 242.0,
+            dhi: 147.8,
+            temperature: 2.5,
+            wind: Some(1.72),
+            detail: Detail {
+                code: Some(3.0),
+                precipitation: Some(0.0),
+                snowfall: Some(0.0),
+                visibility: Some(24_920.0),
+                humidity: Some(82.0),
+                wind_direction: Some(126.0),
+                gusts: Some(4.2),
+                apparent_temperature: Some(-0.6),
+                sunshine: Some(900.0),
+                cloud_cover: Some(87.0),
+                snow_depth: Some(0.0),
+            },
+        }
+    );
 }
 
 #[test]
@@ -437,7 +462,19 @@ fn the_archive_reads_irradiance_temperature_and_wind_every_hour() {
             dhi: 362.7,
             temperature: 24.3,
             wind: Some(1.52),
-            detail: Detail::default(),
+            detail: Detail {
+                code: Some(3.0),
+                precipitation: Some(0.0),
+                snowfall: Some(0.0),
+                visibility: None,
+                humidity: Some(77.0),
+                wind_direction: Some(297.0),
+                gusts: Some(6.5),
+                apparent_temperature: Some(27.4),
+                sunshine: Some(2_746.97),
+                cloud_cover: Some(98.0),
+                snow_depth: Some(0.0),
+            },
         }
     );
 }

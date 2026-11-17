@@ -407,8 +407,8 @@ impl Computed {
     }
 }
 
-/// Runs the weather device, the solar forecast, the correction learner and the spot-price device
-/// until storage stops.
+/// Runs the weather device, the solar forecast, the correction learner, the weather backfill and
+/// the spot-price device until storage stops.
 async fn forecast(
     storage: &Storage,
     (provider, archive, spot): (impl Provider, impl Archive, impl spot::Provider),
@@ -433,7 +433,13 @@ async fn forecast(
             SystemTime::now
         ),
         // Boxed: its learn run alone would make the core's future large.
-        Box::pin(learner.run(storage, location, storage.zones().watch(), SystemTime::now)),
+        Box::pin(learner.run(
+            storage,
+            location.clone(),
+            storage.zones().watch(),
+            SystemTime::now
+        )),
+        Box::pin(learner.backfill(storage, location)),
         spot.run(storage, zone, SystemTime::now),
     );
 }
