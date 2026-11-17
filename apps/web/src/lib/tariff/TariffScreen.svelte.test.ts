@@ -2,11 +2,19 @@ import { expect, test } from "vitest";
 import { render } from "vitest-browser-svelte";
 // The chart is laid out by the SPA's utilities.
 import "../../app.css";
-import { connect } from "../api/core.ts";
+import { connect, SPOT, TARIFF } from "../api/core.ts";
+import { feed } from "../live/stream.harness.ts";
 import { NOW, testCore } from "./tariff.harness.ts";
 import TariffScreen from "./TariffScreen.svelte";
 
 test("the prices in force show in ct/kWh, the spot price with its attribution", async () => {
+  feed()({
+    devices: {
+      [TARIFF]: { "price.import": 0.3, "price.export": 0.08, "cost.savings.rate": 0.1 },
+      [SPOT]: { "price.spot": 0.1234 },
+    },
+  });
+
   const screen = await render(TariffScreen, { core: connect(testCore({})), ...NOW });
 
   await expect

@@ -102,9 +102,6 @@ export class FakeCore implements Transport {
   /** Every change asked of it: method, path and body. */
   readonly calls: string[] = [];
 
-  /** Live values by device id; the stream is held while null. */
-  live: Readonly<Record<string, Readonly<Record<string, number>>>> | null = null;
-
   #last = 10;
 
   readonly fetch = async (request: Request): Promise<Response> => {
@@ -124,7 +121,7 @@ export class FakeCore implements Transport {
 
     if (kind === "connections") return Promise.resolve(this.#connection(method, Number(id), text));
 
-    if (path === "/api/v1/live") return this.live === null ? held() : snapshot(this.live);
+    if (path === "/api/v1/live") return held();
 
     const reads = new Map([
       ["/api/v1/profiles", () => Response.json({ profiles: PROFILES })],
@@ -195,22 +192,4 @@ export class FakeCore implements Transport {
 
     return this.#last;
   }
-}
-
-/** The live stream: one snapshot, then held open. */
-function snapshot(
-  devices: Readonly<Record<string, Readonly<Record<string, number>>>>,
-): Promise<Response> {
-  const body = `event: snapshot\ndata: ${JSON.stringify({ devices })}\n\n`;
-
-  return Promise.resolve(
-    new Response(
-      new ReadableStream({
-        start: (controller) => {
-          controller.enqueue(new TextEncoder().encode(body));
-        },
-      }),
-      { headers: { "content-type": "text/event-stream" } },
-    ),
-  );
 }

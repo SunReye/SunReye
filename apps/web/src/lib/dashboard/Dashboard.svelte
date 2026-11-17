@@ -4,10 +4,10 @@
   first.
 -->
 <script lang="ts">
-  import { PLANT, SPOT, TARIFF, registered, type Core, type Live } from "../api/core.ts";
+  import { PLANT, SPOT, TARIFF, registered, type Core } from "../api/core.ts";
   import DetailSheet from "../detail/DetailSheet.svelte";
   import type { SceneLayout } from "../live/dashboard.ts";
-  import { record, type LiveSeries } from "../live-graph/series.ts";
+  import { Recorded } from "../live-graph/recorded.svelte.ts";
   import type { Go } from "../range/route.svelte.ts";
   import { readDay, type Day } from "./day.ts";
   import EvCard from "./EvCard.svelte";
@@ -44,22 +44,14 @@
   /** How often today is reread: its energy and money move slowly. */
   const REREAD_MS = 60_000;
 
-  let live = $state.raw<Live>();
+  const recorded = new Recorded();
+
+  const live = $derived(recorded.live);
+
   let day = $state.raw<Day>();
 
   /** Device names, which only the admin may list (ADR 9). */
   let names = $state.raw<ReadonlyMap<number, string>>(new Map());
-
-  /** Every live power's last two minutes, kept from the start so a sheet opens with its graph. */
-  let recent = $state.raw<LiveSeries>({});
-
-  $effect(() =>
-    core.live((next) => {
-      live = next;
-
-      if ("devices" in next) recent = record(recent, next, Date.now());
-    }),
-  );
 
   $effect(() => {
     let stopped = false;
@@ -138,7 +130,7 @@
   id={detail}
   {core}
   {live}
-  series={recent}
+  series={recorded.series}
   {day}
   {names}
   {params}

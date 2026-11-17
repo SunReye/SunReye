@@ -23,7 +23,7 @@
   class="mx-auto flex w-full max-w-[1320px] flex-col gap-4 px-3 pt-4 pb-6 sm:px-4 lg:gap-5 lg:px-6 lg:pt-6"
 >
   <PageTitle wide title={m.tariff_title()} />
-  <PricesNow {core} />
+  <PricesNow />
   <RangeCard model={route}>
     <RangeControl model={route} />
     <Section title={m.tariff_costs()}>

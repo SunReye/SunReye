@@ -2,27 +2,20 @@
   import StatStrip from "../components/stat-strip.svelte";
   import Section from "../components/section.svelte";
   import ProblemAlert from "../components/problem-alert.svelte";
-  import type { Core, Values } from "../api/core";
   import LoadingRows from "../components/loading-rows.svelte";
   import { m } from "../paraglide/messages.js";
   import SpotPriceCard from "../SpotPriceCard.svelte";
+  import { stream } from "../live/stream.svelte.ts";
   import { ctPerKwh } from "./format";
 
-  let { core }: { core: Core } = $props();
-
-  let devices = $state.raw<Values["devices"]>({});
-  let refused = $state.raw<string>();
+  const live = $derived(stream.live);
 
   /** No live frame yet: the prices stand in skeleton rows. */
-  let waiting = $state(true);
+  const waiting = $derived(live === undefined);
 
-  $effect(() =>
-    core.live((next) => {
-      waiting = false;
-      refused = "problem" in next ? next.problem : undefined;
-      devices = "devices" in next ? next.devices : {};
-    }),
-  );
+  const refused = $derived(live !== undefined && "problem" in live ? live.problem : undefined);
+
+  const devices = $derived(live !== undefined && "devices" in live ? live.devices : {});
 
   // The tariff device is told by its `price.import`, the spot-price device by its `price.spot`.
   const tariff = $derived(Object.values(devices).find((values) => "price.import" in values));

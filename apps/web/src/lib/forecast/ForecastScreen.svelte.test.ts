@@ -55,6 +55,36 @@ test("the headline answers the range: produced against the forecast, and how clo
   await expect.element(figures.filter({ hasText: /^3$/u })).toBeVisible();
 });
 
+test("a past day judges its accuracy, though its bands are hours", async () => {
+  await render(ForecastScreen, {
+    core: connect(testCore(WEEK)),
+    params: new URLSearchParams("range=day&at=2026-11-04"),
+    go: () => {},
+  });
+
+  const figures = card(1).getByRole("definition");
+
+  // Wednesday: 8 kWh against 12.
+  await expect.element(figures.filter({ hasText: /^33 %$/u })).toBeVisible();
+  await expect.element(figures.filter({ hasText: /^−33 %$/u })).toBeVisible();
+  await expect.element(figures.filter({ hasText: /^1$/u })).toBeVisible();
+});
+
+test("a year judges the whole days inside its months", async () => {
+  await render(ForecastScreen, {
+    core: connect(testCore(WEEK)),
+    params: new URLSearchParams("range=year&at=2026-11-02"),
+    go: () => {},
+  });
+
+  const figures = card(1).getByRole("definition");
+
+  // Monday to Wednesday, as the week judges them.
+  await expect.element(figures.filter({ hasText: /^17 %$/u })).toBeVisible();
+  await expect.element(figures.filter({ hasText: /^−17 %$/u })).toBeVisible();
+  await expect.element(figures.filter({ hasText: /^3$/u })).toBeVisible();
+});
+
 test("a range still to come says what the forecast expects", async () => {
   const today = Math.floor(Date.now() / DAY) * DAY;
 

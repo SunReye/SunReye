@@ -3,6 +3,7 @@ import { cdp, page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { connect, type Transport } from "../api/core.ts";
+import { feed } from "../live/stream.harness.ts";
 import Dashboard from "./Dashboard.svelte";
 
 const PLANT = "4294967294";
@@ -62,22 +63,6 @@ const served: Served = { live: NOON, day: true, devices: null };
 
 const held = () => Promise.withResolvers<Response>().promise;
 
-/** The live stream: one snapshot, then held open, as one that ends reconnects at once. */
-function snapshot(devices: Served["live"]): Promise<Response> {
-  const body = `event: snapshot\ndata: ${JSON.stringify({ devices })}\n\n`;
-
-  return Promise.resolve(
-    new Response(
-      new ReadableStream({
-        start: (controller) => {
-          controller.enqueue(new TextEncoder().encode(body));
-        },
-      }),
-      { headers: { "content-type": "text/event-stream" } },
-    ),
-  );
-}
-
 /** Today's reads by path; any other forecast, an inverter's or the weather's, is empty. */
 const DAY = new Map<string, (series: string) => Response>([
   ["/api/v1/timezone", () => Response.json({ name: "UTC" })],
@@ -105,8 +90,6 @@ function deviceList(): Response {
 
 function answer(href: string): Promise<Response> {
   const url = new URL(href);
-
-  if (url.pathname === "/api/v1/live") return served.live === null ? held() : snapshot(served.live);
 
   if (url.pathname === "/api/v1/devices") return Promise.resolve(deviceList());
 
@@ -137,7 +120,18 @@ afterEach(async () => {
   await cdp().send("Emulation.setEmulatedMedia", { features: [] });
 });
 
-const open = () => render(Dashboard, { core: connect(transport), layout: null, admin: false });
+/** Feeds the stream the served values; none while `served.live` is null. */
+function streamed(): void {
+  const send = feed();
+
+  if (served.live !== null) send({ devices: served.live });
+}
+
+const open = () => {
+  streamed();
+
+  return render(Dashboard, { core: connect(transport), layout: null, admin: false });
+};
 
 /** The hero's large figure, read beside its label. */
 function lead(): string | undefined {
@@ -164,6 +158,8 @@ test("while PV is idle the hero leads with house consumption", async () => {
 
 test("without a scene the hero shows the power flow, whose nodes open their details", async () => {
   const onopen = vi.fn<(id: string) => void>();
+
+  streamed();
 
   const screen = await render(Dashboard, {
     core: connect(transport),

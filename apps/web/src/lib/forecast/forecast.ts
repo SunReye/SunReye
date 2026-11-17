@@ -183,6 +183,42 @@ export function held(points: readonly Readonly<{ target: string; value: number }
   }));
 }
 
+/** The longest forecast read the core serves (ADR 9): 1,500 quarter-hour targets, less a margin. */
+const PIECE = 1400 * 900_000;
+
+/**
+ * A series' latest forecast targets from `from` to before `to`, read in pieces the core serves;
+ * none when any piece is refused.
+ */
+export async function forecastTargets(
+  core: Readonly<Pick<Core, "forecasts">>,
+  device: number,
+  series: string,
+  from: Readonly<Date>,
+  to: Readonly<Date>,
+): Promise<{ target: string; value: number }[]> {
+  const starts: number[] = [];
+
+  for (let a = from.getTime(); a < to.getTime(); a += PIECE) starts.push(a);
+
+  const reads = await Promise.all(
+    starts.map((a) =>
+      core.forecasts(device, series, new Date(a), new Date(Math.min(to.getTime(), a + PIECE))),
+    ),
+  );
+
+  const points: { target: string; value: number }[] = [];
+
+  // A held target would bridge a refused piece's hole with one stale value.
+  for (const read of reads) {
+    if (!("points" in read)) return [];
+
+    points.push(...read.points);
+  }
+
+  return points;
+}
+
 /** A line's latest forecasts from `from` to before `to`. */
 export async function planned(
   core: Readonly<Pick<Core, "forecasts">>,
@@ -191,9 +227,7 @@ export async function planned(
   from: Readonly<Date>,
   to: Readonly<Date>,
 ): Promise<Planned[]> {
-  const forecasts = await core.forecasts(device, series, new Date(from), new Date(to));
-
-  return held("points" in forecasts ? forecasts.points : []);
+  return held(await forecastTargets(core, device, series, from, to));
 }
 
 /** The energy a forecast expects in [from, to), in kWh. */

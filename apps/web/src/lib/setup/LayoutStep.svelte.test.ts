@@ -4,18 +4,39 @@ import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect } from "../api/core.ts";
 import { DEVICES, MODULE, phone, tap, undesk } from "../builder/builder.harness.ts";
+import { stream } from "../live/stream.svelte.ts";
 import LayoutStep from "./LayoutStep.svelte";
 
 // Setup's layout step on a phone (ADR 20, 21): its title whole, the canvas's notices apart.
 
-/** A core that knows one module type; everything else stays unanswered. */
+const CAR = { devices: { "3": { "ev.connected": 1, "ev.vehicle.soc": 43 } } };
+
+/** The live stream: one snapshot, then held open. */
+function live(): Response {
+  return new Response(
+    new ReadableStream({
+      start: (controller) => {
+        controller.enqueue(
+          new TextEncoder().encode(`event: snapshot\ndata: ${JSON.stringify(CAR)}\n\n`),
+        );
+      },
+    }),
+    { headers: { "content-type": "text/event-stream" } },
+  );
+}
+
+/** A core that knows one module type and streams a connected car; everything else stays unanswered. */
 const core = () =>
   connect({
     base: "http://core.test/",
-    fetch: (request) =>
-      request.url.endsWith("/api/v1/module-types")
-        ? Promise.resolve(Response.json({ moduleTypes: [MODULE] }))
-        : Promise.withResolvers<Response>().promise,
+    fetch: (request) => {
+      if (request.url.endsWith("/api/v1/module-types"))
+        return Promise.resolve(Response.json({ moduleTypes: [MODULE] }));
+
+      if (request.url.endsWith("/api/v1/live")) return Promise.resolve(live());
+
+      return Promise.withResolvers<Response>().promise;
+    },
   });
 
 function step() {
@@ -37,6 +58,14 @@ beforeEach(phone);
 afterEach(async () => {
   await undesk();
   localStorage.removeItem("sunreye.builder.view");
+});
+
+test("setup shows no shell to follow the live stream, so the step follows it for the builder", async () => {
+  const screen = await step();
+
+  await expect.poll(() => stream.values).toEqual(CAR);
+  await screen.unmount();
+  expect(stream.values).toBeUndefined();
 });
 
 test.each([390, 320])("at %i px the step's title shows in full", async (width) => {

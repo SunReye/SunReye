@@ -3,7 +3,9 @@ import { cdp, page } from "vitest/browser";
 import { vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import { connect, type Transport } from "../api/core.ts";
+import { merge } from "../api/frames.ts";
 import Dashboard from "../dashboard/Dashboard.svelte";
+import { feed } from "../live/stream.harness.ts";
 import { CAPABILITIES, CORRECTIONS, INVERTER, TOPOLOGY } from "./detail.fixtures.ts";
 
 export { INVERTER };
@@ -88,11 +90,6 @@ function catalog(): Response {
 
 const IMPORTING = { [PLANT]: { "grid.power": 800 } };
 
-/** One server-sent event of the live stream. */
-function event(name: string, data: Readonly<{ devices: object; stale?: object }>) {
-  return new TextEncoder().encode(`event: ${name}\ndata: ${JSON.stringify(data)}\n\n`);
-}
-
 /** One statistics request: device, series, its window and the period it is cut in. */
 export type Asked = Readonly<Record<"device" | "series" | "from" | "to" | "period", string>>;
 
@@ -129,34 +126,27 @@ function statistics(device: string, series: string | null, from: string): Respon
   return Response.json({ points: [rollup(at, watts)], period: "hour" });
 }
 
-function stream(): Response {
+/** Feeds the stream the served frame, folded as the core's stream folds it (ADR 9). */
+function streamed(): void {
+  const send = feed();
   const frame = { devices: served.live, ...(served.stale && { stale: served.stale }) };
+  const first = merge(undefined, frame, Date.now());
 
-  return new Response(
-    new ReadableStream({
-      start: (controller) => {
-        controller.enqueue(event("snapshot", frame));
+  send(first);
 
-        if (served.breaks) {
-          // The reconnect finds no core.
-          ROUTES.set("/api/v1/live", () => {
-            throw new TypeError("offline");
-          });
-          setTimeout(() => {
-            controller.error(new TypeError("network"));
-          }, 50);
-        }
+  // The stream breaks; the reconnect finds no core.
+  if (served.breaks) {
+    setTimeout(() => {
+      send({ ...first, lost: Date.now() });
+    }, 50);
+  }
 
-        if (served.tick) {
-          setTimeout(() => {
-            vi.setSystemTime(Date.now() + 1000);
-            controller.enqueue(event("change", { devices: IMPORTING }));
-          }, 50);
-        }
-      },
-    }),
-    { headers: { "content-type": "text/event-stream" } },
-  );
+  if (served.tick) {
+    setTimeout(() => {
+      vi.setSystemTime(Date.now() + 1000);
+      send(merge(first, { devices: IMPORTING }, Date.now()));
+    }, 50);
+  }
 }
 
 const slot = (hour: number, value: number, minute = 0) => ({
@@ -168,7 +158,6 @@ const slot = (hour: number, value: number, minute = 0) => ({
 /** Each path but statistics', and what the fake core answers there. */
 const ROUTES = new Map<string, () => Response>([
   ["/api/v1/topology", () => Response.json(TOPOLOGY)],
-  ["/api/v1/live", stream],
   ["/api/v1/series", catalog],
   ["/api/v1/timezone", () => Response.json({ name: "UTC" })],
   [
@@ -247,7 +236,6 @@ export async function prepare(): Promise<void> {
   served.stored = {};
   served.rolled = null;
   served.last = "2026-11-12T12:00:00Z";
-  ROUTES.set("/api/v1/live", stream);
   vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-12T12:20:00Z") });
   await cdp().send("Emulation.setEmulatedMedia", {
     features: [{ name: "prefers-reduced-motion", value: "reduce" }],
@@ -265,6 +253,8 @@ export async function restore(): Promise<void> {
 export async function show(detail: string | null = null, route = "") {
   const onopen = vi.fn<(id: string) => void>();
   const onclose = vi.fn<() => void>();
+
+  streamed();
 
   const screen = await render(Dashboard, {
     core: connect(transport),

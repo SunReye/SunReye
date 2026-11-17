@@ -4,6 +4,7 @@ import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { connect, type Transport } from "../api/core.ts";
 import Dashboard from "../dashboard/Dashboard.svelte";
+import { feed } from "../live/stream.harness.ts";
 import type { Connection } from "../api/core.ts";
 import { FakeCore } from "./devices.harness.ts";
 import Routed from "./routed.harness.svelte";
@@ -76,7 +77,9 @@ test("an admin adds an MQTT connection and an EVCC device; its loadpoint shows o
   await devices.unmount();
 
   // The core reads the loadpoint it was given.
-  core.live = { "12": { "ev.charge.power": 3700, "ev.vehicle.soc": 64, "ev.limit.soc": 80 } };
+  feed()({
+    devices: { "12": { "ev.charge.power": 3700, "ev.vehicle.soc": 64, "ev.limit.soc": 80 } },
+  });
   const dashboard = await render(Dashboard, { core: connect(core), layout: null, admin: true });
 
   await expect.element(dashboard.getByText("Wallbox")).toBeVisible();

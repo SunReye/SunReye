@@ -1,7 +1,7 @@
 // The PV forecast sheet's read (ADR 21 "Details by drilling down"): the plant's forecast from the
 // judged days before today to the end of the day after tomorrow, each string's or MPPT input's
-// over the three days, the plant's measured days and the sky (ADR 17 "Storage", ADR 23).
-import { PLANT, type Core, type PvString } from "../api/core.ts";
+// over the three days, its inverters' measured days and the sky (ADR 17 "Storage", ADR 23).
+import type { Core, PvString } from "../api/core.ts";
 import type { Target } from "../dashboard/today.ts";
 import { readForecast } from "../history/forecast.ts";
 import { rollups, type Rolled } from "../history/history.ts";
@@ -29,7 +29,10 @@ export interface Ahead {
   readonly read: AheadRead;
   /** Whether the lines are MPPT inputs: the plant has no forecast of its strings. */
   readonly inputs: boolean;
-  /** The plant's `pv.power` day rollups, from the first judged day to now. */
+  /**
+   * Each forecast inverter's `pv.power` day rollups, from the first judged day to now: what the
+   * Forecast screen judges, without PV the layout does not forecast.
+   */
   readonly measured: readonly Rolled[];
   readonly weather: readonly WeatherDay[];
 }
@@ -73,7 +76,10 @@ export async function readAhead(
   const [targets, byString, measured, sky] = await Promise.all([
     readForecast(core, inverters, past.getTime(), to.getTime()),
     lines(core, stringLines(strings), from, to),
-    rollups(core, PLANT, "pv.power", "day", past, new Date(now.getTime())),
+    // A band sums every rollup that starts in it, so the inverters' days add up.
+    Promise.all(
+      inverters.map((id) => rollups(core, id, "pv.power", "day", past, new Date(now.getTime()))),
+    ),
     readWeatherSources(core, from, to, measuredTo, SKY),
   ]);
 
@@ -89,7 +95,7 @@ export async function readAhead(
       lines: inputs ? await lines(core, inputLines(strings), from, to) : byString,
     },
     inputs,
-    measured,
+    measured: measured.flat(),
     weather: hourly(sky, zone, start),
   };
 }

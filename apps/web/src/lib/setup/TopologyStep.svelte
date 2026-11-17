@@ -5,20 +5,20 @@
 -->
 <script lang="ts">
   import LoaderCircle from "@lucide/svelte/icons/loader-circle";
-  import type { Core, Device, PointDraft, Problem, Values } from "../api/core.ts";
+  import type { Core, Device, PointDraft, Problem } from "../api/core.ts";
   import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
   import AddSheet from "./AddSheet.svelte";
-  import { roleWord } from "./point-look.ts";
   import PointSheet from "./PointSheet.svelte";
   import PointTree from "./PointTree.svelte";
   import TopologyActions from "./TopologyActions.svelte";
-  import { left, move, propose, remove } from "./topology.ts";
+  import { Readings } from "./readings.svelte.ts";
+  import { move, remove } from "./topology.ts";
 
   let { core, devices, ondone }: { core: Core; devices: readonly Device[]; ondone: () => void } =
     $props();
 
-  let values = $state.raw<Values>();
+  const readings = new Readings(() => core);
 
   /** The tree held still while it is adjusted; until then the proposal follows the readings. */
   let edited = $state.raw<readonly PointDraft[]>();
@@ -34,20 +34,14 @@
 
   const points = $derived(
     edited ??
-      (values === undefined ? undefined : propose(devices, values, roleWord("grid.power"), roleWord)),
+      readings.proposed(devices),
   );
 
   const unclaimed = $derived(
-    points === undefined || values === undefined ? [] : left(points, devices, values, roleWord),
+    points === undefined ? [] : readings.left(points, devices),
   );
 
   const index = $derived(points?.findIndex(({ claims }) => claims === picked) ?? -1);
-
-  $effect(() =>
-    core.live((live) => {
-      if (!("problem" in live)) values = live;
-    }),
-  );
 
   function adjust(): void {
     haptics.soft();
@@ -93,9 +87,9 @@
     </p>
   {/if}
 </div>
-{#if points !== undefined && values !== undefined}
+{#if points !== undefined && readings.values !== undefined}
   <div class="border-y border-border/60 py-1">
-    <PointTree {points} {values} {devices} onedit={adjusting ? open : undefined} />
+    <PointTree {points} values={readings.values} {devices} onedit={adjusting ? open : undefined} />
     {#if adjusting}
       <AddSheet
         points={unclaimed}

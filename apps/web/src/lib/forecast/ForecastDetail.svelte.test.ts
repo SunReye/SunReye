@@ -169,14 +169,15 @@ test("each tab links to the Forecast screen on its day", async () => {
     .toHaveAttribute("href", "#/forecast?range=day&at=2026-11-15");
 });
 
-test("it reads each series once over all three days", async () => {
+test("it reads each series once over all three days, the 33 days judged in pieces under the cap", async () => {
   const { screen, asked } = await show();
 
   await expect.element(screen.getByRole("tab", { name: "Heute" })).toBeVisible();
 
   expect(asked.toSorted()).toEqual(
     [
-      "forecasts 1 pv.power",
+      // 33 days of quarter hours, 3,168 targets: three reads of at most 1,500.
+      ...Array.from({ length: 3 }, () => "forecasts 1 pv.power"),
       ...Object.keys(STRINGS)
         .filter((series) => series !== "pv.power")
         .map((series) => `forecasts 1 ${series}`),
@@ -184,7 +185,7 @@ test("it reads each series once over all three days", async () => {
         `forecasts 4294967295 weather.${role}`,
         `history 4294967295 weather.${role}`,
       ]),
-      "statistics 4294967294 pv.power day",
+      "statistics 1 pv.power day",
     ].toSorted(),
   );
 });

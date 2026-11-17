@@ -2,6 +2,8 @@
 // forecast issued for it, and what is still expected. Pure but for `readForecast`.
 import type { Core } from "../api/core.ts";
 import { combined, type Target } from "../dashboard/today.ts";
+import { forecastTargets, held } from "../forecast/forecast.ts";
+import { judge, pastDays } from "../forecast/judge.ts";
 import type { Band } from "../range/bands.ts";
 import { bandsOf, intervals, spread } from "../range/fill.ts";
 import { num } from "../range/format.ts";
@@ -19,15 +21,11 @@ export async function readForecast(
   from: number,
   to: number,
 ): Promise<Target[]> {
-  const reads = await Promise.all(
-    inverters.map((id) => core.forecasts(id, "pv.power", new Date(from), new Date(to))),
+  return combined(
+    await Promise.all(
+      inverters.map((id) => forecastTargets(core, id, "pv.power", new Date(from), new Date(to))),
+    ),
   );
-
-  const each: Target[][] = [];
-
-  for (const read of reads) each.push("points" in read ? read.points : []);
-
-  return combined(each);
 }
 
 /** kWh of forecast in [a, b). */
@@ -52,8 +50,11 @@ export interface ForecastView {
   readonly accuracy: Accuracy;
 }
 
+/**
+ * The range's bands and sum, and its accuracy judged as the Forecast screen and the PV forecast
+ * sheet judge it (ADR 21).
+ */
 export function forecastView(got: Loaded, targets: readonly Target[]): ForecastView {
-  let [measured, forecast, error, days] = [0, 0, 0, 0];
   const total = { measured: 0, forecast: 0 };
 
   const bands = bandsOf(got.list, (edge, i) => {
@@ -65,13 +66,6 @@ export function forecastView(got: Loaded, targets: readonly Target[]): ForecastV
     total.measured += s.production;
     total.forecast += fc;
 
-    if (past) {
-      [measured, forecast] = [measured + s.production, forecast + fc];
-
-      if (edge.t1 - edge.t0 === 24)
-        [error, days] = [error + Math.abs(s.production / fc - 1), days + 1];
-    }
-
     return {
       up: [s.production],
       down: [],
@@ -82,15 +76,19 @@ export function forecastView(got: Loaded, targets: readonly Target[]): ForecastV
     };
   });
 
-  return {
-    bands,
-    total,
-    accuracy: {
-      error: days > 0 ? error / days : null,
-      bias: forecast > 0 ? measured / forecast - 1 : null,
-      days,
-    },
-  };
+  const measured = got.plant.days.pv;
+
+  const { accuracy } = judge({
+    series: "pv.power",
+    list: got.list,
+    spans: got.spans,
+    now: got.now,
+    measured,
+    forecast: held(targets),
+    days: { spans: pastDays(got.zone, got.range, got.now), measured },
+  });
+
+  return { bands, total, accuracy };
 }
 
 /** The accuracy's three figures as written; dashes while loading or without a forecast. */
