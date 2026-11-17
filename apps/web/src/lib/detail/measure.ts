@@ -81,6 +81,11 @@ function integral(core: MeasureCore, device: number, series: string, sum: Sum): 
   };
 }
 
+/** The energy of `rolled` in kWh. */
+function kwh(rolled: readonly Rolled[]): number {
+  return rolled.reduce((a, r) => a + r.integral, 0) / 1000;
+}
+
 /** The share of `whole`'s energy that `part` holds, in %: the house load met on site is autarky. */
 function shareOf(core: MeasureCore, part: string, whole: string): Measure {
   const sure = strict(core);
@@ -95,8 +100,8 @@ function shareOf(core: MeasureCore, part: string, whole: string): Measure {
     read: async (from, to, period) => {
       const read = (series: string) =>
         rollups(sure, PLANT, series, period, new Date(from), new Date(to));
+
       const [of, all] = await Promise.all([read(part), read(whole)]);
-      const kwh = (rolled: readonly Rolled[]) => rolled.reduce((a, r) => a + r.integral, 0) / 1000;
 
       return { value: share(kwh(of), kwh(all)), stops: stopOf(all, to) };
     },
@@ -113,6 +118,7 @@ export interface MeasureInput {
 /** The head figure of sheet `id`: autarky, the euros saved, or its series' energy; null for a sheet without one. */
 export function measureOf({ id, core, strings }: MeasureInput): Measure | null {
   if (id === "autarky") return shareOf(core, "self.supply.power", "load.power");
+
   if (id === "saved") return integral(core, TARIFF, "cost.savings.rate", EUR);
 
   const a = analyticsOf(id, strings);
