@@ -1,4 +1,3 @@
-import { carBodies, type CarBodies } from "./car-bodies";
 import { open, refusal, type Client, type Problem } from "./client";
 import { imports, type Imports } from "./imports";
 import { follow, type Live } from "./live";
@@ -84,7 +83,7 @@ export function http(base: string): Transport {
 }
 
 /** A core's API: what the SPA reads, through one transport. */
-export interface Core extends Setup, CarBodies, Imports, PvModel, Tariffs, PlantRecords, Layouts {
+export interface Core extends Setup, Imports, PvModel, Tariffs, PlantRecords, Layouts {
   /** Calls `listener` with every value on connect and after each change, until the returned stop. */
   live(listener: (live: Live) => void): () => void;
   /** Time-weighted means of one series from `from` to before `to`, at the tier the core picks. */
@@ -165,7 +164,6 @@ export function connect(transport: Transport): Core {
     ...settings(client),
     ...trust(client),
     ...setup(client),
-    ...carBodies(client),
     ...imports(client),
     ...pvModel(client),
     ...status(client),
