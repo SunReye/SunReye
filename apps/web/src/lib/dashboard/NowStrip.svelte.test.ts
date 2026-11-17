@@ -38,7 +38,7 @@ function day(known: Partial<Weather>): Day {
       celsius: 7,
       humidity: null,
       ghi: 300,
-      clearness: null,
+      clearSkyIndex: null,
       dry: null,
       ...known,
     },

@@ -111,7 +111,7 @@ test("as now moves on, the last weather stands until the next is read: nothing l
   flushSync();
   // The index stands for ten more minutes.
   await vi.waitFor(() => {
-    expect(sky?.weather.clearness).toBe(0.25);
+    expect(sky?.weather.clearSkyIndex).toBe(0.25);
   });
 
   state.hold = true;
@@ -120,7 +120,7 @@ test("as now moves on, the last weather stands until the next is read: nothing l
   await vi.waitFor(() => {
     expect(state.held.length).toBeGreaterThan(0);
   });
-  expect(sky?.weather.clearness).toBe(0.25);
+  expect(sky?.weather.clearSkyIndex).toBe(0.25);
 
   state.hold = false;
 
@@ -128,7 +128,7 @@ test("as now moves on, the last weather stands until the next is read: nothing l
 
   // Read again a quarter on, the index has lapsed.
   await vi.waitFor(() => {
-    expect(sky?.weather.clearness).toBeNull();
+    expect(sky?.weather.clearSkyIndex).toBeNull();
   });
   stop();
   vi.useRealTimers();

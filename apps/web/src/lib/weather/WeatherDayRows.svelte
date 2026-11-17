@@ -64,10 +64,10 @@
 
   /** The index on the cloud cover's scale: a clear sky's 1 at the top. */
   const sky = $derived(
-    day.hours.map((h) => ({ ...h, index: h.index === null ? null : Math.min(1, h.index) * 100 })),
+    day.hours.map((h) => ({ ...h, clearSkyIndex: h.clearSkyIndex === null ? null : Math.min(1, h.clearSkyIndex) * 100 })),
   );
 
-  const indexed = $derived(known("index").length > 0);
+  const indexed = $derived(known("clearSkyIndex").length > 0);
 
   const windTop = $derived(Math.max(5, ...known("wind"), ...known("gusts")) + 1);
 
@@ -116,7 +116,7 @@
   <WeatherRow
     label={m.weather_cloud_cover()}
     also={indexed ? { label: m.weather_clear_sky_index(), colour: WARM } : null}
-    figure={range("cover", "%")}
+    figure={range("cloudCover", "%")}
   >
     <HourLines
       hours={sky}
@@ -124,8 +124,8 @@
       label={m.weather_cloud_cover()}
       domain={[0, 100]}
       lines={[
-        { of: "cover", colour: PLAIN, filled: true },
-        { of: "index", colour: WARM },
+        { of: "cloudCover", colour: PLAIN, filled: true },
+        { of: "clearSkyIndex", colour: WARM },
       ]}
     />
   </WeatherRow>
@@ -147,12 +147,12 @@
     />
     <HourMarks hours={day.hours} {span} class="h-4">
       {#snippet mark(hour)}
-        {#if hour.direction !== null}
+        {#if hour.windDirection !== null}
           <!-- The arrow flies with the wind: away from where it blows from. -->
           <span
             class="flex text-muted-foreground"
-            data-wind-from={hour.direction}
-            style:rotate="{(hour.direction + 180) % 360}deg"
+            data-wind-from={hour.windDirection}
+            style:rotate="{(hour.windDirection + 180) % 360}deg"
           >
             <ArrowUp class="size-3.5" aria-hidden="true" />
           </span>

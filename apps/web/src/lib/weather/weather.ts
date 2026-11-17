@@ -31,7 +31,7 @@ export interface Weather {
   /** Global horizontal irradiance in W/m²: under 1 it is night. */
   readonly ghi: number | null;
   /** The clear-sky index that stands for the instant: null where the core measured none. */
-  readonly clearness: number | null;
+  readonly clearSkyIndex: number | null;
   /** Ms since precipitation last fell, 0 while it falls; null where none fell in what was read. */
   readonly dry: number | null;
 }
@@ -245,7 +245,7 @@ export function weatherAt(read: WeatherRead | undefined, at: number): Weather {
     celsius: held("weather.temperature"),
     humidity: held("weather.humidity"),
     ghi,
-    clearness: index,
+    clearSkyIndex: index,
     dry: dryAt(read?.["weather.precipitation"] ?? [], at),
   };
 }

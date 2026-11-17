@@ -18,7 +18,7 @@ const weather = (known: Partial<Weather> = {}): Weather => ({
   celsius: null,
   humidity: null,
   ghi: null,
-  clearness: null,
+  clearSkyIndex: null,
   dry: null,
   ...known,
 });
@@ -107,7 +107,7 @@ test("the codes 95 to 99 are thunder", () => {
 test("modules are snow-covered while snow lies, the sun is up, the plant reads next to nothing and the core measured no sky", () => {
   expect(covered({}, DARK_NOON)).toBe(true);
   // The core measured a sky: the modules are clear, however little they make.
-  expect(covered({ clearness: 0.3 }, DARK_NOON)).toBe(false);
+  expect(covered({ clearSkyIndex: 0.3 }, DARK_NOON)).toBe(false);
   // No snow lies.
   expect(covered({ snowDepth: 0.004 }, DARK_NOON)).toBe(false);
   // No reading, as for a forecast instant or an inverter that is off.

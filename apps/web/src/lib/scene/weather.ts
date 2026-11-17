@@ -103,11 +103,11 @@ function fogOf({ code, visibility }: Weather): number {
  * Snow covers the modules: the core stores no clear-sky index while it does (ADR 23), so snow
  * lies, the core measured no sky though the sun is well up, and the plant reads next to nothing.
  */
-function coveredBy({ clearness }: Weather, snow: boolean, { sun, share }: Plant): boolean {
+function coveredBy({ clearSkyIndex }: Weather, snow: boolean, { sun, share }: Plant): boolean {
   const risen = sun !== null && sun[2] >= Math.sin((SUN * Math.PI) / 180);
   const idle = share !== null && share < NOTHING;
 
-  return snow && clearness === null && risen && idle;
+  return snow && clearSkyIndex === null && risen && idle;
 }
 
 /** The amounts from which the whole field falls: mm/h of rain, cm/h of snow. */

@@ -66,7 +66,7 @@ const NONE: Weather = {
   celsius: null,
   humidity: null,
   ghi: null,
-  clearness: null,
+  clearSkyIndex: null,
   dry: null,
 };
 
@@ -103,7 +103,7 @@ test("the weather at an instant is each forecast quantity in force then", async 
     celsius: 4.1,
     humidity: 93,
     ghi: 60,
-    clearness: null,
+    clearSkyIndex: null,
     dry: 0,
   });
 });
@@ -268,8 +268,8 @@ test("the clear-sky index itself is told apart from the forecast's cloud: null w
     forecasts: { "weather.cloud_cover": targets(["12:00", 100], ["13:00", 100]) },
   });
 
-  expect(weatherAt(weather, at("12:07"))).toMatchObject({ clearness: 0.4 });
-  expect(weatherAt(weather, at("12:30"))).toMatchObject({ clearness: null, cloud: 1 });
+  expect(weatherAt(weather, at("12:07"))).toMatchObject({ clearSkyIndex: 0.4 });
+  expect(weatherAt(weather, at("12:30"))).toMatchObject({ clearSkyIndex: null, cloud: 1 });
 });
 
 test("an instant knows how long it has been dry: 0 while it falls, then since it last fell", async () => {

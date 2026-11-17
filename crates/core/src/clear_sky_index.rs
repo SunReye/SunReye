@@ -60,7 +60,7 @@ impl ClearSkyIndex {
             layouts,
             history: storage.reader(),
             weather,
-            series: bus.intern(weather::CLEARNESS, None),
+            series: bus.intern(weather::CLEAR_SKY_INDEX, None),
         }
     }
 
@@ -173,7 +173,7 @@ impl ClearSkyIndex {
         to: SystemTime,
     ) -> Result<Option<SystemTime>, storage::Error> {
         let own = Series {
-            role: weather::CLEARNESS.to_owned(),
+            role: weather::CLEAR_SKY_INDEX.to_owned(),
             index: None,
         };
         let stored = self

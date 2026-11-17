@@ -266,14 +266,14 @@ const QUANTITIES: [Quantity; 16] = [
 ];
 
 /// The clear-sky index, measured rather than fetched (ADR 23).
-pub const CLEARNESS: &str = "weather.clearness";
+pub const CLEAR_SKY_INDEX: &str = "weather.clearness";
 
 /// The roles the weather device stores, as capabilities report them (ADR 15).
 pub fn roles() -> impl Iterator<Item = &'static str> {
     QUANTITIES
         .iter()
         .map(|q| q.role)
-        .chain(std::iter::once(CLEARNESS))
+        .chain(std::iter::once(CLEAR_SKY_INDEX))
 }
 
 /// The weather device. Only its own task fetches; everyone else reads the forecast store.

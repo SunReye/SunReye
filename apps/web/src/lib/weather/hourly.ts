@@ -19,15 +19,15 @@ export interface Hour {
   /** cm of snow fallen in the hour. */
   readonly snowfall: number | null;
   /** Cloud cover in %. */
-  readonly cover: number | null;
-  /** The clear-sky index: measured, so past hours alone have it. */
-  readonly index: number | null;
+  readonly cloudCover: number | null;
+  /** The clear-sky clearSkyIndex: measured, so past hours alone have it. */
+  readonly clearSkyIndex: number | null;
   /** m/s. */
   readonly wind: number | null;
   /** The hour's strongest, m/s. */
   readonly gusts: number | null;
   /** Degrees the wind blows from: 0 north, 90 east. */
-  readonly direction: number | null;
+  readonly windDirection: number | null;
   /** %. */
   readonly humidity: number | null;
 }
@@ -120,11 +120,11 @@ function reading(sources: WeatherSources, at: number): Reading {
       apparent: mean(stored("weather.apparent_temperature")),
       precipitation: fallen(stored("weather.precipitation")),
       snowfall: fallen(stored("weather.snowfall")),
-      cover: mean(stored("weather.cloud_cover")),
-      index: mean(within(sources.measured["weather.clearness"], at, at + HOUR)),
+      cloudCover: mean(stored("weather.cloud_cover")),
+      clearSkyIndex: mean(within(sources.measured["weather.clearness"], at, at + HOUR)),
       wind: mean(stored("weather.wind")),
       gusts: most(values(stored("weather.gusts"))),
-      direction: stored("weather.wind_direction")[0]?.value ?? null,
+      windDirection: stored("weather.wind_direction")[0]?.value ?? null,
       humidity: mean(stored("weather.humidity")),
     },
     // A value stands for each slot it is held over: a rollup is the mean of its slots.

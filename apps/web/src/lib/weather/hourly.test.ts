@@ -64,7 +64,7 @@ test("an hour is the mean of its quarters; gusts are their strongest", () => {
     apparent: 1,
     gusts: 14,
     wind: 5,
-    direction: 270,
+    windDirection: 270,
     humidity: 85,
     precipitation: 1,
     snowfall: 0.5,
@@ -79,11 +79,11 @@ test("an hour without stored weather has none", () => {
     apparent: null,
     precipitation: null,
     snowfall: null,
-    cover: null,
-    index: null,
+    cloudCover: null,
+    clearSkyIndex: null,
     wind: null,
     gusts: null,
-    direction: null,
+    windDirection: null,
     humidity: null,
   });
 });
@@ -101,9 +101,9 @@ test("what was measured stands for a past hour, the forecast for the rest", () =
 test("a measured value held over several hours covers each", () => {
   const sources = { measured: { "weather.cloud_cover": [held("06:00", 75, 180)] } };
 
-  expect(hour(sources, "07:00")?.cover).toBe(75);
-  expect(hour(sources, "08:00")?.cover).toBe(75);
-  expect(hour(sources, "09:00")?.cover).toBeNull();
+  expect(hour(sources, "07:00")?.cloudCover).toBe(75);
+  expect(hour(sources, "08:00")?.cloudCover).toBe(75);
+  expect(hour(sources, "09:00")?.cloudCover).toBeNull();
 });
 
 test("cloud cover and the clear-sky index are apart, the index where it was measured", () => {
@@ -112,8 +112,8 @@ test("cloud cover and the clear-sky index are apart, the index where it was meas
     forecast: { "weather.cloud_cover": [held("10:00", 90), held("11:00", 40)] },
   };
 
-  expect(hour(sources, "10:00")).toMatchObject({ cover: 90, index: 0.5 });
-  expect(hour(sources, "11:00")).toMatchObject({ cover: 40, index: null });
+  expect(hour(sources, "10:00")).toMatchObject({ cloudCover: 90, clearSkyIndex: 0.5 });
+  expect(hour(sources, "11:00")).toMatchObject({ cloudCover: 40, clearSkyIndex: null });
 });
 
 test("the hour's icon is its code's, the worst of its quarters; an open sky at night is clear", () => {

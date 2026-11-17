@@ -15,7 +15,7 @@ const weather = (known: Partial<Weather>): Weather => ({
   celsius: null,
   humidity: null,
   ghi: null,
-  clearness: null,
+  clearSkyIndex: null,
   dry: null,
   ...known,
 });
