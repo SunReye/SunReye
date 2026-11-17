@@ -1,6 +1,7 @@
 // The PV, inverter and string sheets (ADR 21 "Sheet content"): the range's energy and its peak
 // with time, actual against forecast, and the inverter's temperature where its profile maps one.
 import { afterEach, beforeEach, expect, test } from "vitest";
+import { page } from "vitest/browser";
 import "../../app.css";
 import {
   asked,
@@ -179,4 +180,21 @@ test("another string's sheet never shows the last one's facts while it reads", a
   await expect
     .element(screen.getByRole("definition").filter({ hasText: "10:00–11:00 Uhr" }))
     .not.toBeInTheDocument();
+});
+
+test("on a phone the facts' labels and times wrap rather than cut", async () => {
+  await page.viewport(390, 844);
+  served.publishes = ["inverter.temperature"];
+  served.rolled = inverter({ "inverter.temperature": [hour(11, 47, 52)] });
+
+  const sheet = await sheetOf("inverter", "Wechselrichter");
+  const hottest = sheet.getByRole("definition").filter({ hasText: "°C" });
+
+  await expect.element(hottest).toHaveTextContent("52 °C 11:00–12:00 Uhr");
+
+  const cut = [...sheet.element().querySelectorAll("dl dt, dl dd span")].filter(
+    (e) => e.scrollWidth > e.clientWidth,
+  );
+
+  expect(cut.map((e) => e.textContent)).toEqual([]);
 });
