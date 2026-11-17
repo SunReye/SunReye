@@ -175,3 +175,13 @@ test("the sheet links the tariff at its range", async () => {
     .element(sheet.getByRole("link", { name: "Preise und Kosten im Tarif" }))
     .toHaveAttribute("href", "#/tariff?range=month&at=2026-10-01");
 });
+
+test("a refused stream is no missing tariff: the sheet still reads its range", async () => {
+  served.refuses = true;
+  served.costs = () => Response.json(NOVEMBER);
+
+  const { sheet } = await sheetOf("range=month&at=2026-11-01", true);
+
+  await expect.element(sheet.getByText("vermiedener Bezug")).toBeVisible();
+  expect(sheet.element().textContent).not.toContain("Ohne Tarif");
+});

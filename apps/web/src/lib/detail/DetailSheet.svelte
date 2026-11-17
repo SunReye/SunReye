@@ -143,8 +143,11 @@
 
   const values = $derived(live !== undefined && "devices" in live ? live.devices : {});
 
-  // The tariff publishes its prices while one is in force (ADR 12); before the stream answers, one is.
-  const priced = $derived(live === undefined || values[TARIFF]?.["price.import"] !== undefined);
+  // The tariff publishes its prices while one is in force (ADR 12). Only a stream that answered
+  // with its devices says none is: one not yet read or refused says nothing.
+  const priced = $derived(
+    live === undefined || !("devices" in live) || values[TARIFF]?.["price.import"] !== undefined,
+  );
 
   const source = $derived<Source>({
     strings,

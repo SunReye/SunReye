@@ -54,6 +54,8 @@ export interface Served {
   tick: boolean;
   /** The stream breaks after its snapshot and the core is not heard from again. */
   breaks: boolean;
+  /** The core refuses the stream outright. */
+  refuses: boolean;
   /** Per device, the series with stored history (ADR 22). */
   stored: Readonly<Record<string, readonly string[]>>;
   /** When every stored series stored its last point. */
@@ -71,6 +73,7 @@ export const served: Served = {
   stale: undefined,
   tick: false,
   breaks: false,
+  refuses: false,
   stored: {},
   last: "2026-11-12T12:00:00Z",
   rolled: null,
@@ -136,6 +139,13 @@ function statistics(device: string, series: string | null, from: string): Respon
 /** Feeds the stream the served frame, folded as the core's stream folds it (ADR 9). */
 function streamed(): void {
   const send = feed();
+
+  if (served.refuses) {
+    send({ problem: "auth.forbidden" });
+
+    return;
+  }
+
   const frame = { devices: served.live, ...(served.stale && { stale: served.stale }) };
   const first = merge(undefined, frame, Date.now());
 
@@ -249,6 +259,7 @@ export async function prepare(): Promise<void> {
   fetched.length = 0;
   served.tick = false;
   served.breaks = false;
+  served.refuses = false;
   served.stored = {};
   served.rolled = null;
   served.costs = null;
