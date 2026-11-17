@@ -78,3 +78,32 @@ test("the purchase sheet's facts: the range's peak with its hour, and what was p
   await expect.element(sheet.getByText("Kosten")).toBeVisible();
   await expect.element(facts.filter({ hasText: "€" })).toHaveTextContent("0,45 €");
 });
+
+/** The house drew 1 kW from 08:00 to 12:00: the battery covered 08:00, the grid 09:00. */
+const DREW = {
+  [PLANT]: {
+    "load.power": {
+      [at(8)]: [1000, 1800],
+      [at(9)]: [1000, 1200],
+      [at(10)]: [1000, 4600],
+      [at(11)]: [1000, 1100],
+    },
+    "grid.import.power": { [at(9)]: [1000, 1200] },
+    "battery.discharge.power": { [at(8)]: [1000, 1800] },
+  },
+} satisfies Served;
+
+test("the consumption sheet's facts: the peak with its hour, and the share PV covered directly", async () => {
+  served.rolled = rolled(DREW);
+
+  const sheet = await sheetOf("consumption", "Verbrauch");
+  const facts = sheet.getByRole("definition");
+
+  await expect
+    .element(facts.filter({ hasText: "10:00–11:00 Uhr" }))
+    .toHaveTextContent("4,6 kW 10:00–11:00 Uhr");
+  // Of 4 kWh, the battery covered one and the grid one: the battery's charge is not counted as PV's.
+  await expect.element(sheet.getByText("Direkt aus PV")).toBeVisible();
+  await expect.element(facts.filter({ hasText: "%" })).toHaveTextContent("50 %");
+  expect(sheet.getByText("Kosten").elements()).toHaveLength(0);
+});

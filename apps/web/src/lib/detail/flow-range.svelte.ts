@@ -3,6 +3,7 @@
 import { PLANT } from "../api/core.ts";
 import { TARIFF } from "../api/computed-devices.ts";
 import { periodOf, rollups } from "../history/history.ts";
+import { readFlows } from "../history/plant-read.ts";
 import { RangeData } from "../range/range-data.svelte.ts";
 import type { RangeRoute } from "../range/route.svelte.ts";
 import { flowFacts, type Flow, type FlowRead } from "./flow.ts";
@@ -28,17 +29,20 @@ export class FlowRange {
         const period = periodOf(route.range);
         const until = new Date(Math.min(to.getTime(), now));
 
-        const read = (device: number, series: string) =>
-          from.getTime() < until.getTime()
-            ? rollups(strict(core), device, series, period, from, until)
-            : Promise.resolve([]);
+        const ran = from.getTime() < until.getTime();
 
-        const [peak, money] = await Promise.all([
+        const read = (device: number, series: string) =>
+          ran ? rollups(strict(core), device, series, period, from, until) : Promise.resolve([]);
+
+        const [peak, flows, money] = await Promise.all([
           read(PLANT, flow.series),
+          flow.cover && ran
+            ? readFlows(strict(core), period, from.getTime(), until.getTime())
+            : null,
           flow.money === null ? null : read(TARIFF, flow.money.series),
         ]);
 
-        return { peak, money, hours: period === "hour", zone: route.place.zone };
+        return { peak, flows, money, hours: period === "hour", zone: route.place.zone };
       },
     );
   }
