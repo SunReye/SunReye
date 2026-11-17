@@ -39,7 +39,14 @@ const covered = (known: Partial<Weather>, plant?: Parameters<typeof sceneWeather
 test("an instant without weather is clear and dry, whatever the plant reads", () => {
   expect(sceneWeather(weather())).toEqual(DRY);
   expect(sceneWeather(weather(), DARK_NOON)).toEqual(DRY);
-  expect(DRY).toEqual({ fog: 0, wet: 0, snow: false, covered: false, thunder: false });
+  expect(DRY).toEqual({
+    fog: 0,
+    wet: 0,
+    snow: false,
+    covered: false,
+    thunder: false,
+    falling: null,
+  });
 });
 
 test("fog thickens as the visibility falls: none from 10 km, whole under 200 m", () => {
@@ -109,6 +116,58 @@ test("modules are snow-covered while snow lies, the sun is up, the plant reads n
   expect(covered({}, { sun: null, share: 0.01 })).toBe(false);
   // The plant produces: an index is missing for another reason, such as its AC limit.
   expect(covered({}, { sun: south(20), share: 0.05 })).toBe(false);
+});
+
+const falling = (known: Partial<Weather>) => sceneWeather(weather(known)).falling;
+
+test("rain falls while precipitation does, the denser the more: sparse in drizzle, whole from 8 mm/h", () => {
+  expect(falling({ precipitation: 0 })).toBeNull();
+  expect(falling({ precipitation: 0, snowfall: 0 })).toBeNull();
+  expect(falling({ precipitation: 8 })).toEqual({ kind: "rain", density: 1, wind: [0, 0] });
+  expect(falling({ precipitation: 40 })?.density).toBe(1);
+  // Drizzle still shows.
+  expect(falling({ precipitation: 0.1 })?.density).toBeGreaterThanOrEqual(0.1);
+  expect(falling({ precipitation: 0.1 })?.density).toBeLessThan(0.3);
+  expect(falling({ precipitation: 2 })?.density).toBe(0.5);
+
+  let last = 0;
+
+  for (let amount = 0.1; amount <= 10; amount += 0.1) {
+    const { density } = falling({ precipitation: amount }) ?? { density: 0 };
+
+    expect(density).toBeGreaterThanOrEqual(last);
+    last = density;
+  }
+});
+
+test("snow falls while snowfall does, whole from 3 cm/h, and its water is not rain besides", () => {
+  expect(falling({ snowfall: 3 })).toEqual({ kind: "snow", density: 1, wind: [0, 0] });
+  expect(falling({ snowfall: 0.75, precipitation: 0.6 })).toEqual({
+    kind: "snow",
+    density: 0.5,
+    wind: [0, 0],
+  });
+  expect(falling({ snowfall: 0, precipitation: 2 })?.kind).toBe("rain");
+});
+
+test("what falls is carried away from where the wind blows from", () => {
+  const carried = (wind: number, windDirection: number | null) =>
+    falling({ precipitation: 2, wind, windDirection })?.wind;
+
+  // East, north: a west wind carries east, a north wind south.
+  expect(carried(5, 270)).toEqual([5, 0]);
+  expect(carried(5, 0)).toEqual([0, -5]);
+  expect(carried(4, 135)).toEqual([-3, 3]);
+  // Without a direction it falls straight.
+  expect(carried(5, null)).toEqual([0, 0]);
+});
+
+test("what falls moves in steps, so the scene is lit anew only when it shows", () => {
+  const drizzle = { precipitation: 1, wind: 4, windDirection: 270 };
+
+  expect(falling({ ...drizzle, precipitation: 1.04, wind: 4.1, windDirection: 271 })).toEqual(
+    falling(drizzle),
+  );
 });
 
 test("the fog is the page's colour in clear air and greys with the weather's fog", () => {
