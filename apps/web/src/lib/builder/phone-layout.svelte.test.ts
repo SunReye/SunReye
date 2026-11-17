@@ -2,7 +2,8 @@ import "../../app.css";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { connect, type Core } from "../api/core.ts";
+import { connect } from "../api/core.ts";
+import { feed } from "../live/stream.harness.ts";
 import { setLocale } from "../paraglide/runtime.js";
 import Builder from "./Builder.svelte";
 import { DEVICES, house, MODULE, phone, pv, tap, testCore, undesk } from "./builder.harness.ts";
@@ -50,15 +51,6 @@ const string = (id: number, name: string) => ({
   loss: 2,
 });
 
-/** A live stream that says once: the wallbox's car is connected, at 43 %. */
-const live: Core["live"] = (listener) => {
-  listener({
-    devices: { "3": { "ev.connected": 1, "ev.charge.power": 0, "ev.vehicle.soc": 43 } },
-  });
-
-  return () => {};
-};
-
 const input = (n: number) => ({ device: 1, input: n, factors: [], recent: null });
 
 /** A plant as full as the owner's: three strings, a connected car, two learned inputs. */
@@ -66,6 +58,9 @@ function full() {
   const draft = house();
   const place = { device: 3, x: -5, z: 1, width: 2.5, length: 5, rotation: 0 };
   const transport = testCore();
+
+  // The stream says once: the wallbox's car is connected, at 43 %.
+  feed()({ devices: { "3": { "ev.connected": 1, "ev.charge.power": 0, "ev.vehicle.soc": 43 } } });
 
   const core = connect({
     ...transport,
@@ -76,7 +71,7 @@ function full() {
   });
 
   return {
-    core: { ...core, live },
+    core,
     start: {
       scene: { ...draft.scene, carPlaces: [place] },
       strings: [string(1, "M1S"), string(2, "M1N"), string(3, "M2S")],

@@ -5,8 +5,8 @@
 -->
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import type { Core, Device, ModuleType, Values } from "../api/core.ts";
-  import { parked } from "../cars/parked.ts";
+  import type { Core, Device, ModuleType } from "../api/core.ts";
+  import { parkedNow } from "../cars/parked.svelte.ts";
   import { laying, type Level } from "./levels.ts";
   import type { Moment } from "./moment.svelte.ts";
   import type { Draft } from "./modules.ts";
@@ -61,15 +61,7 @@
   let width = $state(0);
   let height = $state(0);
 
-  let values = $state.raw<Values["devices"]>({});
-
-  $effect(() =>
-    core.live((live) => {
-      if ("devices" in live) values = live.devices;
-    }),
-  );
-
-  const cars = $derived(parked(draft.scene.carPlaces ?? [], geometry.stands, values));
+  const cars = $derived(parkedNow(draft.scene.carPlaces ?? [], geometry.stands));
 </script>
 
 <!-- Edge to edge on a phone. -->

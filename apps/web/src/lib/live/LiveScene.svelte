@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Capabilities, Core, Layout, ModuleType, Values } from "../api/core.ts";
+  import type { Capabilities, Layout, ModuleType } from "../api/core.ts";
   import { parseView, presetView, type View } from "../builder/camera.ts";
   import { panels } from "../builder/modules.ts";
   import { sunAt, type Location, type Point, type Pv, type Scene } from "../builder/pv.ts";
@@ -12,10 +12,9 @@
   import { m } from "../paraglide/messages.js";
   import { arrange, Steady, type Box, type Frame, type Label } from "./chips.ts";
   import LabelChip from "./LabelChip.svelte";
-  import { liveScene, type Chip } from "./labels.ts";
+  import { liveSceneNow, type Chip } from "./live-scene.svelte.ts";
 
   let {
-    core,
     pv,
     layout,
     scene,
@@ -31,7 +30,6 @@
     onready,
     onerror,
   }: {
-    core: Core;
     pv: Pv;
     layout: Layout;
     /** The layout's scene. */
@@ -82,22 +80,9 @@
   /** Where each browser keeps its last view of the dashboard (ADR 20). */
   const KEPT = "sunreye.dashboard.view";
 
-  let values = $state.raw<Values["devices"]>({});
-
-  let stale = $state.raw<Values["stale"]>();
-
   let project = $state.raw<Projector>();
 
   let kept = $state.raw<View | undefined>(parseView(localStorage.getItem(KEPT)));
-
-  $effect(() =>
-    core.live((live) => {
-      if ("devices" in live) {
-        values = live.devices;
-        stale = live.stale;
-      }
-    }),
-  );
 
   // Drawn once per layout; a live tick changes only the tints and the labels.
   const geometry = $derived(pv.geometry(scene));
@@ -119,15 +104,13 @@
   );
 
   const live = $derived(
-    liveScene({
+    liveSceneNow({
       strings: layout.strings,
       peaks,
       panels: drawn,
       equipment: scene.equipment ?? [],
       mounts: geometry.mounts,
       estimated,
-      values,
-      stale,
       places: scene.carPlaces ?? [],
       stands: geometry.stands,
     }),

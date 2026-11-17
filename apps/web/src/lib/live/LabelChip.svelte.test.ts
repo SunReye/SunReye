@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
-import { chip, frame, show, ticking } from "./live-scene.harness.ts";
+import { chip, frame, show } from "./live-scene.harness.ts";
+import { feed } from "./stream.harness.ts";
 import { PLANT } from "../api/core.ts";
 
 beforeEach(async () => {
@@ -23,10 +24,10 @@ const apart = (a: Edges, b: Edges): boolean =>
   a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top;
 
 test("each string, the inverter, the grid and the house get a chip from the live values", async () => {
-  const { core, tick } = ticking();
-  await show(core);
+  const tick = feed();
+  await show();
 
-  await tick(frame(600, -1200));
+  tick(frame(600, -1200));
 
   await expect.element((await chip("Süd", "600")).getByText("W", { exact: true })).toBeVisible();
   await expect
@@ -51,10 +52,10 @@ function resolved(colour: string): string {
 }
 
 test("an exporting grid chip's dot takes the export colour", async () => {
-  const { core, tick } = ticking();
-  await show(core);
+  const tick = feed();
+  await show();
 
-  await tick(frame(600, -1200));
+  tick(frame(600, -1200));
 
   const dot = (await chip("Netz", "1,2")).element().querySelector("span");
 
@@ -64,10 +65,10 @@ test("an exporting grid chip's dot takes the export colour", async () => {
 test("chips never overlap and stay inside the canvas at phone width", async () => {
   await page.viewport(390, 700);
 
-  const { core, tick } = ticking();
-  const screen = await show(core);
+  const tick = feed();
+  const screen = await show();
 
-  await tick(frame(600, -1200));
+  tick(frame(600, -1200));
   await chip("Haus", "450");
 
   const canvas: Edges = screen
@@ -99,30 +100,30 @@ test("chips never overlap and stay inside the canvas at phone width", async () =
 });
 
 test("a stale flow's chip is marked stale", async () => {
-  const { core, tick } = ticking();
-  await show(core);
+  const tick = feed();
+  await show();
 
-  await tick({ ...frame(600, -1200), stale: { [PLANT]: { "grid.power": 40 } } });
+  tick({ ...frame(600, -1200), stale: { [PLANT]: { "grid.power": Date.now() - 40_000 } } });
 
   await expect.element(await chip("Netz", "1,2")).toHaveAttribute("title", "veraltet");
   await expect.element(await chip("Haus", "450")).not.toHaveAttribute("title");
 });
 
 test("an estimated string carries ≈", async () => {
-  const { core, tick } = ticking();
-  await show(core, ["pv.string.power[11]"]);
+  const tick = feed();
+  await show(["pv.string.power[11]"]);
 
-  await tick(frame(600, 0));
+  tick(frame(600, 0));
 
   await expect.element((await chip("Süd", "600")).getByText("≈")).toBeVisible();
 });
 
 test("tapping a chip opens its detail sheet", async () => {
-  const { core, tick } = ticking();
+  const tick = feed();
   const onselect = vi.fn<(id: string) => void>();
-  await show(core, [], onselect);
+  await show([], onselect);
 
-  await tick(frame(600, -1200));
+  tick(frame(600, -1200));
 
   await (await chip("Süd", "600")).click();
   await (await chip("Netz", "1,2")).click();

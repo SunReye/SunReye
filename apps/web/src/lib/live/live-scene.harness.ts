@@ -1,15 +1,8 @@
-// What the live scene's component tests share: a plant, a ticking core and the chips' names.
+// What the live scene's component tests share: a plant and the chips' names.
 import { expect } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import {
-  connect,
-  PLANT,
-  type Core,
-  type Layout,
-  type Transport,
-  type Values,
-} from "../api/core.ts";
+import { PLANT, type Layout, type Values } from "../api/core.ts";
 import { MODULE, pv } from "../builder/builder.harness.ts";
 import type { Scene } from "../builder/pv.ts";
 import "../../app.css";
@@ -58,39 +51,6 @@ export const layout: Layout = {
   warnings: [],
 };
 
-export interface Ticking {
-  readonly core: Core;
-  /** Sends a snapshot first, then deltas. */
-  readonly tick: (live: Values) => Promise<void>;
-}
-
-/** A core whose live stream sends what the test ticks. */
-export function ticking(): Ticking {
-  const { promise, resolve } = Promise.withResolvers<ReadableStreamDefaultController>();
-  const encoder = new TextEncoder();
-  let name = "snapshot";
-
-  const transport: Transport = {
-    base: "http://core.test/",
-    fetch: () =>
-      Promise.resolve(
-        new Response(new ReadableStream({ start: resolve }), {
-          headers: { "content-type": "text/event-stream" },
-        }),
-      ),
-  };
-
-  return {
-    core: connect(transport),
-    tick: async (live) => {
-      const event = `event: ${name}\ndata: ${JSON.stringify(live)}\n\n`;
-
-      name = "delta";
-      (await promise).enqueue(encoder.encode(event));
-    },
-  };
-}
-
 export function frame(string: number, grid: number): Values {
   return {
     devices: {
@@ -101,13 +61,11 @@ export function frame(string: number, grid: number): Values {
 }
 
 export function show(
-  core: Readonly<Core>,
   estimated: readonly string[] = [],
   onselect: (id: string) => void = () => {},
   onready?: () => void,
 ) {
   return render(LiveScene, {
-    core,
     onselect,
     onready,
     pv,
