@@ -205,8 +205,8 @@ export function lightAlone({ thunder }: SceneWeather): SceneWeather {
   return { ...DRY, thunder };
 }
 
-/** The `weather` as it is edited under (ADR 23 "Builder"): without fog, what falls and the
- * glass, so faces and edges stay exact. */
+/** The `weather` as it is edited under (ADR 23 "Builder"): without fog, wet ground, what falls
+ * and the glass, so faces and edges stay exact. Lying snow stays. */
 export function exact(weather: SceneWeather): SceneWeather {
-  return { ...weather, fog: 0, falling: null, glass: null };
+  return { ...weather, fog: 0, wet: 0, falling: null, glass: null };
 }

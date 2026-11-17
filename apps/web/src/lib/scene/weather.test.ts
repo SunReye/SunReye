@@ -252,10 +252,10 @@ test("without its effects the weather keeps its light alone: thunder, and nothin
   expect(lightAlone(ALL)).toEqual({ ...DRY, thunder: true });
 });
 
-test("for editing the weather leaves out fog, what falls and the glass, and keeps the ground", () => {
+test("for editing the weather leaves out fog, wet ground, what falls and the glass, and keeps the snow", () => {
   expect(exact(ALL)).toEqual({
     fog: 0,
-    wet: 1,
+    wet: 0,
     snow: true,
     covered: true,
     thunder: true,
