@@ -27,12 +27,16 @@
   import { m } from "../paraglide/messages.js";
   import RangeControl from "../range/RangeControl.svelte";
   import AnalyticsPane from "./AnalyticsPane.svelte";
+  import type { HeadView } from "./head.svelte.ts";
+  import RangeState from "./RangeState.svelte";
 
   let {
     id,
     title,
     colour,
     input,
+    head,
+    onretry,
     fallback,
   }: {
     id: string;
@@ -40,6 +44,9 @@
     /** The figure's energy token. */
     colour: string;
     input: AnalyticsInput;
+    /** The figure over the range: what the range holds and whether it could be read. */
+    head: HeadView | null;
+    onretry: () => void;
     fallback: Snippet;
   } = $props();
 
@@ -81,20 +88,22 @@
     aria-label={m.detail_analytics()}
   >
     <RangeControl model={input.route} />
-    <Tabs.Root bind:value={() => tab, choose}>
-      {#if tabs.length > 1}
-        <Tabs.List variant="line">
-          {#each tabs as [t, text] (t)}
-            <Tabs.Trigger value={t}>{text()}</Tabs.Trigger>
-          {/each}
-        </Tabs.List>
-      {/if}
-      {#each tabs as [t] (t)}
-        <Tabs.Content value={t} class="pt-2">
-          <AnalyticsPane tab={t} {id} {title} {colour} {analytics} {input} />
-        </Tabs.Content>
-      {/each}
-    </Tabs.Root>
+    <RangeState {head} {onretry}>
+      <Tabs.Root bind:value={() => tab, choose}>
+        {#if tabs.length > 1}
+          <Tabs.List variant="line">
+            {#each tabs as [t, text] (t)}
+              <Tabs.Trigger value={t}>{text()}</Tabs.Trigger>
+            {/each}
+          </Tabs.List>
+        {/if}
+        {#each tabs as [t] (t)}
+          <Tabs.Content value={t} class="pt-2">
+            <AnalyticsPane tab={t} {id} {title} {colour} {analytics} {input} />
+          </Tabs.Content>
+        {/each}
+      </Tabs.Root>
+    </RangeState>
   </section>
 {:else}
   {@render fallback()}

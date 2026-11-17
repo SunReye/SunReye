@@ -1,5 +1,6 @@
 // The figures a chart shows for the route's range, and the range they belong to. A chart keeps its
 // last figures while the next load runs, then tweens to the new ones instead of redrawing (ADR 21).
+// A load that fails keeps them too, flagged until a retry or the next load succeeds.
 import { m } from "../paraglide/messages.js";
 import { brushRange, edges, type Edge } from "./edges.ts";
 import {
@@ -34,6 +35,8 @@ export interface Place {
 
 export class RangeData<T> {
   current = $state.raw<Loaded<T> | undefined>();
+  failed = $state(false);
+  #attempt = $state(0);
 
   readonly #route: () => RangeRoute;
 
@@ -52,6 +55,8 @@ export class RangeData<T> {
     $effect(() => {
       const r: RangeRoute = route();
       const [range, via, { zone, cal }] = [r.range, r.via, r.place];
+
+      void this.#attempt;
       const list = edges(cal, range, finest);
       const now = Date.now();
 
@@ -62,17 +67,29 @@ export class RangeData<T> {
       const loading = load(hourInstant(zone, t0Of(range)), hourInstant(zone, t1Of(range)), now);
       let live = true;
 
-      void loading.then((data) => {
-        if (live) this.current = { range, via, cal, list, spans, now, data };
+      void loading.then(
+        (data) => {
+          if (live)
+            [this.current, this.failed] = [{ range, via, cal, list, spans, now, data }, false];
 
-        return data;
-      });
+          return data;
+        },
+        () => {
+          if (live) this.failed = true;
+        },
+      );
 
       return () => {
         live = false;
       };
     });
   }
+
+  /** Reads the range again after a failed load. */
+  retry = (): void => {
+    this.failed = false;
+    this.#attempt += 1;
+  };
 
   /** The legend's title while no band is read. */
   get title(): string {

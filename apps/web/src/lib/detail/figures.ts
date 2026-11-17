@@ -6,9 +6,6 @@ import { m } from "../paraglide/messages.js";
 import { skyOf } from "../weather/sky.ts";
 import { SKY_WORDS } from "../weather/sky-words.ts";
 
-/** A day figure: one of today's energies. */
-export type Today = "production" | "consumption" | "feedIn" | "purchase";
-
 export interface Figure {
   readonly colour: string;
   /** The node whose live power the sheet shows and whose readings it lists. */
@@ -17,8 +14,6 @@ export interface Figure {
   readonly direction?: "battery" | "grid";
   /** The live graph fills around zero: the colour above, then below (ADR 21). */
   readonly diverging?: readonly [string, string];
-  /** Today's energy the sheet leads with, before the live power. */
-  readonly today?: Today;
   /** What stands where a figure has no series in history: a chart of today, or the weather by
    * the hour (ADR 23). */
   readonly chart: "pv" | "price" | "weather" | "forecast" | null;
@@ -30,14 +25,13 @@ const GRID = [flowColour("import"), flowColour("export")] as const;
 const EV: Figure = { colour: flowColour("ev"), node: "ev", chart: null };
 
 const FIGURES: Readonly<Record<Fixed, Figure>> = {
-  production: { colour: SOLAR, node: "pv", today: "production", chart: "pv" },
-  consumption: { colour: HOUSE, node: "house", today: "consumption", chart: null },
+  production: { colour: SOLAR, node: "pv", chart: "pv" },
+  consumption: { colour: HOUSE, node: "house", chart: null },
   feedIn: {
     colour: flowColour("export"),
     node: "grid",
     direction: "grid",
     diverging: GRID,
-    today: "feedIn",
     chart: null,
   },
   purchase: {
@@ -45,7 +39,6 @@ const FIGURES: Readonly<Record<Fixed, Figure>> = {
     node: "grid",
     direction: "grid",
     diverging: GRID,
-    today: "purchase",
     chart: null,
   },
   autarky: { colour: flowColour("battery"), node: null, chart: null },
@@ -76,7 +69,10 @@ const FIGURES: Readonly<Record<Fixed, Figure>> = {
 
 /** A figure named by itself rather than by a string or a loadpoint. */
 export type Fixed =
-  | Today
+  | "production"
+  | "consumption"
+  | "feedIn"
+  | "purchase"
   | "autarky"
   | "saved"
   | "price"
@@ -262,8 +258,6 @@ const DAY_FACTS = new Map<string, Read>([
   ["consumption", (day) => only([peak(day, "consumption")])],
   ["feedIn", (day) => only([eur(m.detail_earned(), day?.money?.earned ?? null)])],
   ["purchase", (day) => only([eur(m.detail_paid(), day?.money?.paid ?? null)])],
-  ["pv", (day) => only([kwh(m.dash_today(), day?.today.production ?? null)])],
-  ["house", (day) => only([kwh(m.dash_today(), day?.today.consumption ?? null)])],
   [
     "grid",
     (day) =>

@@ -3,16 +3,21 @@
   where the live graph ends, then the range, its tabs and the facts. No cards inside the sheet: the
   sheet is the one surface, divided by hairlines. It ends with the one way onward.
 -->
-<script lang="ts">
+<script lang="ts" module>
   import type { Day } from "../dashboard/day.ts";
+  import type { Stored } from "../live/plant-facts.ts";
+  import type { NodeReadings } from "./readings.ts";
+</script>
+
+<script lang="ts">
   import Analytics, { type AnalyticsInput } from "./Analytics.svelte";
   import DetailHead from "./DetailHead.svelte";
   import DetailStats from "./DetailStats.svelte";
   import { facts, type Figure } from "./figures.ts";
+  import { RangeHead } from "./head.svelte.ts";
   import HistoryLink from "./HistoryLink.svelte";
   import LiveSection from "./LiveSection.svelte";
   import Readings from "./Readings.svelte";
-  import type { NodeReadings } from "./readings.ts";
   import TodayChart from "./TodayChart.svelte";
 
   let {
@@ -24,6 +29,7 @@
     day,
     spot,
     input,
+    record,
     onopen,
   }: {
     id: string;
@@ -36,16 +42,20 @@
     spot: Readonly<Record<string, number>> | undefined;
     /** What the range analytics read; every tab reads the sheet's range. */
     input: AnalyticsInput;
+    /** The stored series by `device/series` (ADR 22); null until the catalog is read. */
+    record: ReadonlyMap<string, Stored> | null;
     onopen: (id: string) => void;
   } = $props();
 
   const shown = $derived(facts(id, day, spot?.["price.spot"]));
   const power = $derived(spec.node !== null);
   const silent = $derived(node?.silent ?? null);
+
+  const head = new RangeHead(() => ({ id, ...input, record }));
 </script>
 
 <div class="flex min-h-full flex-col">
-  <DetailHead {title} {spec} {node} {status} {day} lead={shown.lead} />
+  <DetailHead {title} {spec} {node} {status} head={head.view} lead={shown.lead} />
 
   {#if power}
     <LiveSection {spec} points={node?.points ?? []} {silent} {status} />
@@ -53,7 +63,7 @@
 
   <Readings {node} {status} {onopen} />
 
-  <Analytics {id} {title} colour={spec.colour} {input}>
+  <Analytics {id} {title} colour={spec.colour} {input} head={head.view} onretry={head.retry}>
     {#snippet fallback()}
       <TodayChart chart={spec.chart} {day} core={input.core} />
     {/snippet}
