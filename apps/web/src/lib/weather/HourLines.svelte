@@ -1,7 +1,13 @@
 <!-- One quantity of a day as lines over its hours (ADR 23 "Dashboard"): a gap where an hour has
   no value. It has no axis; its row says the day's range. -->
 <script lang="ts" module>
+  import { flowColour } from "../energy-colours.ts";
   import type { Hour } from "./hourly.ts";
+
+  /** What the sun warms: the temperature and the clear-sky index. */
+  export const WARM = flowColour("solar");
+
+  export const PLAIN = "var(--muted-foreground)";
 
   /** The quantities of an hour a line can follow. */
   export type Quantity = Exclude<keyof Hour, "at" | "sky">;
