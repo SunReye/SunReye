@@ -80,13 +80,10 @@ export function forecastView(got: Loaded, targets: readonly Target[]): ForecastV
   const first = got.list[0];
   const rollups = first && first.t1 - first.t0 < 24 ? got.plant.hours : got.plant.days;
 
-  // The tab's figures judge whole past days alone (ADR 21), not the band in progress.
-  const past = got.list.flatMap((edge, i) => (edge.state === "past" ? [i] : []));
-
   const { accuracy } = judge({
     series: "pv.power",
-    list: past.map((i) => got.list[i]!),
-    spans: past.map((i) => got.spans[i]!),
+    list: got.list,
+    spans: got.spans,
     now: got.now,
     measured: rollups.pv,
     forecast: held(targets),

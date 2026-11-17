@@ -18,6 +18,8 @@ export interface Judged {
   readonly made: number;
   /** kWh forecast for the time measured, where a forecast exists. */
   readonly planned: number;
+  /** Measured over `planned`, less 1, the band in progress included; null without a forecast. */
+  readonly versus: number | null;
   /** kWh still expected from now to the range's end. */
   readonly ahead: number;
   /** kWh measured per stacked part (an MPPT input), or the one total when not stacked. */
@@ -103,22 +105,54 @@ function keptOf(j: Readonly<Judging>, shares: readonly number[]): number[] {
   return shares.flatMap((share, k) => (parts[k]?.optional === true && share < 0.05 ? [] : [k]));
 }
 
+/** The whole past days judged so far: their deviations and their kWh measured and forecast. */
+interface Days {
+  readonly error: number;
+  readonly count: number;
+  readonly made: number;
+  readonly planned: number;
+}
+
+/** `days` with a band that is a whole past day measured against a forecast; any other is left out. */
+function countDay(
+  days: Readonly<Days>,
+  edge: Readonly<Edge>,
+  w: Readonly<ReturnType<typeof weigh>>,
+): Days {
+  const dev = deviation(edge, w.value, w.sofar);
+
+  return dev === null
+    ? days
+    : {
+        error: days.error + dev,
+        count: days.count + 1,
+        made: days.made + w.value,
+        planned: days.planned + w.sofar,
+      };
+}
+
+/** The accuracy over whole past days alone (ADR 21 "Forecast tab"), the bias included. */
+const accuracyOf = (days: Readonly<Days>): Accuracy => ({
+  error: days.count > 0 ? days.error / days.count : null,
+  bias: days.planned > 0 ? days.made / days.planned - 1 : null,
+  days: days.count,
+});
+
 export function judge(j: Readonly<Judging>): Judged {
-  const sums = { made: 0, compared: 0, sofar: 0, ahead: 0, error: 0, days: 0 };
+  const sums = { made: 0, compared: 0, sofar: 0, ahead: 0 };
+  let days: Days = { error: 0, count: 0, made: 0, planned: 0 };
   const shares: number[] = [];
 
   const bands = bandsOf(j.list, (edge, i) => {
     const [a, b] = j.spans[i]!;
     const w = weigh(j, a, b);
-    const dev = deviation(edge, w.value, w.sofar);
     const compared = w.sofar > 0;
 
     sums.made += w.value;
     sums.ahead += w.rest;
     sums.compared += compared ? w.value : 0;
     sums.sofar += w.sofar;
-
-    if (dev !== null) [sums.error, sums.days] = [sums.error + dev, sums.days + 1];
+    days = countDay(days, edge, w);
 
     const up = stack(j, w.value, a, b);
 
@@ -143,14 +177,11 @@ export function judge(j: Readonly<Judging>): Judged {
         : bands.map((band) => Object.assign(band, { up: kept.map((k) => band.up[k] ?? 0) })),
     made: sums.made,
     planned: sums.sofar,
+    versus: sums.sofar > 0 ? sums.compared / sums.sofar - 1 : null,
     ahead: sums.ahead,
     shares: kept.map((k) => shares[k] ?? 0),
     kept,
-    accuracy: {
-      error: sums.days > 0 ? sums.error / sums.days : null,
-      bias: sums.sofar > 0 ? sums.compared / sums.sofar - 1 : null,
-      days: sums.days,
-    },
+    accuracy: accuracyOf(days),
   };
 }
 
@@ -172,7 +203,7 @@ export function summaryOf(
 export function headline(
   cal: Readonly<Calendar>,
   range: Readonly<Range>,
-  j: Readonly<Pick<Judged, "made" | "ahead" | "accuracy">>,
+  j: Readonly<Pick<Judged, "made" | "ahead" | "versus">>,
 ): string {
   const when = phrase(cal, range);
   // A figure never breaks from its unit.
@@ -183,9 +214,9 @@ export function headline(
   if (j.made <= 0)
     return j.ahead > 0 ? m.forecast_verdict_ahead({ when, ahead }) : m.forecast_verdict_none();
 
-  if (j.accuracy.bias === null) return m.forecast_verdict_made({ when, made }) + still;
+  if (j.versus === null) return m.forecast_verdict_made({ when, made }) + still;
 
-  const share = Math.round(j.accuracy.bias * 100);
+  const share = Math.round(j.versus * 100);
 
   const said =
     share === 0

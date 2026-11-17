@@ -84,7 +84,7 @@ const NOVEMBER = (h: number) => (h >= 8 && h < 15 ? 1500 : h >= 15 && h < 17 ? 4
 
 test("the tab judges the sheet's 30 days as the PV forecast sheet does", () => {
   // `NOVEMBER` from four days before today, the first stored target that first day's 15:00.
-  // Each day read over its 9 daylight hours.
+  // Each day read over its 9 daylight hours; today half its forecast so far.
   const now = ms(36);
   const cal = calendar(ZONE, new Date(now));
   const first = ms(24 - 4 * 24 + 15);
@@ -94,7 +94,7 @@ test("the tab judges the sheet's 30 days as the PV forecast sheet does", () => {
     value: NOVEMBER((15 + i) % 24),
   }));
 
-  const pv = [-3, -2, -1, 0, 1].map((d) => day(d, d === -3 ? 7872 : d === 1 ? 6000 : 11_300, 9));
+  const pv = [-3, -2, -1, 0, 1].map((d) => day(d, d === -3 ? 7872 : d === 1 ? 3000 : 11_300, 9));
   const range = customRange(cal, cal.today - 30, cal.today + 1);
   const list = edges(cal, range, "day");
   const load = pv.map((r) => ({ ...r, integral: 1 }));
@@ -118,7 +118,7 @@ test("the tab judges the sheet's 30 days as the PV forecast sheet does", () => {
 
   const sheet = track(ZONE, now, pv, held(targets)).accuracy;
 
-  // The sheet shows the error and the days; its bias counts today so far.
-  expect([view.accuracy.error, view.accuracy.days]).toEqual([sheet.error, sheet.days]);
-  expect(view.accuracy.days).toBe(3);
+  // Today's 3 kWh against 6 forecast by noon count in neither.
+  expect(view.accuracy).toEqual(sheet);
+  expect(view.accuracy).toMatchObject({ error: 0, bias: 0, days: 3 });
 });
