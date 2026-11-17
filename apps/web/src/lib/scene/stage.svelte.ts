@@ -5,13 +5,11 @@ import type { Group, PerspectiveCamera } from "three";
 import type { Glow } from "../builder/scene.ts";
 import { motion } from "../motion/tier.svelte.ts";
 import { cssColour, flowRgb } from "./backdrop.ts";
-import { weatherEffects } from "./effects.svelte.ts";
 import { daylight, theme } from "./light.ts";
 import { easeGlow } from "./live-glow.svelte.ts";
 import { Opening } from "./opening.svelte.ts";
 import { stage, type SceneWeather, type Staged } from "./staged.ts";
 import { openStudio, type Opened } from "./studio-look.svelte.ts";
-import { lightAlone } from "./weather.ts";
 
 /** Follows mode-watcher's class on the root element. */
 const themed = createSubscriber((update) => {
@@ -83,9 +81,9 @@ const same = <T>(last: T, next: T): T =>
   JSON.stringify(next) === JSON.stringify(last) ? last : next;
 
 /** The light and the weather of `sky`, each anew only when a value of it changed: a live tick
- * asks for the same weather again and must light nothing. `glazing` tells whether the look
- * draws the lens glass. */
-function steadied(sky: () => Sky, glazing: () => boolean) {
+ * asks for the same weather again and must light nothing. The studio's `look` tells
+ * whether it draws the lens glass, and `weather` what it draws of one. */
+function steadied(sky: () => Sky, look: Opened["look"], weatherOf: Opened["weather"]) {
   const sun = $derived(sky().sun);
   const diffuse = $derived(sky().diffuse);
   let last: Sky["weather"];
@@ -93,10 +91,7 @@ function steadied(sky: () => Sky, glazing: () => boolean) {
   let glazed: NonNullable<Sky["weather"]>["glass"] = null;
 
   const weather = $derived.by(() => {
-    const given = sky().weather;
-
-    // Its light alone while this browser's Wettereffekte switch is off (ADR 23 "Off switch").
-    last = same(last, given === undefined || weatherEffects.on ? given : lightAlone(given));
+    last = same(last, weatherOf(sky().weather));
 
     return last;
   });
@@ -111,7 +106,7 @@ function steadied(sky: () => Sky, glazing: () => boolean) {
   // As what falls is: the glass fades by itself, and a drying ground must not start it over.
   // None where the look draws none, at Niedrig: no loop is kept for it there.
   const glass = $derived.by(() => {
-    glazed = same(glazed, glazing() ? (weather?.glass ?? null) : null);
+    glazed = same(glazed, look().glass ? (weather?.glass ?? null) : null);
 
     return glazed;
   });
@@ -144,11 +139,11 @@ export function lit(
   sky: () => Sky,
   drawn: () => void,
 ): Lit {
-  const { studio, look, close } = openStudio(canvas, camera);
+  const { studio, look, weather, close } = openStudio(canvas, camera);
   const opened = new Opening(studio, drawn);
   const { flight, render } = opened;
   const shown = stage(studio);
-  const steady = steadied(sky, () => look().glass);
+  const steady = steadied(sky, look, weather);
   const day = $derived(steady.day);
   let colour = $state(0);
 

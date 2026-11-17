@@ -1,9 +1,9 @@
 import { flushSync } from "svelte";
 import { expect, test } from "vitest";
 import { connect } from "../api/core.ts";
+import { pv } from "./builder.harness.ts";
 import { emptyDraft } from "./modules.ts";
 import { Moment } from "./moment.svelte.ts";
-import type { Pv } from "./pv.ts";
 
 const QUARTER = 15 * 60_000;
 
@@ -22,7 +22,11 @@ const snowedIn = connect({
     const points = [];
 
     for (let at = from; at < to; at += QUARTER) {
-      points.push({ issued: new Date(from).toISOString(), target: new Date(at).toISOString(), value: 1 });
+      points.push({
+        issued: new Date(from).toISOString(),
+        target: new Date(at).toISOString(),
+        value: 1,
+      });
     }
 
     return Promise.resolve(Response.json({ points }));
@@ -35,9 +39,7 @@ test("the admin edits without fog, what falls and the glass; the light and lying
   const unmount = $effect.root(() => {
     moment = new Moment(() => ({
       core: snowedIn,
-      // Never asked: the plant's location is unknown.
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-      pv: {} as Pv,
+      pv,
       draft: emptyDraft(),
       moduleTypes: [],
       location: undefined,

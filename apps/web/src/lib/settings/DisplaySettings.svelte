@@ -1,11 +1,10 @@
 <!-- Settings › Display (ADR 21): this browser's theme, language, 3D quality (ADR 20), weather effects (ADR 23), low-power and haptics switches. -->
 <script lang="ts">
-  import { setMode, userPrefersMode } from "mode-watcher";
   import { MediaQuery } from "svelte/reactivity";
   import * as Item from "#lib/components/ui/item/index.js";
   import LanguageRow from "./LanguageRow.svelte";
   import QualityRow from "./QualityRow.svelte";
-  import SegmentRow from "./SegmentRow.svelte";
+  import ThemeRow from "./ThemeRow.svelte";
   import ToggleRow from "./ToggleRow.svelte";
   import { HAPTICS, haptics, hapticsOn } from "../haptics.ts";
   import { motion } from "../motion/tier.svelte.ts";
@@ -33,13 +32,6 @@
     return reduce.current ? m.display_haptics_reduced() : undefined;
   });
 
-  function theme(next: string): void {
-    if (next !== "dark" && next !== "light") return;
-
-    setMode(next);
-    haptics.selection();
-  }
-
   function feelOn(on: boolean): void {
     stored = on ? "on" : "off";
     localStorage.setItem(HAPTICS, stored);
@@ -49,15 +41,7 @@
 
 <div class="drill-card">
   <Item.Group class="gap-0 divide-y divide-border/60">
-    <SegmentRow
-      label={m.display_theme()}
-      value={userPrefersMode.current === "light" ? "light" : "dark"}
-      options={[
-        ["dark", m.display_dark()],
-        ["light", m.display_light()],
-      ]}
-      onchange={theme}
-    />
+    <ThemeRow />
     <LanguageRow />
     <QualityRow />
     <ToggleRow
