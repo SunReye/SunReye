@@ -1,5 +1,6 @@
 // The dashboard scene's sky (ADR 20 Look, ADR 23): the weather now, read again as it moves on.
 import type { Core } from "../api/core.ts";
+import { sceneWeather, type Plant, type SceneWeather } from "../scene/weather.ts";
 import { readWeather, weatherAt, type WeatherRead } from "../weather/weather.ts";
 
 const HOUR = 3_600_000;
@@ -10,11 +11,15 @@ const STEP = 15 * 60_000;
 export class LiveSky {
   #now = $state(Date.now());
 
-  /** The stored weather around now. */
-  #read = $state.raw<WeatherRead>();
+  /** The stored weather around an instant, and that instant: the last read stands until the
+   * next lands, so no quantity lapses between the two. */
+  #read = $state.raw<readonly [WeatherRead, number]>();
 
   /** The weather now; nothing of it without weather for now. */
-  readonly weather = $derived(weatherAt(this.#read, this.#now));
+  readonly weather = $derived(this.#read ? weatherAt(...this.#read) : weatherAt(undefined, 0));
+
+  /** The scene's weather now, for what the `plant` reads (ADR 23). */
+  readonly scene = (plant: Plant): SceneWeather => sceneWeather(this.weather, plant);
 
   /** Reads from what `core` gives; call during a component's set-up. */
   constructor(core: () => Pick<Core, "history" | "forecasts">) {
@@ -37,7 +42,7 @@ export class LiveSky {
       void (async () => {
         const read = await readWeather(reader, new Date(now - HOUR), new Date(now + HOUR));
 
-        if (current) this.#read = read;
+        if (current) this.#read = [read, now];
       })();
 
       return () => {

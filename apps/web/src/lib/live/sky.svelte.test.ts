@@ -1,5 +1,5 @@
 import { flushSync } from "svelte";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { connect } from "../api/core.ts";
 import { LiveSky } from "./sky.svelte.ts";
 
@@ -65,4 +65,71 @@ test("the dashboard's sky is the weather forecast in force now", async () => {
   expect(asked[0]?.from).toBeLessThanOrEqual(before - 3_600_000 + 1000);
   expect(asked[0]?.to).toBeGreaterThan(before);
   stop();
+});
+
+/** A core that measured a closed sky from `start`'s 25 to 10 minutes before, and whose answers
+ * wait while `hold` is set. */
+function measuredCore(start: number) {
+  const iso = (minutes: number) => new Date(start + minutes * 60_000).toISOString();
+  const held: (() => void)[] = [];
+  const state = { hold: false, held };
+
+  const core = connect({
+    base: "http://core.test/",
+    fetch: async (request) => {
+      const url = new URL(request.url);
+
+      if (state.hold) {
+        await new Promise<void>((release) => {
+          state.held.push(release);
+        });
+      }
+
+      const index =
+        url.searchParams.get("series") === "weather.clearness" && url.pathname.endsWith("/history");
+
+      return Response.json({
+        tier: "raw",
+        points: index ? [{ start: iso(-25), end: iso(-10), mean: 0.25 }] : [],
+      });
+    },
+  });
+
+  return { core, state };
+}
+
+test("as now moves on, the last weather stands until the next is read: nothing lapses between", async () => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+
+  const { core, state } = measuredCore(Date.now());
+  let sky: LiveSky | undefined;
+
+  const stop = $effect.root(() => {
+    sky = new LiveSky(() => core);
+  });
+
+  flushSync();
+  // The index stands for ten more minutes.
+  await vi.waitFor(() => {
+    expect(sky?.weather.clearness).toBe(0.25);
+  });
+
+  state.hold = true;
+  vi.advanceTimersByTime(15 * 60_000);
+  flushSync();
+  await vi.waitFor(() => {
+    expect(state.held.length).toBeGreaterThan(0);
+  });
+  expect(sky?.weather.clearness).toBe(0.25);
+
+  state.hold = false;
+
+  for (const release of state.held) release();
+
+  // Read again a quarter on, the index has lapsed.
+  await vi.waitFor(() => {
+    expect(sky?.weather.clearness).toBeNull();
+  });
+  stop();
+  vi.useRealTimers();
 });
