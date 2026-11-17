@@ -1,8 +1,10 @@
 // The scene's weather at an instant (ADR 23 "Scene weather"): how far the fog closes in, how wet
 // the ground is, whether snow lies and covers the modules, and thunder. Pure: the studio and the
 // drawn scene apply it, and nothing here moves.
+import type { Point } from "../builder/pv.ts";
 import type { Weather } from "../weather/weather.ts";
-import { smoothstep } from "./colour.ts";
+import { mix, smoothstep } from "./colour.ts";
+import type { Triple } from "./tone.ts";
 
 export interface SceneWeather {
   /** How far the distance fog closes in toward grey, 0 to 1. */
@@ -19,8 +21,8 @@ export interface SceneWeather {
 
 /** What the plant tells of an instant, which no weather series does. */
 export interface Plant {
-  /** The sun's elevation in degrees; null where the plant's location is unknown. */
-  readonly elevation: number | null;
+  /** Toward the sun: east, north, up; null where the plant's location is unknown. */
+  readonly sun: Point | null;
   /** The measured PV power's share of the plant's peak, 0 to 1; null without a reading. */
   readonly share: number | null;
 }
@@ -28,7 +30,7 @@ export interface Plant {
 /** Clear and dry: an instant without weather. */
 export const DRY: SceneWeather = { fog: 0, wet: 0, snow: false, covered: false, thunder: false };
 
-const UNKNOWN: Plant = { elevation: null, share: null };
+const UNKNOWN: Plant = { sun: null, share: null };
 
 /** Metres of visibility where fog starts to show and where it is whole; between, it thickens by
  * the visibility's logarithm, as the eye judges distance. */
@@ -70,11 +72,25 @@ function fogOf({ code, visibility }: Weather): number {
  * Snow covers the modules: the core stores no clear-sky index while it does (ADR 23), so snow
  * lies, the core measured no sky though the sun is well up, and the plant reads next to nothing.
  */
-function coveredBy({ clearness }: Weather, snow: boolean, { elevation, share }: Plant): boolean {
-  const risen = elevation !== null && elevation >= SUN;
+function coveredBy({ clearness }: Weather, snow: boolean, { sun, share }: Plant): boolean {
+  const risen = sun !== null && sun[2] >= Math.sin((SUN * Math.PI) / 180);
   const idle = share !== null && share < NOTHING;
 
   return snow && clearness === null && risen && idle;
+}
+
+/** Thick fog as it lands on screen, by theme: linear grey, a little cool. */
+const GREY = {
+  light: [0.42, 0.44, 0.47],
+  dark: [0.05, 0.055, 0.062],
+} as const;
+
+/** The distance fog's colour, linear and as tone mapped: the `page`'s in clear air, grey `fog`
+ * of the way. */
+export function fogColour(page: Triple, dark: boolean, fog: number): [number, number, number] {
+  const grey = dark ? GREY.dark : GREY.light;
+
+  return [mix(page[0], grey[0], fog), mix(page[1], grey[1], fog), mix(page[2], grey[2], fog)];
 }
 
 /** The scene's weather for the `weather` at an instant and what the `plant` reads then. */

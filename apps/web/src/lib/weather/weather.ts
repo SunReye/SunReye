@@ -149,14 +149,12 @@ const clamp = (value: number) => Math.min(1, Math.max(0, value));
 
 /** How long it has been dry at `at`: history's quarters count over the forecast's for them. */
 function dryAt(fallen: readonly Held[], at: number): number | null {
-  const ends = fallen
-    .filter(
-      (held) =>
-        held.value > 0 &&
-        held.from <= at &&
-        fallen.find(({ from, to }) => from <= held.from && held.from < to) === held,
-    )
-    .map(({ to }) => to);
+  const ends = fallen.flatMap((held) => {
+    const fell = held.value > 0 && held.from <= at;
+    const counts = fallen.find(({ from, to }) => from <= held.from && held.from < to) === held;
+
+    return fell && counts ? [held.to] : [];
+  });
 
   return ends.length === 0 ? null : Math.max(0, at - Math.max(...ends));
 }
