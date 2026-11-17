@@ -5,11 +5,11 @@
 <script lang="ts">
   import { m } from "../paraglide/messages.js";
   import RangeControl from "../range/RangeControl.svelte";
+  import Costs from "../tariff/Costs.svelte";
   import type { AnalyticsInput } from "./Analytics.svelte";
   import type { HeadView } from "./head.svelte.ts";
   import NoTariff from "./NoTariff.svelte";
   import RangeState from "./RangeState.svelte";
-  import SavingsChart from "./SavingsChart.svelte";
 
   let {
     input,
@@ -36,7 +36,7 @@
   <RangeControl model={input.route} />
   {#if priced}
     <RangeState {head} {onretry}>
-      <SavingsChart core={input.core} route={input.route} />
+      <Costs core={input.core} route={input.route} chart="savings" />
     </RangeState>
   {:else}
     <NoTariff {admin} />

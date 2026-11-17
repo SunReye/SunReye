@@ -162,8 +162,10 @@ const slot = (hour: number, value: number, minute = 0) => ({
   value,
 });
 
-/** Each path but statistics', and what the fake core answers there. */
-const ROUTES = new Map<string, () => Response>([
+const NO_COSTS = { days: [], total: { paid: 0.32, earned: 0.33, saved: 2.1, standing: 0 } };
+
+/** Each path but statistics', and what the fake core answers there to query `q`. */
+const ROUTES = new Map<string, (q: Readonly<URLSearchParams>) => Response | Promise<Response>>([
   ["/api/v1/topology", () => Response.json(TOPOLOGY)],
   ["/api/v1/series", catalog],
   ["/api/v1/timezone", () => Response.json({ name: "UTC" })],
@@ -191,6 +193,10 @@ const ROUTES = new Map<string, () => Response>([
   ["/api/v1/module-types", () => Response.json({ moduleTypes: [{ id: 1, name: "M", pmax: 300 }] })],
   ["/api/v1/corrections", () => Response.json(CORRECTIONS)],
   [
+    "/api/v1/costs",
+    (q) => served.costs?.(q.get("from") ?? "", q.get("to") ?? "") ?? Response.json(NO_COSTS),
+  ],
+  [
     "/api/v1/payback",
     () =>
       served.payback === null
@@ -198,8 +204,6 @@ const ROUTES = new Map<string, () => Response>([
         : Response.json(served.payback),
   ],
 ]);
-
-const NO_COSTS = { days: [], total: { paid: 0.32, earned: 0.33, saved: 2.1, standing: 0 } };
 
 /** A statistics request's device, series, window and period, read from its URL. */
 function askedOf(device: string, q: Readonly<URLSearchParams>): Asked {
@@ -229,10 +233,7 @@ function answer(href: string): Response | Promise<Response> {
 
   fetched.push(`${pathname} ${q.get("series") ?? ""} ${q.get("from") ?? ""}`);
 
-  if (pathname === "/api/v1/costs")
-    return served.costs?.(q.get("from") ?? "", q.get("to") ?? "") ?? Response.json(NO_COSTS);
-
-  return (ROUTES.get(pathname) ?? (() => Response.json({ points: [] })))();
+  return (ROUTES.get(pathname) ?? (() => Response.json({ points: [] })))(q);
 }
 
 const transport: Transport = {
