@@ -75,10 +75,25 @@ function coveredOf(flows: Rollups | null): Fact {
   return { label: m.detail_pv_covered(), value: share, unit: "%", digits: 0 };
 }
 
-/** The facts row: the peak with its time, then the share PV covered or the flow's euros. */
-export function flowFacts(flow: Readonly<Flow>, read: Readonly<FlowRead> | null): Fact[] {
-  const cover = flow.cover ? [coveredOf(read?.flows ?? null)] : [];
-  const money = flow.money === null ? [] : [euros(flow.money.label(), sumOf(read?.money ?? null))];
+/** What the flow was paid or earned; without a tariff in force, that none is (ADR 12). */
+function moneyOf(money: Flow["money"], read: Readonly<FlowRead> | null, priced: boolean): Fact[] {
+  if (money === null) return [];
 
-  return [peakOf(read), ...cover, ...money];
+  if (!priced) return [{ label: money.label(), text: m.stats_tariff_none() }];
+
+  return [euros(money.label(), sumOf(read?.money ?? null))];
+}
+
+/**
+ * The facts row: the peak with its time, then the share PV covered or the flow's euros.
+ * @param priced a tariff is in force
+ */
+export function flowFacts(
+  flow: Readonly<Flow>,
+  read: Readonly<FlowRead> | null,
+  priced: boolean,
+): Fact[] {
+  const cover = flow.cover ? [coveredOf(read?.flows ?? null)] : [];
+
+  return [peakOf(read), ...cover, ...moneyOf(flow.money, read, priced)];
 }

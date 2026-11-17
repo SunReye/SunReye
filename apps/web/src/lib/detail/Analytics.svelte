@@ -48,6 +48,7 @@
     input,
     head,
     onretry,
+    priced,
     fallback,
   }: {
     id: string;
@@ -58,6 +59,8 @@
     /** The figure over the range: what the range holds and whether it could be read. */
     head: HeadView | null;
     onretry: () => void;
+    /** A tariff is in force (ADR 12). */
+    priced: boolean;
     fallback: Snippet;
   } = $props();
 
@@ -75,7 +78,7 @@
       {#if analytics}
         <AnalyticsTabs {id} {title} {colour} {analytics} {input} />
         {#if flow}
-          <FlowPanel {input} {flow} />
+          <FlowPanel {input} {flow} {priced} />
         {/if}
       {:else}
         <AutarkyPanel {input} />

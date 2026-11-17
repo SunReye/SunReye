@@ -14,6 +14,8 @@ export interface FlowInput {
   readonly core: MeasureCore;
   readonly route: RangeRoute;
   readonly flow: Flow;
+  /** A tariff is in force (ADR 12). */
+  readonly priced: boolean;
 }
 
 export class FlowRange {
@@ -56,7 +58,9 @@ export class FlowRange {
   };
 
   /** The facts row; each value null while the range is read. */
-  readonly facts = $derived.by(() =>
-    flowFacts(this.#input().flow, this.#data.current?.data ?? null),
-  );
+  readonly facts = $derived.by(() => {
+    const { flow, priced } = this.#input();
+
+    return flowFacts(flow, this.#data.current?.data ?? null, priced);
+  });
 }

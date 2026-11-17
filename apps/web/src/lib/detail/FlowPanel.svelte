@@ -10,9 +10,18 @@
   import type { HeadView } from "./head.svelte.ts";
   import RangeState from "./RangeState.svelte";
 
-  let { input, flow }: { input: AnalyticsInput; flow: Flow } = $props();
+  let {
+    input,
+    flow,
+    priced,
+  }: {
+    input: AnalyticsInput;
+    flow: Flow;
+    /** A tariff is in force (ADR 12). */
+    priced: boolean;
+  } = $props();
 
-  const range = new FlowRange(() => ({ core: input.core, route: input.route, flow }));
+  const range = new FlowRange(() => ({ core: input.core, route: input.route, flow, priced }));
 
   /** The range's own read failed, though the head's did not. */
   const FAILED: HeadView = {

@@ -107,3 +107,14 @@ test("the consumption sheet's facts: the peak with its hour, and the share PV co
   await expect.element(facts.filter({ hasText: "%" })).toHaveTextContent("50 %");
   expect(sheet.getByText("Kosten").elements()).toHaveLength(0);
 });
+
+test("without a tariff in force the purchase sheet says so in place of its euros", async () => {
+  served.rolled = rolled(BOUGHT);
+
+  const sheet = await sheetOf("purchase", "Bezug");
+  const facts = sheet.getByRole("definition");
+
+  await expect.element(facts.filter({ hasText: "9:00–10:00 Uhr" })).toBeVisible();
+  await expect.element(sheet.getByText("Kosten")).toBeVisible();
+  await expect.element(facts.filter({ hasText: "Kein Tarif" })).toBeVisible();
+});
