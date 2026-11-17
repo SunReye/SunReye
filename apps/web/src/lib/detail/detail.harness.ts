@@ -4,10 +4,12 @@ import { vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import { connect, type Transport } from "../api/core.ts";
 import Dashboard from "../dashboard/Dashboard.svelte";
+import { CAPABILITIES, CORRECTIONS, INVERTER, TOPOLOGY } from "./detail.fixtures.ts";
+
+export { INVERTER };
 
 export const PLANT = "4294967294";
 const SPOT = "4294967292";
-export const INVERTER = "1";
 export const BATTERY = "2";
 
 /** Midday: the plant's totals, an inverter with two inputs and a battery. */
@@ -163,43 +165,6 @@ const slot = (hour: number, value: number, minute = 0) => ({
   value,
 });
 
-/** Input 1 runs 15 % under its model lately. */
-const CORRECTIONS = {
-  inputs: [
-    {
-      device: 1,
-      input: 1,
-      factors: [{ month: 11, hour: 10, factor: 0.85 }],
-      recent: { measured: 85, modelled: 100 },
-    },
-  ],
-};
-
-/** Both strings share input 1, so both are estimated. */
-const CAPABILITIES = {
-  capabilities: [],
-  schema: {},
-  transports: [],
-  version: "5",
-  devices: {
-    [INVERTER]: {
-      series: [],
-      settings: [],
-      writes: false,
-      estimated: ["pv.string.power[1]", "pv.string.power[2]"],
-    },
-  },
-};
-
-/** The grid connection and a heat pump below it, which a viewer reads too (ADR 9). */
-const TOPOLOGY = {
-  appliesFrom: "2026-11-01T00:00:00Z",
-  points: [
-    { id: 1, name: "Netz", parent: null, contested: false, claims: [] },
-    { id: 2, name: "Wärmepumpe", parent: 1, contested: false, claims: [] },
-  ],
-};
-
 /** Each path but statistics', and what the fake core answers there. */
 const ROUTES = new Map<string, () => Response>([
   ["/api/v1/topology", () => Response.json(TOPOLOGY)],
@@ -235,19 +200,30 @@ const ROUTES = new Map<string, () => Response>([
   ],
 ]);
 
+/** A statistics request's device, series, window and period, read from its URL. */
+function askedOf(device: string, q: Readonly<URLSearchParams>): Asked {
+  const field = (name: string) => q.get(name) ?? "";
+
+  return {
+    device,
+    series: field("series"),
+    from: field("from"),
+    to: field("to"),
+    period: field("period"),
+  };
+}
+
 function answer(href: string): Response | Promise<Response> {
   const { pathname, searchParams: q } = new URL(href);
 
   const read = /^\/api\/v1\/devices\/(\d+)\/statistics$/u.exec(pathname);
 
   if (read) {
-    const [device, series] = [read[1]!, q.get("series") ?? ""];
-    const [from, to, period] = [q.get("from") ?? "", q.get("to") ?? "", q.get("period") ?? ""];
-    const one = { device, series, from, to, period };
+    const one = askedOf(read[1]!, q);
 
     asked.push(one);
 
-    return served.rolled?.(one) ?? statistics(device, series, from);
+    return served.rolled?.(one) ?? statistics(one.device, one.series, one.from);
   }
 
   fetched.push(`${pathname} ${q.get("series") ?? ""} ${q.get("from") ?? ""}`);
