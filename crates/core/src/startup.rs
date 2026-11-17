@@ -15,6 +15,7 @@ use crate::backup::Backups;
 use crate::bus::Bus;
 use crate::cars::CarBodies;
 use crate::changes::Changes;
+use crate::clear_sky_index::ClearSkyIndex;
 use crate::correction::{Corrections, Learner};
 use crate::devices::Devices;
 use crate::estimates::StringEstimates;
@@ -407,8 +408,8 @@ impl Computed {
     }
 }
 
-/// Runs the weather device, the solar forecast, the correction learner, the weather backfill and
-/// the spot-price device until storage stops.
+/// Runs the weather device, the solar forecast, the correction learner, the weather backfill, the
+/// clear-sky index and the spot-price device until storage stops.
 async fn forecast(
     storage: &Storage,
     (provider, archive, spot): (impl Provider, impl Archive, impl spot::Provider),
@@ -422,6 +423,7 @@ async fn forecast(
     let weather = Weather::new(provider, weather::DEVICE, bus);
     let solar = SolarForecast::new(layouts.clone(), weather::DEVICE, bus);
     let corrections = Corrections::new(layouts.clone(), weather::DEVICE, storage);
+    let index = ClearSkyIndex::new(layouts.clone(), weather::DEVICE, storage, bus);
     let learner = Learner::new(archive, weather::DEVICE, layouts, storage, bus);
     let spot = SpotPrices::new(spot, bus);
     tokio::join!(
@@ -433,6 +435,7 @@ async fn forecast(
             SystemTime::now
         ),
         // Boxed: its learn run alone would make the core's future large.
+        Box::pin(index.run(storage, &corrections, location.clone(), SystemTime::now)),
         Box::pin(learner.run(
             storage,
             location.clone(),

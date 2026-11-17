@@ -510,7 +510,7 @@ impl Plant {
         };
         let at_limit = inverter
             .zip(measured.peak)
-            .is_some_and(|((_, max), peak)| max >= AT_LIMIT * peak && inverter_modelled > peak);
+            .is_some_and(|((_, max), peak)| at_limit(max, inverter_modelled, peak));
         if at_limit {
             return Some(Observed::AtLimit);
         }
@@ -525,6 +525,12 @@ impl Plant {
         };
         Some(Observed::Hour(observed, nameplate, inverter_nameplate))
     }
+}
+
+/// Whether an inverter whose measured power peaked at `max` while the model expected `modelled`
+/// is at its AC limit `cap`: its declared rating, or the highest peak it has measured.
+pub(crate) fn at_limit(max: f64, modelled: f64, cap: f64) -> bool {
+    max >= AT_LIMIT * cap && modelled > cap
 }
 
 /// The settled UTC days not yet learned, first and last; none when none is due.
