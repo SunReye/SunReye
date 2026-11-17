@@ -91,6 +91,7 @@ export async function fold(series: string, query = "range=month&at=2026-10-15") 
 
   const screen = await render(ExploreScreen, {
     core: connect(transport()),
+    admin: false,
     params: new URLSearchParams(`mode=fold&s=1:${series}&${query}`),
     go: (patch: Readonly<Record<string, string | null>>) => {
       went.push(patch);

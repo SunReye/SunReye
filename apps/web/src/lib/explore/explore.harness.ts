@@ -11,6 +11,7 @@ import {
 } from "../api/core.ts";
 import Shell from "../shell/Shell.svelte";
 import ExploreScreen from "./ExploreScreen.svelte";
+import { answerViews, forViews, resetViews } from "./views.harness.ts";
 
 const SPAN = { first: "2026-01-01T00:00:00Z", last: "2026-11-15T12:00:00Z" };
 
@@ -103,6 +104,7 @@ export const plant = {
 export function reset(): void {
   plant.broken = false;
   plant.offline = false;
+  resetViews();
   plant.history = halves;
   plant.statistics = figures;
   plant.asked = [];
@@ -139,6 +141,8 @@ function transport(): Transport {
       if (read === "series" && !plant.broken)
         return Promise.resolve(Response.json({ devices: DEVICES }));
 
+      if (forViews(request)) return answerViews(request);
+
       const asked = askedOf(new URL(request.url));
 
       if (asked) {
@@ -158,12 +162,14 @@ type Patch = Readonly<Record<string, string | null>>;
  * The screen at `query`, every route change it makes, and its history: each entry's query, the
  * last the one shown, as the router would keep them.
  */
-export async function show(query = "") {
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- an options bag.
+export async function show(query = "", { admin = false } = {}) {
   const went: Readonly<{ patch: Patch; push: boolean }>[] = [];
   const entries = [new URLSearchParams(query)];
 
   const screen = await render(ExploreScreen, {
     core: connect(transport()),
+    admin,
     params: entries[0]!,
     go: (patch: Patch, push: boolean) => {
       went.push({ patch, push });
@@ -199,6 +205,7 @@ export async function showIn(shell: "bar" | "rail") {
         target,
         props: {
           core: connect(transport()),
+          admin: false,
           params: new URLSearchParams(),
           go: () => {},
           back: () => {},
