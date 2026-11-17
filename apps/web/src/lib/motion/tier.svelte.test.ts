@@ -126,10 +126,13 @@ test("a loop's frames are judged for as long as it runs: held ones leave the tie
 
   for (let frame = 0; frame < 2000; frame++) motion.frame((now += 1000 / 60));
 
+  // A draw of 20 ms misses every other frame of a 60 Hz display and still holds the loop's 30.
+  for (let frame = 0; frame < 2000; frame++) motion.frame((now += 1000 / 30));
+
   expect(motion.tier).toBe("full");
 
-  // Every other frame dropped: the loop's draw takes longer than its 30th of a second.
-  for (let frame = 0; frame < 400; frame++) motion.frame((now += frame % 2 === 0 ? 40 : 8));
+  // A draw of 40 ms misses the loop's own 30th of a second: the display gives 20 a second.
+  for (let frame = 0; frame < 400; frame++) motion.frame((now += 50));
 
   expect(motion.tier).toBe("lite");
   expect(localStorage.getItem("sunreye.motion-strain")).toBe("1");
@@ -144,14 +147,14 @@ test("a loop's frames are no evidence while the page settles or on the still tie
 
   motion.watch();
 
-  for (let frame = 0; frame < 300; frame++) motion.frame((now += 40));
+  for (let frame = 0; frame < 300; frame++) motion.frame((now += 60));
 
   expect(motion.tier).toBe("full");
 
   vi.advanceTimersByTime(4000);
   motion.lowPower = true;
 
-  for (let frame = 0; frame < 300; frame++) motion.frame((now += 40));
+  for (let frame = 0; frame < 300; frame++) motion.frame((now += 60));
 
   motion.lowPower = false;
   expect(motion.tier).toBe("full");

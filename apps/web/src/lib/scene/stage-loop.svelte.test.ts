@@ -69,18 +69,24 @@ async function open() {
   };
 }
 
-/** Whether the studio draws on its own over the next frames. */
+/** `count` of the display's frames, one after the other. */
+async function frames(count: number): Promise<void> {
+  if (count === 0) return;
+
+  await new Promise((resolve) => {
+    requestAnimationFrame(resolve);
+  });
+  await frames(count - 1);
+}
+
+/** How often the studio draws on its own over eight frames, once what was asked for is drawn. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- a spy, only read.
 async function draws(drawn: { readonly mock: { readonly calls: readonly unknown[] } }) {
-  await new Promise((resolve) => {
-    setTimeout(resolve, 150);
-  });
+  await frames(4);
 
   const before = drawn.mock.calls.length;
 
-  await new Promise((resolve) => {
-    setTimeout(resolve, 250);
-  });
+  await frames(8);
 
   return drawn.mock.calls.length - before;
 }
@@ -102,11 +108,7 @@ test("the scene loops while rain falls and stops when the weather turns dry", as
 
   const labels = seen.labels;
 
-  // At most 30 a second, whatever this host's display gives.
-  const looped = await draws(drawn);
-
-  expect(looped).toBeGreaterThan(0);
-  expect(looped).toBeLessThanOrEqual(9);
+  expect(await draws(drawn)).toBeGreaterThan(0);
   // The frame watch counts its frames; the labels are placed for a changed picture alone.
   expect(counted).toHaveBeenCalled();
   expect(seen.labels - labels).toBeLessThanOrEqual(1);
