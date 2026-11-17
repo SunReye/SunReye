@@ -150,6 +150,17 @@ test("rain runs by the loop's seconds alone, and frost stands", () => {
   expect(differing(picture(opened), frozen).around).toBe(0);
 });
 
+test("the glass's clock turns over each hour: a page open for days draws as in its first", () => {
+  const opened = open();
+
+  opened.lens(RAIN, 2);
+
+  const first = picture(opened);
+
+  opened.lens(RAIN, 500 * 3600 + 2);
+  expect(differing(picture(opened), first).around).toBe(0);
+});
+
 test("Niedrig draws no glass", () => {
   const opened = open(false, "low");
   const clear = picture(opened);

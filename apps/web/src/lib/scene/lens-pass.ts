@@ -32,6 +32,10 @@ const SHADE = {
   dark: { wet: [0.62, 0.68, 0.76], shade: 0.3, white: [0.36, 0.4, 0.47] },
 } as const;
 
+/** Seconds after which the glass's clock starts over: a shader counts in 32 bits, and after
+ * days of the loop a running drop would move in steps. Once an hour the beads are other ones. */
+const TURN = 3600;
+
 const quiet = { depthTest: false, depthWrite: false } as const;
 
 /** A uniform that holds a texture once there is one. */
@@ -84,7 +88,7 @@ export class LensPass extends Pass {
   /** What is on the lens at `seconds` of the weather loop. */
   show({ rain, snow, frost }: Glass, seconds: number): void {
     this.#fieldUniforms.uGlass.value.set(rain, snow, frost);
-    this.#fieldUniforms.uSeconds.value = seconds;
+    this.#fieldUniforms.uSeconds.value = seconds % TURN;
   }
 
   /** The glass's colours for the theme. */
