@@ -40,6 +40,34 @@ pub struct Slot {
     pub temperature: f64,
     /// Wind speed in m/s, when the provider has it.
     pub wind: Option<f64>,
+    pub detail: Detail,
+}
+
+/// The weather beyond what the PV model reads (ADR 23), each when the provider has it.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Detail {
+    /// The WMO weather code.
+    pub code: Option<f64>,
+    /// In mm/h.
+    pub precipitation: Option<f64>,
+    /// In cm/h.
+    pub snowfall: Option<f64>,
+    /// In m.
+    pub visibility: Option<f64>,
+    /// Relative humidity in %.
+    pub humidity: Option<f64>,
+    /// Where the wind comes from in °, 0 north, 90 east.
+    pub wind_direction: Option<f64>,
+    /// In m/s.
+    pub gusts: Option<f64>,
+    /// In °C.
+    pub apparent_temperature: Option<f64>,
+    /// Seconds of sunshine in the slot.
+    pub sunshine: Option<f64>,
+    /// In %; the forecast has it at whole hours only.
+    pub cloud_cover: Option<f64>,
+    /// In m; the forecast has it at whole hours only.
+    pub snow_depth: Option<f64>,
 }
 
 /// A source of weather forecasts: Open-Meteo, or a fake in tests.
@@ -87,47 +115,155 @@ impl From<storage::Error> for Error {
     }
 }
 
-/// One stored quantity: its role, its unit's symbol, the step it is stored in and its value in a
-/// slot.
+/// One stored quantity: its role, its kind, its unit's symbol, the step it is stored in, its
+/// value in a slot and whether the archive has it.
 struct Quantity {
     role: &'static str,
-    unit: &'static str,
+    kind: RoleKind,
+    unit: Option<&'static str>,
     step: f64,
     value: fn(&Slot) -> Option<f64>,
+    archived: bool,
 }
 
-const QUANTITIES: [Quantity; 5] = [
+/// The quantities the PV model reads lead [`QUANTITIES`].
+const MODEL: usize = 5;
+
+const QUANTITIES: [Quantity; 16] = [
     Quantity {
         role: "weather.ghi",
-        unit: "W/m²",
+        kind: RoleKind::Measurement,
+        unit: Some("W/m²"),
         step: 0.1,
         value: |s| Some(s.ghi),
+        archived: true,
     },
     Quantity {
         role: "weather.dni",
-        unit: "W/m²",
+        kind: RoleKind::Measurement,
+        unit: Some("W/m²"),
         step: 0.1,
         value: |s| Some(s.dni),
+        archived: true,
     },
     Quantity {
         role: "weather.dhi",
-        unit: "W/m²",
+        kind: RoleKind::Measurement,
+        unit: Some("W/m²"),
         step: 0.1,
         value: |s| Some(s.dhi),
+        archived: true,
     },
     Quantity {
         role: "weather.temperature",
-        unit: "°C",
+        kind: RoleKind::Measurement,
+        unit: Some("°C"),
         step: 0.1,
         value: |s| Some(s.temperature),
+        archived: true,
     },
     Quantity {
         role: "weather.wind",
-        unit: "m/s",
+        kind: RoleKind::Measurement,
+        unit: Some("m/s"),
         step: 0.01,
         value: |s| s.wind,
+        archived: true,
+    },
+    Quantity {
+        role: "weather.code",
+        kind: RoleKind::Status,
+        unit: None,
+        step: 1.0,
+        value: |s| s.detail.code,
+        archived: true,
+    },
+    Quantity {
+        role: "weather.precipitation",
+        kind: RoleKind::Measurement,
+        unit: Some("mm/h"),
+        step: 0.01,
+        value: |s| s.detail.precipitation,
+        archived: true,
+    },
+    Quantity {
+        role: "weather.snowfall",
+        kind: RoleKind::Measurement,
+        unit: Some("cm/h"),
+        step: 0.01,
+        value: |s| s.detail.snowfall,
+        archived: true,
+    },
+    Quantity {
+        role: "weather.visibility",
+        kind: RoleKind::Measurement,
+        unit: Some("m"),
+        step: 1.0,
+        value: |s| s.detail.visibility,
+        archived: false,
+    },
+    Quantity {
+        role: "weather.humidity",
+        kind: RoleKind::Measurement,
+        unit: Some("%"),
+        step: 0.1,
+        value: |s| s.detail.humidity,
+        archived: true,
+    },
+    Quantity {
+        role: "weather.wind_direction",
+        kind: RoleKind::Measurement,
+        unit: Some("°"),
+        step: 1.0,
+        value: |s| s.detail.wind_direction,
+        archived: true,
+    },
+    Quantity {
+        role: "weather.gusts",
+        kind: RoleKind::Measurement,
+        unit: Some("m/s"),
+        step: 0.01,
+        value: |s| s.detail.gusts,
+        archived: true,
+    },
+    Quantity {
+        role: "weather.apparent_temperature",
+        kind: RoleKind::Measurement,
+        unit: Some("°C"),
+        step: 0.1,
+        value: |s| s.detail.apparent_temperature,
+        archived: true,
+    },
+    Quantity {
+        role: "weather.sunshine",
+        kind: RoleKind::Measurement,
+        unit: Some("s"),
+        step: 1.0,
+        value: |s| s.detail.sunshine,
+        archived: true,
+    },
+    Quantity {
+        role: "weather.cloud_cover",
+        kind: RoleKind::Measurement,
+        unit: Some("%"),
+        step: 1.0,
+        value: |s| s.detail.cloud_cover,
+        archived: true,
+    },
+    Quantity {
+        role: "weather.snow_depth",
+        kind: RoleKind::Measurement,
+        unit: Some("m"),
+        step: 0.001,
+        value: |s| s.detail.snow_depth,
+        archived: true,
     },
 ];
+
+/// The roles the weather device stores, as capabilities report them (ADR 15).
+pub fn roles() -> impl Iterator<Item = &'static str> {
+    QUANTITIES.iter().map(|q| q.role)
+}
 
 /// The weather device. Only its own task fetches; everyone else reads the forecast store.
 pub struct Weather<P> {
@@ -261,9 +397,13 @@ impl<A: Archive> Past<A> {
             return Ok(());
         };
         let hours: Vec<SystemTime> = hours(first.target, last.target + HOUR).collect();
-        for (quantity, series) in QUANTITIES.iter().zip(self.series) {
-            let policy = Policy::new(RoleKind::Measurement, None, quantity.step, HOUR)
-                .in_unit(quantity.unit);
+        let archived = QUANTITIES
+            .iter()
+            .zip(self.series)
+            .filter(|(q, _)| q.archived);
+        for (quantity, series) in archived {
+            let policy = Policy::new(quantity.kind, None, quantity.step, HOUR);
+            let policy = quantity.unit.map_or(policy, |unit| policy.in_unit(unit));
             storage.declare(self.device, series, policy).await?;
             let mut points: Vec<ChangePoint> = hours
                 .iter()
@@ -298,8 +438,8 @@ pub async fn archived(
     from: SystemTime,
     to: SystemTime,
 ) -> Result<Vec<Slot>, storage::Error> {
-    let mut stored = Vec::with_capacity(QUANTITIES.len());
-    for quantity in &QUANTITIES {
+    let mut stored = Vec::with_capacity(MODEL);
+    for quantity in &QUANTITIES[..MODEL] {
         let series = Series {
             role: quantity.role.to_owned(),
             index: None,
@@ -319,6 +459,7 @@ pub async fn archived(
                 dhi: at(2, target)?,
                 temperature: at(3, target)?,
                 wind: at(4, target),
+                detail: Detail::default(),
             })
         })
         .collect())

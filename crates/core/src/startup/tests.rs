@@ -11,8 +11,8 @@ use tokio::sync::oneshot;
 use super::{Boot, Options, serve};
 use crate::location::Location;
 use crate::spot::{self, BiddingZone};
-use crate::weather::Slot;
 use crate::weather::fake::{Fake, FakeArchive};
+use crate::weather::{Detail, Slot};
 
 fn parse(args: &[&str], env: &[(&str, &str)]) -> Result<Options, String> {
     let args = args.iter().map(|&a| a.to_owned());
@@ -324,6 +324,7 @@ fn weather() -> Vec<Slot> {
             dhi: 100.0,
             temperature: 10.0,
             wind: Some(2.0),
+            detail: Detail::default(),
         })
         .to_vec()
 }

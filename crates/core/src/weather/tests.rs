@@ -2,11 +2,12 @@
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use sunreye_profile::RoleKind;
 use tokio::sync::watch;
 use tokio::time::Instant;
 
 use super::fake::{Fake, FakeArchive};
-use super::{Error, Past, Slot, Weather, open_meteo};
+use super::{Detail, Error, Past, Slot, Weather, open_meteo};
 use crate::bus::{Bus, DeviceId};
 use crate::location::Location;
 use crate::storage::Storage;
@@ -32,6 +33,7 @@ fn slot(target: u64, ghi: f64) -> Slot {
         dhi: 141.8,
         temperature: 2.3,
         wind: Some(1.58),
+        detail: Detail::default(),
     }
 }
 
@@ -87,6 +89,81 @@ async fn a_refresh_stores_each_quantity_as_a_forecast_from_the_rounded_location(
         read("weather.wind").await,
         [(NOON, 1.58), (NOON + 900, 1.58)]
     );
+}
+
+/// What the refresh below stores, by seconds after noon.
+const STORED: [(&str, &[(u64, f64)]); 11] = [
+    ("weather.code", &[(0, 61.0), (900, 61.0)]),
+    ("weather.precipitation", &[(0, 1.23), (900, 1.2)]),
+    ("weather.snowfall", &[(0, 0.0), (900, 0.0)]),
+    ("weather.visibility", &[(0, 8400.0)]),
+    ("weather.humidity", &[(0, 93.0), (900, 93.0)]),
+    ("weather.wind_direction", &[(0, 250.0), (900, 250.0)]),
+    ("weather.gusts", &[(0, 5.4), (900, 5.4)]),
+    ("weather.apparent_temperature", &[(0, -0.4), (900, -0.4)]),
+    ("weather.sunshine", &[(0, 413.0), (900, 0.0)]),
+    ("weather.cloud_cover", &[(0, 100.0)]),
+    ("weather.snow_depth", &[(0, 0.03)]),
+];
+
+#[tokio::test]
+async fn a_refresh_stores_the_weather_in_its_steps_and_hourly_quantities_at_whole_hours() {
+    let dir = tempfile::tempdir().unwrap();
+    let bus = Bus::default();
+    let storage =
+        Storage::open(&dir.path().join("history.sqlite"), UNIX_EPOCH, "UTC", &bus).unwrap();
+    let hour = Detail {
+        precipitation: Some(1.234),
+        sunshine: Some(412.6),
+        cloud_cover: Some(100.0),
+        snow_depth: Some(0.0304),
+        ..drizzle()
+    };
+    // The quarter hour has no visibility.
+    let quarter = Detail {
+        visibility: None,
+        ..drizzle()
+    };
+    let (fake, _calls) = Fake::new(
+        vec![
+            Slot {
+                detail: hour,
+                ..slot(NOON, 200.8)
+            },
+            Slot {
+                detail: quarter,
+                ..slot(NOON + 900, 210.0)
+            },
+        ],
+        &[],
+    );
+    let weather = Weather::new(fake, DEVICE, &bus);
+
+    weather.refresh(&storage, BERLIN, at(NOON)).await.unwrap();
+
+    for (role, values) in STORED {
+        let read: Vec<_> = forecast(&storage, &bus, role)
+            .await
+            .into_iter()
+            .map(|(seconds, value)| (seconds - NOON, value))
+            .collect();
+        assert_eq!(read, values, "{role}");
+    }
+}
+
+/// The forecast of `role` over the hour from noon, by target in seconds, rounded to 1e-6.
+async fn forecast(storage: &Storage, bus: &Bus, role: &str) -> Vec<(u64, f64)> {
+    let series = bus.intern(role, None);
+    storage
+        .forecasts(DEVICE, series, at(NOON), at(NOON + 3600))
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|f| {
+            let seconds = f.target.duration_since(UNIX_EPOCH).unwrap().as_secs();
+            (seconds, (f.value * 1e6).round() / 1e6)
+        })
+        .collect()
 }
 
 #[tokio::test(start_paused = true)]
@@ -224,6 +301,103 @@ fn open_meteo_drops_a_slot_missing_a_value_and_keeps_one_missing_only_wind() {
     );
 }
 
+/// Light rain under a closed sky at 2026-11-09 11:00 UTC.
+fn drizzle() -> Detail {
+    Detail {
+        code: Some(61.0),
+        precipitation: Some(1.2),
+        snowfall: Some(0.0),
+        visibility: Some(8400.0),
+        humidity: Some(93.0),
+        wind_direction: Some(250.0),
+        gusts: Some(5.4),
+        apparent_temperature: Some(-0.4),
+        sunshine: Some(0.0),
+        cloud_cover: None,
+        snow_depth: None,
+    }
+}
+
+#[test]
+fn open_meteo_reads_the_weather_in_rates_per_hour_and_hourly_quantities_at_whole_hours() {
+    let body = r#"{"minutely_15":{
+        "time":[1794222000,1794222900],
+        "shortwave_radiation_instant":[200.8,200.8],
+        "direct_normal_irradiance_instant":[167.9,167.9],
+        "diffuse_radiation_instant":[141.8,141.8],
+        "temperature_2m":[2.3,2.3],
+        "wind_speed_10m":[1.58,1.58],
+        "weather_code":[61,61],
+        "precipitation":[0.3,0.3],
+        "snowfall":[0.0,0.0],
+        "visibility":[8400.0,null],
+        "relative_humidity_2m":[93,93],
+        "wind_direction_10m":[250,250],
+        "wind_gusts_10m":[5.4,5.4],
+        "apparent_temperature":[-0.4,-0.4],
+        "sunshine_duration":[0.0,0.0]},
+      "hourly":{"time":[1794218400,1794222000],"cloud_cover":[90,100],"snow_depth":[0.02,0.03]}}"#;
+    let slots = open_meteo::parse(body).unwrap();
+    let hour = Detail {
+        cloud_cover: Some(100.0),
+        snow_depth: Some(0.03),
+        ..drizzle()
+    };
+    let quarter = Detail {
+        visibility: None,
+        ..drizzle()
+    };
+    assert_eq!(
+        slots,
+        [
+            Slot {
+                detail: hour,
+                ..slot(NOON, 200.8)
+            },
+            Slot {
+                detail: quarter,
+                ..slot(NOON + 900, 200.8)
+            }
+        ]
+    );
+}
+
+#[test]
+fn the_archive_reads_the_weather_hourly_without_visibility() {
+    let body = r#"{"hourly":{
+        "time":[1794222000],
+        "shortwave_radiation_instant":[200.8],
+        "direct_normal_irradiance_instant":[167.9],
+        "diffuse_radiation_instant":[141.8],
+        "temperature_2m":[2.3],
+        "wind_speed_10m":[1.58],
+        "weather_code":[61],
+        "precipitation":[1.2],
+        "snowfall":[0.0],
+        "relative_humidity_2m":[93],
+        "wind_direction_10m":[250],
+        "wind_gusts_10m":[5.4],
+        "apparent_temperature":[-0.4],
+        "sunshine_duration":[null],
+        "cloud_cover":[100],
+        "snow_depth":[0.03]}}"#;
+    let slots = open_meteo::parse_archive(body).unwrap();
+    let detail = Detail {
+        visibility: None,
+        sunshine: None,
+        cloud_cover: Some(100.0),
+        snow_depth: Some(0.03),
+        ..drizzle()
+    };
+    assert_eq!(
+        slots,
+        [Slot {
+            detail,
+            ..slot(NOON, 200.8)
+        }]
+    );
+}
+
 #[test]
 fn open_meteo_refuses_a_body_without_its_series() {
     assert!(matches!(open_meteo::parse("{}"), Err(Error::Format)));
@@ -235,7 +409,9 @@ fn open_meteo_asks_for_today_and_two_more_days_at_15_minutes_at_the_rounded_loca
         open_meteo::url(BERLIN),
         "https://api.open-meteo.com/v1/forecast?latitude=52.52&longitude=13.38\
          &minutely_15=shortwave_radiation_instant,direct_normal_irradiance_instant,\
-         diffuse_radiation_instant,temperature_2m,wind_speed_10m\
+         diffuse_radiation_instant,temperature_2m,wind_speed_10m,weather_code,precipitation,\
+         snowfall,visibility,relative_humidity_2m,wind_direction_10m,wind_gusts_10m,\
+         apparent_temperature,sunshine_duration&hourly=cloud_cover,snow_depth\
          &wind_speed_unit=ms&timezone=auto&timeformat=unixtime&forecast_days=3"
     );
 }
@@ -261,6 +437,7 @@ fn the_archive_reads_irradiance_temperature_and_wind_every_hour() {
             dhi: 362.7,
             temperature: 24.3,
             wind: Some(1.52),
+            detail: Detail::default(),
         }
     );
 }
@@ -274,7 +451,9 @@ fn the_archive_asks_for_whole_utc_days_hourly_at_the_rounded_location() {
         "https://archive-api.open-meteo.com/v1/archive?latitude=52.52&longitude=13.38\
          &start_date=2026-06-20&end_date=2026-06-21\
          &hourly=shortwave_radiation_instant,direct_normal_irradiance_instant,\
-         diffuse_radiation_instant,temperature_2m,wind_speed_10m\
+         diffuse_radiation_instant,temperature_2m,wind_speed_10m,weather_code,precipitation,\
+         snowfall,relative_humidity_2m,wind_direction_10m,wind_gusts_10m,apparent_temperature,\
+         sunshine_duration,cloud_cover,snow_depth\
          &wind_speed_unit=ms&timezone=GMT&timeformat=unixtime"
     );
 }
@@ -288,6 +467,7 @@ fn past(hour: u64, ghi: f64) -> Slot {
         dhi: 362.5,
         temperature: 24.3,
         wind: Some(1.52),
+        detail: Detail::default(),
     }
 }
 
@@ -338,9 +518,10 @@ async fn archive_weather_is_stored_as_history_and_read_back_hourly() {
     assert_eq!(read, slots);
 }
 
-/// Irradiance in W/m², temperature in °C and wind in m/s, as Open-Meteo serves them.
+/// In ADR 23's units; the code is a status, so rollups never average it, and the archive has no
+/// visibility.
 #[tokio::test]
-async fn archive_weather_is_catalogued_with_its_units() {
+async fn archive_weather_is_catalogued_with_its_kinds_and_units() {
     let dir = tempfile::tempdir().unwrap();
     let bus = Bus::default();
     let storage =
@@ -353,23 +534,103 @@ async fn archive_weather_is_catalogued_with_its_units() {
         .await
         .unwrap();
 
-    let units: Vec<(String, Option<String>)> = storage
+    let catalog: Vec<(String, Option<RoleKind>, Option<String>)> = storage
         .reader()
         .catalog()
         .await
         .unwrap()
         .into_iter()
-        .map(|c| (c.series, c.unit))
+        .map(|c| (c.series, c.kind, c.unit))
         .collect();
-    let unit = |series: &str, unit: &str| (series.to_owned(), Some(unit.to_owned()));
+    let measured = |series: &str, unit: &str| {
+        (
+            series.to_owned(),
+            Some(RoleKind::Measurement),
+            Some(unit.to_owned()),
+        )
+    };
     assert_eq!(
-        units,
+        catalog,
         [
-            unit("weather.dhi", "W/m²"),
-            unit("weather.dni", "W/m²"),
-            unit("weather.ghi", "W/m²"),
-            unit("weather.temperature", "°C"),
-            unit("weather.wind", "m/s"),
+            measured("weather.apparent_temperature", "°C"),
+            measured("weather.cloud_cover", "%"),
+            ("weather.code".to_owned(), Some(RoleKind::Status), None),
+            measured("weather.dhi", "W/m²"),
+            measured("weather.dni", "W/m²"),
+            measured("weather.ghi", "W/m²"),
+            measured("weather.gusts", "m/s"),
+            measured("weather.humidity", "%"),
+            measured("weather.precipitation", "mm/h"),
+            measured("weather.snow_depth", "m"),
+            measured("weather.snowfall", "cm/h"),
+            measured("weather.sunshine", "s"),
+            measured("weather.temperature", "°C"),
+            measured("weather.wind", "m/s"),
+            measured("weather.wind_direction", "°"),
         ]
     );
+}
+
+#[tokio::test]
+async fn archive_weather_stores_each_quantity_it_has_as_history() {
+    let dir = tempfile::tempdir().unwrap();
+    let bus = Bus::default();
+    let storage =
+        Storage::open(&dir.path().join("history.sqlite"), UNIX_EPOCH, "UTC", &bus).unwrap();
+    let wet = Detail {
+        visibility: None,
+        cloud_cover: Some(100.0),
+        snow_depth: Some(0.03),
+        ..drizzle()
+    };
+    // 12:00 lacks its gusts.
+    let slots = vec![
+        Slot {
+            detail: wet,
+            ..past(11, 495.1)
+        },
+        Slot {
+            detail: Detail { gusts: None, ..wet },
+            ..past(12, 674.1)
+        },
+    ];
+    let (archive, _calls) = FakeArchive::new(slots);
+    let day = jiff::civil::date(2026, 6, 21);
+
+    Past::new(archive, DEVICE, &bus)
+        .fetch(&storage, BERLIN, day, day)
+        .await
+        .unwrap();
+
+    let read = async |role: &str| history(&storage, &bus, role).await;
+    assert_eq!(read("weather.code").await, [(11, Some(61.0)), (13, None)]);
+    assert_eq!(read("weather.gusts").await, [(11, Some(5.4)), (12, None)]);
+    assert_eq!(
+        read("weather.cloud_cover").await,
+        [(11, Some(100.0)), (13, None)]
+    );
+    assert_eq!(
+        read("weather.snow_depth").await,
+        [(11, Some(0.03)), (13, None)]
+    );
+    assert_eq!(
+        read("weather.precipitation").await,
+        [(11, Some(1.2)), (13, None)]
+    );
+    assert_eq!(read("weather.visibility").await, Vec::new());
+}
+
+/// The history of `role` on 2026-06-21, by UTC hour.
+async fn history(storage: &Storage, bus: &Bus, role: &str) -> Vec<(u64, Option<f64>)> {
+    let day = past(0, 0.0).target;
+    storage
+        .history(DEVICE, bus.intern(role, None), day, past(24, 0.0).target)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|p| {
+            let hour = p.time.duration_since(day).unwrap();
+            (hour.as_secs() / 3600, p.value)
+        })
+        .collect()
 }
