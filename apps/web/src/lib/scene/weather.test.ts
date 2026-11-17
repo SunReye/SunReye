@@ -142,6 +142,17 @@ test("rain falls while precipitation does, the denser the more: sparse in drizzl
   }
 });
 
+test("a thunderstorm pours: the whole field falls, whatever the amount, and is on the lens as densely", () => {
+  const rain = sceneWeather(weather({ code: 63, precipitation: 4 }));
+  const storm = sceneWeather(weather({ code: 95, precipitation: 4 }));
+
+  expect(rain.falling?.density).toBeCloseTo(0.7);
+  expect(storm.falling?.density).toBe(1);
+  expect(storm.glass?.rain).toBe(1);
+  // A storm that has not broken yet lets nothing fall.
+  expect(sceneWeather(weather({ code: 95, precipitation: 0 })).falling).toBeNull();
+});
+
 test("snow falls while snowfall does, whole from 3 cm/h, and its water is not rain besides", () => {
   expect(falling({ snowfall: 3 })).toEqual({ kind: "snow", density: 1, wind: [0, 0] });
   expect(falling({ snowfall: 0.75, precipitation: 0.6 })).toEqual({

@@ -134,8 +134,9 @@ function carried({ wind, windDirection }: Weather): [number, number] {
   return [stepped(-Math.sin(from) * wind, 0.5), stepped(-Math.cos(from) * wind, 0.5)];
 }
 
-/** Snow while snow falls, whose water the precipitation counts too; else rain. */
-function fallingOf(weather: Weather): Falling | null {
+/** Snow while snow falls, whose water the precipitation counts too; else rain. A thunderstorm
+ * pours: its rain is the whole field, whatever the amount, so it reads as more than rain. */
+function fallingOf(weather: Weather, thunder: boolean): Falling | null {
   const snowfall = weather.snowfall ?? 0;
   const rain = weather.precipitation ?? 0;
 
@@ -143,7 +144,11 @@ function fallingOf(weather: Weather): Falling | null {
 
   return snowfall > 0
     ? { kind: "snow", density: densityOf(snowfall, WHOLE.snow), wind: carried(weather) }
-    : { kind: "rain", density: densityOf(rain, WHOLE.rain), wind: carried(weather) };
+    : {
+        kind: "rain",
+        density: thunder ? 1 : densityOf(rain, WHOLE.rain),
+        wind: carried(weather),
+      };
 }
 
 /** Frost forms from a little above freezing, the lens being colder than the air, and is whole
@@ -191,14 +196,15 @@ export function fogColour(page: Triple, dark: boolean, fog: number): [number, nu
 export function sceneWeather(weather: Weather, plant: Plant = UNKNOWN): SceneWeather {
   const { code, dry, snowDepth } = weather;
   const snow = snowLies(snowDepth);
-  const falling = fallingOf(weather);
+  const thunder = codeKind(code) === "thunder";
+  const falling = fallingOf(weather, thunder);
 
   return {
     fog: fogOf(weather),
     wet: dry === null ? 0 : 1 - smoothstep(0, DRIES, dry),
     snow,
     covered: coveredBy(weather, snow, plant),
-    thunder: codeKind(code) === "thunder",
+    thunder,
     falling,
     glass: glassOf(weather, falling),
   };
