@@ -1,6 +1,6 @@
 # 21. Look, feel and navigation
 
-Status: accepted (2026-11-10), amended (2026-11-12, 2026-11-13, 2026-11-15, 2026-11-16)
+Status: accepted (2026-11-10), amended (2026-11-12, 2026-11-13, 2026-11-15, 2026-11-16, 2026-11-17)
 
 ## Context
 
@@ -163,7 +163,8 @@ The first integration build rendered browser defaults: plain links for navigatio
 - **Sliders and a separate confirmation sheet for writes.** Rejected: a slider is imprecise on touch and has no feel. The value editor shows old → new and applies in one step.
 - **A new 2D flow or new live charts.** Rejected: v3's encode magnitude against a remembered plant peak, glide at sample cadence, and survive slow devices. They took long tuning and are kept.
 - **v3's per-device motion setting (auto, full, lite, still).** Rejected: the frame watch decides, and the low-power switch is the manual override. The 3D quality (ADR 20) is a setting because capable devices draw far more than the full tier needs, which the frame watch cannot discover by stepping down.
-- **Moving particles in the 3D scene.** Rejected: they need a continuous render loop (ADR 20). Particles stay in the 2D flow.
+- **Moving particles in the 3D scene.** Rejected for flow; weather's are allowed since 2026-11-17 (ADR 23), in a loop bounded to the full tier and wet weather. Flow particles stay in the 2D flow.
+- **No switch for weather effects.** Rejected (ADR 23): *Wettereffekte* chooses content, not motion; the frame watch still governs cost.
 - **Snap points on drawers** (a peeking half-open drawer). Rejected by the owner: a drawer is open or closed.
 - **Our own draggable bottom sheet.** Rejected for shadcn-svelte's responsive `Drawer`/`Dialog` pattern, which the registry maintains.
 - **Vendoring `web-haptics`.** Rejected for now: nothing to change. The wrapper keeps a later swap to one file.

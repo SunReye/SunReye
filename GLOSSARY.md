@@ -332,6 +332,14 @@ _Avoid_: Virtual device, coded device
 A value issued at one time about a later target time.
 _Avoid_: Prediction, projection
 
+**Clear-sky index**:
+The plant's measured PV energy over a quarter hour divided by what it would make under a clear sky: how clear the sky really was.
+_Avoid_: Clearness (alone), cloud factor
+
+**Weather code**:
+The WMO code the weather provider gives an instant: clear, cloudy, fog, drizzle, rain, snow, showers or thunder, with intensity.
+_Avoid_: Condition, weather type
+
 **Correction**:
 A multiplier the plant learns per MPPT input, plant-local month and hour: measured over modelled PV power on past weather.
 _Avoid_: Calibration, bias factor
