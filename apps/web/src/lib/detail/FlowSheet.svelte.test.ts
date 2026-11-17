@@ -149,3 +149,24 @@ test("the consumption sheet charts no price", async () => {
   await expect.element(charts).toBeVisible();
   expect(charts.elements()).toHaveLength(1);
 });
+
+test("a range whose facts fail to read says so in their place, with a retry", async () => {
+  priced();
+  served.rolled = (a) =>
+    a.series === "cost.import.rate"
+      ? Response.json({ status: 500, code: "store.failed" }, { status: 500 })
+      : rolled(BOUGHT)(a);
+
+  const sheet = await sheetOf("purchase", "Bezug");
+  const alert = sheet.getByRole("alert");
+
+  await expect.element(alert).toBeVisible();
+  expect(sheet.getByText("Spitze").elements()).toHaveLength(0);
+  served.rolled = rolled(BOUGHT);
+  await alert.getByRole("button", { name: "Erneut laden" }).click();
+
+  await expect
+    .element(sheet.getByRole("definition").filter({ hasText: "€" }))
+    .toHaveTextContent("0,45 €");
+  await expect.element(alert).not.toBeInTheDocument();
+});
