@@ -124,3 +124,30 @@ test("the weather steps nowhere: the light eases from sky to sky and across the 
     }
   }
 });
+
+test("thunder closes the sky and darkens the day by about a third, whatever the cloud was", () => {
+  const [overcast, storm] = [daylight(south(40), 1), daylight(south(40), 0.3, true)];
+
+  expect(storm.shadow).toBe(0);
+  expect(storm.clouds).toEqual(overcast.clouds);
+  expect(lightOf(storm) / lightOf(overcast)).toBeGreaterThan(0.55);
+  expect(lightOf(storm) / lightOf(overcast)).toBeLessThan(0.75);
+  expect(ambientOf(storm) / ambientOf(overcast)).toBeLessThan(0.75);
+  expect(storm.night).toBe(false);
+  expect(daylight(south(40), 1, true)).toEqual(storm);
+});
+
+test("thunder leaves the night as it is, and darkens without a step as the sun rises", () => {
+  for (const elevation of [-12, -20]) {
+    expect(daylight(south(elevation), 1, true)).toEqual(daylight(south(elevation), 1));
+  }
+
+  let last = daylight(south(-8), 1, true);
+
+  for (let i = 1; i <= 320; i++) {
+    const next = daylight(south(-8 + i * 0.05), 1, true);
+
+    expect(Math.abs(lightOf(next) - lightOf(last))).toBeLessThan(0.1);
+    last = next;
+  }
+});
