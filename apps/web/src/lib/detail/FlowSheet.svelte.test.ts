@@ -134,7 +134,8 @@ test("the purchase sheet charts the price bought at by hour, in cents", async ()
   await expect
     .element(sheet.getByRole("group", { name: /Bezugspreis über die Zeit/u }))
     .toBeVisible();
-  // At rest the legend reads the range's mean price.
+  // At rest the legend reads the range's mean price, and names it.
+  await expect.element(sheet.getByText("Ø Bezugspreis · Heute")).toBeVisible();
   await expect.element(sheet.getByText("25,00 ct/kWh")).toBeVisible();
 });
 

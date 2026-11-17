@@ -540,6 +540,7 @@
   "range_hours": "{from}:00–{to}:00",
   "range_day_hours": "{date} · {from}:00–{to}:00",
   "range_span_hours": "{from} {fromHour}:00 – {to} {toHour}:00",
+  "range_mean": "Mean {series} · {range}",
   "range_sum": "Total · {range}",
   "range_open": "Open",
   "range_no_data": "no data",

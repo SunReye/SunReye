@@ -8,7 +8,7 @@
   import { planned, plannedEnergy, type Planned } from "../forecast/forecast.ts";
   import { m } from "../paraglide/messages.js";
   import BandChart from "../range/BandChart.svelte";
-  import { isSigned, keyOf, sidesOf } from "../roles.ts";
+  import { describe, isSigned, keyOf, sidesOf } from "../roles.ts";
   import { bandsOf } from "../range/fill.ts";
   import { kwh, num } from "../range/format.ts";
   import { RangeData } from "../range/range-data.svelte.ts";
@@ -133,6 +133,13 @@
 
   const meta = $derived([keyOf(series)]);
 
+  // A power's bands sum to the range's; any other series' bands to its mean, which names it.
+  const title = $derived(
+    isPower(series)
+      ? data.title
+      : m.range_mean({ series: describe(series).label, range: route.label }),
+  );
+
   // A power reads as energy, a price in cents (ADR 12); anything else as its mean, in its own unit.
   const reads = $derived(readsOf(series));
 </script>
@@ -143,7 +150,7 @@
   down={view.down}
   via={view.via}
   lineLabel={view.expected === null ? "" : m.range_forecast()}
-  summary={{ title: data.title, ...view.sum, line: view.expected }}
+  summary={{ title, ...view.sum, line: view.expected }}
   fmt={reads.fmt}
   unit={reads.unit}
   loading={view.loading}

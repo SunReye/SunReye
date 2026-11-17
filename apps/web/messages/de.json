@@ -540,6 +540,7 @@
   "range_hours": "{from}:00–{to}:00 Uhr",
   "range_day_hours": "{date} · {from}:00–{to}:00 Uhr",
   "range_span_hours": "{from} {fromHour}:00 Uhr – {to} {toHour}:00 Uhr",
+  "range_mean": "Ø {series} · {range}",
   "range_sum": "Summe · {range}",
   "range_open": "Öffnen",
   "range_no_data": "keine Daten",
