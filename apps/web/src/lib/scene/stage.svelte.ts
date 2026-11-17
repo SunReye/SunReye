@@ -57,7 +57,6 @@ export interface Lit {
   readonly show: Staged["show"];
   /** When it draws: nothing before `opening.open` has prepared it. */
   readonly opening: Opening;
-  readonly loop: Pick<Opening["loop"], "keep" | "running">;
   /** Frees the drawn group and the studio. */
   readonly dispose: () => void;
 }
@@ -187,7 +186,6 @@ export function lit(
       easeGlow(group, shares, glow, render);
     },
     opening: opened,
-    loop: opened.loop,
     show: shown.show,
     dispose() {
       close();
