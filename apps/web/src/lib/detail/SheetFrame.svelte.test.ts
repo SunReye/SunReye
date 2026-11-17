@@ -74,6 +74,9 @@ test("the head states the range's energy against the range before it, as far as 
     to: "2026-11-11T12:00:00.000Z",
     period: "hour",
   });
+  // Once: the catalog's answer does not read the range again.
+  await settled();
+  expect(asked.filter((a) => a.to === "2026-11-11T12:00:00.000Z")).toHaveLength(1);
 });
 
 test("without readings in the range before, the head states no change", async () => {
@@ -121,11 +124,24 @@ test("while the range loads, the head's figure stands in a skeleton", async () =
 
 test("a range whose readings stop says where", async () => {
   served.rolled = pv({ "2026-11-11": 4000 });
+  served.stored = { [PLANT]: ["pv.power"] };
+  served.last = "2026-11-11T11:00:00Z";
 
   const { sheet, head } = await sheetOf("production", "Produktion", "range=day&at=2026-11-11");
 
   await expect.element(head.getByText("4,0 kWh")).toBeVisible();
   await expect.element(sheet.getByText("Messwerte bis 11. Nov., 11:00")).toBeVisible();
+});
+
+test("a day whose readings resume after it marks no stop, as a sleeping inverter's", async () => {
+  served.rolled = pv({ "2026-11-11": 4000 });
+  served.stored = { [PLANT]: ["pv.power"] };
+
+  const { sheet, head } = await sheetOf("production", "Produktion", "range=day&at=2026-11-11");
+
+  await expect.element(head.getByText("4,0 kWh")).toBeVisible();
+  await settled();
+  expect(sheet.element().textContent).not.toContain("Messwerte bis");
 });
 
 test("a running range whose readings run to now marks no stop", async () => {

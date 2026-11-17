@@ -2,6 +2,7 @@
 // as much as the range has run, and the record's edges inside it. A range before the first reading
 // reads nothing and says so once.
 import { baselineOf } from "../history/compare.ts";
+import type { Stored } from "../live/plant-facts.ts";
 import { periodOf } from "../history/history.ts";
 import { RangeData } from "../range/range-data.svelte.ts";
 import { hourInstant, t1Of, type Calendar, type Range } from "../range/range.ts";
@@ -23,16 +24,17 @@ export interface HeadView {
   readonly notes: readonly string[];
 }
 
-/** The sheet's figure, what it reads through and the record's first readings. */
+/** The sheet's figure, what it reads through and the record's edges. */
 export interface HeadInput extends MeasureInput {
   readonly route: RangeRoute;
-  /** Each stored series' first reading, in ms, by `device/series` (ADR 22). */
-  readonly firsts: ReadonlyMap<string, number>;
+  /** The stored series by `device/series` (ADR 22); null until the catalog is read. */
+  readonly record: ReadonlyMap<string, Stored> | null;
 }
 
 interface Read {
   readonly key: string;
   readonly first: number | null;
+  readonly last: number | null;
   readonly zone: string;
   readonly cal: Calendar;
   /** The range's name. */
@@ -79,12 +81,13 @@ export class RangeHead {
     this.#data = new RangeData(
       () => input().route,
       (from, to, now) => {
-        const { route, firsts } = input();
+        const { route, record } = input();
         const measure = measureOf(input());
 
-        if (measure === null) return Promise.resolve(null);
+        // The record's edges decide what to read, so the range is read once, after the catalog.
+        if (measure === null || record === null) return Promise.resolve(null);
 
-        return read(route, measure, firsts.get(keyOf(measure)) ?? null, { from, to, now });
+        return read(route, measure, record.get(keyOf(measure)) ?? null, { from, to, now });
       },
     );
   }
@@ -107,7 +110,7 @@ export class RangeHead {
     };
 
     // Known at once, so a step back past the record never draws an empty chart.
-    const before = beforeOf(input.route, input.firsts.get(key) ?? null);
+    const before = beforeOf(input.route, input.record?.get(key)?.first ?? null);
 
     if (before !== null) return { ...none, state: "before", notes: [before] };
 
@@ -127,7 +130,7 @@ export class RangeHead {
 async function read(
   route: At,
   measure: Readonly<Measure>,
-  first: number | null,
+  stored: Stored | null,
   span: Readonly<{ from: Readonly<Date>; to: Readonly<Date>; now: number }>,
 ): Promise<Read> {
   const { range, place } = route;
@@ -136,9 +139,10 @@ async function read(
   const [a, b] = [span.from.getTime(), Math.min(span.to.getTime(), span.now)];
   const [b0, b1] = [ms(base.hours[0]), Math.min(ms(base.hours[1]), span.now)];
   const period = periodOf(range);
+  const [first, last] = [stored?.first ?? null, stored?.last ?? null];
   const after = (end: number) => first === null || end > first;
-  const at = { key: keyOf(measure), first, zone: place.zone, cal: place.cal, label: route.label };
-  const edges = { ...at, base: base.range, from: a, until: b };
+  const at = { key: keyOf(measure), first, last, zone: place.zone, cal: place.cal };
+  const edges = { ...at, label: route.label, base: base.range, from: a, until: b };
 
   if (!after(span.to.getTime())) return { ...edges, got: NOTHING, was: NOTHING };
 

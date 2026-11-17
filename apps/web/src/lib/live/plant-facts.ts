@@ -26,14 +26,17 @@ export async function estimatedSeries(
     : {};
 }
 
-/**
- * The series with stored history, each `device/series`, and its first reading in ms (ADR 22); none
- * while the catalog cannot be read.
- */
+/** A stored series' first and last stored instant, in ms (ADR 22). */
+export interface Stored {
+  readonly first: number;
+  readonly last: number;
+}
+
+/** The series with stored history by `device/series` (ADR 22); none while the catalog cannot be read. */
 export async function storedSeries(
   core: Readonly<Pick<Core, "series">>,
-): Promise<ReadonlyMap<string, number>> {
-  const found = new Map<string, number>();
+): Promise<ReadonlyMap<string, Stored>> {
+  const found = new Map<string, Stored>();
 
   try {
     const catalog = await core.series();
@@ -42,7 +45,10 @@ export async function storedSeries(
 
     for (const device of catalog)
       for (const stored of device.series)
-        found.set(`${device.id}/${stored.series}`, Date.parse(stored.first));
+        found.set(`${device.id}/${stored.series}`, {
+          first: Date.parse(stored.first),
+          last: Date.parse(stored.last),
+        });
   } catch {
     // An unreachable core, or an answer that is no catalog: no reading links.
     return new Map();

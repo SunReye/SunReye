@@ -6,7 +6,7 @@ type Answer = Awaited<ReturnType<Core["series"]>>;
 
 const reads = (answer: () => Promise<Answer>) => storedSeries({ series: answer });
 
-test("each stored series is named by its device, with its first reading", async () => {
+test("each stored series is named by its device, with its first and last stored instant", async () => {
   const catalog: Answer = [
     {
       id: 2,
@@ -26,7 +26,12 @@ test("each stored series is named by its device, with its first reading", async 
   ];
 
   expect(await reads(() => Promise.resolve(catalog))).toEqual(
-    new Map([["2/battery.soc", Date.parse("2026-11-01T00:00:00Z")]]),
+    new Map([
+      [
+        "2/battery.soc",
+        { first: Date.parse("2026-11-01T00:00:00Z"), last: Date.parse("2026-11-12T12:00:00Z") },
+      ],
+    ]),
   );
 });
 

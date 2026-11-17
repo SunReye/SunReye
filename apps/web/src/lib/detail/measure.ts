@@ -36,7 +36,7 @@ const strict = (core: MeasureCore): MeasureCore => ({
 });
 
 /** Readings that end this far before the end read have not stopped: the open hour lags its flush. */
-const LAG_MS = 15 * 60_000;
+export const LAG_MS = 15 * 60_000;
 
 /** Where readings stop short of `end`: inside the last rollup read, when later ones read nothing. */
 function stopOf(rolled: readonly Rolled[], end: number): number | null {

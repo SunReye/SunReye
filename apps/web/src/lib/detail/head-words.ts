@@ -7,6 +7,7 @@ import { getLocale } from "../paraglide/runtime.js";
 import { plantNow } from "../plant-day.ts";
 import { shortDay } from "../range/calendar.ts";
 import { rangeLabel, type Calendar, type Range } from "../range/range.ts";
+import { LAG_MS } from "./measure.ts";
 
 /** The plant-local day of instant `at`, as "1. Nov. 2026". */
 const dayText = (zone: string, at: number) => shortDay(plantNow(zone, new Date(at)).day, true);
@@ -45,7 +46,9 @@ export const beforeText = (zone: string, first: number): string =>
 /** What the record does inside [from, until): where it begins, and where its readings stop. */
 export interface Edges {
   readonly zone: string;
+  /** The series' first and last stored instant; null while unknown. */
   readonly first: number | null;
+  readonly last: number | null;
   readonly from: number;
   readonly until: number;
   readonly stops: number | null;
@@ -57,7 +60,9 @@ export function notesOf(e: Edges): string[] {
   if (e.first !== null && e.first > e.from && e.first < e.until)
     notes.push(m.detail_begins({ date: dayText(e.zone, e.first) }));
 
-  if (e.stops !== null) notes.push(m.detail_stops({ when: instantText(e.zone, e.stops) }));
+  // Readings that resume later, such as a sleeping inverter's, have not stopped.
+  if (e.stops !== null && e.last !== null && e.last < e.stops + LAG_MS)
+    notes.push(m.detail_stops({ when: instantText(e.zone, e.stops) }));
 
   return notes;
 }

@@ -5,6 +5,7 @@
 -->
 <script lang="ts" module>
   import type { Day } from "../dashboard/day.ts";
+  import type { Stored } from "../live/plant-facts.ts";
   import type { NodeReadings } from "./readings.ts";
 </script>
 
@@ -28,7 +29,7 @@
     day,
     spot,
     input,
-    firsts,
+    record,
     onopen,
   }: {
     id: string;
@@ -41,8 +42,8 @@
     spot: Readonly<Record<string, number>> | undefined;
     /** What the range analytics read; every tab reads the sheet's range. */
     input: AnalyticsInput;
-    /** Each stored series' first reading, in ms, by `device/series` (ADR 22). */
-    firsts: ReadonlyMap<string, number>;
+    /** The stored series by `device/series` (ADR 22); null until the catalog is read. */
+    record: ReadonlyMap<string, Stored> | null;
     onopen: (id: string) => void;
   } = $props();
 
@@ -50,7 +51,7 @@
   const power = $derived(spec.node !== null);
   const silent = $derived(node?.silent ?? null);
 
-  const head = new RangeHead(() => ({ id, ...input, firsts }));
+  const head = new RangeHead(() => ({ id, ...input, record }));
 </script>
 
 <div class="flex min-h-full flex-col">

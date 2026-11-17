@@ -51,6 +51,8 @@ export interface Served {
   breaks: boolean;
   /** Per device, the series with stored history (ADR 22). */
   stored: Readonly<Record<string, readonly string[]>>;
+  /** When every stored series stored its last point. */
+  last: string;
   /** Answers a statistics read before the defaults do; undefined passes it on. */
   rolled: ((read: Asked) => Response | Promise<Response> | undefined) | null;
 }
@@ -61,6 +63,7 @@ export const served: Served = {
   tick: false,
   breaks: false,
   stored: {},
+  last: "2026-11-12T12:00:00Z",
   rolled: null,
 };
 
@@ -74,7 +77,7 @@ function catalog(): Response {
       series,
       kind: "measurement",
       first: "2026-11-01T00:00:00Z",
-      last: "2026-11-12T12:00:00Z",
+      last: served.last,
     })),
   }));
 
@@ -118,10 +121,7 @@ function statistics(device: string, series: string | null, from: string): Respon
   if (device !== INVERTER || watts === undefined)
     return Response.json({ points: [], period: "hour" });
 
-  const [start, end] = [new Date(at).toISOString(), new Date(at + 3_600_000).toISOString()];
-  const point = { date: from.slice(0, 10), start, end, mean: watts, integral: watts, hours: 1 };
-
-  return Response.json({ points: [point], period: "hour" });
+  return Response.json({ points: [rollup(at, watts)], period: "hour" });
 }
 
 function stream(): Response {
@@ -264,6 +264,7 @@ export async function prepare(): Promise<void> {
   served.breaks = false;
   served.stored = {};
   served.rolled = null;
+  served.last = "2026-11-12T12:00:00Z";
   ROUTES.set("/api/v1/live", stream);
   vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-12T12:20:00Z") });
   await cdp().send("Emulation.setEmulatedMedia", {

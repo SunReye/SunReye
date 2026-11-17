@@ -6,7 +6,12 @@
   import * as Sheet from "#lib/components/ui/sheet/index.js";
   import { SPOT, type Core, type Live, type PvString } from "../api/core.ts";
   import DrawerSheet from "../components/drawer-sheet.svelte";
-  import { estimatedSeries, layoutStrings, storedSeries } from "../live/plant-facts.ts";
+  import {
+    estimatedSeries,
+    layoutStrings,
+    storedSeries,
+    type Stored,
+  } from "../live/plant-facts.ts";
   import type { Day } from "../dashboard/day.ts";
   import { RangeRoute, type Go } from "../range/route.svelte.ts";
   import { input } from "../shell/input.svelte.ts";
@@ -89,9 +94,8 @@
   /** The topology's points, which viewers read too (ADR 9, 14). */
   let points = $state.raw<Source["points"]>([]);
 
-  /** The series with stored history by `device/series`, each with its first reading (ADR 22); none
-   * until the catalog is read. */
-  let stored = $state.raw<ReadonlyMap<string, number>>(new Map());
+  /** The series with stored history by `device/series` (ADR 22); null until the catalog is read. */
+  let stored = $state.raw<ReadonlyMap<string, Stored> | null>(null);
 
   let now = $state(Date.now());
 
@@ -145,7 +149,7 @@
     now,
     status,
     series,
-    link: exploreLinks(stored, route.rangeParams),
+    link: exploreLinks(stored ?? new Set(), route.rangeParams),
   });
 
   const node = $derived(spec.node === null ? null : nodeReadings(spec.node, source));
@@ -165,7 +169,7 @@
     {day}
     spot={values[SPOT]}
     input={{ core, route, strings }}
-    firsts={stored}
+    record={stored}
     {onopen}
   />
 {/snippet}
