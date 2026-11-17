@@ -74,7 +74,6 @@
     {#if scene !== null}
       {@const { LiveScene, model, pv, moduleTypes, capabilities, location } = scene}
       <LiveScene
-        {core}
         {pv}
         {layout}
         scene={layout.scene}

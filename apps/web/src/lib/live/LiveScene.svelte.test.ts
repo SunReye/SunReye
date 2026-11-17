@@ -4,7 +4,8 @@ import { render } from "vitest-browser-svelte";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { MODULE, pv } from "../builder/builder.harness.ts";
 import type { Scene } from "../builder/pv.ts";
-import { chip, frame, layout, scene, show, ticking } from "./live-scene.harness.ts";
+import { chip, frame, layout, scene, show } from "./live-scene.harness.ts";
+import { feed } from "./stream.harness.ts";
 import LiveScene from "./LiveScene.svelte";
 
 /** Lets the browser paint `count` frames; a loop would draw in each of them. */
@@ -50,17 +51,17 @@ async function settled(draws: () => number): Promise<number> {
 test("a live tick and a camera move draw a short tween, then drawing stops (ADR 20)", async () => {
   // Each draw runs the studio's passes once.
   const draws = vi.spyOn(EffectComposer.prototype, "render");
-  const { core, tick } = ticking();
-  const screen = await show(core);
+  const tick = feed();
+  const screen = await show();
 
-  await tick(frame(600, -1200));
+  tick(frame(600, -1200));
   await chip("Süd", "600");
 
   const first = await settled(() => draws.mock.calls.length);
 
   expect(first).toBeGreaterThan(0);
 
-  await tick(frame(700, -1100));
+  tick(frame(700, -1100));
   await chip("Süd", "700");
 
   const ticked = await settled(() => draws.mock.calls.length);
@@ -78,7 +79,7 @@ test("a live tick and a camera move draw a short tween, then drawing stops (ADR 
 });
 
 test("a car appears at its place while connected, with its charge power and SOC", async () => {
-  const { core, tick } = ticking();
+  const tick = feed();
 
   const parked = {
     ...scene,
@@ -86,7 +87,6 @@ test("a car appears at its place while connected, with its charge power and SOC"
   } satisfies Scene;
 
   const screen = await render(LiveScene, {
-    core,
     pv,
     layout: { ...layout, scene: parked },
     scene: parked,
@@ -95,13 +95,16 @@ test("a car appears at its place while connected, with its charge power and SOC"
     onselect: () => {},
   });
 
-  await tick({ devices: { ...frame(600, 0).devices, "2": { "ev.connected": 0 } } });
+  tick({ devices: { ...frame(600, 0).devices, "2": { "ev.connected": 0 } } });
 
   await chip("Süd", "600");
   expect(screen.getByRole("button", { name: "E-Auto: Details" }).elements()).toHaveLength(0);
 
-  await tick({
-    devices: { "2": { "ev.connected": 1, "ev.charge.power": 7360, "ev.vehicle.soc": 63 } },
+  tick({
+    devices: {
+      ...frame(600, 0).devices,
+      "2": { "ev.connected": 1, "ev.charge.power": 7360, "ev.vehicle.soc": 63 },
+    },
   });
 
   await expect.element((await chip("E-Auto", "7,4")).getByText("63")).toBeVisible();
@@ -110,8 +113,7 @@ test("a car appears at its place while connected, with its charge power and SOC"
 /** The figure's fade, once it reports ready. */
 async function fadeOnReady(): Promise<string> {
   const ready = vi.fn<() => void>();
-  const { core } = ticking();
-  const screen = await show(core, [], () => {}, ready);
+  const screen = await show([], () => {}, ready);
   const figure = screen.getByRole("figure", { name: "Live-Ansicht des Hauses" });
 
   // Hidden and inert until its first frame is drawn, chips included.
@@ -169,10 +171,10 @@ async function atRest(names: readonly string[]): Promise<Record<string, DOMRect>
 test("on a phone the chips sit in rows around the house and keep their place", async () => {
   await page.viewport(390, 600);
 
-  const { core, tick } = ticking();
-  const screen = await show(core);
+  const tick = feed();
+  const screen = await show();
 
-  await tick(frame(600, -1200));
+  tick(frame(600, -1200));
   await chip("Süd", "600");
 
   const names = ["Süd", "Wechselrichter", "Netz", "Haus"];
@@ -194,7 +196,7 @@ test("on a phone the chips sit in rows around the house and keep their place", a
   }
 
   // A tick redraws the scene with the camera still: no chip moves.
-  await tick(frame(700, -1100));
+  tick(frame(700, -1100));
   await chip("Süd", "700");
   await frames(5);
 

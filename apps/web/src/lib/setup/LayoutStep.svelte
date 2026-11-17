@@ -10,6 +10,7 @@
   import type { Core, Device } from "../api/core.ts";
   import { emptyDraft } from "../builder/modules";
   import { loadPv } from "../builder/pv";
+  import { stream } from "../live/stream.svelte.ts";
   import { Button } from "#lib/components/ui/button/index.js";
   import { m } from "../paraglide/messages.js";
 
@@ -28,6 +29,9 @@
     onback: () => void;
     ondone: () => void;
   } = $props();
+
+  // Setup shows no shell, whose layout follows the stream elsewhere: the builder's cars need it.
+  $effect(() => stream.follow(core));
 
   const webgl2 = document.createElement("canvas").getContext("webgl2") !== null;
 

@@ -5,6 +5,7 @@ import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect, type Transport } from "../api/core.ts";
 import Builder from "./Builder.svelte";
+import { feed } from "../live/stream.harness.ts";
 import { addGrid } from "./modules.ts";
 import {
   cellsOnPage,
@@ -196,24 +197,6 @@ test("the admin adds a car place under a carport, paints it, uploads a GLB and s
   expect(JSON.stringify(transport.puts[0])).not.toContain("class");
 });
 
-// One snapshot, then the stream stays open: an ended one would reconnect at once.
-function live(connected: number): Response {
-  const snapshot = JSON.stringify({
-    devices: {
-      "3": { "ev.connected": connected, "ev.charge.power": 7360, "ev.vehicle.soc": 63 },
-    },
-  });
-
-  return new Response(
-    new ReadableStream({
-      start: (controller) => {
-        controller.enqueue(new TextEncoder().encode(`event: snapshot\ndata: ${snapshot}\n\n`));
-      },
-    }),
-    { headers: { "content-type": "text/event-stream" } },
-  );
-}
-
 test("a connected car shows its charge power and SOC in the builder; none while unplugged", async () => {
   const parked = {
     ...house(),
@@ -223,17 +206,24 @@ test("a connected car shows its charge power and SOC in the builder; none while 
     },
   };
 
-  const show = (connected: number) =>
-    render(Builder, {
+  const show = (connected: number) => {
+    feed()({
+      devices: {
+        "3": { "ev.connected": connected, "ev.charge.power": 7360, "ev.vehicle.soc": 63 },
+      },
+    });
+
+    return render(Builder, {
       pv,
       core: connect({
         base: "http://core.test/",
-        fetch: () => Promise.resolve(live(connected)),
+        fetch: () => Promise.withResolvers<Response>().promise,
       }),
       start: parked,
       moduleTypes: [MODULE],
       devices: DEVICES,
     });
+  };
 
   const plugged = await show(1);
 

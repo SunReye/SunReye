@@ -3,6 +3,7 @@ import { cdp, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { connect, type Transport } from "../api/core.ts";
+import { feed } from "../live/stream.harness.ts";
 import TopologyStep from "./TopologyStep.svelte";
 
 const INVERTER = { id: 1, name: "Wechselrichter", profile: "p", connection: 1, unit: 1 };
@@ -18,21 +19,7 @@ const DEYE = {
   "load.power": 1000,
 };
 
-/** The live snapshot, then a stream held open. */
-function live(): Response {
-  const snapshot = JSON.stringify({ devices: { "1": DEYE } });
-
-  return new Response(
-    new ReadableStream({
-      start: (controller) => {
-        controller.enqueue(new TextEncoder().encode(`event: snapshot\ndata: ${snapshot}\n\n`));
-      },
-    }),
-    { headers: { "content-type": "text/event-stream" } },
-  );
-}
-
-/** A core reading the inverter above; it keeps each topology change. */
+/** A core that keeps each topology change. */
 function testCore(): Transport & { readonly changes: unknown[] } {
   const changes: unknown[] = [];
 
@@ -40,8 +27,6 @@ function testCore(): Transport & { readonly changes: unknown[] } {
     base: "http://core.test/",
     changes,
     fetch: async (request) => {
-      if (new URL(request.url).pathname === "/api/v1/live") return live();
-
       changes.push(JSON.parse(await request.text()));
 
       return Response.json({ appliesFrom: "2026-11-09T00:00:00Z", points: [] });
@@ -54,6 +39,9 @@ async function step() {
   await cdp().send("Emulation.setEmulatedMedia", {
     features: [{ name: "prefers-reduced-motion", value: "reduce" }],
   });
+
+  // The stream reads the inverter above.
+  feed()({ devices: { "1": DEYE } });
 
   const transport = testCore();
   const done = vi.fn<() => void>();

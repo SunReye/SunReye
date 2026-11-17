@@ -1,12 +1,24 @@
 // The live stream's state, app-wide: the shell's connection chip shows it and every live number
-// stops gliding while it is halted (ADR 21).
-import { PLANT, type Core, type Live } from "../api/core.ts";
+// stops gliding while it is halted (ADR 21). Every live consumer reads it, never `core.live` (#831).
+import { PLANT, type Core, type Live, type Values } from "../api/core.ts";
 import { motion } from "../motion/tier.svelte.ts";
 import { glideDurationMs, TICK_MS } from "./glide.ts";
 import { streamState, type StreamState } from "./stream.ts";
 
 class Stream {
   #live = $state.raw<Live>();
+
+  #values = $state.raw<Values>();
+
+  /** The latest frame, a refusal included; none before the first or while nobody follows. */
+  get live(): Live | undefined {
+    return this.#live;
+  }
+
+  /** The latest frame with values, kept through a refusal. */
+  get values(): Values | undefined {
+    return this.#values;
+  }
 
   readonly state: StreamState = $derived(streamState(this.#live));
 
@@ -25,16 +37,39 @@ class Stream {
     return this.#at;
   }
 
-  /** Follows the core's stream until the disposer runs. */
+  #followers = 0;
+
+  #stop = (): void => {};
+
+  /**
+   * Follows the core's stream until the disposer runs. Followers share one subscription: the first
+   * starts it, the last stops it and clears the values.
+   */
   follow(core: Readonly<Pick<Core, "live">>): () => void {
-    const stop = core.live((live) => {
-      this.#live = live;
-      this.#at = Date.now();
-    });
+    this.#followers++;
+
+    if (this.#followers === 1) {
+      this.#stop = core.live((live) => {
+        this.#live = live;
+
+        if (!("problem" in live)) this.#values = live;
+        this.#at = Date.now();
+      });
+    }
+
+    let followed = true;
 
     return () => {
-      stop();
+      if (!followed) return;
+
+      followed = false;
+      this.#followers--;
+
+      if (this.#followers > 0) return;
+
+      this.#stop();
       this.#live = undefined;
+      this.#values = undefined;
     };
   }
 }
