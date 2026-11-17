@@ -34,9 +34,9 @@
 <!-- A held finger leads across the plot; up and down stays the sheet's scroll, and while it reads
   the drawer leaves the finger alone. -->
 <div
+  role="presentation"
   {...rest}
   class={["relative touch-pan-y select-none", className]}
-  role="presentation"
   data-vaul-no-drag={read === null ? undefined : ""}
   onpointerdown={reading.down}
   onpointermove={reading.move}
