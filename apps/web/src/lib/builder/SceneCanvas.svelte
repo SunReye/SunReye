@@ -1,4 +1,6 @@
 <script lang="ts" module>
+  export type { Plant, SceneWeather } from "../scene/weather.ts";
+
   export type { Editing, Painting, Projector } from "./drawing.svelte.ts";
 </script>
 
