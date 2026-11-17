@@ -18,7 +18,7 @@ const weather = (known: Partial<Weather> = {}): Weather => ({
   celsius: null,
   humidity: null,
   ghi: null,
-  clearness: null,
+  clearSkyIndex: null,
   dry: null,
   ...known,
 });
@@ -107,7 +107,7 @@ test("the codes 95 to 99 are thunder", () => {
 test("modules are snow-covered while snow lies, the sun is up, the plant reads next to nothing and the core measured no sky", () => {
   expect(covered({}, DARK_NOON)).toBe(true);
   // The core measured a sky: the modules are clear, however little they make.
-  expect(covered({ clearness: 0.3 }, DARK_NOON)).toBe(false);
+  expect(covered({ clearSkyIndex: 0.3 }, DARK_NOON)).toBe(false);
   // No snow lies.
   expect(covered({ snowDepth: 0.004 }, DARK_NOON)).toBe(false);
   // No reading, as for a forecast instant or an inverter that is off.
@@ -140,6 +140,17 @@ test("rain falls while precipitation does, the denser the more: sparse in drizzl
     expect(density).toBeGreaterThanOrEqual(last);
     last = density;
   }
+});
+
+test("a thunderstorm pours: the whole field falls, whatever the amount, and is on the lens as densely", () => {
+  const rain = sceneWeather(weather({ code: 63, precipitation: 4 }));
+  const storm = sceneWeather(weather({ code: 95, precipitation: 4 }));
+
+  expect(rain.falling?.density).toBeCloseTo(0.7);
+  expect(storm.falling?.density).toBe(1);
+  expect(storm.glass?.rain).toBe(1);
+  // A storm that has not broken yet lets nothing fall.
+  expect(sceneWeather(weather({ code: 95, precipitation: 0 })).falling).toBeNull();
 });
 
 test("snow falls while snowfall does, whole from 3 cm/h, and its water is not rain besides", () => {
@@ -252,10 +263,10 @@ test("without its effects the weather keeps its light alone: thunder, and nothin
   expect(lightAlone(ALL)).toEqual({ ...DRY, thunder: true });
 });
 
-test("for editing the weather leaves out fog, what falls and the glass, and keeps the ground", () => {
+test("for editing the weather leaves out fog, wet ground, what falls and the glass, and keeps the snow", () => {
   expect(exact(ALL)).toEqual({
     fog: 0,
-    wet: 1,
+    wet: 0,
     snow: true,
     covered: true,
     thunder: true,

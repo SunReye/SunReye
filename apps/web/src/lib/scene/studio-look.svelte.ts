@@ -4,7 +4,7 @@
 import { untrack } from "svelte";
 import type { PerspectiveCamera } from "three";
 import { motion } from "../motion/tier.svelte.ts";
-import { weatherEffects } from "./effects.svelte.ts";
+import { weatherEffects } from "./weather-effects.svelte.ts";
 import { quality } from "./quality.svelte.ts";
 import type { Look } from "./quality.ts";
 import { Studio } from "./studio.ts";

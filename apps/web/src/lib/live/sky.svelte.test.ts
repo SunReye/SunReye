@@ -54,7 +54,8 @@ test("the dashboard's sky is the weather forecast in force now", async () => {
 
   flushSync();
   expect(sky?.weather.cloud).toBeNull();
-  await expect.poll(() => sky?.weather.cloud).toBeCloseTo(0.95);
+  // Midway between the diffuse share, 0.95, and the cloud cover, which answers as closed.
+  await expect.poll(() => sky?.weather.cloud).toBeCloseTo(0.975);
   // Every forecast quantity answers alike here, the weather code too.
   expect(sky?.weather.code).toBe(300);
 
@@ -67,7 +68,7 @@ test("the dashboard's sky is the weather forecast in force now", async () => {
   stop();
 });
 
-/** A core that measured a closed sky from `start`'s 25 to 10 minutes before, and whose answers
+/** A core that measured a closed sky from `start`'s 20 to 5 minutes before, and whose answers
  * wait while `hold` is set. */
 function measuredCore(start: number) {
   const iso = (minutes: number) => new Date(start + minutes * 60_000).toISOString();
@@ -90,7 +91,7 @@ function measuredCore(start: number) {
 
       return Response.json({
         tier: "raw",
-        points: index ? [{ start: iso(-25), end: iso(-10), mean: 0.25 }] : [],
+        points: index ? [{ start: iso(-20), end: iso(-5), mean: 0.25 }] : [],
       });
     },
   });
@@ -100,6 +101,8 @@ function measuredCore(start: number) {
 
 test("as now moves on, the last weather stands until the next is read: nothing lapses between", async () => {
   vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+  // Five minutes into a quarter: the one before it is the last the core closed.
+  vi.setSystemTime(new Date("2026-11-14T12:05:00Z"));
 
   const { core, state } = measuredCore(Date.now());
   let sky: LiveSky | undefined;
@@ -109,9 +112,9 @@ test("as now moves on, the last weather stands until the next is read: nothing l
   });
 
   flushSync();
-  // The index stands for ten more minutes.
+  // The index stands until the next quarter has closed.
   await vi.waitFor(() => {
-    expect(sky?.weather.clearness).toBe(0.25);
+    expect(sky?.weather.clearSkyIndex).toBe(0.25);
   });
 
   state.hold = true;
@@ -120,7 +123,7 @@ test("as now moves on, the last weather stands until the next is read: nothing l
   await vi.waitFor(() => {
     expect(state.held.length).toBeGreaterThan(0);
   });
-  expect(sky?.weather.clearness).toBe(0.25);
+  expect(sky?.weather.clearSkyIndex).toBe(0.25);
 
   state.hold = false;
 
@@ -128,7 +131,7 @@ test("as now moves on, the last weather stands until the next is read: nothing l
 
   // Read again a quarter on, the index has lapsed.
   await vi.waitFor(() => {
-    expect(sky?.weather.clearness).toBeNull();
+    expect(sky?.weather.clearSkyIndex).toBeNull();
   });
   stop();
   vi.useRealTimers();

@@ -64,10 +64,10 @@
 
   /** The index on the cloud cover's scale: a clear sky's 1 at the top. */
   const sky = $derived(
-    day.hours.map((h) => ({ ...h, index: h.index === null ? null : Math.min(1, h.index) * 100 })),
+    day.hours.map((h) => ({ ...h, clearSkyIndex: h.clearSkyIndex === null ? null : Math.min(1, h.clearSkyIndex) * 100 })),
   );
 
-  const indexed = $derived(known("index").length > 0);
+  const indexed = $derived(known("clearSkyIndex").length > 0);
 
   const windTop = $derived(Math.max(5, ...known("wind"), ...known("gusts")) + 1);
 
@@ -91,7 +91,7 @@
 
   <WeatherRow
     label={m.rd_temperature()}
-    also={{ label: m.wx_apparent_temperature(), colour: WARM, dashed: true }}
+    also={{ label: m.weather_apparent_temperature(), colour: WARM, dashed: true }}
     figure={range("celsius", "°C")}
   >
     <HourLines
@@ -106,33 +106,33 @@
   </WeatherRow>
 
   <WeatherRow
-    label={m.wx_precipitation()}
-    also={snows ? { label: m.wx_snowfall(), colour: SNOW } : null}
+    label={m.weather_precipitation()}
+    also={snows ? { label: m.weather_snowfall(), colour: SNOW } : null}
     figure={fallen}
   >
-    <HourBars hours={day.hours} label={m.wx_precipitation()} />
+    <HourBars hours={day.hours} label={m.weather_precipitation()} />
   </WeatherRow>
 
   <WeatherRow
-    label={m.wx_cloud_cover()}
-    also={indexed ? { label: m.wx_clearness(), colour: WARM } : null}
-    figure={range("cover", "%")}
+    label={m.weather_cloud_cover()}
+    also={indexed ? { label: m.weather_clear_sky_index(), colour: WARM } : null}
+    figure={range("cloudCover", "%")}
   >
     <HourLines
       hours={sky}
       {span}
-      label={m.wx_cloud_cover()}
+      label={m.weather_cloud_cover()}
       domain={[0, 100]}
       lines={[
-        { of: "cover", colour: PLAIN, filled: true },
-        { of: "index", colour: WARM },
+        { of: "cloudCover", colour: PLAIN, filled: true },
+        { of: "clearSkyIndex", colour: WARM },
       ]}
     />
   </WeatherRow>
 
   <WeatherRow
     label={m.explore_wind()}
-    also={{ label: m.wx_gusts(), colour: PLAIN, dashed: true }}
+    also={{ label: m.weather_gusts(), colour: PLAIN, dashed: true }}
     figure={range("wind", "m/s")}
   >
     <HourLines
@@ -147,12 +147,12 @@
     />
     <HourMarks hours={day.hours} {span} class="h-4">
       {#snippet mark(hour)}
-        {#if hour.direction !== null}
+        {#if hour.windDirection !== null}
           <!-- The arrow flies with the wind: away from where it blows from. -->
           <span
             class="flex text-muted-foreground"
-            data-wind-from={hour.direction}
-            style:rotate="{(hour.direction + 180) % 360}deg"
+            data-wind-from={hour.windDirection}
+            style:rotate="{(hour.windDirection + 180) % 360}deg"
           >
             <ArrowUp class="size-3.5" aria-hidden="true" />
           </span>
@@ -161,11 +161,11 @@
     </HourMarks>
   </WeatherRow>
 
-  <WeatherRow label={m.wx_humidity()} figure={range("humidity", "%")}>
+  <WeatherRow label={m.weather_humidity()} figure={range("humidity", "%")}>
     <HourLines
       hours={day.hours}
       {span}
-      label={m.wx_humidity()}
+      label={m.weather_humidity()}
       domain={[0, 100]}
       lines={[{ of: "humidity", colour: PLAIN }]}
     />

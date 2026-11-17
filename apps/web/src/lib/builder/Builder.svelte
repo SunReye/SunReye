@@ -44,13 +44,11 @@
   const session = new Session(() => ({ pv, core, start, moduleTypes, devices, limits }));
 
   /** The time slider's instant: it reads the draft, never writes it. */
-  const moment = new Moment(() => ({
-    core,
-    pv,
-    location,
-    draft: session.draft,
-    moduleTypes: session.moduleTypes,
-  }));
+  const moment = new Moment(
+    () => ({ core, pv, location, draft: session.draft, moduleTypes: session.moduleTypes }),
+    // Handles to drag, or a face to lay and wire: faces and edges stay exact (ADR 23).
+    () => session.editing !== undefined || session.painting !== undefined,
+  );
 
   provideUploader((glb) => core.uploadCarBody(glb));
 

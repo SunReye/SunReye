@@ -18,7 +18,7 @@ use crate::location::Location;
 use crate::solar::SolarForecast;
 use crate::storage::{ChangePoint, Issue, Policy, Storage};
 use crate::weather::fake::FakeArchive;
-use crate::weather::{self, Slot};
+use crate::weather::{self, Past, Slot};
 
 const INVERTER: DeviceId = DeviceId(1);
 const WEATHER: DeviceId = DeviceId(3);
@@ -216,11 +216,10 @@ impl Plant {
 
     fn learner(&self, archive: FakeArchive) -> Learner<FakeArchive> {
         Learner::new(
-            archive,
+            Arc::new(Past::new(archive, WEATHER, &self.bus)),
             WEATHER,
             self.layouts.clone(),
             &self.storage,
-            &self.bus,
         )
     }
 }

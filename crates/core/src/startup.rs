@@ -4,6 +4,7 @@ use std::fmt;
 use std::future::{Future, IntoFuture};
 use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use tokio::net::TcpListener;
@@ -33,7 +34,7 @@ use crate::storage::{self, Storage};
 use crate::tariff::{TariffDevice, Tariffs};
 use crate::topology::Topologies;
 use crate::views::Views;
-use crate::weather::{self, Archive, Provider, Weather};
+use crate::weather::{self, Archive, Past, Provider, Weather};
 
 const DEFAULT_LISTEN: SocketAddr =
     SocketAddr::new(IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED), 8099);
@@ -424,7 +425,8 @@ async fn forecast(
     let solar = SolarForecast::new(layouts.clone(), weather::DEVICE, bus);
     let corrections = Corrections::new(layouts.clone(), weather::DEVICE, storage);
     let index = ClearSkyIndex::new(layouts.clone(), weather::DEVICE, storage, bus);
-    let learner = Learner::new(archive, weather::DEVICE, layouts, storage, bus);
+    let past = Arc::new(Past::new(archive, weather::DEVICE, bus));
+    let learner = Learner::new(Arc::clone(&past), weather::DEVICE, layouts, storage);
     let spot = SpotPrices::new(spot, bus);
     tokio::join!(
         weather.run(storage, location.clone(), SystemTime::now),
@@ -442,7 +444,8 @@ async fn forecast(
             storage.zones().watch(),
             SystemTime::now
         )),
-        Box::pin(learner.backfill(storage, location)),
+        // Once after the upgrade (ADR 23).
+        Box::pin(past.backfill(storage, location)),
         spot.run(storage, zone, SystemTime::now),
     );
 }

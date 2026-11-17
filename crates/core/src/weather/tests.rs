@@ -103,7 +103,7 @@ const STORED: [(&str, &[(u64, f64)]); 11] = [
     ("weather.wind_direction", &[(0, 250.0), (900, 250.0)]),
     ("weather.gusts", &[(0, 5.4), (900, 5.4)]),
     ("weather.apparent_temperature", &[(0, -0.4), (900, -0.4)]),
-    ("weather.sunshine", &[(0, 413.0), (900, 0.0)]),
+    ("weather.sunshine", &[(0, 413.0)]),
     ("weather.cloud_cover", &[(0, 100.0)]),
     ("weather.snow_depth", &[(0, 0.03)]),
 ];
@@ -121,9 +121,10 @@ async fn a_refresh_stores_the_weather_in_its_steps_and_hourly_quantities_at_whol
         snow_depth: Some(0.0304),
         ..drizzle()
     };
-    // The quarter hour has no visibility.
+    // The quarter hour has no visibility, and no hour of sunshine ends in it.
     let quarter = Detail {
         visibility: None,
+        sunshine: None,
         ..drizzle()
     };
     let (fake, _calls) = Fake::new(
@@ -299,7 +300,8 @@ fn open_meteo_reads_irradiance_temperature_and_wind_every_15_minutes() {
                 wind_direction: Some(126.0),
                 gusts: Some(4.2),
                 apparent_temperature: Some(-0.6),
-                sunshine: Some(900.0),
+                // The quarters to noon: 275.94, 307.04, 900 and 900 s.
+                sunshine: Some(2_382.98),
                 cloud_cover: Some(87.0),
                 snow_depth: Some(0.0),
             },
@@ -363,13 +365,16 @@ fn open_meteo_reads_the_weather_in_rates_per_hour_and_hourly_quantities_at_whole
         "sunshine_duration":[0.0,0.0]},
       "hourly":{"time":[1794218400,1794222000],"cloud_cover":[90,100],"snow_depth":[0.02,0.03]}}"#;
     let slots = open_meteo::parse(body).unwrap();
+    // The answer starts at noon: no hour of sunshine ends in it.
     let hour = Detail {
+        sunshine: None,
         cloud_cover: Some(100.0),
         snow_depth: Some(0.03),
         ..drizzle()
     };
     let quarter = Detail {
         visibility: None,
+        sunshine: None,
         ..drizzle()
     };
     assert_eq!(
@@ -385,6 +390,44 @@ fn open_meteo_reads_the_weather_in_rates_per_hour_and_hourly_quantities_at_whole
             }
         ]
     );
+}
+
+/// A forecast answer of quarters from 10:15 UTC with these seconds of sunshine in each.
+fn sunny(sunshine: &[Option<f64>]) -> String {
+    let n = sunshine.len();
+    let time: Vec<u64> = (0..n as u64).map(|i| NOON - 2700 + i * 900).collect();
+    serde_json::json!({"minutely_15": {
+        "time": time,
+        "shortwave_radiation_instant": vec![200.8; n],
+        "direct_normal_irradiance_instant": vec![167.9; n],
+        "diffuse_radiation_instant": vec![141.8; n],
+        "temperature_2m": vec![2.3; n],
+        "wind_speed_10m": vec![1.58; n],
+        "sunshine_duration": sunshine,
+    }})
+    .to_string()
+}
+
+#[test]
+fn open_meteo_sums_sunshine_into_the_hour_its_quarters_end_in() {
+    let quarters = [100.0, 200.0, 300.0, 400.0, 900.0, 900.0, 900.0, 50.0].map(Some);
+    let slots = open_meteo::parse(&sunny(&quarters)).unwrap();
+    let sunshine: Vec<_> = slots
+        .iter()
+        .filter_map(|s| {
+            let after = s.target.duration_since(at(NOON)).ok()?;
+            Some((after.as_secs(), s.detail.sunshine?))
+        })
+        .collect();
+    // Each value is of the quarter before it, as the archive's is of the hour before it.
+    assert_eq!(sunshine, [(0, 1000.0), (3600, 2750.0)]);
+}
+
+#[test]
+fn an_hour_missing_a_quarter_of_sunshine_has_none() {
+    let quarters = [Some(100.0), None, Some(300.0), Some(400.0)];
+    let slots = open_meteo::parse(&sunny(&quarters)).unwrap();
+    assert!(slots.iter().all(|s| s.detail.sunshine.is_none()));
 }
 
 #[test]

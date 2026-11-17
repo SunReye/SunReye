@@ -1,21 +1,24 @@
 // The ground the studio stands a scene on (ADR 20 Look): a floor that fades into the page round
-// the plot, and fog past it, which the weather's closes in (ADR 23).
+// the plot, and fog past it, which the weather's closes in by its metres of visibility (ADR 23).
 import { Fog, type Mesh, Vector2 } from "three";
 import { ground } from "./backdrop.ts";
-import { mix } from "./colour.ts";
 import { untone, type Triple } from "./tone.ts";
-import type { SceneWeather } from "./weather.ts";
+import { fogMetres, type SceneWeather } from "./weather.ts";
 import { weathered } from "./weathered.ts";
 
-/** Where the fog starts and ends, as radii of the plot and metres past them: far off in clear
- * air, and from the camera on in fog, which veils the house and never hides it. */
+/** Where the fog starts and ends in clear air, as radii of the plot and metres past them: far
+ * off, so only the far ground melts into the page. */
 const CLEAR = { near: [4, 40], far: [16, 160] } as const;
-const FOGGED = { near: [0.1, 0], far: [2.5, 10] } as const;
 
-/** Between two distances by how thick the air is, which is their reciprocals: halfway to fog
- * is far nearer the fog's than the clear air's. */
-const thicken = (clear: number, fogged: number, k: number): number =>
-  1 / mix(1 / clear, 1 / fogged, k);
+/** The nearest the weather's fog ends, as radii of the plot and metres past them: beyond the
+ * plot's far side, 3.5 radii from the camera that frames it, so fog veils the house and never
+ * hides it. */
+const VEILED = [4.5, 5] as const;
+
+/** The share of the visibility at which linear fog is whole. Air takes a thing's contrast by
+ * the distance's exponent, down to a fiftieth at the visibility (Koschmieder): a line from the
+ * camera with that slope is whole at the visibility over ln 50, about a quarter of it. */
+const WHOLE = 1 / Math.log(50);
 
 export class Plot {
   readonly #fade = { centre: { value: new Vector2() }, radius: { value: 12 } };
@@ -53,11 +56,16 @@ export class Plot {
     this.#reach();
   }
 
+  /** In metres from the camera, as the air is: the weather's fog ends at about a quarter of its
+   * visibility and starts next to the camera, so it deepens across the plot. Thinner air starts
+   * farther off, by the square of how far it ends, up to clear air's own distances. */
   #reach(): void {
     const radius = this.#fade.radius.value;
     const at = ([radii, past]: readonly [number, number]): number => radius * radii + past;
+    const clear = at(CLEAR.far);
+    const far = Math.min(clear, Math.max(fogMetres(this.#mist) * WHOLE, at(VEILED)));
 
-    this.fog.near = thicken(at(CLEAR.near), at(FOGGED.near), this.#mist);
-    this.fog.far = thicken(at(CLEAR.far), at(FOGGED.far), this.#mist);
+    this.fog.far = far;
+    this.fog.near = at(CLEAR.near) * (far / clear) ** 2;
   }
 }

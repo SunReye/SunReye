@@ -1,5 +1,5 @@
-// The time slider's instant (ADR 20): the day and time the admin picks, the sun then and each
-// string's production. It reads the draft and never writes it: nothing changes the scene.
+// The time slider's instant (ADR 20): the day and time the admin picks, the sun then, the weather
+// and each string's production. It reads the draft and never writes it: nothing changes the scene.
 import { today } from "./day.ts";
 import { load, shareAt, spanOf, wattsAt, type Day, type Reading } from "./moment.ts";
 import { sunAt, type Point } from "./pv.ts";
@@ -16,17 +16,21 @@ export class Moment {
   /** The day's production once read, by string position. */
   production = $state.raw<Day>();
 
-  /** The day's stored weather once read: the scene's sky. */
-  #weather = $state.raw<WeatherRead>();
+  /** The day's stored weather once read, and when: the scene's sky. */
+  #weather = $state.raw<readonly [WeatherRead, number]>();
 
   /** Milliseconds since 1970; NaN while the day is cleared. */
   readonly at = $derived(new Date(`${this.day}T00:00`).getTime() + this.minutes * MINUTE);
 
   readonly #reading: () => Omit<Reading, "day" | "today">;
 
-  /** Reads the day for what `reading` gives; call during a component's set-up. */
-  constructor(reading: () => Omit<Reading, "day" | "today">) {
+  readonly #editing: () => boolean;
+
+  /** Reads the day for what `reading` gives; call during a component's set-up. `editing` tells
+   * whether the admin edits now: asked apart, so that it never reads the day anew. */
+  constructor(reading: () => Omit<Reading, "day" | "today">, editing: () => boolean) {
     this.#reading = reading;
+    this.#editing = editing;
 
     $effect(() => {
       const asked = { ...this.#reading(), day: this.day, today: today() };
@@ -54,9 +58,10 @@ export class Moment {
 
       if (day !== "") {
         void (async () => {
+          const asOf = Date.now();
           const read = await readWeather(core, ...spanOf(day));
 
-          if (current) this.#weather = read;
+          if (current) this.#weather = [read, asOf];
         })();
       }
 
@@ -68,7 +73,9 @@ export class Moment {
 
   /** The weather at the instant; nothing of it without weather for it. */
   get weather(): Weather {
-    return weatherAt(this.#weather, this.at);
+    const [read, asOf] = this.#weather ?? [];
+
+    return weatherAt(read, this.at, asOf);
   }
 
   /** Toward the sun, or null without the plant's location. */
@@ -78,14 +85,15 @@ export class Moment {
     return location === undefined || Number.isNaN(this.at) ? null : sunAt(pv, location, this.at);
   }
 
-  /** The scene's weather at the instant, as it is edited under: without fog, what falls and the
-   * glass (ADR 23 "Builder"). Snow covers the modules only where the day's production was
-   * measured. */
+  /** The scene's weather at the instant, as the dashboard shows it; while the admin edits,
+   * without fog, wet ground, what falls and the glass (ADR 23 "Builder"). Snow covers the modules
+   * only where the day's production was measured. */
   get scene(): SceneWeather {
     const { draft, moduleTypes } = this.#reading();
     const share = shareAt(this.production, draft.strings, moduleTypes, this.at);
+    const weather = sceneWeather(this.weather, { sun: this.sun, share });
 
-    return exact(sceneWeather(this.weather, { sun: this.sun, share }));
+    return this.#editing() ? exact(weather) : weather;
   }
 
   /** Each string's watts at the instant, null without a value. */

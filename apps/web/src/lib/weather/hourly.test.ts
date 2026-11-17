@@ -64,7 +64,7 @@ test("an hour is the mean of its quarters; gusts are their strongest", () => {
     apparent: 1,
     gusts: 14,
     wind: 5,
-    direction: 270,
+    windDirection: 270,
     humidity: 85,
     precipitation: 1,
     snowfall: 0.5,
@@ -79,11 +79,11 @@ test("an hour without stored weather has none", () => {
     apparent: null,
     precipitation: null,
     snowfall: null,
-    cover: null,
-    index: null,
+    cloudCover: null,
+    clearSkyIndex: null,
     wind: null,
     gusts: null,
-    direction: null,
+    windDirection: null,
     humidity: null,
   });
 });
@@ -101,9 +101,9 @@ test("what was measured stands for a past hour, the forecast for the rest", () =
 test("a measured value held over several hours covers each", () => {
   const sources = { measured: { "weather.cloud_cover": [held("06:00", 75, 180)] } };
 
-  expect(hour(sources, "07:00")?.cover).toBe(75);
-  expect(hour(sources, "08:00")?.cover).toBe(75);
-  expect(hour(sources, "09:00")?.cover).toBeNull();
+  expect(hour(sources, "07:00")?.cloudCover).toBe(75);
+  expect(hour(sources, "08:00")?.cloudCover).toBe(75);
+  expect(hour(sources, "09:00")?.cloudCover).toBeNull();
 });
 
 test("cloud cover and the clear-sky index are apart, the index where it was measured", () => {
@@ -112,8 +112,8 @@ test("cloud cover and the clear-sky index are apart, the index where it was meas
     forecast: { "weather.cloud_cover": [held("10:00", 90), held("11:00", 40)] },
   };
 
-  expect(hour(sources, "10:00")).toMatchObject({ cover: 90, index: 0.5 });
-  expect(hour(sources, "11:00")).toMatchObject({ cover: 40, index: null });
+  expect(hour(sources, "10:00")).toMatchObject({ cloudCover: 90, clearSkyIndex: 0.5 });
+  expect(hour(sources, "11:00")).toMatchObject({ cloudCover: 40, clearSkyIndex: null });
 });
 
 test("the hour's icon is its code's, the worst of its quarters; an open sky at night is clear", () => {
@@ -134,23 +134,23 @@ test("the hour's icon is its code's, the worst of its quarters; an open sky at n
   expect(hour(sources, "22:00")?.sky).toBe("clear");
 });
 
-test("a day's sunshine is its slots' seconds in hours, measured ones not counted twice", () => {
+test("a day's sunshine is its hours' seconds in hours, measured ones not counted twice", () => {
   const [today, tomorrow] = days({
-    measured: { "weather.sunshine": [held("10:00", 900, 15), held("10:15", 450, 15)] },
+    measured: { "weather.sunshine": [held("10:00", 1800, 60)] },
     forecast: {
-      "weather.sunshine": [held("10:00", 900, 15), held("10:15", 900, 15), held("11:00", 900, 15)],
+      "weather.sunshine": [held("10:00", 3600, 60), held("11:00", 900, 60)],
     },
   });
 
-  // 900 s + 450 s measured in the tenth hour, 900 s forecast in the eleventh.
-  expect(today?.sunshine).toBe(0.625);
+  // 1800 s measured in the tenth hour, 900 s forecast in the eleventh.
+  expect(today?.sunshine).toBe(0.75);
   expect(tomorrow?.sunshine).toBeNull();
 });
 
-test("an hourly mean of measured sunshine counts each of its slots", () => {
-  const [today] = days({ measured: { "weather.sunshine": [held("10:00", 450, 60)] } });
+test("sunshine is seconds per hour in every tier: a day's mean counts for each of its hours", () => {
+  const [today] = days({ measured: { "weather.sunshine": [held("00:00", 900, 24 * 60)] } });
 
-  expect(today?.sunshine).toBe(0.5);
+  expect(today?.sunshine).toBe(6);
 });
 
 test("snow depth is the day's deepest, while snow lies: from 1 cm", () => {

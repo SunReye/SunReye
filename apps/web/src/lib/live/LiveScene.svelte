@@ -3,7 +3,11 @@
   import { parseView, presetView, type View } from "../builder/camera.ts";
   import { panels } from "../builder/modules.ts";
   import { sunAt, type Location, type Point, type Pv, type Scene } from "../builder/pv.ts";
-  import SceneCanvas, { type Projector } from "../builder/SceneCanvas.svelte";
+  import SceneCanvas, {
+    type Plant,
+    type Projector,
+    type SceneWeather,
+  } from "../builder/SceneCanvas.svelte";
   import { motion } from "../motion/tier.svelte.ts";
   import { m } from "../paraglide/messages.js";
   import { arrange, Steady, type Box, type Frame, type Label } from "./chips.ts";
@@ -42,12 +46,7 @@
     diffuse?: number | null | undefined;
     /** The scene's weather now for where the sun is and the share of its peak the plant makes
      * (ADR 23); none, clear and dry. */
-    weather?:
-      | ((plant: {
-          sun: Point | null;
-          share: number | null;
-        }) => Parameters<typeof SceneCanvas>[1]["weather"])
-      | undefined;
+    weather?: ((plant: Plant) => SceneWeather) | undefined;
     /** The camera stays put and a finger on the scene scrolls the page (ADR 20). */
     locked?: boolean;
     /** Pixels at the top the chips leave free: the hero's headline. */

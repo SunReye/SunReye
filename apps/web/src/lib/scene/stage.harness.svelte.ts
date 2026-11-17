@@ -4,7 +4,7 @@ import { flushSync } from "svelte";
 import { vi } from "vitest";
 import { PerspectiveCamera } from "three";
 import { motion } from "../motion/tier.svelte.ts";
-import { weatherEffects } from "./effects.svelte.ts";
+import { weatherEffects } from "./weather-effects.svelte.ts";
 import { quality } from "./quality.svelte.ts";
 import { lit, type Lit, type Sky } from "./stage.svelte.ts";
 import { Studio } from "./studio.ts";
@@ -89,7 +89,8 @@ export async function open() {
 
   return {
     canvas,
-    loop: scene.loop,
+    /** Whether the weather loop runs: the studio draws on its own. */
+    looping: async (): Promise<boolean> => (await draws(asked.drawn)) > 0,
     seen,
     ...asked,
     weather: (falling: Falling | null): void => {

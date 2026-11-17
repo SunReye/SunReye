@@ -7,8 +7,9 @@ import { WEATHER, type Core, type Forecasts, type History } from "../api/core.ts
 export interface Weather {
   /**
    * How closed the sky is, on the scale of the diffuse share of the global irradiance: 0 under
-   * a clear sky to 1 under a closed one. The clear-sky index where it has a value; else the
-   * diffuse share while the sun gives light, and the cloud cover while it gives none.
+   * a clear sky to 1 under a closed one. The clear-sky index alone where it has a value; else
+   * the diffuse share with the cloud cover while the sun gives light, and the cloud cover while
+   * it gives none. Not the cloud cover itself, which an hour's `cloudCover` is.
    */
   readonly cloud: number | null;
   /** The WMO weather code. */
@@ -31,7 +32,7 @@ export interface Weather {
   /** Global horizontal irradiance in W/m²: under 1 it is night. */
   readonly ghi: number | null;
   /** The clear-sky index that stands for the instant: null where the core measured none. */
-  readonly clearness: number | null;
+  readonly clearSkyIndex: number | null;
   /** Ms since precipitation last fell, 0 while it falls; null where none fell in what was read. */
   readonly dry: number | null;
 }
@@ -41,15 +42,25 @@ const MINUTE = 60_000;
 /** A forecast value is in force this long at most: the hourly quantities' step. */
 const STEP = 60 * MINUTE;
 
-/** The core closes a quarter's clear-sky index half a minute after its end, so the last one
- * stands for now until the next has closed: a quarter and that lag. */
-const INDEX_STANDS = 20 * MINUTE;
+const QUARTER = 15 * MINUTE;
+
+/** The core closes a quarter's clear-sky index half a minute after its end: a read this long
+ * after it is sure to hold what the core stored for it. */
+const CLOSES = MINUTE;
 
 /** The clear-sky indices of a closed and of a clear sky; between them the cloud is linear. */
 const INDEX = { closed: 0.25, clear: 1 };
 
 /** Under this global irradiance in W/m² the light tells nothing of the clouds. */
 export const DARK = 1;
+
+/** Metres of snow depth from which snow lies (ADR 23), as in the core. */
+const SNOW_LIES = 0.01;
+
+/** Whether snow `depth` m deep lies; not without a depth. */
+export function snowLies(depth: number | null): depth is number {
+  return depth !== null && depth >= SNOW_LIES;
+}
 
 /** Each stored series the weather is read from, and where the core has it. */
 const SERIES = [
@@ -214,24 +225,59 @@ function dryAt(fallen: readonly Held[], at: number): number | null {
   return ends.length === 0 ? null : Math.max(0, at - Math.max(...ends));
 }
 
-/** The weather at `at`, ms since 1970: each quantity's value in force then. */
-export function weatherAt(read: WeatherRead | undefined, at: number): Weather {
+/**
+ * The cloud by the forecast or the archive (ADR 23 "The sky"): the diffuse share with the cloud
+ * cover. In daylight it is midway between the two, as each over-reads where the other does not:
+ * the diffuse share at a low sun, whose light is diffuse under a clear sky too, and the cloud
+ * cover under thin high cloud, which the sun shines through. Either alone where the other is
+ * missing; at night the light tells nothing.
+ */
+function forecastCloud(ghi: number | null, dhi: number | null, cover: number | null) {
+  const covered = cover === null ? null : clamp(cover / 100);
+
+  if (ghi === null || dhi === null || ghi < DARK) return covered;
+
+  const diffuse = clamp(dhi / ghi);
+
+  return covered === null ? diffuse : (diffuse + covered) / 2;
+}
+
+/**
+ * The clear-sky index that stands for `at` in a read made at `asOf`. A quarter the read is sure
+ * to hold and has no index for is a null the core stored (the sun low, or snow on the modules):
+ * nothing stands in for it. Past what the read is sure to hold, the latest closed quarter stands
+ * until the next has closed.
+ */
+function indexAt(quarters: readonly Held[], at: number, asOf: number): number | null {
+  const own = quarters.find(({ from, to }) => from <= at && at < to);
+
+  if (own !== undefined) return own.value;
+
+  // Where the last quarter the read is sure to hold ends.
+  const sure = Math.floor((asOf - CLOSES) / QUARTER) * QUARTER;
+
+  if (at < sure || at >= sure + QUARTER + CLOSES) return null;
+
+  return quarters.findLast(({ from, to }) => from <= at && to >= sure)?.value ?? null;
+}
+
+/**
+ * The weather at `at`, ms since 1970: each quantity's value in force then.
+ * @param asOf when `read` was made, for an instant read later; a read of now is made at `at`.
+ */
+export function weatherAt(read: WeatherRead | undefined, at: number, asOf = at): Weather {
   // History is listed first, so it wins over the forecast.
   const held = (role: Role): number | null =>
     read?.[role]?.find(({ from, to }) => from <= at && at < to)?.value ?? null;
 
-  // The latest quarter that stands: the one before yields once the next has closed.
-  const index =
-    read?.["weather.clearness"]?.findLast(({ from, to }) => from <= at && at < to + INDEX_STANDS)
-      ?.value ?? null;
+  const index = indexAt(read?.["weather.clearness"] ?? [], at, asOf);
 
   const [ghi, dhi, cover] = [held("weather.ghi"), held("weather.dhi"), held("weather.cloud_cover")];
 
-  let cloud = cover === null ? null : clamp(cover / 100);
-
-  if (ghi !== null && dhi !== null && ghi >= DARK) cloud = clamp(dhi / ghi);
-
-  if (index !== null) cloud = clamp((INDEX.clear - index) / (INDEX.clear - INDEX.closed));
+  const cloud =
+    index === null
+      ? forecastCloud(ghi, dhi, cover)
+      : clamp((INDEX.clear - index) / (INDEX.clear - INDEX.closed));
 
   return {
     cloud,
@@ -245,7 +291,7 @@ export function weatherAt(read: WeatherRead | undefined, at: number): Weather {
     celsius: held("weather.temperature"),
     humidity: held("weather.humidity"),
     ghi,
-    clearness: index,
+    clearSkyIndex: index,
     dry: dryAt(read?.["weather.precipitation"] ?? [], at),
   };
 }

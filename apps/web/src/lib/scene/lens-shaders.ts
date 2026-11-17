@@ -107,17 +107,52 @@ const SETTLED = `
   }
 `;
 
-/** Frost from the corners, then along the edges, in crystals. */
+/** Frost from the corners, then along the edges: ice crystals, each six needles with barbs
+ * about a seed, large ones and small between them, over a thin haze of ice. */
 const FROST = `
+  // One crystal about its seed: p from the seed, reach its needles' length, turn its angle.
+  // Folded into one needle's sixth of the turn.
+  float crystal(vec2 p, float reach, float turn) {
+    float r = length(p);
+    float a = mod(atan(p.y, p.x) + turn, 1.0472) - 0.5236;
+    float along = r * cos(a);
+    float across = abs(r * sin(a));
+    float needle = 1.0 - smoothstep(0.5, 1.5, across);
+    // Barbs leave the needle at sixty degrees, shorter toward its tip.
+    float rung = mod(along, reach * 0.16);
+    float barb = (1.0 - smoothstep(0.4, 1.2, abs(across * 0.5 - rung * 0.866)))
+      * (1.0 - smoothstep(0.0, 1.0, across - (reach - along) * 0.55));
+
+    return max(needle, barb) * (1.0 - smoothstep(reach * 0.8, reach, along));
+  }
+
+  // The crystals seeded one to a cell, each reaching into the cells beside it.
+  float crystals(vec2 at, float cell) {
+    vec2 id = floor(at / cell);
+    float most = 0.0;
+
+    for (int x = -1; x <= 1; x++) {
+      for (int y = -1; y <= 1; y++) {
+        vec2 beside = id + vec2(float(x), float(y));
+        vec2 seed = (beside + 0.5 + (vec2(hash(beside + 3.1), hash(beside + 7.7)) - 0.5) * 0.8) * cell;
+        float reach = cell * (0.55 + 0.4 * hash(beside + 1.3));
+
+        most = max(most, crystal(at - seed, reach, hash(beside + 5.9) * 1.0472));
+      }
+    }
+
+    return most;
+  }
+
   float frost(vec2 at, float amount) {
     vec2 edges = min(at, uSize - at) / (0.5 * min(uSize.x, uSize.y));
     float from = min(length(edges), min(edges.x, edges.y) * 4.0 + 0.3);
-    // Ridges where two patches of ice meet.
-    float crystal = 1.0 - abs(noise(at / 12.0) - 0.5) * 2.0;
+    float ice = max(crystals(at, 64.0), 0.7 * crystals(at + 31.0, 30.0));
     float reach = amount * 0.62;
-    float edge = from + (noise(at / 46.0) - 0.5) * 0.3 + (crystal - 0.5) * 0.12;
+    // A ragged front, which the crystals grow out past.
+    float edge = from + (noise(at / 46.0) - 0.5) * 0.3 - ice * 0.08;
 
-    return (1.0 - smoothstep(reach * 0.45, reach, edge)) * (0.35 + 0.65 * crystal * crystal);
+    return (1.0 - smoothstep(reach * 0.45, reach, edge)) * (0.22 + 0.78 * ice);
   }
 `;
 

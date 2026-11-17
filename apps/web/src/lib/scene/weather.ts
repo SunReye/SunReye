@@ -2,7 +2,8 @@
 // the ground is, whether snow lies and covers the modules, thunder, and what falls. Pure: the studio and the
 // drawn scene apply it, and nothing here moves.
 import type { Point } from "../builder/pv.ts";
-import type { Weather } from "../weather/weather.ts";
+import { codeKind } from "../weather-code.ts";
+import { snowLies, type Weather } from "../weather/weather.ts";
 import { mix, smoothstep } from "./colour.ts";
 import type { Triple } from "./tone.ts";
 
@@ -73,13 +74,10 @@ const FOG_CODE_METRES = 1000;
 /** The ground dries over about an hour. */
 const DRIES = 3_600_000;
 
-/** Metres of snow depth from which snow lies, as in the core. */
-const SNOW_DEPTH = 0.01;
-
 /**
  * Degrees of sun from which missing clear-sky indices tell of snow. The core measures none under
- * 5°, and the index that stands for an instant is of a quarter up to 35 minutes before it, when
- * the sun was lower.
+ * 5°, and the index that stands for an instant is of a quarter up to half an hour before it,
+ * when the sun was lower.
  */
 const SUN = 10;
 
@@ -93,8 +91,13 @@ function fogAt(metres: number): number {
   return Math.min(1, Math.max(0, Math.log(VISIBILITY.clear / Math.max(metres, 1)) / span));
 }
 
+/** The metres of visibility a `fog` of 0 to 1 stands for: `fogAt` the other way. */
+export function fogMetres(fog: number): number {
+  return VISIBILITY.clear * (VISIBILITY.fog / VISIBILITY.clear) ** Math.min(1, Math.max(0, fog));
+}
+
 function fogOf({ code, visibility }: Weather): number {
-  const coded = code === 45 || code === 48 ? FOG_CODE_METRES : Infinity;
+  const coded = codeKind(code) === "fog" ? FOG_CODE_METRES : Infinity;
 
   return fogAt(Math.min(visibility ?? Infinity, coded));
 }
@@ -103,11 +106,11 @@ function fogOf({ code, visibility }: Weather): number {
  * Snow covers the modules: the core stores no clear-sky index while it does (ADR 23), so snow
  * lies, the core measured no sky though the sun is well up, and the plant reads next to nothing.
  */
-function coveredBy({ clearness }: Weather, snow: boolean, { sun, share }: Plant): boolean {
+function coveredBy({ clearSkyIndex }: Weather, snow: boolean, { sun, share }: Plant): boolean {
   const risen = sun !== null && sun[2] >= Math.sin((SUN * Math.PI) / 180);
   const idle = share !== null && share < NOTHING;
 
-  return snow && clearness === null && risen && idle;
+  return snow && clearSkyIndex === null && risen && idle;
 }
 
 /** The amounts from which the whole field falls: mm/h of rain, cm/h of snow. */
@@ -131,8 +134,9 @@ function carried({ wind, windDirection }: Weather): [number, number] {
   return [stepped(-Math.sin(from) * wind, 0.5), stepped(-Math.cos(from) * wind, 0.5)];
 }
 
-/** Snow while snow falls, whose water the precipitation counts too; else rain. */
-function fallingOf(weather: Weather): Falling | null {
+/** Snow while snow falls, whose water the precipitation counts too; else rain. A thunderstorm
+ * pours: its rain is the whole field, whatever the amount, so it reads as more than rain. */
+function fallingOf(weather: Weather, thunder: boolean): Falling | null {
   const snowfall = weather.snowfall ?? 0;
   const rain = weather.precipitation ?? 0;
 
@@ -140,7 +144,11 @@ function fallingOf(weather: Weather): Falling | null {
 
   return snowfall > 0
     ? { kind: "snow", density: densityOf(snowfall, WHOLE.snow), wind: carried(weather) }
-    : { kind: "rain", density: densityOf(rain, WHOLE.rain), wind: carried(weather) };
+    : {
+        kind: "rain",
+        density: thunder ? 1 : densityOf(rain, WHOLE.rain),
+        wind: carried(weather),
+      };
 }
 
 /** Frost forms from a little above freezing, the lens being colder than the air, and is whole
@@ -187,15 +195,16 @@ export function fogColour(page: Triple, dark: boolean, fog: number): [number, nu
 /** The scene's weather for the `weather` at an instant and what the `plant` reads then. */
 export function sceneWeather(weather: Weather, plant: Plant = UNKNOWN): SceneWeather {
   const { code, dry, snowDepth } = weather;
-  const snow = snowDepth !== null && snowDepth >= SNOW_DEPTH;
-  const falling = fallingOf(weather);
+  const snow = snowLies(snowDepth);
+  const thunder = codeKind(code) === "thunder";
+  const falling = fallingOf(weather, thunder);
 
   return {
     fog: fogOf(weather),
     wet: dry === null ? 0 : 1 - smoothstep(0, DRIES, dry),
     snow,
     covered: coveredBy(weather, snow, plant),
-    thunder: code !== null && code >= 95 && code <= 99,
+    thunder,
     falling,
     glass: glassOf(weather, falling),
   };
@@ -207,8 +216,8 @@ export function lightAlone({ thunder }: SceneWeather): SceneWeather {
   return { ...DRY, thunder };
 }
 
-/** The `weather` as it is edited under (ADR 23 "Builder"): without fog, what falls and the
- * glass, so faces and edges stay exact. */
+/** The `weather` as it is edited under (ADR 23 "Builder"): without fog, wet ground, what falls
+ * and the glass, so faces and edges stay exact. Lying snow stays. */
 export function exact(weather: SceneWeather): SceneWeather {
-  return { ...weather, fog: 0, falling: null, glass: null };
+  return { ...weather, fog: 0, wet: 0, falling: null, glass: null };
 }
