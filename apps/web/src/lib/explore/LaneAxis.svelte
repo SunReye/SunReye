@@ -2,7 +2,14 @@
 <script lang="ts">
   import type { LaneView } from "./series-chart.ts";
 
-  let { lanes, height }: { lanes: readonly LaneView[]; height: number } = $props();
+  let {
+    lanes,
+    height,
+  }: {
+    lanes: readonly LaneView[];
+    /** In px; null takes the row's. */
+    height: number | null;
+  } = $props();
 
   /** A figure this close under its lane's top gives way to the unit. */
   const CLEAR = 16;
@@ -18,7 +25,7 @@
 
 <div
   class="relative text-[11px] leading-none text-muted-foreground tabular-nums"
-  style:height="{height}px"
+  style:height={height === null ? null : `${height}px`}
   aria-hidden="true"
 >
   {#each lanes as lane (lane.lane.key)}

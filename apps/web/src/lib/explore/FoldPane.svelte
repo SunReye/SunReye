@@ -24,6 +24,15 @@
   const chosen = $derived(fold.chosen);
   const got = $derived(fold.got);
 
+  /** The periods' row as laid out, in px. */
+  let head = $state(0);
+
+  /** The column's gap-4. */
+  const GAP = 16;
+
+  /** Under the periods: in fullscreen all the window leaves, so their row is measured. */
+  const rest = $derived(props.full === true && head > 0 ? height - head - GAP : height - 44);
+
 </script>
 
 {#snippet said(title: string, text: string)}
@@ -44,14 +53,16 @@
   {@render said(chosen.label, m.explore_fold_unstored({ name: chosen.label }))}
 {:else}
   <div class="flex flex-col gap-4">
-    <FoldPeriods offered={fold.periods.offered} period={fold.period} onchange={fold.setPeriod} />
+    <div bind:clientHeight={head}>
+      <FoldPeriods offered={fold.periods.offered} period={fold.period} onchange={fold.setPeriod} />
+    </div>
 
     {#if got === null}
-      <Skeleton class="w-full rounded-md" style="height: {height - 44}px" />
+      <Skeleton class="w-full rounded-md" style="height: {rest}px" />
     {:else if got.failed}
       <div
         class="flex flex-col items-start justify-center gap-3"
-        style:min-height="{height - 44}px"
+        style:min-height="{rest}px"
         role="alert"
       >
         <p class="text-sm text-muted-foreground">{m.explore_fold_error()}</p>
@@ -74,7 +85,7 @@
         zone={got.zone}
         whole={route.label}
         label={m.explore_fold_chart({ name: chosen.label })}
-        height={height - 44}
+        height={rest}
       />
       <FoldTable
         rows={got.rows}

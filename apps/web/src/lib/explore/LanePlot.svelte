@@ -1,7 +1,8 @@
 <!--
   The lanes of a chart on one canvas (ADR 22), with each lane's unit and figures left of it and
   the time labels under it. The pointer and a span being selected are elements over the canvas,
-  so reading the chart never redraws it.
+  so reading the chart never redraws it. Filling, the plot takes the room its parent leaves and
+  says how much that is; the chart is then drawn in it.
 -->
 <script lang="ts">
   import type { Attachment } from "svelte/attachments";
@@ -16,12 +17,18 @@
     chart,
     label,
     pointer,
+    fill = false,
+    room = $bindable(0),
     plot = $bindable(null),
   }: {
     chart: Chart;
     /** The plot's name, with the keys that read it. */
     label: string;
     pointer: Pointer;
+    /** Whether the plot takes its parent's room, a flex column, instead of the chart's height. */
+    fill?: boolean | undefined;
+    /** The plot's height as laid out, in px. */
+    room?: number;
     /** The plot, which the pointer measures its instants on. */
     plot?: HTMLElement | null;
   } = $props();
@@ -46,15 +53,20 @@
   });
 </script>
 
-<div class="grid grid-cols-[3rem_minmax(0,1fr)] gap-x-1.5">
-  <LaneAxis lanes={chart.lanes} height={chart.height} />
+<!-- The row's least is the chart's, never its height: a row as tall as its chart could not shrink. -->
+<div
+  class={["grid grid-cols-[3rem_minmax(0,1fr)] gap-x-1.5", fill && "flex-1"]}
+  style:grid-template-rows={fill ? `minmax(${chart.least}px, 1fr) auto` : null}
+>
+  <LaneAxis lanes={chart.lanes} height={fill ? null : chart.height} />
 
   <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
   <div
     bind:this={plot}
     bind:clientWidth={width}
+    bind:clientHeight={room}
     class="relative cursor-crosshair touch-pan-y overflow-hidden outline-none select-none focus-visible:ring-2 focus-visible:ring-ring"
-    style:height="{chart.height}px"
+    style:height={fill ? null : `${chart.height}px`}
     role="group"
     tabindex="0"
     data-scrub

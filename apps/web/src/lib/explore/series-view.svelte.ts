@@ -13,10 +13,13 @@ import { lanesView, notesOf, plotted, timesOf, type Chart, type Loaded } from ".
 /** Four lanes on a phone grow the chart instead of flattening each other. */
 const LANE_MIN = 84;
 
-/** What the legend and the time labels take of the pane's height. */
+/** What the legend and the time labels take of the pane's height, at rest. */
 const AROUND = 132;
 
 export class SeriesView extends ModeView<Loaded | null> {
+  /** The height the plot is laid out in, in px: in fullscreen what the window leaves it. */
+  room = $state(0);
+
   // The route rebuilds the chosen series on any change of it; only what a read depends on reads again.
   readonly #wanted = $derived.by(() =>
     this.input()
@@ -32,12 +35,15 @@ export class SeriesView extends ModeView<Loaded | null> {
 
     const [from, to] = [got.spans[0]?.[0] ?? 0, got.spans.at(-1)?.[1] ?? 0];
 
-    const height = Math.max(this.input().height - AROUND, got.data.plan.lanes.length * LANE_MIN);
+    const least = got.data.plan.lanes.length * LANE_MIN;
+    const { full, height: pane } = this.input();
+    const height = Math.max(full === true && this.room > 0 ? this.room : pane - AROUND, least);
 
     return {
       from,
       to,
       height,
+      least,
       lanes: lanesView(got.data, height),
       notes: notesOf(got.data),
       idle: `${rangeLabel(got.cal, got.range)} · ${m.explore_latest()}`,

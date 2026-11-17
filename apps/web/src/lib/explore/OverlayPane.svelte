@@ -29,6 +29,9 @@
   // Fullscreen hides the periods' row, so the skeleton takes its 44 px too.
   const waiting = $derived(props.full ? props.height : props.height - 44);
 
+  /** In fullscreen the pane is as tall as the window leaves, and the lanes take its rest. */
+  const least = $derived(props.full === true ? `${props.height}px` : null);
+
   let plot = $state<HTMLElement | null>(null);
 
   const pointer = new Pointer(() => ({
@@ -55,8 +58,11 @@
     </Empty.Header>
   </Empty.Root>
 {:else}
-  <div class="@container flex flex-col gap-3">
-    <!-- Fullscreen leaves the periods to the legend (ADR 22). -->
+  <div
+    class="@container flex flex-col gap-3"
+    style:min-height={least}
+  >
+    <!-- Fullscreen leaves the periods to the legend (ADR 22), and the lanes take the window's rest. -->
     <OverlayPeriods
       hidden={props.full === true}
       picked={view.periods.slice(1)}
@@ -74,7 +80,7 @@
         aria-label={m.loading()}
       />
     {:else}
-      <div class="flex flex-col gap-2">
+      <div class="flex flex-1 flex-col gap-2">
         <SeriesLegend
           title={view.title(pointer.at)}
           label={name}
@@ -85,7 +91,14 @@
           <p class="text-xs text-muted-foreground">{note}</p>
         {/each}
 
-        <LanePlot {chart} label={m.explore_chart_read({ chart: name })} {pointer} bind:plot />
+        <LanePlot
+          {chart}
+          label={m.explore_chart_read({ chart: name })}
+          {pointer}
+          fill={props.full}
+          bind:room={view.room}
+          bind:plot
+        />
       </div>
     {/if}
   </div>
