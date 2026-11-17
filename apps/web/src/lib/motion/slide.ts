@@ -1,5 +1,5 @@
 // ADR 21's movement between two resting places, shared by the route slide, the settings levels,
-// the builder's inspector and the weather detail's days.
+// the builder's inspector and a detail's days.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
 import type { TransitionConfig } from "svelte/transition";
 import { motionMs } from "../motion.ts";

@@ -1,4 +1,4 @@
-// The weather detail's days slide by their order (ADR 23 "Dashboard"), as route changes do
+// A detail's days slide by their order (ADR 21, ADR 23 "Dashboard"), as route changes do
 // (ADR 21): a later day in from the right while the old one leaves to the left, an earlier one
 // the other way.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
