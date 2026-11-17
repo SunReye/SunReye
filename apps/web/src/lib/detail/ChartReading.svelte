@@ -32,13 +32,12 @@
   );
 </script>
 
-<!-- A held finger leads across the plot; up and down stays the sheet's scroll, and while it reads
-  the drawer leaves the finger alone. -->
+<!-- A held finger leads across the plot; up and down stays the sheet's scroll, and while it rests
+  or reads the drawer leaves the finger alone (`pointer-reading.ts`). -->
 <div
   role="presentation"
   {...rest}
   class={cn("relative touch-pan-y select-none", className)}
-  data-vaul-no-drag={read === null ? undefined : ""}
   onpointerdown={reading.down}
   onpointermove={reading.move}
   onpointerup={reading.up}
