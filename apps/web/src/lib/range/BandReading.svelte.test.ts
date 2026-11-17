@@ -1,13 +1,9 @@
 import { tick } from "svelte";
-import { afterEach, expect, test, vi } from "vitest";
+import { expect, test } from "vitest";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import type { Band } from "./bands.ts";
 import BandChart from "./BandChart.svelte";
-
-afterEach(() => {
-  vi.useRealTimers();
-});
 
 const band = (key: string, up: number): Band => ({
   key,
@@ -55,34 +51,27 @@ function finger(type: string, share: number, dy = 0): void {
   );
 }
 
-test("on touch, a finger passing by scrolls: nothing is read", async () => {
-  const screen = await mount();
+// No sheet around it: a full screen, where a finger reads at once (ADR 21 "Sheet content").
 
-  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+test("on a full screen, a finger that scrolls leaves nothing read", async () => {
+  const screen = await mount();
 
   finger("pointerdown", 0.75);
   finger("pointermove", 0.75, 30);
-  vi.advanceTimersByTime(1000);
   finger("pointercancel", 0.75, 30);
   await tick();
 
   expect(screen.getByText("Band b1").query()).toBeNull();
 });
 
-test("on touch, a finger held on a band reads it and follows; lifted, the sum returns", async () => {
+test("on a full screen, a finger reads at once and follows; lifted, its band stays to open", async () => {
   const drilled: number[] = [];
 
   const screen = await mount((i) => {
     drilled.push(i);
   });
 
-  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-
   finger("pointerdown", 0.75);
-  await tick();
-  expect(screen.getByText("Band b1").query()).toBeNull();
-
-  vi.advanceTimersByTime(1000);
   await tick();
   expect(screen.getByText("Band b1").query()).not.toBeNull();
 
@@ -92,8 +81,24 @@ test("on touch, a finger held on a band reads it and follows; lifted, the sum re
 
   finger("pointerup", 0.25);
   await tick();
-  expect(screen.getByText("Band b0").query()).toBeNull();
-  expect(screen.getByText("Summe").query()).not.toBeNull();
-  // A held finger reads; only a tap opens.
+  // A finger that moved reads; only a tap opens, and the legend offers the band it left.
   expect(drilled).toEqual([]);
+  expect(screen.getByText("Band b0").query()).not.toBeNull();
+
+  await screen.getByRole("button", { name: "Öffnen" }).click();
+  expect(drilled).toEqual([0]);
+});
+
+test("on a full screen, a tap opens its band", async () => {
+  const drilled: number[] = [];
+
+  await mount((i) => {
+    drilled.push(i);
+  });
+
+  finger("pointerdown", 0.75);
+  finger("pointerup", 0.75);
+  await tick();
+
+  expect(drilled).toEqual([1]);
 });

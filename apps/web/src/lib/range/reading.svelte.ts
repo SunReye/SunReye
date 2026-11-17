@@ -1,9 +1,12 @@
 // Reading the band chart (ADR 21): the legend shows the band under the pointer, never a tooltip.
-// Mouse: hover reads, a click opens the band, a drag narrows the range. Touch: a finger held on
-// the chart reads and leads, lifted it restores the sum, and a tap opens the band; there is no
-// brushing. Keys: arrows move, Shift and arrows select, Enter
-// opens, Escape clears.
+// Mouse: hover reads, a click opens the band, a drag narrows the range. Touch, on a full screen: a
+// finger reads at once and leads, lifted it leaves its band read to open, and a tap opens the band.
+// Touch, in a sheet: a finger held on the chart reads and leads, lifted it restores the sum, and a
+// tap opens the band (ADR 21 "Sheet content"). There is no brushing by touch. Keys: arrows move,
+// Shift and arrows select, Enter opens, Escape clears.
+import { inSheet } from "../detail/in-sheet.ts";
 import { PointerReading } from "../detail/pointer-reading.ts";
+import { AtOnce, type Finger } from "./at-once.ts";
 import { haptics } from "../haptics.ts";
 import type { Band } from "./bands.ts";
 
@@ -38,22 +41,29 @@ export class Reading {
   #dragFrom: number | null = null;
   #dragged = false;
 
-  /** A finger: held it reads, lifted early it taps. */
-  readonly #finger: PointerReading;
+  readonly #finger: Finger<Pointer>;
 
-  constructor(target: () => Target) {
+  /** @param hold whether a finger reads only once held: inside a sheet, read at setup */
+  constructor(target: () => Target, hold = inSheet()) {
     this.#target = target;
-    this.#finger = new PointerReading(
-      () => this.#target().bands.length,
-      () => this.active,
-      (at) => {
-        this.pinned = at !== null;
-        this.#set(at);
-      },
-      (at) => {
-        this.#drill(at);
-      },
-    );
+
+    const write = (at: number | null) => {
+      this.pinned = at !== null;
+      this.#set(at);
+    };
+
+    const tap = (at: number) => {
+      this.#drill(at);
+    };
+
+    this.#finger = hold
+      ? new PointerReading(
+          () => this.#target().bands.length,
+          () => this.active,
+          write,
+          tap,
+        )
+      : new AtOnce((e) => this.#at(e), write, tap);
   }
 
   #at(e: Pointer): number {
