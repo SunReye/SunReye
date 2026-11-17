@@ -15,6 +15,7 @@
   import type { Offered } from "./overlay-view.svelte.ts";
 
   let {
+    hidden = false,
     picked,
     picks,
     full,
@@ -22,6 +23,8 @@
     onadd,
     onremove,
   }: {
+    /** Fullscreen leaves the periods to the legend (ADR 22). */
+    hidden?: boolean;
     /** The periods beside the range. */
     picked: readonly Shown[];
     picks: readonly Offered[];
@@ -36,7 +39,7 @@
   const id = $props.id();
 </script>
 
-<div class="flex flex-col gap-1.5">
+<div class="flex flex-col gap-1.5" {hidden}>
   <div class="flex flex-wrap items-center gap-2 text-xs">
     <span {id} class="text-muted-foreground">{m.explore_overlay_with()}</span>
     {#if picked.length > 0}

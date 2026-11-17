@@ -55,7 +55,7 @@ test("fullscreen fills the window with the chart, the range and the mode, outsid
   expect(went).toHaveLength(steps);
 });
 
-test("overlay's periods are left out of fullscreen, its legend names them", async () => {
+test("overlay's periods are hidden in fullscreen, its legend names them", async () => {
   await desk();
 
   const { screen } = await show("mode=overlay&range=day&at=2026-11-10&vs=2026-11-03");
@@ -66,7 +66,7 @@ test("overlay's periods are left out of fullscreen, its legend names them", asyn
   await screen.getByRole("button", { name: "Vollbild", exact: true }).click();
 
   await expect.element(screen.getByRole("button", { name: "Vollbild beenden" })).toBeVisible();
-  expect(chart.getByText("Vergleichen mit").query()).toBeNull();
+  await expect.element(chart.getByText("Vergleichen mit")).not.toBeVisible();
   expect(chart.getByRole("button", { name: "Tag davor" }).query()).toBeNull();
   expect(chart.getByRole("button", { name: "Di., 3. November entfernen" }).query()).toBeNull();
   await expect.element(chart.getByRole("img", { name: /Di\., 3\. November/u })).toBeVisible();

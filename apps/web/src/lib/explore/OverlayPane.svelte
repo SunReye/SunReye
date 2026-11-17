@@ -26,6 +26,9 @@
 
   const name = $derived(m.explore_overlay_chart({ name: view.chosen.label }));
 
+  // Fullscreen hides the periods' row, so the skeleton takes its 44 px too.
+  const waiting = $derived(props.full ? props.height : props.height - 44);
+
   let plot = $state<HTMLElement | null>(null);
 
   const pointer = new Pointer(() => ({
@@ -54,20 +57,19 @@
 {:else}
   <div class="@container flex flex-col gap-3">
     <!-- Fullscreen leaves the periods to the legend (ADR 22). -->
-    {#if !props.full}
-      <OverlayPeriods
-        picked={view.periods.slice(1)}
-        picks={view.picks}
-        full={view.full}
-        max={view.lastDay}
-        onadd={view.add}
-        onremove={view.remove}
-      />
-    {/if}
+    <OverlayPeriods
+      hidden={props.full === true}
+      picked={view.periods.slice(1)}
+      picks={view.picks}
+      full={view.full}
+      max={view.lastDay}
+      onadd={view.add}
+      onremove={view.remove}
+    />
 
     {#if !chart}
       <Skeleton
-        style="height: {props.full ? props.height : props.height - 44}px"
+        style="height: {waiting}px"
         role="status"
         aria-label={m.loading()}
       />
