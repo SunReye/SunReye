@@ -3,7 +3,7 @@
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
 import type { TransitionConfig } from "svelte/transition";
 import { ease, MOTION_MS, motionMs } from "../motion.ts";
-import { slideIn, slideTiming } from "../motion/slide.ts";
+import { caught, slideAway, slideIn, slideTiming, turns } from "../motion/slide.ts";
 import { BAR, MORE } from "./nav.ts";
 
 /** Dashboard · History · Forecast, then More's rows. */
@@ -20,20 +20,6 @@ function wayTo(from: Route, to: Route): Way {
   if (a < 0 || b < 0 || a === b) return 0;
 
   return b > a ? 1 : -1;
-}
-
-/** Where a screen is drawn now, when a travel of its own is under way; that travel stops there. */
-function caught(node: HTMLElement) {
-  const running = node.getAnimations();
-
-  if (running.length === 0) return { x: 0, opacity: 1 };
-
-  const style = getComputedStyle(node);
-  const at = { x: new DOMMatrix(style.transform).m41, opacity: Number(style.opacity) };
-
-  for (const animation of running) animation.pause();
-
-  return at;
 }
 
 /**
@@ -86,11 +72,7 @@ function leave(node: HTMLElement, way: Way): TransitionConfig {
       css: (t) => `transform: translate3d(${at.x}px, 0, 0); opacity: ${at.opacity * t}`,
     };
 
-  return {
-    ...slide,
-    css: (t, u) =>
-      `transform: translate3d(calc(${at.x * t}px + ${-way * 100 * u}%), 0, 0); opacity: ${at.opacity}`,
-  };
+  return slideAway(at, way);
 }
 
 /**
@@ -98,18 +80,8 @@ function leave(node: HTMLElement, way: Way): TransitionConfig {
  * `enter` on the screen arriving, `leave` on each one going.
  */
 export function routeSlide(first: Route) {
-  let shown = first;
-  let way: Way = 0;
-
   // Asked by the arriving and the leaving screen of one change, in either order.
-  const turn = (to: Route) => {
-    if (to !== shown) {
-      way = wayTo(shown, to);
-      shown = to;
-    }
-
-    return way;
-  };
+  const turn = turns<Route, Way>(first, 0, wayTo);
 
   return {
     enter: (node: HTMLElement, to: Route) => enter(node, turn(to)),
