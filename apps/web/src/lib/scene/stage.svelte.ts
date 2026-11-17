@@ -8,7 +8,7 @@ import { cssColour, flowRgb } from "./backdrop.ts";
 import { daylight, theme } from "./light.ts";
 import { easeGlow } from "./live-glow.svelte.ts";
 import { Opening } from "./opening.svelte.ts";
-import { stage, type SceneWeather, type Staged } from "./staged.ts";
+import { DRY, stage, type SceneWeather, type Staged } from "./staged.ts";
 import { openStudio, type Opened } from "./studio-look.svelte.ts";
 
 /** Follows mode-watcher's class on the root element. */
@@ -108,16 +108,17 @@ function steadyGlass(given: () => Glass | null): () => Glass | null {
 function steadied(sky: () => Sky, look: Opened["look"], weatherOf: Opened["weather"]) {
   const sun = $derived(sky().sun);
   const diffuse = $derived(sky().diffuse);
-  const given = $derived(weatherOf(sky().weather));
-  const known = $derived(given !== undefined);
-  const fog = $derived(given?.fog ?? 0);
-  const wet = $derived(given?.wet ?? 0);
-  const snow = $derived(given?.snow ?? false);
-  const covered = $derived(given?.covered ?? false);
-  const thunder = $derived(given?.thunder ?? false);
+  const read = $derived(weatherOf(sky().weather));
+  const known = $derived(read !== undefined);
+  const given = $derived(read ?? DRY);
+  const fog = $derived(given.fog);
+  const wet = $derived(given.wet);
+  const snow = $derived(given.snow);
+  const covered = $derived(given.covered);
+  const thunder = $derived(given.thunder);
   // Apart from the rest: the ground drying under it must not start the loop over.
-  const falling = steadyFalling(() => given?.falling ?? null);
-  const whole = steadyGlass(() => given?.glass ?? null);
+  const falling = steadyFalling(() => given.falling);
+  const whole = steadyGlass(() => given.glass);
 
   const weather = $derived(
     known ? { fog, wet, snow, covered, thunder, falling: falling(), glass: whole() } : undefined,

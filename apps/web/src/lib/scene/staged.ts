@@ -5,7 +5,7 @@ import { lamps } from "./wall-openings.ts";
 import { DRY, type SceneWeather } from "./weather.ts";
 import { weathered } from "./weathered.ts";
 
-export type { SceneWeather };
+export { DRY, type SceneWeather };
 
 /** Frees a drawn part's meshes; textures are shared and stay. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js frees in place.

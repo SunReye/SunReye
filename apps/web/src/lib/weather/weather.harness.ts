@@ -3,7 +3,7 @@ import type { Forecasts, History } from "../api/core.ts";
 import { readWeather } from "./weather.ts";
 
 export const WEATHER = 4_294_967_295;
-export const iso = (time: string) => `2026-11-14T${time}:00Z`;
+const iso = (time: string) => `2026-11-14T${time}:00Z`;
 export const at = (time: string) => Date.parse(iso(time));
 
 /** Forecast targets, as the core serves them. */
@@ -22,7 +22,7 @@ export const intervals = (...values: readonly (readonly [string, string, number]
     mean,
   }));
 
-interface Stored {
+export interface Stored {
   readonly history?: Readonly<Record<string, readonly Readonly<History["points"][number]>[]>>;
   readonly forecasts?: Readonly<Record<string, readonly Readonly<Forecasts["points"][number]>[]>>;
 }
