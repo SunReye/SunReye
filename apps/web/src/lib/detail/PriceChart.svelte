@@ -1,8 +1,8 @@
 <!--
   Today's spot prices as the prototype's bar chart: one bar per plant hour, the mean of its known
   quarter-hour slots, the hour in force solid. An hour without a slot is a gap, never 0, and a
-  negative price hangs below the zero line (ADR 12). The source's CC BY attribution sits under the
-  chart it licenses.
+  negative price hangs below the zero line (ADR 12). The pointer reads an hour's price in the
+  legend (ADR 21 "Chart reading"). The source's CC BY attribution sits under the chart it licenses.
 -->
 <script lang="ts">
   import { Skeleton } from "#lib/components/ui/skeleton/index.js";
@@ -10,6 +10,8 @@
   import { m } from "../paraglide/messages.js";
   import { getLocale } from "../paraglide/runtime.js";
   import SpotAttribution from "../SpotAttribution.svelte";
+  import { ctPerKwh } from "../tariff/format.ts";
+  import ChartReading from "./ChartReading.svelte";
 
   let { day }: { day: Day | undefined } = $props();
 
@@ -62,6 +64,16 @@
     }),
   );
 
+  /** The plant-local hour of an instant, 0–23. */
+  const hourOf = $derived(
+    new Intl.DateTimeFormat("en", { hour: "numeric", hourCycle: "h23", timeZone: day?.zone }),
+  );
+
+  /** The index of the hour being read; null with none. */
+  let read = $state<number | null>(null);
+
+  const shown = $derived(read === null ? undefined : bars[read]);
+
   /** Every six hours from the plant's midnight. */
   const ticks = $derived(
     day === undefined
@@ -89,7 +101,24 @@
       {m.detail_no_prices()}
     </p>
   {:else}
-    <div class="relative" style:height="{HEIGHT}px" role="img" aria-label={m.detail_prices()}>
+    <!-- The legend: what is read, then its price; at rest the chart's name. -->
+    <div class="flex items-baseline justify-between gap-3 text-xs" aria-live="polite">
+      {#if shown}
+        {@const hour = Number(hourOf.format(shown.at))}
+        <span class="font-medium tabular-nums">{m.range_hours({ from: hour, to: hour + 1 })}</span>
+        <span class="font-semibold tabular-nums">{ctPerKwh(shown.price)}</span>
+      {:else}
+        <span class="text-muted-foreground">{m.detail_prices()}</span>
+      {/if}
+    </div>
+    <ChartReading
+      slots={bars.length}
+      bind:read
+      style="height: {HEIGHT}px"
+      role="img"
+      aria-label={m.detail_prices()}
+      data-plot
+    >
       <div class="absolute inset-0 flex gap-[3px]">
         {#each bars as bar, i (bar.at)}
           <span
@@ -114,7 +143,7 @@
       {#if bottom < 0}
         <span class="absolute inset-x-0 h-px bg-foreground/30" style:top="{zero}%"></span>
       {/if}
-    </div>
+    </ChartReading>
     <div class="relative h-4 text-[11px] text-muted-foreground tabular-nums" aria-hidden="true">
       {#each ticks as tick (tick.at)}
         <span class="absolute" style:left="{tick.left}%">{hours.format(tick.at)}</span>
