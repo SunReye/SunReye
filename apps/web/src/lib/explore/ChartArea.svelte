@@ -17,10 +17,13 @@
   let {
     core,
     x,
+    fill,
     plotted = $bindable(),
   }: {
     core: ExploreCore;
     x: Explore;
+    /** The height to fill in fullscreen, in px; the screen's own height without it. */
+    fill?: number | undefined;
     /** Set as the area is built: what the open mode plotted, null while nothing is drawn. */
     plotted?: (() => Table | null) | undefined;
   } = $props();
@@ -28,7 +31,7 @@
   const PANES = { series: SeriesPane, overlay: OverlayPane, fold: FoldPane };
 
   const wide = new MediaQuery("(min-width: 1024px)");
-  const height = $derived(wide.current ? 416 : 348);
+  const height = $derived(fill ?? (wide.current ? 416 : 348));
 
   const Pane = $derived(PANES[x.view.mode]);
 

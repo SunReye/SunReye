@@ -1,4 +1,5 @@
 // The Explore screen tests' fake core: a plant in UTC with its series catalog.
+import { createRawSnippet, mount, unmount } from "svelte";
 import { render } from "vitest-browser-svelte";
 import { PLANT, WEATHER } from "../api/computed-devices.ts";
 import {
@@ -8,6 +9,7 @@ import {
   type Statistics,
   type Transport,
 } from "../api/core.ts";
+import Shell from "../shell/Shell.svelte";
 import ExploreScreen from "./ExploreScreen.svelte";
 
 const SPAN = { first: "2026-01-01T00:00:00Z", last: "2026-11-15T12:00:00Z" };
@@ -186,4 +188,32 @@ export async function show(query = "") {
   });
 
   return { screen, went, entries };
+}
+
+/** The screen inside the shell's bar or rail, as the app lays it out. */
+export function showIn(shell: "bar" | "rail") {
+  const children = createRawSnippet(() => ({
+    render: () => "<div></div>",
+    setup: (target) => {
+      const screen = mount(ExploreScreen, {
+        target,
+        props: {
+          core: connect(transport()),
+          params: new URLSearchParams(),
+          go: () => {},
+          back: () => {},
+        },
+      });
+
+      return () => void unmount(screen);
+    },
+  }));
+
+  return render(Shell, {
+    shell,
+    current: "/explore",
+    admin: false,
+    goto: () => Promise.resolve(),
+    children,
+  });
 }

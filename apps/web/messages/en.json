@@ -1222,5 +1222,7 @@
   "explore_overlay_full": "A chart overlays 5 periods. Remove one to pick another.",
   "explore_overlay_first": "{name}, the first chosen series, is overlaid.",
   "explore_overlay_hourly": "Only hourly figures are kept: {names}.",
-  "explore_export": "Export as CSV"
+  "explore_export": "Export as CSV",
+  "explore_fullscreen": "Full screen",
+  "explore_fullscreen_leave": "Exit full screen"
 }
