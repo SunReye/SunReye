@@ -1,6 +1,6 @@
 import { open, refusal, type Client, type Problem } from "./client";
 import { imports, type Imports } from "./imports";
-import { follow, type Live } from "./live";
+import { shared, type Live, type Visibility } from "./live";
 import { layouts, type Layouts } from "./layouts";
 import { pvModel, type PvModel } from "./model";
 import { setup, type Connection, type Setup } from "./setup";
@@ -125,18 +125,15 @@ export interface Core extends Setup, Imports, PvModel, Tariffs, PlantRecords, La
   logs(): Promise<readonly string[] | Problem>;
 }
 
-export function connect(transport: Transport): Core {
+/** The core behind `transport`; its one live stream closes while `page` is hidden (ADR 21). */
+export function connect(
+  transport: Transport,
+  page: Visibility | undefined = globalThis.document,
+): Core {
   const client = open(transport.base, transport.fetch);
 
   return {
-    live: (listener) => {
-      const abort = new AbortController();
-      void follow(client, listener, abort.signal);
-
-      return () => {
-        abort.abort();
-      };
-    },
+    live: shared(client, page),
     history: async (device, series, from, to) => {
       const { data, error, response } = await client.GET("/api/v1/devices/{id}/history", {
         params: { path: { id: device }, query: span(series, from, to) },
