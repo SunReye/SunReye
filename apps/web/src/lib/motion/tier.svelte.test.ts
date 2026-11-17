@@ -105,3 +105,54 @@ test("a strain over a scene drawn on Auto's Hoch lowers the drawing first, then 
 
   expect(levels).toEqual(["full high", "full medium", "lite medium", "lite low"]);
 });
+
+/** A store whose own watch has settled and gets no frame of its own. */
+function settled(): MotionStore {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  vi.stubGlobal("requestAnimationFrame", () => 1);
+
+  const motion = new MotionStore();
+
+  motion.watch();
+  vi.advanceTimersByTime(4000);
+
+  return motion;
+}
+
+test("a loop's frames are judged for as long as it runs: held ones leave the tier, dropped ones lower it", () => {
+  const motion = settled();
+  // An hour on, long after the watch's own windows.
+  let now = 3_600_000;
+
+  for (let frame = 0; frame < 2000; frame++) motion.frame((now += 1000 / 60));
+
+  expect(motion.tier).toBe("full");
+
+  // Every other frame dropped: the loop's draw takes longer than its 30th of a second.
+  for (let frame = 0; frame < 400; frame++) motion.frame((now += frame % 2 === 0 ? 40 : 8));
+
+  expect(motion.tier).toBe("lite");
+  expect(localStorage.getItem("sunreye.motion-strain")).toBe("1");
+});
+
+test("a loop's frames are no evidence while the page settles or on the still tier", () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  vi.stubGlobal("requestAnimationFrame", () => 1);
+
+  const motion = new MotionStore();
+  let now = 0;
+
+  motion.watch();
+
+  for (let frame = 0; frame < 300; frame++) motion.frame((now += 40));
+
+  expect(motion.tier).toBe("full");
+
+  vi.advanceTimersByTime(4000);
+  motion.lowPower = true;
+
+  for (let frame = 0; frame < 300; frame++) motion.frame((now += 40));
+
+  motion.lowPower = false;
+  expect(motion.tier).toBe("full");
+});

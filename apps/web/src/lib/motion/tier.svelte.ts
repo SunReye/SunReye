@@ -82,6 +82,18 @@ export class MotionStore {
     };
   }
 
+  /**
+   * A frame the display gave a loop that draws on its own (ADR 23 "Motion"): judged like the
+   * watch's own, for as long as the loop runs. The watch stops after a few windows; a loop that
+   * starts an hour later is what strains the device then.
+   */
+  frame(ts: number): void {
+    // Settling is no evidence, and the still tier has nothing to give.
+    if (this.#settleTimer !== null || this.still || !this.#gives()) return;
+
+    if (this.#frames.sample(ts)) this.#strained();
+  }
+
   #sync(): void {
     const wanted = this.#leases > 0 && !this.#lowPower && !this.#reduce.current && this.#gives();
 
@@ -108,9 +120,7 @@ export class MotionStore {
       this.#raf = null;
 
       if (this.#frames.sample(ts)) {
-        // A fresh window count: the next tier gets judged on its own merits.
-        this.#frames = new FrameStrain();
-        this.#downgrade();
+        this.#strained();
 
         return;
       }
@@ -119,6 +129,12 @@ export class MotionStore {
 
       if (this.#leases > 0 && this.#gives()) this.#tick();
     });
+  }
+
+  #strained(): void {
+    // A fresh window count: the next tier gets judged on its own merits.
+    this.#frames = new FrameStrain();
+    this.#downgrade();
   }
 
   #downgrade(): void {
