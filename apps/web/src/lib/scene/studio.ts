@@ -23,7 +23,7 @@ import { Passes } from "./passes.ts";
 import { Plot } from "./plot.ts";
 import { gpuOf, type Look } from "./quality.ts";
 import { shade, shadowFor, soften } from "./sun-shadow.ts";
-import { untone } from "./tone.ts";
+import { DRY, type SceneWeather } from "./weather.ts";
 
 export class Studio {
   readonly renderer: WebGLRenderer;
@@ -121,8 +121,9 @@ export class Studio {
     this.#shade();
   }
 
-  /** Sun or moon, sky, environment, backdrop, fog and exposure for the time and the theme. */
-  light(day: Daylight, look: Theme, page: Readonly<Color>): void {
+  /** Sun or moon, sky, environment, backdrop, fog and exposure for the time and the theme, and
+   * the `weather`'s fog and floor (ADR 23). */
+  light(day: Daylight, look: Theme, page: Readonly<Color>, weather?: SceneWeather): void {
     this.#toward.set(...toThree(day.toward));
     this.#sun.color.setRGB(day.colour.r, day.colour.g, day.colour.b);
     this.#sun.intensity = day.intensity;
@@ -135,8 +136,6 @@ export class Studio {
     if (this.#held === undefined) this.#environ(day, look);
     else this.#held = [day, look];
 
-    const untoned = new Color(...untone([page.r, page.g, page.b], look.exposure));
-
     const backdropped = JSON.stringify([page.r, page.g, page.b, look]);
 
     this.renderer.toneMappingExposure = look.exposure;
@@ -148,7 +147,7 @@ export class Studio {
       this.scene.background = this.#backdrop;
     }
 
-    this.#plot.fog.color.copy(untoned);
+    this.#plot.weather(weather ?? DRY, [page.r, page.g, page.b], look);
   }
 
   setSize(width: number, height: number): void {

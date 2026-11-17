@@ -8,7 +8,7 @@ import { cssColour, flowRgb } from "./backdrop.ts";
 import { daylight, theme } from "./light.ts";
 import { easeGlow } from "./live-glow.svelte.ts";
 import { Opening } from "./opening.svelte.ts";
-import { stage, type Staged } from "./staged.ts";
+import { stage, type SceneWeather, type Staged } from "./staged.ts";
 import { openStudio, type Opened } from "./studio-look.svelte.ts";
 
 /** Follows mode-watcher's class on the root element. */
@@ -61,14 +61,22 @@ export interface Lit {
   readonly dispose: () => void;
 }
 
-/** A studio on `canvas`, lit by `sky`, drawn after each change; `drawn` follows each draw. The
- * sky is the sun (null for a fixed one) and how diffuse its light is (null for a clear sky). */
+/** The sun (null for a fixed one), how diffuse its light is (null for a clear sky) and the
+ * scene's weather (none, clear and dry). */
+export interface Sky {
+  readonly sun: Parameters<typeof daylight>[0];
+  readonly diffuse: number | null;
+  readonly weather: SceneWeather | undefined;
+}
+
+/** A studio on `canvas`, lit by `sky` and under its weather, drawn after each change; `drawn`
+ * follows each draw. */
 export function lit(
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws on it.
   canvas: HTMLCanvasElement,
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws with it.
   camera: PerspectiveCamera,
-  sky: () => Readonly<{ sun: Parameters<typeof daylight>[0]; diffuse: number | null }>,
+  sky: () => Sky,
   drawn: () => void,
 ): Lit {
   const { studio, look, close } = openStudio(canvas, camera);
@@ -76,12 +84,13 @@ export function lit(
   const { flight } = opened;
   const { render } = opened;
   const shown = stage(studio);
-  const day = $derived(daylight(sky().sun, sky().diffuse));
+  const day = $derived(daylight(sky().sun, sky().diffuse, sky().weather?.thunder));
   let colour = $state(0);
 
   $effect(() => {
-    studio.light(day, theme(dark()), cssColour("var(--background)"));
+    studio.light(day, theme(dark()), cssColour("var(--background)"), sky().weather);
     shown.lamp(day.lamps);
+    shown.weather(sky().weather);
     colour = flowRgb("solar").getHex();
     render();
   });
