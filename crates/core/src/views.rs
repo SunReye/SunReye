@@ -247,24 +247,22 @@ async fn remove_view(
 ) -> Result<StatusCode, Problem> {
     let Path(id) = id.map_err(|_| PATH)?;
     let changed = clock();
-    let removed = views
+    views
         .database
-        .run(move |db| {
-            let tx = db.unchecked_transaction()?;
-            if tx.execute("DELETE FROM saved_view WHERE id = ?1", [id])? == 0 {
-                return Ok(false);
-            }
-            log(&tx, id, Action::Remove, None, changed)?;
-            tx.commit()?;
-            Ok(true)
-        })
+        .run(move |db| delete(db, id, changed))
         .await
-        .map_err(internal)?;
-    if removed {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err(NONE)
+        .map_err(internal)??;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+fn delete(db: &Connection, id: u32, changed: SystemTime) -> rusqlite::Result<Result<(), Problem>> {
+    let tx = db.unchecked_transaction()?;
+    if tx.execute("DELETE FROM saved_view WHERE id = ?1", [id])? == 0 {
+        return Ok(Err(NONE));
     }
+    log(&tx, id, Action::Remove, None, changed)?;
+    tx.commit()?;
+    Ok(Ok(()))
 }
 
 fn log(
