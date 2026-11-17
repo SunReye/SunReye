@@ -160,6 +160,14 @@ _Avoid_: Battery efficiency, inverter efficiency (the inverter's own, of the mom
 What the battery gave over a range, counted in its capacities.
 _Avoid_: Cycles (the vendor's own count is something else)
 
+**Charging session**:
+A run of hours in which a loadpoint charged, with its start, end and energy.
+_Avoid_: Session (a sign-in), EVCC's session (plug-in to unplug)
+
+**PV share of the charge**:
+The share of what the cars charged over a range that PV met directly: each hour's charge counts at the share of the house load PV met directly in that hour.
+_Avoid_: Solar charging share, PV-to-EV flow (none is measured)
+
 **Deadband**:
 The smallest change in a role's unit that is stored. The stored series is never wrong by more than this.
 _Avoid_: Threshold, tolerance

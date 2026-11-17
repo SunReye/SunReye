@@ -62,3 +62,17 @@ test("a one-way figure heads with its energy; a two-way one with none", () => {
   expect(analyticsOf("string-4", STRINGS)!.energy).toBe("pv.string.power[4]");
   expect(analyticsOf("grid", STRINGS)!.energy).toBeNull();
 });
+
+test("the EV charts the plant's charging power, a loadpoint its own device's", () => {
+  const ev = analyticsOf("ev", STRINGS)!;
+  const loadpoint = analyticsOf("ev-8", STRINGS)!;
+
+  expect([ev.device, ev.series, ev.energy]).toEqual([PLANT, "ev.charge.power", "ev.charge.power"]);
+  expect([loadpoint.device, loadpoint.series, loadpoint.heat, loadpoint.energy]).toEqual([
+    8,
+    "ev.charge.power",
+    "ev.charge.power",
+    "ev.charge.power",
+  ]);
+  expect([loadpoint.compare, loadpoint.forecast, loadpoint.way]).toEqual([false, [], null]);
+});

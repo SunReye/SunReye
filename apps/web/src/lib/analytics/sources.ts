@@ -19,6 +19,9 @@ export interface Analytics {
   readonly forecast: readonly number[];
 }
 
+/** The EV's charging power, the plant's sum or a loadpoint's own (ADR 10, 14). */
+const CHARGE = "ev.charge.power";
+
 /** Each plant figure's series, heat and energy. */
 const PLANT_SERIES = new Map<string, [string, Analytics["heat"], Analytics["energy"]]>([
   ["production", ["pv.power", "pv.power", "pv.power"]],
@@ -31,6 +34,7 @@ const PLANT_SERIES = new Map<string, [string, Analytics["heat"], Analytics["ener
   ["feedIn", ["grid.power", "grid.export.power", "grid.export.power"]],
   ["battery", ["battery.power", "battery.discharge.power", "battery.discharge.power"]],
   ["generator", ["generator.power", "generator.power", "generator.power"]],
+  ["ev", [CHARGE, CHARGE, CHARGE]],
 ]);
 
 /** The figures whose heat and energy read one way of a power that runs both. */
@@ -42,27 +46,44 @@ const PV = new Set(["production", "pv", "inverter"]);
 /** The figures that overlay the plant's PV forecast. */
 const FORECAST = new Set(["production", "pv", "inverter"]);
 
+/** The analytics of a string's or a loadpoint's figure; null for a string not in the layout. */
+function numbered(
+  ref: Readonly<{ kind: "string" | "ev"; id: number }>,
+  strings: readonly Readonly<PvString>[],
+): Analytics | null {
+  if (ref.kind === "ev")
+    return {
+      device: ref.id,
+      series: CHARGE,
+      heat: CHARGE,
+      energy: CHARGE,
+      way: null,
+      compare: false,
+      forecast: [],
+    };
+
+  const s = strings.find((x: Readonly<PvString>) => x.id === ref.id);
+  const series = `pv.string.power[${ref.id}]`;
+
+  return s
+    ? {
+        device: s.device,
+        series,
+        heat: series,
+        energy: series,
+        way: null,
+        compare: strings.length > 1,
+        // Stored under its inverter, beside its history (ADR 17).
+        forecast: [s.device],
+      }
+    : null;
+}
+
 /** The analytics of figure `id`; null for one without a series in history. */
 export function analyticsOf(id: string, strings: readonly Readonly<PvString>[]): Analytics | null {
-  const several = strings.length > 1;
   const ref = parseFigure(id);
 
-  if (ref?.kind === "string") {
-    const s = strings.find((x: Readonly<PvString>) => x.id === ref.id);
-
-    return s
-      ? {
-          device: s.device,
-          series: `pv.string.power[${s.id}]`,
-          heat: `pv.string.power[${s.id}]`,
-          energy: `pv.string.power[${s.id}]`,
-          way: null,
-          compare: several,
-          // Stored under its inverter, beside its history (ADR 17).
-          forecast: [s.device],
-        }
-      : null;
-  }
+  if (ref !== null && ref.kind !== "fixed") return numbered(ref, strings);
 
   const plant = PLANT_SERIES.get(id);
 
@@ -74,7 +95,7 @@ export function analyticsOf(id: string, strings: readonly Readonly<PvString>[]):
     heat: plant[1],
     energy: plant[2],
     way: WAYS.get(id)?.() ?? null,
-    compare: several && PV.has(id),
+    compare: strings.length > 1 && PV.has(id),
     forecast: FORECAST.has(id) ? [...new Set(strings.map((s) => s.device))] : [],
   };
 }
