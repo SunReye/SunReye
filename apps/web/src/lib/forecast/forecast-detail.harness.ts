@@ -78,12 +78,15 @@ const LAYOUT = {
   ],
 };
 
-/** The plant's day rollups: 15 and 10 kWh on the two days before, 3 kWh today by 12:30. */
+/** The inverter's day rollups: 15 and 10 kWh on the two days before, 3 kWh today by 12:30. */
 const MEASURED = [
   [-2, 15, 24],
   [-1, 10, 24],
   [0, 3, 12.5],
 ] as const;
+
+/** What the plant's PV adds to the inverter's each day: a module no layout wires, unforecast. */
+const UNLAID = 6;
 
 const iso = (at: number) => new Date(at).toISOString();
 
@@ -128,16 +131,18 @@ function fake(stored: Readonly<Record<string, Watts>>) {
     statistics: (device, series, period) => {
       asked.push(`statistics ${device} ${series} ${period}`);
 
+      const extra = device === PLANT ? UNLAID : 0;
+
       const points = MEASURED.map(([day, kwh, hours]) => ({
         date: iso(START + day * DAY).slice(0, 10),
         start: iso(START + day * DAY),
         end: iso(START + (day + 1) * DAY),
-        integral: kwh * 1000,
-        mean: (kwh * 1000) / hours,
+        integral: (kwh + extra) * 1000,
+        mean: ((kwh + extra) * 1000) / hours,
         hours,
       }));
 
-      return Promise.resolve({ period, points: device === PLANT ? points : [] });
+      return Promise.resolve({ period, points: device === PLANT || device === 1 ? points : [] });
     },
   };
 

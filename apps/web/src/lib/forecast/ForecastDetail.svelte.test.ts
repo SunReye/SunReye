@@ -156,7 +156,7 @@ test("it reads each series once over all three days", async () => {
         `forecasts 4294967295 weather.${role}`,
         `history 4294967295 weather.${role}`,
       ]),
-      "statistics 4294967294 pv.power day",
+      "statistics 1 pv.power day",
     ].toSorted(),
   );
 });
