@@ -16,6 +16,7 @@ const weather = (known: Partial<Weather> = {}): Weather => ({
   wind: null,
   windDirection: null,
   celsius: null,
+  humidity: null,
   ghi: null,
   clearness: null,
   dry: null,

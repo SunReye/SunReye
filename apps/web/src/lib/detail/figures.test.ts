@@ -35,6 +35,7 @@ const DAY: Day = {
     wind: 2,
     windDirection: 200,
     celsius: 21,
+    humidity: null,
     ghi: 500,
     clearness: null,
     dry: null,
