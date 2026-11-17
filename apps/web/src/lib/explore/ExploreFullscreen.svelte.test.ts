@@ -186,6 +186,13 @@ test("Esc leaves a filled window, after it closed a list open over it", async ()
 
   await screen.getByRole("button", { name: "Vollbild", exact: true }).click();
   await screen.getByRole("radio", { name: "Frei" }).click();
+  // A list on the body lies over the filled window, and takes a pick.
+  await screen.getByRole("combobox", { name: "Bis Uhrzeit" }).click();
+  await page.getByRole("option", { name: "12 Uhr", exact: true }).click();
+  await expect
+    .element(screen.getByRole("combobox", { name: "Bis Uhrzeit" }))
+    .toHaveTextContent("12 Uhr");
+
   await screen.getByRole("combobox", { name: "Von Uhrzeit" }).click();
   await expect.element(page.getByRole("listbox")).toBeVisible();
 
@@ -218,6 +225,14 @@ test.for([
       return document.querySelector("main")!.contains(top);
     };
 
+    // The slide in from the dashboard is over: only this screen is left, at rest.
+    await expect
+      .poll(() => {
+        const screens = [...document.querySelectorAll("[data-screen]")];
+
+        return screens.length === 1 && screens[0]!.getAnimations().length === 0;
+      })
+      .toBe(true);
     await expect.element(item).toBeVisible();
     expect(covered()).toBe(false);
 
@@ -227,3 +242,30 @@ test.for([
     expect(main()).toMatchObject({ left: 0, top: 0, width, height });
   },
 );
+
+test("on a phone fullscreen stays out of the route, and lying down puts the range beside the mode", async () => {
+  await page.viewport(390, 844);
+
+  const { screen, went } = await show();
+
+  await expect.element(screen.getByRole("region", { name: "Reihen" })).toBeVisible();
+
+  const steps = went.length;
+
+  await screen.getByRole("button", { name: "Vollbild", exact: true }).click();
+  await expect.element(screen.getByRole("button", { name: "Vollbild beenden" })).toBeVisible();
+
+  await page.viewport(844, 390);
+
+  const top = (role: "radio" | "button", name: string) =>
+    screen.getByRole(role, { name }).element().getBoundingClientRect().top;
+
+  // One row of controls leaves the short window to the chart.
+  await expect.poll(() => Math.abs(top("radio", "Tag") - top("radio", "Falten"))).toBeLessThan(8);
+  expect(Math.abs(top("button", "Früher") - top("radio", "Falten"))).toBeLessThan(8);
+
+  await screen.getByRole("button", { name: "Vollbild beenden" }).click();
+
+  await expect.element(screen.getByRole("list", { name: "Gewählte Reihen" })).toBeVisible();
+  expect(went).toHaveLength(steps);
+});

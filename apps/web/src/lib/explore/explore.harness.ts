@@ -190,8 +190,8 @@ export async function show(query = "") {
   return { screen, went, entries };
 }
 
-/** The screen inside the shell's bar or rail, as the app lays it out. */
-export function showIn(shell: "bar" | "rail") {
+/** The screen inside the shell's bar or rail, as the app lays it out, arrived at from the dashboard. */
+export async function showIn(shell: "bar" | "rail") {
   const children = createRawSnippet(() => ({
     render: () => "<div></div>",
     setup: (target) => {
@@ -209,11 +209,15 @@ export function showIn(shell: "bar" | "rail") {
     },
   }));
 
-  return render(Shell, {
+  const screen = await render(Shell, {
     shell,
-    current: "/explore",
+    current: "/",
     admin: false,
     goto: () => Promise.resolve(),
     children,
   });
+
+  await screen.rerender({ current: "/explore" });
+
+  return screen;
 }

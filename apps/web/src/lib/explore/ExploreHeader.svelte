@@ -31,7 +31,13 @@
   {#if !full}
     <PageTitle wide class="order-1" title={m.explore_title()} />
   {/if}
-  <div class="order-3 w-full lg:order-2 lg:col-start-2">
+  <!-- Without the title the range has room beside the mode from 640 px: a phone lying down. -->
+  <div
+    class={[
+      "order-3 w-full lg:order-2 lg:col-start-2",
+      full && "sm:order-1 sm:w-auto sm:flex-1 lg:flex-none",
+    ]}
+  >
     <RangeControl model={x.route} kinds={x.view.mode === "overlay" ? OVERLAY_KINDS : undefined} />
   </div>
   <div
