@@ -5,6 +5,7 @@ import { flowColour, roleFlow, type Flow } from "./energy-colours.ts";
 import { m } from "./paraglide/messages.js";
 import type { Locale } from "./paraglide/runtime.js";
 import type { SeriesMeta } from "./range/bands.ts";
+import { WEATHER_CODES } from "./weather-code.ts";
 
 /** What an index counts, which names it: an MPPT input, a string, a phase, a measurement point. */
 type Family = "input" | "string" | "phase" | "point";
@@ -81,6 +82,18 @@ const ROLES: readonly (readonly [string, Label, Family?])[] = [
   ["weather.dhi", m.explore_dhi],
   ["weather.temperature", m.rd_temperature],
   ["weather.wind", m.explore_wind],
+  ["weather.code", m.wx_code],
+  ["weather.precipitation", m.wx_precipitation],
+  ["weather.snowfall", m.wx_snowfall],
+  ["weather.visibility", m.wx_visibility],
+  ["weather.humidity", m.wx_humidity],
+  ["weather.wind_direction", m.wx_wind_direction],
+  ["weather.gusts", m.wx_gusts],
+  ["weather.apparent_temperature", m.wx_apparent_temperature],
+  ["weather.sunshine", m.wx_sunshine],
+  ["weather.cloud_cover", m.wx_cloud_cover],
+  ["weather.snow_depth", m.wx_snow_depth],
+  ["weather.clearness", m.wx_clearness],
   ["price.import", m.explore_price_import],
   ["price.export", m.explore_price_export],
   ["price.spot", m.dash_spot],
@@ -202,6 +215,7 @@ const STATES = new Map<string, ReadonlyMap<number, () => string>>([
       [3, m.rd_mode_pv],
     ]),
   ],
+  ["weather.code", WEATHER_CODES],
 ]);
 
 /** A status value as its state's name; a value its role does not name, as the number. */
