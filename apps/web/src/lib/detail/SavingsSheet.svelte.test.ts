@@ -2,12 +2,24 @@
 // its parts, the total since installation against the investment, and the way to the tariff.
 import { afterEach, beforeEach, expect, test } from "vitest";
 import "../../app.css";
-import { LIVE, prepare, restore, rollup, served, show, TARIFF, type Asked } from "./detail.harness.ts";
+import {
+  LIVE,
+  prepare,
+  restore,
+  rollup,
+  served,
+  show,
+  TARIFF,
+  type Asked,
+} from "./detail.harness.ts";
 
 beforeEach(async () => {
   await prepare();
   // A tariff is in force.
-  served.live = { ...LIVE, [TARIFF]: { "price.import": 0.3, "price.export": 0.08 } };
+  served.live = {
+    ...LIVE,
+    [TARIFF]: { "price.import": 0.3, "price.export": 0.08 },
+  };
 });
 
 afterEach(restore);
@@ -52,4 +64,69 @@ test("the head's figure is the range's alone: today's euros are not repeated bes
 
   await expect.element(head.getByText("1,50")).toBeVisible();
   expect(head.element().textContent).not.toContain("2,10");
+});
+
+/** Two November days' costs: what was saved, of it feed-in pay, what was paid and the standing charge. */
+const NOVEMBER = {
+  days: [
+    {
+      start: "2026-11-10T00:00:00Z",
+      end: "2026-11-11T00:00:00Z",
+      paid: 0.5,
+      earned: 0.75,
+      saved: 2,
+      standing: 0.3,
+    },
+    {
+      start: "2026-11-11T00:00:00Z",
+      end: "2026-11-12T00:00:00Z",
+      paid: 0.5,
+      earned: 0.5,
+      saved: 2.5,
+      standing: 0.3,
+    },
+  ],
+  total: { paid: 1, earned: 1.25, saved: 4.5, standing: 0.6 },
+};
+
+test("the range's chart shows the euros saved per day, split into avoided purchase and feed-in pay, the purchase left below", async () => {
+  served.costs = () => Response.json(NOVEMBER);
+
+  const { sheet } = await sheetOf("range=month&at=2026-11-01");
+  const chart = sheet.getByRole("region", { name: "Verlauf" });
+
+  await expect
+    .element(chart.getByRole("group", { name: /^Ersparnis über den Zeitraum/u }))
+    .toBeVisible();
+  await expect.element(chart.getByText("vermiedener Bezug")).toBeVisible();
+  // Avoided purchase is what was saved but for the feed-in pay; the standing charge is no part.
+  await expect.element(chart.getByText("3,25 €")).toBeVisible();
+  await expect.element(chart.getByText("1,25 €")).toBeVisible();
+  await expect.element(chart.getByText("Einspeisevergütung")).toBeVisible();
+  await expect.element(chart.getByText("1,00 €")).toBeVisible();
+  expect(chart.element().textContent).not.toContain("0,60");
+});
+
+test("without a tariff the sheet says nothing can be saved yet, and the admin is shown where to set one", async () => {
+  served.live = LIVE;
+
+  const { sheet } = await sheetOf("", true);
+
+  await expect.element(sheet.getByText("Ohne Tarif gibt es keine Ersparnis.")).toBeVisible();
+  await expect
+    .element(sheet.getByRole("link", { name: "Tarif festlegen" }))
+    .toHaveAttribute("href", "#/settings?group=tariff");
+  expect(sheet.getByRole("group", { name: /^Ersparnis über den Zeitraum/u }).elements()).toEqual(
+    [],
+  );
+});
+
+test("a viewer without a tariff is told who sets one", async () => {
+  served.live = LIVE;
+
+  const { sheet } = await sheetOf();
+
+  await expect.element(sheet.getByText("Ohne Tarif gibt es keine Ersparnis.")).toBeVisible();
+  await expect.element(sheet.getByText(/Der Admin legt ihn/u)).toBeVisible();
+  expect(sheet.getByRole("link", { name: "Tarif festlegen" }).elements()).toEqual([]);
 });

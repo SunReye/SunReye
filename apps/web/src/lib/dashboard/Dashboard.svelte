@@ -133,6 +133,7 @@
   series={recorded.series}
   {day}
   {names}
+  {admin}
   {params}
   {go}
   {onopen}

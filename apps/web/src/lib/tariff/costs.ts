@@ -15,11 +15,19 @@ export function split(money?: Readonly<CostDays["total"]>) {
   return { up: [Math.max(0, saved - earned), earned], down: [paid, standing] };
 }
 
-/** Each band's share of the days it overlaps. */
+/** What was saved, avoided import first, above the baseline; the import it could not avoid below. */
+export function savingsSplit(money?: Readonly<CostDays["total"]>) {
+  const { up, down } = split(money);
+
+  return { up, down: down.slice(0, 1) };
+}
+
+/** Each band's share of the days it overlaps, its sides as `sides` splits them. */
 export function costBands(
   days: readonly Readonly<CostDays["days"][number]>[],
   spans: readonly (readonly [number, number])[],
   now: number,
+  sides: typeof split = split,
 ): (edge: Edge, index: number) => Fill {
   const spanned: readonly Readonly<Money & { start: number; end: number }>[] = days.map((d) => ({
     paid: d.paid,
@@ -35,7 +43,7 @@ export function costBands(
     const part = (key: keyof Money) => spread(spanned, a, b, (d) => d[key]).sum;
 
     return {
-      ...split({
+      ...sides({
         paid: part("paid"),
         earned: part("earned"),
         saved: part("saved"),
