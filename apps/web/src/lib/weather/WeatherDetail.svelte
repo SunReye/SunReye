@@ -1,13 +1,15 @@
 <!--
   The weather detail (ADR 23 "Dashboard"): today and the next two days by the hour, a tab each,
-  then the day's sunshine, its snow depth while snow lies and its visibility on fog. It reads the
-  weather device alone.
+  then one row of facts: today the sky's word now, then the day's sunshine, its snow depth while
+  snow lies and its visibility on fog. It reads the weather device alone.
 -->
 <script lang="ts">
   import { Skeleton } from "#lib/components/ui/skeleton/index.js";
   import type { Day } from "../dashboard/day.ts";
   import { m } from "../paraglide/messages.js";
   import { DAYS, daySpans, hourly } from "./hourly.ts";
+  import { skyOf } from "./sky.ts";
+  import { SKY_WORDS } from "./sky-words.ts";
   import { readWeatherSources, type WeatherReader, type WeatherSources } from "./weather.ts";
   import WeatherDays from "./WeatherDays.svelte";
 
@@ -17,7 +19,7 @@
   }: {
     core: WeatherReader;
     /** Today as the dashboard read it; undefined until it has. */
-    day: Pick<Day, "zone" | "start" | "now"> | undefined;
+    day: Pick<Day, "zone" | "start" | "now" | "weather"> | undefined;
   } = $props();
 
   const HOUR = 3_600_000;
@@ -32,6 +34,13 @@
   const hour = $derived(day === undefined ? undefined : Math.floor(day.now.getTime() / HOUR));
 
   let sources = $state.raw<WeatherSources>();
+
+  /** The sky's word now, as the strip says it; null where nothing tells. */
+  const sky = $derived.by(() => {
+    const now = day === undefined ? null : skyOf(day.weather);
+
+    return now === null ? null : { label: m.dash_weather(), text: SKY_WORDS[now]() };
+  });
 
   $effect(() => {
     if (zone === undefined || start === undefined || hour === undefined) return;
@@ -76,5 +85,5 @@
     {/if}
   </section>
 {:else}
-  <WeatherDays {days} {zone} now={day?.now.getTime() ?? 0} class={FRAME} />
+  <WeatherDays {days} {zone} now={day?.now.getTime() ?? 0} {sky} class={FRAME} />
 {/if}

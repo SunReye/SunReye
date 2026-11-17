@@ -1,4 +1,6 @@
+/* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
 import { expect, test } from "vitest";
+import { page } from "vitest/browser";
 import { DRY, each, show, WEATHER } from "./weather-detail.harness.ts";
 
 const bars = (attribute: string) =>
@@ -99,4 +101,54 @@ test("without stored weather it says so", async () => {
 
   await expect.element(screen.getByText("Keine Wetterdaten")).toBeVisible();
   expect(screen.getByRole("img", { name: "Temperatur", exact: true }).query()).toBeNull();
+});
+
+/** The facts row's cells: each term, its value and where it stands. */
+const facts = () =>
+  [...document.querySelectorAll<HTMLElement>("dl > div")].map((cell) => ({
+    term: cell.querySelector("dt")?.textContent.trim(),
+    value: cell.querySelector<HTMLElement>("dd")?.innerText.replaceAll(/\s+/gu, " ").trim(),
+    top: Math.round(cell.getBoundingClientRect().top),
+    right: cell.getBoundingClientRect().right,
+    cut: [...cell.querySelectorAll<HTMLElement>("dt, dd")].some(
+      (text) => text.scrollWidth > text.clientWidth,
+    ),
+  }));
+
+test("today's facts are one row on a narrow phone: the sky now, then the day's", async () => {
+  const { screen } = await show({
+    forecasts: {
+      ...DRY,
+      "weather.code": each((h) => (h < 9 ? 45 : 73)),
+      "weather.snow_depth": each(() => 0.12),
+      "weather.visibility": each((h) => (h < 9 ? 150 : 20_000)),
+    },
+  });
+
+  await page.viewport(360, 800);
+  await expect.element(screen.getByText("Heiter")).toBeVisible();
+
+  expect(document.querySelectorAll("dl")).toHaveLength(1);
+  // The figures count up to their values.
+  await expect
+    .poll(() => facts().map(({ term, value }) => [term, value]))
+    .toEqual([
+      ["Wetter", "Heiter"],
+      ["Sonnenschein", "3,0 h"],
+      ["Schneehöhe", "12 cm"],
+      ["Sichtweite", "150 m"],
+    ]);
+  // One line inside the screen, nothing cut short.
+  expect(new Set(facts().map((cell) => cell.top)).size).toBe(1);
+  expect(Math.max(...facts().map((cell) => cell.right))).toBeLessThanOrEqual(360);
+  expect(facts().filter((cell) => cell.cut)).toEqual([]);
+});
+
+test("a later day's facts are its own: the sky now is today's", async () => {
+  const { screen } = await show({ forecasts: DRY });
+
+  await screen.getByRole("tab", { name: "Sonntag" }).click();
+
+  await expect.element(screen.getByText("1,0 h")).toBeVisible();
+  expect(facts().map(({ term }) => term)).toEqual(["Sonnenschein"]);
 });
