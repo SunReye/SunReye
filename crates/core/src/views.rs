@@ -272,13 +272,17 @@ fn log(
     view: Option<&SavedView>,
     changed: SystemTime,
 ) -> rusqlite::Result<()> {
+    let state = view
+        .map(serde_json::to_value)
+        .transpose()
+        .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
     changes::append(
         db,
         &Entry {
             subject: Subject::View,
             id,
             action,
-            state: view.and_then(|v| serde_json::to_value(v).ok()),
+            state,
             actor: ACTOR,
             changed,
             applies_from: changed,
