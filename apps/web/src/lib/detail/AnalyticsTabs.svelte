@@ -1,6 +1,7 @@
 <!-- A figure's analysis tabs (ADR 21): the overview chart, the hour-of-day heat grid and the
   string comparison, each where the figure has it. -->
 <script lang="ts">
+  import type { Snippet } from "svelte";
   import * as Tabs from "#lib/components/ui/tabs/index.js";
   import type { Analytics } from "../analytics/sources.ts";
   import { haptics } from "../haptics.ts";
@@ -14,6 +15,7 @@
     colour,
     analytics,
     input,
+    overview,
   }: {
     id: string;
     title: string;
@@ -21,6 +23,8 @@
     colour: string;
     analytics: Analytics;
     input: AnalyticsInput;
+    /** What the overview tab shows in place of the figure's chart. */
+    overview?: Snippet;
   } = $props();
 
   const TABS = [
@@ -61,7 +65,11 @@
   {/if}
   {#each tabs as [t] (t)}
     <Tabs.Content value={t} class="pt-2">
-      <AnalyticsPane tab={t} {id} {title} {colour} {analytics} {input} />
+      {#if t === "overview" && overview}
+        {@render overview()}
+      {:else}
+        <AnalyticsPane tab={t} {id} {title} {colour} {analytics} {input} />
+      {/if}
     </Tabs.Content>
   {/each}
 </Tabs.Root>

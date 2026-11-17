@@ -779,6 +779,8 @@
   "detail_best": "Best",
   "detail_worst": "Worst",
   "detail_month_mean": "30-day mean",
+  "detail_round_trip": "Round trip",
+  "detail_cycles": "Full cycles",
   "heat_by_time": "{name} by time of day",
   "heat_keys": "{label}. Arrow keys pick a cell, Enter opens the column.",
   "heat_idle": "{name} per hour",
