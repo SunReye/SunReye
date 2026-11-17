@@ -57,12 +57,6 @@ export interface Lit {
   readonly show: Staged["show"];
   /** When it draws: nothing before `opening.open` has prepared it. */
   readonly opening: Opening;
-  /**
-   * The weather loop (ADR 23 "Motion"): `keep(step)` runs it while something moves, `step` told
-   * the seconds it has run before each frame, until the release returned is called. It draws 30
-   * frames a second at most, on the full tier alone, and not while the tab is hidden or the
-   * canvas off screen.
-   */
   readonly loop: Pick<Opening["loop"], "keep" | "running">;
   /** Frees the drawn group and the studio. */
   readonly dispose: () => void;
@@ -76,42 +70,63 @@ export interface Sky {
   readonly weather: SceneWeather | undefined;
 }
 
-/** `next`, or `last` where it says the same. */
-const same = <T>(last: T, next: T): T =>
-  JSON.stringify(next) === JSON.stringify(last) ? last : next;
+type Falling = NonNullable<SceneWeather["falling"]>;
 
-/** The light and the weather of `sky`, each anew only when a value of it changed: a live tick
- * asks for the same weather again and must light nothing. The studio's `look` tells
- * whether it draws the lens glass, and `weather` what it draws of one. */
+type Glass = NonNullable<SceneWeather["glass"]>;
+
+/** What falls, anew only when a value of it changed. */
+function steadyFalling(given: () => Falling | null): () => Falling | null {
+  const kind = $derived(given()?.kind);
+  const density = $derived(given()?.density ?? 0);
+  const east = $derived(given()?.wind[0] ?? 0);
+  const north = $derived(given()?.wind[1] ?? 0);
+
+  const falling = $derived(
+    kind === undefined ? null : { kind, density, wind: [east, north] as const },
+  );
+
+  return () => falling;
+}
+
+/** What is on the lens, anew only when a value of it changed. */
+function steadyGlass(given: () => Glass | null): () => Glass | null {
+  const on = $derived(given() !== null);
+  const rain = $derived(given()?.rain ?? 0);
+  const snow = $derived(given()?.snow ?? 0);
+  const frost = $derived(given()?.frost ?? 0);
+  const glass = $derived(on ? { rain, snow, frost } : null);
+
+  return () => glass;
+}
+
+/**
+ * The light and the weather of `sky`, each anew only when a value of it changed: a live tick
+ * asks for the same weather again and must light nothing. Each value is derived on its own and
+ * the weather composed of them, as a derived value that comes out the same wakes nothing. The
+ * studio's `look` tells whether it draws the lens glass, and `weatherOf` what it draws of a
+ * weather.
+ */
 function steadied(sky: () => Sky, look: Opened["look"], weatherOf: Opened["weather"]) {
   const sun = $derived(sky().sun);
   const diffuse = $derived(sky().diffuse);
-  let last: Sky["weather"];
-  let fell: NonNullable<Sky["weather"]>["falling"] = null;
-  let glazed: NonNullable<Sky["weather"]>["glass"] = null;
-
-  const weather = $derived.by(() => {
-    last = same(last, weatherOf(sky().weather));
-
-    return last;
-  });
-
+  const given = $derived(weatherOf(sky().weather));
+  const known = $derived(given !== undefined);
+  const fog = $derived(given?.fog ?? 0);
+  const wet = $derived(given?.wet ?? 0);
+  const snow = $derived(given?.snow ?? false);
+  const covered = $derived(given?.covered ?? false);
+  const thunder = $derived(given?.thunder ?? false);
   // Apart from the rest: the ground drying under it must not start the loop over.
-  const falling = $derived.by(() => {
-    fell = same(fell, weather?.falling ?? null);
+  const falling = steadyFalling(() => given?.falling ?? null);
+  const whole = steadyGlass(() => given?.glass ?? null);
 
-    return fell;
-  });
+  const weather = $derived(
+    known ? { fog, wet, snow, covered, thunder, falling: falling(), glass: whole() } : undefined,
+  );
 
-  // As what falls is: the glass fades by itself, and a drying ground must not start it over.
   // None where the look draws none, at Niedrig: no loop is kept for it there.
-  const glass = $derived.by(() => {
-    glazed = same(glazed, look().glass ? (weather?.glass ?? null) : null);
-
-    return glazed;
-  });
-
-  const day = $derived(daylight(sun, diffuse, weather?.thunder));
+  const glass = $derived(look().glass ? whole() : null);
+  const day = $derived(daylight(sun, diffuse, thunder));
 
   return {
     get day() {
@@ -121,7 +136,7 @@ function steadied(sky: () => Sky, look: Opened["look"], weatherOf: Opened["weath
       return weather;
     },
     get falling() {
-      return falling;
+      return falling();
     },
     get glass() {
       return glass;
