@@ -141,11 +141,11 @@ A named Explore view the admin keeps for the whole plant, shown to everyone who 
 _Avoid_: Favourite, preset, dashboard
 
 **Self-consumption**:
-The share of the PV energy used on site rather than fed in, over a day or longer.
+The share of the PV energy used on site rather than fed in, over an hour or longer.
 _Avoid_: Self-use, own consumption (a measurement point's own consumption is something else)
 
 **Autarky**:
-The share of the house load not bought from the grid, over a day or longer.
+The share of the house load not bought from the grid, over an hour or longer.
 _Avoid_: Self-sufficiency, independence
 
 **Usable capacity**:

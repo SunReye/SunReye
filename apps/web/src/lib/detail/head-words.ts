@@ -23,18 +23,27 @@ function instantText(zone: string, at: number): string {
   }).format(at);
 }
 
-/** "−12 % vs gestern": empty without readings on both sides, or from next to nothing. */
-export function versus(cal: Calendar, base: Range, now: number | null, was: number | null): string {
-  if (now === null || was === null || Math.abs(was) < NEXT_TO_NOTHING) return "";
+/**
+ * "−12 % vs gestern", or a share's "+5 Pkt. vs gestern": empty without readings on both sides, or
+ * from next to nothing; a share of 0 % is a baseline.
+ */
+export function versus(
+  cal: Calendar,
+  base: Range,
+  now: number | null,
+  was: number | null,
+  points = false,
+): string {
+  if (now === null || was === null) return "";
 
-  const c = change(now, was);
+  const c = points ? (now - was) / 100 : Math.abs(was) < NEXT_TO_NOTHING ? null : change(now, was);
 
   if (c === null) return "";
 
   const yesterday = base.kind === "day" && base.from === cal.today - 1;
 
   return m.detail_versus({
-    delta: delta(c),
+    delta: delta(c, points),
     base: yesterday ? m.detail_yesterday() : rangeLabel(cal, base),
   });
 }

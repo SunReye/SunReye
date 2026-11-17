@@ -137,7 +137,7 @@ function eachPart(
 const HOUR = 3_600_000;
 
 /** The flows over the rollups starting in [from, to), and how long the house load was read. */
-function sum(rollups: Rollups, from: number, to: number): Sum {
+export function rollupSum(rollups: Rollups, from: number, to: number): Sum {
   const inside = (of: PlantFlow) => rollups[of].filter((r) => r.start >= from && r.start < to);
   const kwh = (of: PlantFlow) => inside(of).reduce((a, r) => a + r.integral, 0) / 1000;
 
@@ -170,10 +170,12 @@ function sum(rollups: Rollups, from: number, to: number): Sum {
 }
 
 /** The plant's flows over the days starting in [from, to). */
-export const sumOf = (plant: Plant, from: number, to: number): Sum => sum(plant.days, from, to);
+export const sumOf = (plant: Plant, from: number, to: number): Sum =>
+  rollupSum(plant.days, from, to);
 
 /** The plant's flows over the hours starting in [from, to). */
-export const hourSum = (plant: Plant, from: number, to: number): Sum => sum(plant.hours, from, to);
+export const hourSum = (plant: Plant, from: number, to: number): Sum =>
+  rollupSum(plant.hours, from, to);
 
 /** A band of `hours` over [from, to): by its day rollups, or by its hourly ones under a day. */
 export const bandSum = (plant: Plant, hours: number, from: number, to: number): Sum =>

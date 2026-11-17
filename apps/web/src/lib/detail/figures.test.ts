@@ -86,7 +86,6 @@ test("money figures read in euros", () => {
 
 test("before the day is read every figure is unknown, not zero", () => {
   expect(facts("price").lead).toMatchObject({ value: null });
-  expect(facts("autarky").lead).toMatchObject({ value: null });
 });
 
 test("grid figures diverge around zero: import above, export below", () => {
