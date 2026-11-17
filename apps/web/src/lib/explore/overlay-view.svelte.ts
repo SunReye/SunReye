@@ -27,7 +27,7 @@ import {
 import { readSeries, type Reading } from "./read.ts";
 import { timesOf, type Chart, type Figure } from "./series-chart.ts";
 
-/** What the picks, the legend and the time labels take of the pane's height. */
+/** What the picks, the legend and the time labels take of the pane's height, at rest. */
 const AROUND = 176;
 
 /** The least a plot is drawn in. */
@@ -49,6 +49,9 @@ const PICKS: Readonly<Record<QuickPick["id"], (week: boolean) => string>> = {
 };
 
 export class OverlayView extends ModeView<Overlaid | null> {
+  /** The height the plot is laid out in, in px: in fullscreen what the window leaves it. */
+  room = $state(0);
+
   /** Whether the catalog lists the series: only then is there anything to read. */
   readonly state: "pending" | "unstored" | "read" = $derived.by(() => {
     if (this.input().catalog !== "ready") return "pending";
@@ -115,13 +118,15 @@ export class OverlayView extends ModeView<Overlaid | null> {
 
     const from = rows[0]!.period.from;
     const to = from + spanOf(rows.map((r: PeriodRow) => r.period));
-    const height = Math.max(this.input().height - AROUND, PLOT_MIN);
+    const { full, height: pane } = this.input();
+    const height = Math.max(full === true && this.room > 0 ? this.room : pane - AROUND, PLOT_MIN);
     const several = this.input().series.length > 1;
 
     return {
       from,
       to,
       height,
+      least: PLOT_MIN,
       lanes: [laneOf(this.chosen, rows, height)],
       notes: [
         ...(several ? [m.explore_overlay_first({ name: this.chosen.label })] : []),

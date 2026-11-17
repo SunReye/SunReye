@@ -108,6 +108,8 @@ export interface Chart {
   readonly to: number;
   /** The plot's height in px. */
   readonly height: number;
+  /** The least the plot is drawn in, in px. */
+  readonly least: number;
   readonly lanes: readonly LaneView[];
   /** What the chart says of its reads. */
   readonly notes: readonly string[];

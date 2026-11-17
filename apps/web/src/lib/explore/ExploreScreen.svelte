@@ -46,16 +46,17 @@
 
   /** At rest the page's column; in fullscreen over the bar and rail (z-40), under the body's overlays. */
   const REST = {
-    main: "mx-auto max-w-[1320px] pb-6",
+    main: "mx-auto max-w-[1320px] gap-4 px-3 pt-4 pb-6 sm:px-4 lg:gap-5 lg:px-6 lg:pt-6",
     panes: "lg:grid-cols-[320px_minmax(0,1fr)]",
-    card: "self-start",
+    card: "glass-ambient self-start px-3 py-4 sm:px-5",
     chart: "",
   };
 
   const FULL = {
-    main: "fixed inset-0 z-45 bg-background pb-[max(1rem,env(safe-area-inset-bottom))]",
+    main: "fixed inset-0 z-45 gap-2 bg-background px-3 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-4",
     panes: "min-h-0 flex-1 grid-rows-[minmax(0,1fr)]",
-    card: "min-h-0",
+    // The window is the chart's frame: no card around it.
+    card: "min-h-0 rounded-none bg-transparent p-0 ring-0 [box-shadow:none]!",
     // Sized by the card, not by the chart in it, so it shrinks again; lanes at their least scroll.
     chart: "min-h-0 flex-1 overflow-y-auto",
   };
@@ -73,7 +74,7 @@
 
 <main
   {@attach full.watch}
-  class={["flex w-full flex-col gap-4 px-3 pt-4 sm:px-4 lg:gap-5 lg:px-6 lg:pt-6", look.main]}
+  class={["flex w-full flex-col", look.main]}
 >
   <ExploreHeader {x} {admin} table={plotted?.() ?? null} full={full.on} onfull={full.toggle} />
 
@@ -82,7 +83,7 @@
       <PickerShell {x} paned={paned.current} bind:search />
     {/if}
 
-    <Card.Root class={["glass-ambient min-w-0 gap-4 px-3 py-4 sm:px-5", look.card]}>
+    <Card.Root class={["min-w-0 gap-4", look.card]}>
       <!-- Opened with nothing chosen, the first saved view decides what is read (ADR 22). -->
       {#if !x.saved.opening}
         {#if !full.on}
