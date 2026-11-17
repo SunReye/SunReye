@@ -188,7 +188,6 @@ const unit =
   (label: string, value: number | null): Fact => ({ label, value, unit: u, digits });
 
 const kwh = unit("kWh", 1);
-const eur = unit("€", 2);
 const ct = unit("ct/kWh", 1);
 
 /** Rounds away float noise from a EUR → ct conversion. */
@@ -245,9 +244,6 @@ const DAY_FACTS = new Map<string, Read>([
     "production",
     (day) => only([peak(day, "production"), kwh(m.dash_forecast(), day?.pv.total ?? null)]),
   ],
-  ["consumption", (day) => only([peak(day, "consumption")])],
-  ["feedIn", (day) => only([eur(m.detail_earned(), day?.money?.earned ?? null)])],
-  ["purchase", (day) => only([eur(m.detail_paid(), day?.money?.paid ?? null)])],
   [
     "grid",
     (day) =>

@@ -36,13 +36,20 @@ const FLOWS: readonly (readonly [PlantFlow, () => string, Flow])[] = [
 ];
 
 /** The rollup with the highest reading among those starting in [from, to). */
-function highest(rolled: readonly Rolled[], from: number, to: number): Rolled | null {
+export function highest(rolled: readonly Rolled[], from: number, to: number): Rolled | null {
   let best: Rolled | null = null;
 
   for (const r of rolled)
     if (r.start >= from && r.start < to && (r.max ?? 0) > (best?.max ?? 0)) best = r;
 
   return best;
+}
+
+/** When a rollup starting at `start` fell: its hour among hourly rollups, else its day. */
+export function whenOf(start: number, hours: boolean, zone: string): string {
+  const { day, hour } = plantNow(zone, new Date(start));
+
+  return hours ? m.stats_peak_hour({ from: hour, to: hour + 1 }) : fmt("dayShort", day);
 }
 
 /** Each flow's peak over the range; a flow that never ran has none. */
@@ -54,15 +61,13 @@ export function peaksOf(plant: Plant, at: PeakInput): Peak[] {
 
     if (top === null) return [];
 
-    const { day, hour } = plantNow(at.zone, new Date(top.start));
-
     return [
       {
         label: label(),
         value: top.max ?? 0,
-        when: at.hours ? m.stats_peak_hour({ from: hour, to: hour + 1 }) : fmt("dayShort", day),
+        when: whenOf(top.start, at.hours, at.zone),
         colour: flowColour(colour),
-        range: at.hours ? null : rangeFor("day", day),
+        range: at.hours ? null : rangeFor("day", plantNow(at.zone, new Date(top.start)).day),
       },
     ];
   });

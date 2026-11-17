@@ -36,6 +36,8 @@
   import RangeControl from "../range/RangeControl.svelte";
   import AnalyticsTabs from "./AnalyticsTabs.svelte";
   import AutarkyPanel from "./AutarkyPanel.svelte";
+  import { flowOf } from "./flow.ts";
+  import FlowPanel from "./FlowPanel.svelte";
   import type { HeadView } from "./head.svelte.ts";
   import RangeState from "./RangeState.svelte";
 
@@ -46,6 +48,7 @@
     input,
     head,
     onretry,
+    priced,
     fallback,
   }: {
     id: string;
@@ -56,10 +59,13 @@
     /** The figure over the range: what the range holds and whether it could be read. */
     head: HeadView | null;
     onretry: () => void;
+    /** A tariff is in force (ADR 12). */
+    priced: boolean;
     fallback: Snippet;
   } = $props();
 
   const analytics = $derived(analyticsOf(id, input.strings));
+  const flow = $derived(flowOf(id));
 </script>
 
 {#if analytics || id === "autarky"}
@@ -71,6 +77,9 @@
     <RangeState {head} {onretry}>
       {#if analytics}
         <AnalyticsTabs {id} {title} {colour} {analytics} {input} />
+        {#if flow}
+          <FlowPanel {input} {flow} {priced} />
+        {/if}
       {:else}
         <AutarkyPanel {input} />
       {/if}

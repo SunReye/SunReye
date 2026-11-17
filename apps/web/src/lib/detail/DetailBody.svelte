@@ -69,7 +69,7 @@
 
   <Readings {node} {status} {onopen} />
 
-  <Analytics {id} {title} colour={spec.colour} {input} head={head.view} onretry={head.retry}>
+  <Analytics {id} {title} colour={spec.colour} {input} head={head.view} onretry={head.retry} {priced}>
     {#snippet fallback()}
       {#if id === "saved"}
         <SavingsPane {input} head={head.view} onretry={head.retry} {priced} {admin} />
