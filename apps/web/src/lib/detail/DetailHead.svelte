@@ -41,7 +41,7 @@
   {#if head || spec.node !== null || lead}
     <div class="flex items-end justify-between gap-4">
       {#if head}
-        <HeadFigure view={head} />
+        <HeadFigure view={head} estimated={node?.leadEstimated ?? false} />
       {/if}
       {#if spec.node !== null}
         <DetailPower {spec} {node} loading={status === "loading"} second={head !== null} />

@@ -10,13 +10,15 @@
 
   /** What the analytics read: the core, the sheet's range and the layout's strings. The weather
    * detail, which stands in their place, reads `history` (ADR 23); the PV forecast's days read
-   * the `layout` (ADR 21); the savings read `costs` and `payback` (ADR 12). */
+   * the `layout` (ADR 21); the savings read `costs` and `payback` (ADR 12); the inverter's facts
+   * read which profiles map a temperature from `capabilities`. */
   export interface AnalyticsInput {
     readonly core: Readonly<
       Pick<
         Core,
         | "statistics"
         | "forecasts"
+        | "capabilities"
         | "moduleTypes"
         | "corrections"
         | "history"
@@ -41,6 +43,8 @@
   import { flowOf } from "./flow.ts";
   import FlowPanel from "./FlowPanel.svelte";
   import type { HeadView } from "./head.svelte.ts";
+  import PvFacts from "./PvFacts.svelte";
+  import { isPv } from "./pv-range.ts";
   import RangeState from "./RangeState.svelte";
 
   let {
@@ -83,6 +87,8 @@
         <AnalyticsTabs {id} {title} {colour} {analytics} {input} />
         {#if flow}
           <FlowPanel {input} {flow} {priced} />
+        {:else if isPv(id)}
+          <PvFacts {analytics} inverter={id === "inverter"} {input} />
         {/if}
       {:else}
         <AutarkyPanel {input} />

@@ -6,7 +6,15 @@ import { connect, type Transport } from "../api/core.ts";
 import { merge } from "../api/frames.ts";
 import Dashboard from "../dashboard/Dashboard.svelte";
 import { feed } from "../live/stream.harness.ts";
-import { CAPABILITIES, CORRECTIONS, INVERTER, TOPOLOGY } from "./detail.fixtures.ts";
+import {
+  capabilities,
+  CORRECTIONS,
+  INVERTER,
+  INVERTER_PLAN,
+  NO_COSTS,
+  SPOT_PRICES,
+  TOPOLOGY,
+} from "./detail.fixtures.ts";
 
 export { INVERTER };
 
@@ -66,6 +74,8 @@ export interface Served {
   costs: ((from: string, to: string) => Response | Promise<Response>) | null;
   /** The payback the admin reads (ADR 12); null for a refusal. */
   payback: object | null;
+  /** The series the inverter's profile publishes. */
+  publishes: readonly string[];
 }
 
 export const served: Served = {
@@ -79,6 +89,7 @@ export const served: Served = {
   rolled: null,
   costs: null,
   payback: null,
+  publishes: [],
 };
 
 /** The series catalog: each stored series a measurement since the month began. */
@@ -166,14 +177,6 @@ function streamed(): void {
   }
 }
 
-const slot = (hour: number, value: number, minute = 0) => ({
-  issued: "2026-11-11T13:00:00Z",
-  target: `2026-11-12T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00Z`,
-  value,
-});
-
-const NO_COSTS = { days: [], total: { paid: 0.32, earned: 0.33, saved: 2.1, standing: 0 } };
-
 /** Each path but statistics', and what the fake core answers there to query `q`. */
 const ROUTES = new Map<string, (q: Readonly<URLSearchParams>) => Response | Promise<Response>>([
   ["/api/v1/topology", () => Response.json(TOPOLOGY)],
@@ -183,19 +186,9 @@ const ROUTES = new Map<string, (q: Readonly<URLSearchParams>) => Response | Prom
     "/api/v1/layout",
     () => Response.json({ appliesFrom: "2026-11-01T00:00:00Z", strings: STRINGS, warnings: [] }),
   ],
-  ["/api/v1/capabilities", () => Response.json(CAPABILITIES)],
-  [
-    `/api/v1/devices/${SPOT}/forecasts`,
-    () =>
-      Response.json({
-        points: [slot(0, 0.12), slot(12, 0.125), slot(12, 0.0625, 30), slot(13, -0.01)],
-      }),
-  ],
-  // The inverter expects 2 kW from 10:00 to 14:00: 8 kWh, half of it still to come.
-  [
-    `/api/v1/devices/${INVERTER}/forecasts`,
-    () => Response.json({ points: [10, 11, 12, 13].map((h) => slot(h, 2000)) }),
-  ],
+  ["/api/v1/capabilities", () => Response.json(capabilities(served.publishes))],
+  [`/api/v1/devices/${SPOT}/forecasts`, () => Response.json(SPOT_PRICES)],
+  [`/api/v1/devices/${INVERTER}/forecasts`, () => Response.json(INVERTER_PLAN)],
   [
     "/api/v1/devices",
     () => Response.json({ status: 403, code: "auth.forbidden" }, { status: 403 }),
@@ -264,6 +257,7 @@ export async function prepare(): Promise<void> {
   served.rolled = null;
   served.costs = null;
   served.payback = null;
+  served.publishes = [];
   served.last = "2026-11-12T12:00:00Z";
   vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-12T12:20:00Z") });
   await cdp().send("Emulation.setEmulatedMedia", {
