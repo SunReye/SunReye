@@ -91,6 +91,11 @@ function fogAt(metres: number): number {
   return Math.min(1, Math.max(0, Math.log(VISIBILITY.clear / Math.max(metres, 1)) / span));
 }
 
+/** The metres of visibility a `fog` of 0 to 1 stands for: `fogAt` the other way. */
+export function fogMetres(fog: number): number {
+  return VISIBILITY.clear * (VISIBILITY.fog / VISIBILITY.clear) ** Math.min(1, Math.max(0, fog));
+}
+
 function fogOf({ code, visibility }: Weather): number {
   const coded = codeKind(code) === "fog" ? FOG_CODE_METRES : Infinity;
 

@@ -1,6 +1,24 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
+import type { Weather } from "../weather/weather.ts";
 import { Plot } from "./plot.ts";
+import { sceneWeather } from "./weather.ts";
+
+const NONE: Weather = {
+  cloud: null,
+  code: null,
+  precipitation: null,
+  snowfall: null,
+  snowDepth: null,
+  visibility: null,
+  wind: null,
+  windDirection: null,
+  celsius: null,
+  humidity: null,
+  ghi: null,
+  clearSkyIndex: null,
+  dry: null,
+};
 
 test("the fog starts four radii past the plot", () => {
   const plot = new Plot();
@@ -10,21 +28,43 @@ test("the fog starts four radii past the plot", () => {
   expect([plot.fog.near, plot.fog.far]).toEqual([80, 320]);
 });
 
-test("weather fog closes in round the plot, and stays as the plot is fitted again", () => {
+/** How much of a thing `metres` from the camera the fog takes, 0 to 1. */
+function veiled({ near, far }: Readonly<{ near: number; far: number }>, metres: number): number {
+  return Math.min(1, Math.max(0, (metres - near) / (far - near)));
+}
+
+test("weather fog is in metres: 300 m of visibility veils a house 30 m off a little, deepens behind it and takes the far ground", () => {
   const plot = new Plot();
 
+  plot.fit(0, 0, 10);
+  plot.mist(sceneWeather({ ...NONE, visibility: 300 }).fog);
+
+  expect(veiled(plot.fog, 30)).toBeGreaterThan(0.1);
+  expect(veiled(plot.fog, 30)).toBeLessThan(0.35);
+  expect(veiled(plot.fog, 45)).toBeGreaterThan(veiled(plot.fog, 30) + 0.1);
+  expect(veiled(plot.fog, 120)).toBe(1);
+});
+
+test("the thickest fog starts at the camera and never hides the plot, however large", () => {
+  const plot = new Plot();
   const reach = () => [plot.fog.near, plot.fog.far].map((metres) => Math.round(metres * 10) / 10);
 
   plot.fit(0, 0, 10);
   plot.mist(1);
-  expect(reach()).toEqual([1, 35]);
+  expect(reach()).toEqual([0, 70]);
+  // A plot this size is framed from some 60 m: its far side keeps its shape.
   plot.fit(0, 0, 20);
-  expect(reach()).toEqual([2, 60]);
-  // Halfway to fog it is far nearer than halfway between the distances.
-  plot.mist(0.5);
-  expect(reach()).toEqual([3.9, 106.7]);
+  expect(reach()).toEqual([0, 130]);
+});
+
+test("mist a kilometre deep and more leaves the plot's own distances as in clear air", () => {
+  const plot = new Plot();
+
+  plot.fit(0, 0, 20);
+  plot.mist(sceneWeather({ ...NONE, visibility: 2000 }).fog);
+  expect([plot.fog.near, plot.fog.far]).toEqual([120, 480]);
   plot.mist(0);
-  expect(reach()).toEqual([120, 480]);
+  expect([plot.fog.near, plot.fog.far]).toEqual([120, 480]);
 });
 
 test("the floor is named, so the weather finds it", () => {
