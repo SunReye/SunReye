@@ -186,3 +186,23 @@ test("a viewer's house sheet names its consumers from the topology", async () =>
   await expect.element(sheet.getByText("Verbraucher")).toBeVisible();
   await expect.element(sheet.getByText("Wärmepumpe")).toBeVisible();
 });
+
+test("the strip's weather cell opens the weather detail", async () => {
+  const { screen, onopen } = await show();
+
+  await screen.getByRole("button", { name: /Wetter/u }).click();
+
+  expect(onopen).toHaveBeenCalledWith("weather");
+});
+
+test("the weather sheet shows the weather by the hour", async () => {
+  const { screen } = await show("weather");
+  const sheet = screen.getByRole("dialog", { name: "Wetter" });
+
+  // The fake core stores no weather.
+  await expect
+    .element(
+      sheet.getByRole("region", { name: "Wetter nach Stunden" }).getByText("Keine Wetterdaten"),
+    )
+    .toBeVisible();
+});

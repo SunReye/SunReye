@@ -39,6 +39,7 @@
       | "corrections"
       | "topology"
       | "series"
+      | "history"
     >;
     live: Live | undefined;
     /** The live stream's last two minutes, for a sheet's live graph. */
