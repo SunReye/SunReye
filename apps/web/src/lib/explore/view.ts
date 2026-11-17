@@ -2,6 +2,7 @@
 // series of their devices (`s`), the overlay's earlier periods (`vs`), the fold's period (`by`) and
 // the open picker (`pick`).
 import { PLANT } from "../api/computed-devices.ts";
+import { isPeriod } from "./overlay.ts";
 
 export type Mode = "series" | "overlay" | "fold";
 
@@ -68,13 +69,11 @@ function seriesOf(named: string | null): readonly SeriesRef[] {
   return found;
 }
 
-const PERIOD = /^(?:\d{4}-\d{2}-\d{2}|-1[dwy])$/u;
-
 export function viewOf(p: Readonly<URLSearchParams>): ExploreView {
   return {
     mode: MODES.find((mode) => mode === p.get("mode")) ?? "series",
     series: seriesOf(p.get("s")),
-    periods: (p.get("vs") ?? "").split(",").filter((entry) => PERIOD.test(entry)),
+    periods: (p.get("vs") ?? "").split(",").filter((entry) => isPeriod(entry)),
     picking: p.get("pick") === "1",
   };
 }

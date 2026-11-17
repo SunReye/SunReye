@@ -465,6 +465,7 @@ pub enum Code {
     TokenNone,
     #[serde(rename = "token.value")]
     TokenValue,
+    /// No saved view has the id.
     #[serde(rename = "views.none")]
     ViewsNone,
     /// Another saved view holds the name.

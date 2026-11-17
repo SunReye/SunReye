@@ -55,6 +55,27 @@ test("fullscreen fills the window with the chart, the range and the mode, outsid
   expect(went).toHaveLength(steps);
 });
 
+test("overlay's periods are left out of fullscreen, its legend names them", async () => {
+  await desk();
+
+  const { screen } = await show("mode=overlay&range=day&at=2026-11-10&vs=2026-11-03");
+  const chart = screen.getByRole("region", { name: "Überlagern" });
+
+  await expect.element(chart.getByRole("button", { name: "Tag davor" })).toBeVisible();
+
+  await screen.getByRole("button", { name: "Vollbild", exact: true }).click();
+
+  await expect.element(screen.getByRole("button", { name: "Vollbild beenden" })).toBeVisible();
+  expect(chart.getByText("Vergleichen mit").query()).toBeNull();
+  expect(chart.getByRole("button", { name: "Tag davor" }).query()).toBeNull();
+  expect(chart.getByRole("button", { name: "Di., 3. November entfernen" }).query()).toBeNull();
+  await expect.element(chart.getByRole("img", { name: /Di\., 3\. November/u })).toBeVisible();
+
+  await screen.getByRole("button", { name: "Vollbild beenden" }).click();
+
+  await expect.element(chart.getByRole("button", { name: "Tag davor" })).toBeVisible();
+});
+
 test("the lanes redraw at the window's size in fullscreen and at their own again out of it", async () => {
   await desk();
 

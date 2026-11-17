@@ -58,9 +58,9 @@ const VALUE: Problem = Problem {
 /// A view as the admin saves it.
 #[derive(Deserialize, ToSchema)]
 pub struct SavedViewDraft {
-    /// Unique.
+    /// Unique, not blank, at most 256 bytes of UTF-8.
     name: String,
-    /// Explore's route query, at most 2 KB, kept as given.
+    /// Explore's route query, at most 2,048 bytes of UTF-8, kept as given.
     query: String,
 }
 
@@ -168,7 +168,9 @@ fn insert(
         "INSERT INTO saved_view (name, query) VALUES (?1, ?2)",
         params![name, query],
     )?;
-    let id = u32::try_from(tx.last_insert_rowid()).unwrap_or(u32::MAX);
+    let rowid = tx.last_insert_rowid();
+    let id =
+        u32::try_from(rowid).map_err(|_| rusqlite::Error::IntegralValueOutOfRange(0, rowid))?;
     let view = SavedView { id, name, query };
     log(&tx, id, Action::Add, Some(&view), changed)?;
     tx.commit()?;
@@ -245,24 +247,22 @@ async fn remove_view(
 ) -> Result<StatusCode, Problem> {
     let Path(id) = id.map_err(|_| PATH)?;
     let changed = clock();
-    let removed = views
+    views
         .database
-        .run(move |db| {
-            let tx = db.unchecked_transaction()?;
-            if tx.execute("DELETE FROM saved_view WHERE id = ?1", [id])? == 0 {
-                return Ok(false);
-            }
-            log(&tx, id, Action::Remove, None, changed)?;
-            tx.commit()?;
-            Ok(true)
-        })
+        .run(move |db| delete(db, id, changed))
         .await
-        .map_err(internal)?;
-    if removed {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err(NONE)
+        .map_err(internal)??;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+fn delete(db: &Connection, id: u32, changed: SystemTime) -> rusqlite::Result<Result<(), Problem>> {
+    let tx = db.unchecked_transaction()?;
+    if tx.execute("DELETE FROM saved_view WHERE id = ?1", [id])? == 0 {
+        return Ok(Err(NONE));
     }
+    log(&tx, id, Action::Remove, None, changed)?;
+    tx.commit()?;
+    Ok(Ok(()))
 }
 
 fn log(
@@ -272,13 +272,17 @@ fn log(
     view: Option<&SavedView>,
     changed: SystemTime,
 ) -> rusqlite::Result<()> {
+    let state = view
+        .map(serde_json::to_value)
+        .transpose()
+        .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
     changes::append(
         db,
         &Entry {
             subject: Subject::View,
             id,
             action,
-            state: view.and_then(|v| serde_json::to_value(v).ok()),
+            state,
             actor: ACTOR,
             changed,
             applies_from: changed,

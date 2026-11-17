@@ -89,6 +89,23 @@ async fn a_query_of_2_kb_is_kept_and_a_longer_one_refused() {
 }
 
 #[tokio::test]
+async fn a_name_of_256_bytes_is_kept_and_a_longer_one_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, admin) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    core.save_view(&admin, &"ä".repeat(128), TODAY).await;
+    let longer = json!({ "name": "a".repeat(257), "query": TODAY });
+
+    let response = core
+        .send(with_cookie(&admin, send("POST", "/api/v1/views", &longer)))
+        .await;
+
+    assert_eq!(
+        problem(response).await,
+        (StatusCode::UNPROCESSABLE_ENTITY, "views.value".to_owned())
+    );
+}
+
+#[tokio::test]
 async fn a_blank_name_is_refused() {
     let dir = tempfile::tempdir().unwrap();
     let (core, admin) = Core::signed_in(&dir.path().join("core.sqlite")).await;

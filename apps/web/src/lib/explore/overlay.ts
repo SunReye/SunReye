@@ -45,8 +45,11 @@ function yearBefore(range: Range): number {
   if (kindOf(range) === "week") return weekOfYear(yearOf(range.from + 3) - 1, isoWeek(range.from));
 
   const d = civil(range.from);
+  const month = d.getUTCMonth();
+  // 29 February a year before is the 28th: day 0 of the next month is its last.
+  const last = civil(dayOf(d.getUTCFullYear() - 1, month + 1, 0)).getUTCDate();
 
-  return dayOf(d.getUTCFullYear() - 1, d.getUTCMonth(), d.getUTCDate());
+  return dayOf(d.getUTCFullYear() - 1, month, Math.min(d.getUTCDate(), last));
 }
 
 /** A quick pick as the route holds it: an offset from the range, so a current range stays relative. */
@@ -59,6 +62,10 @@ const OFFSETS = {
 export type Offset = keyof typeof OFFSETS;
 
 const isOffset = (entry: string): entry is Offset => Object.hasOwn(OFFSETS, entry);
+
+/** Whether a route entry names a period: an offset or a date. */
+export const isPeriod = (entry: string): boolean =>
+  isOffset(entry) || /^\d{4}-\d{2}-\d{2}$/u.test(entry);
 
 /** A day in the period a route entry names: an offset from the range, or a date as it is. */
 const dayIn = (range: Range, entry: string): number =>

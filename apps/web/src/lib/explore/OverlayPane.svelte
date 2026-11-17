@@ -28,7 +28,6 @@
 
   let plot = $state<HTMLElement | null>(null);
 
-
   const pointer = new Pointer(() => ({
     plot,
     from: chart?.from ?? 0,
@@ -54,17 +53,24 @@
   </Empty.Root>
 {:else}
   <div class="@container flex flex-col gap-3">
-    <OverlayPeriods
-      picked={view.periods.slice(1)}
-      picks={view.picks}
-      full={view.full}
-      max={view.lastDay}
-      onadd={view.add}
-      onremove={view.remove}
-    />
+    <!-- Fullscreen leaves the periods to the legend (ADR 22). -->
+    {#if !props.full}
+      <OverlayPeriods
+        picked={view.periods.slice(1)}
+        picks={view.picks}
+        full={view.full}
+        max={view.lastDay}
+        onadd={view.add}
+        onremove={view.remove}
+      />
+    {/if}
 
     {#if !chart}
-      <Skeleton style="height: {props.height - 44}px" role="status" aria-label={m.loading()} />
+      <Skeleton
+        style="height: {props.full ? props.height : props.height - 44}px"
+        role="status"
+        aria-label={m.loading()}
+      />
     {:else}
       <div class="flex flex-col gap-2">
         <SeriesLegend

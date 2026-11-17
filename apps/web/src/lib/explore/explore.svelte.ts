@@ -4,7 +4,7 @@ import type { Core } from "../api/core.ts";
 import { parseRange, rangeParams } from "../range/params.ts";
 import { RangeRoute, type Go } from "../range/route.svelte.ts";
 import { overlayRange } from "./overlay.ts";
-import { Saved } from "./saved.svelte.ts";
+import { Saved, type ViewsCore } from "./saved.svelte.ts";
 import { chosenOf, pickerOf, type Chosen, type PickerDevice } from "./picker.ts";
 import {
   EXPLORE_PARAMS,
@@ -18,19 +18,8 @@ import {
 } from "./view.ts";
 
 /** What the screen and its charts read. */
-export type ExploreCore = Readonly<
-  Pick<
-    Core,
-    | "timezone"
-    | "series"
-    | "history"
-    | "statistics"
-    | "views"
-    | "saveView"
-    | "replaceView"
-    | "removeView"
-  >
->;
+export type ExploreCore = Readonly<Pick<Core, "timezone" | "series" | "history" | "statistics">> &
+  ViewsCore;
 
 export type CatalogState = "loading" | "ready" | "failed";
 
