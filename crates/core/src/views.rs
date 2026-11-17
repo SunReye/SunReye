@@ -58,9 +58,9 @@ const VALUE: Problem = Problem {
 /// A view as the admin saves it.
 #[derive(Deserialize, ToSchema)]
 pub struct SavedViewDraft {
-    /// Unique.
+    /// Unique, not blank, at most 256 bytes of UTF-8.
     name: String,
-    /// Explore's route query, at most 2 KB, kept as given.
+    /// Explore's route query, at most 2,048 bytes of UTF-8, kept as given.
     query: String,
 }
 

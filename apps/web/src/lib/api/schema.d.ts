@@ -2382,9 +2382,9 @@ export interface components {
         };
         /** @description A view as the admin saves it. */
         SavedViewDraft: {
-            /** @description Unique. */
+            /** @description Unique, not blank, at most 256 bytes of UTF-8. */
             name: string;
-            /** @description Explore's route query, at most 2 KB, kept as given. */
+            /** @description Explore's route query, at most 2,048 bytes of UTF-8, kept as given. */
             query: string;
         };
         /** @description Every saved view, in the order saved. */
