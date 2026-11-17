@@ -1,7 +1,7 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
 import type { Forecasts, History } from "../api/core.ts";
-import { readWeather, weatherAt, type Weather } from "./weather.ts";
+import { readWeather, readWeatherSources, weatherAt, type Weather } from "./weather.ts";
 
 const WEATHER = 4_294_967_295;
 const iso = (time: string) => `2026-11-14T${time}:00Z`;
@@ -252,4 +252,27 @@ test("a refused or failed read is no weather for its quantity", async () => {
   );
 
   expect(weatherAt(weather, at("12:05"))).toEqual({ ...NONE, code: 45 });
+});
+
+test("the detail's read keeps history and forecasts apart and adds its own quantities", async () => {
+  const { core, asked } = fake({
+    history: { "weather.humidity": intervals(["08:00", "09:00", 81]) },
+    forecasts: {
+      "weather.humidity": targets(["08:00", 70]),
+      "weather.sunshine": targets(["12:00", 900]),
+    },
+  });
+
+  const sources = await readWeatherSources(core, new Date(at("00:00")), new Date(at("23:59")));
+
+  expect(sources.measured["weather.humidity"]).toEqual([
+    { from: at("08:00"), to: at("09:00"), value: 81 },
+  ]);
+  expect(sources.forecast["weather.humidity"]).toEqual([
+    { from: at("08:00"), to: at("09:00"), value: 70 },
+  ]);
+  expect(sources.forecast["weather.sunshine"]?.[0]?.value).toBe(900);
+
+  for (const series of ["gusts", "apparent_temperature", "sunshine", "humidity", "cloud_cover"])
+    expect(asked).toContain(`forecasts ${WEATHER} weather.${series}`);
 });
