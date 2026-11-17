@@ -330,11 +330,13 @@
       role="group"
       tabindex="0"
       data-scrub
+      data-vaul-no-drag={active === null ? undefined : ""}
       aria-label={m.range_chart_keys({ chart: label })}
       onpointerdown={reading.down}
       onpointermove={reading.move}
       onpointerup={reading.up}
       onpointerleave={reading.leave}
+      onpointercancel={reading.cancel}
       onkeydown={reading.key}
       onblur={reading.blur}
     >
