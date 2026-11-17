@@ -3,7 +3,6 @@
 import { expect, test } from "bun:test";
 import { WEATHER } from "../api/computed-devices.ts";
 import type { CatalogDevice, History } from "../api/core.ts";
-import { foldOf } from "./fold.ts";
 import { lanesOf } from "./lanes.ts";
 import { chosenOf, pickerOf } from "./picker.ts";
 import { readSeries, type Reads } from "./read.ts";
@@ -98,9 +97,6 @@ test("a weather code draws as a band of states, read by the code's words", async
   expect(figuresOf(lanes, null)[0]!.value).toBe("Bewölkt");
 });
 
-test("a weather code has no fold, like any status", () => {
-  expect(foldOf(code, "ready")).toBe("none");
-  expect(foldOf(chosenOf({ device: WEATHER, series: "weather.clearness" }, picker), "ready")).toBe(
-    "read",
-  );
+test("a weather code is chosen as a status without a unit, so it has no fold (ADR 22)", () => {
+  expect(code).toMatchObject({ label: "Wetter · Wettercode", kind: "status", unit: null });
 });
