@@ -24,7 +24,7 @@ import { Passes } from "./passes.ts";
 import { Plot } from "./plot.ts";
 import { gpuOf, type Look } from "./quality.ts";
 import { shade, shadowFor, soften } from "./sun-shadow.ts";
-import { DRY, fogColour, type Falling, type SceneWeather } from "./weather.ts";
+import { DRY, fogColour, type Falling, type Glass, type SceneWeather } from "./weather.ts";
 
 export class Studio {
   readonly renderer: WebGLRenderer;
@@ -156,6 +156,13 @@ export class Studio {
 
     this.#plot.weather(given, air, look.exposure);
     this.#fall.tint(look.dark, look.exposure);
+    this.#passes.tint(look.dark);
+  }
+
+  /** What is on the lens at `seconds` of the weather loop (ADR 23); null for a clear one. The
+   * look decides whether it is drawn: not at Niedrig, and on the full tier alone. */
+  lens(glass: Glass | null, seconds: number): void {
+    this.#passes.lens(glass, seconds);
   }
 
   /** Rain or snow in the air (ADR 23): `sparse` for the lite tier's thin field, null for none.
@@ -223,7 +230,7 @@ export class Studio {
     const [width, height] = this.#size;
 
     this.setSize(4, 4);
-    this.render();
+    this.#passes.warm();
     this.setSize(width, height);
   }
 

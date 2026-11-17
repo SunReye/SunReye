@@ -3,11 +3,12 @@
 // first frame never waits on a compile. Ported from the prototype's background load.
 import { motion } from "../motion/tier.svelte.ts";
 import { Flight } from "./flight.ts";
+import { Fade } from "./lens.ts";
 import { Loop, pauseUnseen } from "./loop.ts";
 import { ahead, gpuIdle, nextFrame, pause, prepare } from "./prepare.ts";
 import type { Ghost } from "./stage.svelte.ts";
 import type { Studio } from "./studio.ts";
-import type { Falling } from "./weather.ts";
+import type { Falling, Glass } from "./weather.ts";
 import { idle } from "./warm.ts";
 
 /** A burst frame slower than this ends the burst: three frames at 60 Hz. */
@@ -29,6 +30,9 @@ export class Opening {
   /** A change waits for the loop's next frame: the picture is not the last one moved on. */
   #changed = false;
   readonly #unwatch: () => void;
+  /** The lens glass as it fades, and its hold on the loop while anything is on it or to come. */
+  readonly #lens = new Fade();
+  #glazing: (() => void) | undefined;
 
   /**
    * The weather loop (ADR 23 "Motion"): the one loop this studio is drawn in. What moves keeps
@@ -86,12 +90,22 @@ export class Opening {
   };
 
   /**
-   * Shows what `falling` gives as the motion tier does (ADR 23): it moves in the loop on full,
-   * lite draws a sparse still field, still draws none. Call during a component's set-up.
+   * Shows what moves with the `weather`, read as it changes (ADR 23). What falls is shown as
+   * the motion tier does: it moves in the loop on full, lite draws a sparse still field, still
+   * draws none. The glass is put on the lens: it fades in and out in the loop, which it keeps
+   * until the lens is clear again; off the full tier, where nothing loops, the lens is cleared
+   * at once. Call during a component's set-up.
    */
-  falls(falling: () => Falling | null): void {
+  moves(weather: { readonly falling: Falling | null; readonly glass: Glass | null }): void {
     $effect(() => {
-      const fell = falling();
+      const target = weather.glass;
+
+      if (motion.tier === "full") this.#glaze(target);
+      else this.#clear();
+    });
+
+    $effect(() => {
+      const fell = weather.falling;
       const { tier } = motion;
 
       this.#studio.fall(tier === "still" ? null : fell, tier === "lite");
@@ -177,12 +191,38 @@ export class Opening {
     this.#gone = true;
     this.#unwatch();
     this.loop.pause("gone", true);
+    this.#unglaze();
     clearTimeout(this.#later);
     cancelAnimationFrame(this.#frame);
     this.#rest();
   }
 
   readonly #isGone = (): boolean => this.#gone;
+
+  #glaze(target: Glass | null): void {
+    this.#lens.aim(target);
+
+    if (this.#lens.clear) return;
+
+    this.#glazing ??= this.loop.keep((seconds) => {
+      this.#studio.lens(this.#lens.at(seconds), seconds);
+
+      // Faded out: the loop's last frame is drawn through a clear lens.
+      if (this.#lens.clear) this.#unglaze();
+    });
+  }
+
+  #unglaze(): void {
+    this.#glazing?.();
+    this.#glazing = undefined;
+  }
+
+  #clear(): void {
+    this.#lens.cut();
+    this.#studio.lens(null, 0);
+    this.#unglaze();
+    this.render();
+  }
 
   /** A frame at `now`: where the flight moved the camera is drawn in it, not the next. True
    * while the flight goes on. */

@@ -10,6 +10,7 @@ test("Niedrig draws as the lite tier did, at a pixel ratio of 1 from a 1024 shad
     pixelRatio: 1,
     shadowMap: 1024,
     occlusion: false,
+    glass: false,
     contact: false,
     finest: false,
   });
@@ -21,6 +22,7 @@ test("Mittel draws what the full tier drew: a 2048 map, occlusion, up to 1.5", (
     pixelRatio: 1.5,
     shadowMap: 2048,
     occlusion: true,
+    glass: true,
     contact: false,
     finest: false,
   });
@@ -63,12 +65,12 @@ test("the lite and still tiers cap Auto at Mittel", () => {
   }
 });
 
-test("the lite and still tiers drop occlusion at every level, as they did", () => {
+test("the lite and still tiers drop occlusion and the lens glass at every level", () => {
   for (const tier of ["lite", "still"] as const) {
     for (const choice of ["auto", "medium", "high", "ultra"] as const) {
-      const { occlusion } = drawn(choice, { ...strong, tier });
+      const { occlusion, glass } = drawn(choice, { ...strong, tier });
 
-      expect([choice, occlusion]).toEqual([choice, false]);
+      expect([choice, occlusion, glass]).toEqual([choice, false, false]);
     }
   }
 });

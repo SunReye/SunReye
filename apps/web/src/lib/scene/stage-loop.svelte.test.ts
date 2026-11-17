@@ -2,11 +2,14 @@ import { flushSync } from "svelte";
 import { afterEach, expect, test, vi } from "vitest";
 import { PerspectiveCamera } from "three";
 import { motion } from "../motion/tier.svelte.ts";
+import { quality } from "./quality.svelte.ts";
 import { lit, type Lit, type Sky } from "./stage.svelte.ts";
 import { Studio } from "./studio.ts";
-import { DRY, type Falling } from "./weather.ts";
+import { DRY, type Falling, type Glass } from "./weather.ts";
 
 const RAIN: Falling = { kind: "rain", density: 1, wind: [2, 0] };
+
+const FROST: Glass = { rain: 0, snow: 0, frost: 1 };
 
 const noop = (): void => {};
 
@@ -15,20 +18,30 @@ let close: (() => void) | undefined;
 afterEach(() => {
   close?.();
   close = undefined;
+  quality.choice = "auto";
   vi.restoreAllMocks();
   localStorage.clear();
 });
+
+/** What the studio is asked for, and the frames counted. */
+function watched() {
+  return {
+    // This host draws in software: its frames are no evidence, and none may strain a later test.
+    counted: vi.spyOn(motion, "frame").mockImplementation(() => {}),
+    drawn: vi.spyOn(Studio.prototype, "render"),
+    fell: vi.spyOn(Studio.prototype, "fall"),
+    glazed: vi.spyOn(Studio.prototype, "lens"),
+  };
+}
 
 /** A lit studio on a canvas on screen, opened, under a weather the test sets. */
 async function open() {
   const canvas = document.createElement("canvas");
   let falling = $state.raw<Falling | null>(null);
+  let glass = $state.raw<Glass | null>(null);
   let scene: Lit | undefined;
   const seen = { labels: 0 };
-  // This host draws in software: its frames are no evidence, and none may strain a later test.
-  const counted = vi.spyOn(motion, "frame").mockImplementation(() => {});
-  const drawn = vi.spyOn(Studio.prototype, "render");
-  const fell = vi.spyOn(Studio.prototype, "fall");
+  const asked = watched();
 
   canvas.style.cssText = "display: block; width: 64px; height: 64px";
   document.body.append(canvas);
@@ -37,7 +50,7 @@ async function open() {
     scene = lit(
       canvas,
       new PerspectiveCamera(40, 1, 0.1, 5000),
-      (): Sky => ({ sun: null, diffuse: null, weather: { ...DRY, falling } }),
+      (): Sky => ({ sun: null, diffuse: null, weather: { ...DRY, falling, glass } }),
       () => {
         seen.labels += 1;
       },
@@ -59,11 +72,13 @@ async function open() {
     canvas,
     loop: scene.loop,
     seen,
-    counted,
-    drawn,
-    fell,
+    ...asked,
     weather: (next: Falling | null): void => {
       falling = next;
+      flushSync();
+    },
+    lens: (next: Glass | null): void => {
+      glass = next;
       flushSync();
     },
   };
@@ -174,3 +189,54 @@ test("still draws nothing that falls and never loops", async () => {
   expect(fell.mock.lastCall).toEqual([RAIN, false]);
   expect(loop.running).toBe(true);
 });
+
+/** What was last put on the lens. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- a spy, only read.
+const onLens = (glazed: ReturnType<typeof watched>["glazed"]): Glass | null | undefined =>
+  glazed.mock.lastCall?.[0];
+
+test("the scene loops while something is on the lens, fades it out once the weather clears, and stops", async () => {
+  const { loop, drawn, glazed, lens } = await open();
+
+  lens(FROST);
+  expect(loop.running).toBe(true);
+  // It fades in by the loop's frames.
+  await expect.poll(() => onLens(glazed), { timeout: 30_000 }).toEqual(FROST);
+
+  lens(null);
+  // Still fading: the loop goes on without the weather.
+  expect(loop.running).toBe(true);
+  await expect.poll(() => loop.running, { timeout: 30_000 }).toBe(false);
+  expect(onLens(glazed)).toBeNull();
+  expect(await draws(drawn)).toBe(0);
+}, 90_000);
+
+test("Niedrig puts nothing on the lens and loops for none of it", async () => {
+  const { loop, glazed, lens } = await open();
+
+  quality.choice = "low";
+  flushSync();
+  lens(FROST);
+  expect(loop.running).toBe(false);
+  expect(glazed).not.toHaveBeenCalled();
+
+  quality.choice = "medium";
+  flushSync();
+  expect(loop.running).toBe(true);
+});
+
+test("still clears the lens at once and never loops for it", async () => {
+  const { loop, glazed, lens } = await open();
+
+  lens(FROST);
+  await expect.poll(() => onLens(glazed), { timeout: 30_000 }).toEqual(FROST);
+
+  motion.lowPower = true;
+  flushSync();
+  expect(onLens(glazed)).toBeNull();
+  expect(loop.running).toBe(false);
+
+  motion.lowPower = false;
+  flushSync();
+  expect(loop.running).toBe(true);
+}, 60_000);

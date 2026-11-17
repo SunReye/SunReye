@@ -26,6 +26,8 @@ export interface Weather {
   /** Degrees it blows from: 0 north, 90 east. */
   readonly windDirection: number | null;
   readonly celsius: number | null;
+  /** Relative, in %. */
+  readonly humidity: number | null;
   /** Global horizontal irradiance in W/m²: under 1 it is night. */
   readonly ghi: number | null;
   /** The clear-sky index that stands for the instant: null where the core measured none. */
@@ -64,11 +66,11 @@ const SERIES = [
   { role: "weather.wind", history: true, forecasts: true },
   { role: "weather.wind_direction", history: true, forecasts: true },
   { role: "weather.temperature", history: true, forecasts: true },
+  { role: "weather.humidity", history: true, forecasts: true },
 ] as const;
 
 /** What the weather detail reads besides (ADR 23 "Dashboard"). */
 const DETAIL = [
-  { role: "weather.humidity", history: true, forecasts: true },
   { role: "weather.gusts", history: true, forecasts: true },
   { role: "weather.apparent_temperature", history: true, forecasts: true },
   { role: "weather.sunshine", history: true, forecasts: true },
@@ -241,6 +243,7 @@ export function weatherAt(read: WeatherRead | undefined, at: number): Weather {
     wind: held("weather.wind"),
     windDirection: held("weather.wind_direction"),
     celsius: held("weather.temperature"),
+    humidity: held("weather.humidity"),
     ghi,
     clearness: index,
     dry: dryAt(read?.["weather.precipitation"] ?? [], at),

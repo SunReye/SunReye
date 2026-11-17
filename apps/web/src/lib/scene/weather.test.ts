@@ -16,6 +16,7 @@ const weather = (known: Partial<Weather> = {}): Weather => ({
   wind: null,
   windDirection: null,
   celsius: null,
+  humidity: null,
   ghi: null,
   clearness: null,
   dry: null,
@@ -46,6 +47,7 @@ test("an instant without weather is clear and dry, whatever the plant reads", ()
     covered: false,
     thunder: false,
     falling: null,
+    glass: null,
   });
 });
 
@@ -187,4 +189,41 @@ test("the fog is the page's colour in clear air and greys with the weather's fog
   // On the dark page it lifts: grey, not black.
   expect(fogColour(night, true, 1)[1]).toBeGreaterThan(3 * night[1]);
   expect(fogColour(night, true, 1)[1]).toBeLessThan(0.15);
+});
+
+const glass = (known: Partial<Weather>) => sceneWeather(weather(known)).glass;
+
+test("rain or snow in the air is on the lens as densely as it falls", () => {
+  expect(glass({ precipitation: 8 })).toEqual({ rain: 1, snow: 0, frost: 0 });
+  expect(glass({ precipitation: 2 })).toEqual({ rain: 0.5, snow: 0, frost: 0 });
+  expect(glass({ precipitation: 1, snowfall: 3, celsius: 3 })).toEqual({
+    rain: 0,
+    snow: 1,
+    frost: 0,
+  });
+});
+
+test("frost is on the lens below about 0 °C in humid air, and more of it the colder", () => {
+  expect(glass({ celsius: -4, humidity: 95 })).toEqual({ rain: 0, snow: 0, frost: 1 });
+
+  const slight = glass({ celsius: -0.5, humidity: 95 })?.frost ?? 0;
+
+  expect(slight).toBeGreaterThan(0);
+  expect(slight).toBeLessThan(1);
+});
+
+test.each<readonly [string, Partial<Weather>]>([
+  ["above freezing", { celsius: 4, humidity: 95 }],
+  ["in dry air", { celsius: -8, humidity: 45 }],
+  ["without a humidity", { celsius: -8 }],
+  ["without a temperature", { humidity: 95 }],
+  ["dry and mild", { celsius: 12, humidity: 60, precipitation: 0, snowfall: 0 }],
+])("the lens is clear %s", (_, known) => {
+  expect(glass(known)).toBeNull();
+});
+
+test("the lens changes only where it would show: a tenth of a percent is the same glass", () => {
+  expect(glass({ celsius: -1.52, humidity: 84.1 })).toEqual(
+    glass({ celsius: -1.5, humidity: 84.2 }),
+  );
 });

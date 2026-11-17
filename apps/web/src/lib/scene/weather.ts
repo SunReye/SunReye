@@ -15,6 +15,16 @@ export interface Falling {
   readonly wind: readonly [number, number];
 }
 
+/** What is on the lens, each 0 to 1. */
+export interface Glass {
+  /** Rain that beads and runs. */
+  readonly rain: number;
+  /** Snow that settles at the edges and melts. */
+  readonly snow: number;
+  /** Frost that creeps in from the corners. */
+  readonly frost: number;
+}
+
 export interface SceneWeather {
   /** How far the distance fog closes in toward grey, 0 to 1. */
   readonly fog: number;
@@ -28,6 +38,8 @@ export interface SceneWeather {
   readonly thunder: boolean;
   /** What falls; null while it is dry. */
   readonly falling: Falling | null;
+  /** What is on the lens; null while it is clear. */
+  readonly glass: Glass | null;
 }
 
 /** What the plant tells of an instant, which no weather series does. */
@@ -46,6 +58,7 @@ export const DRY: SceneWeather = {
   covered: false,
   thunder: false,
   falling: null,
+  glass: null,
 };
 
 const UNKNOWN: Plant = { sun: null, share: null };
@@ -130,6 +143,33 @@ function fallingOf(weather: Weather): Falling | null {
     : { kind: "rain", density: densityOf(rain, WHOLE.rain), wind: carried(weather) };
 }
 
+/** Frost forms from a little above freezing, the lens being colder than the air, and is whole
+ * three degrees under; the air is humid enough from 70 % and wholly so at 90 %. The ADR gives
+ * "about 0 °C in humid air": the spans are where frost would be seen on a window. */
+const FROST = { celsius: { whole: -3, none: 0.5 }, humidity: { none: 70, whole: 90 } };
+
+function frostOf({ celsius, humidity }: Weather): number {
+  if (celsius === null || humidity === null) return 0;
+
+  const cold = 1 - smoothstep(FROST.celsius.whole, FROST.celsius.none, celsius);
+  const humid = smoothstep(FROST.humidity.none, FROST.humidity.whole, humidity);
+
+  return stepped(cold * humid, 0.1);
+}
+
+/** What falls is on the lens as densely as it falls, and frost besides. */
+function glassOf(weather: Weather, falling: Falling | null): Glass | null {
+  const frost = frostOf(weather);
+
+  if (falling === null && frost === 0) return null;
+
+  return {
+    rain: falling?.kind === "rain" ? falling.density : 0,
+    snow: falling?.kind === "snow" ? falling.density : 0,
+    frost,
+  };
+}
+
 /** Thick fog as it lands on screen, by theme: linear grey, a little cool. */
 const GREY = {
   light: [0.42, 0.44, 0.47],
@@ -148,6 +188,7 @@ export function fogColour(page: Triple, dark: boolean, fog: number): [number, nu
 export function sceneWeather(weather: Weather, plant: Plant = UNKNOWN): SceneWeather {
   const { code, dry, snowDepth } = weather;
   const snow = snowDepth !== null && snowDepth >= SNOW_DEPTH;
+  const falling = fallingOf(weather);
 
   return {
     fog: fogOf(weather),
@@ -155,6 +196,7 @@ export function sceneWeather(weather: Weather, plant: Plant = UNKNOWN): SceneWea
     snow,
     covered: coveredBy(weather, snow, plant),
     thunder: code !== null && code >= 95 && code <= 99,
-    falling: fallingOf(weather),
+    falling,
+    glass: glassOf(weather, falling),
   };
 }
