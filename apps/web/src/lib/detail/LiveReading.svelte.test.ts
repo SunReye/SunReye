@@ -34,6 +34,7 @@ async function mount() {
     silent: null,
     status: "live",
   });
+
   const live = screen.getByRole("region", { name: "Live-Leistung" });
 
   await expect.element(live.getByText("Live · letzte 2 Minuten")).toBeVisible();

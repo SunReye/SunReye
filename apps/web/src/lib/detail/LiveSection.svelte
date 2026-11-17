@@ -5,12 +5,12 @@
 -->
 <script lang="ts">
   import { Skeleton } from "#lib/components/ui/skeleton/index.js";
-  import LiveArea, { type LiveReading } from "../live-graph/LiveArea.svelte";
+  import LiveArea from "../live-graph/LiveArea.svelte";
+  import LiveLegend from "../live-graph/LiveLegend.svelte";
   import type { LivePoint } from "../live-graph/series.ts";
   import { stream } from "../live/stream.svelte.ts";
   import { motion } from "../motion/tier.svelte.ts";
   import { m } from "../paraglide/messages.js";
-  import { formatPower } from "../power.ts";
   import { input } from "../shell/input.svelte.ts";
   import type { Figure } from "./figures.ts";
   import { ago } from "./readings.ts";
@@ -35,6 +35,8 @@
     return status === "stopped" || stream.halted ? m.detail_stopped() : null;
   });
 
+  const label = $derived(halt ?? m.detail_live());
+
   const height = $derived(input.shell === "bar" ? 128 : 150);
 </script>
 
@@ -42,27 +44,11 @@
   class="flex flex-col gap-1 border-t border-border/60 px-5 pt-3 pb-4 sm:px-6"
   aria-label={m.detail_live_region()}
 >
-  {#snippet legend(read: LiveReading | null)}
-    <!-- The axis writes each tick's unit (lib/power.ts). -->
-    <div class="flex items-baseline justify-between gap-3 text-xs text-muted-foreground">
-      {#if read}
-        <span class="font-medium text-foreground tabular-nums">{ago(read.ago)}</span>
-        <span class="font-semibold text-foreground tabular-nums"
-          >{read.watts === null ? "–" : formatPower(read.watts)}</span
-        >
-      {:else}
-        <span class={["font-medium", halt !== null && "text-warning"]}>
-          {halt ?? m.detail_live()}
-        </span>
-      {/if}
-    </div>
-  {/snippet}
-
   {#if points.length === 0 && status === "loading"}
-    {@render legend(null)}
+    <LiveLegend reading={null} {label} warn={halt !== null} />
     <Skeleton style="height: {height}px" role="status" aria-label={m.loading()} />
   {:else if points.length === 0}
-    {@render legend(null)}
+    <LiveLegend reading={null} {label} warn={halt !== null} />
     <!-- The plot's place is held: nothing below it moves when the device answers again. -->
     <p
       class="flex items-center justify-center text-xs text-muted-foreground"
@@ -79,7 +65,7 @@
       {height}
       stalled={halt !== null}
       still={motion.still}
-      {legend}
+      {label}
     />
   {/if}
 </section>
