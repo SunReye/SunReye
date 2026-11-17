@@ -1,5 +1,6 @@
 // The studio's passes for its 3D quality (ADR 20 Look, Rendering quality): the scene into
-// multisampled HDR, ambient occlusion, tone mapping, and Ultra's burst of refining frames.
+// multisampled HDR, ambient occlusion, tone mapping, Ultra's burst of refining frames, and the
+// lens glass over it all while the weather puts something on it (ADR 23).
 import {
   DoubleSide,
   HalfFloatType,
@@ -12,8 +13,10 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { LensPass } from "./lens-pass.ts";
 import type { Look } from "./quality.ts";
 import { jitter, Refiner } from "./refine.ts";
+import type { Glass } from "./weather.ts";
 
 /** One ambient-occlusion pass, wide and strong: on a white model it is what sets a wall on the
  * ground and an eave on its wall. */
@@ -55,8 +58,12 @@ export class Passes {
   readonly #camera: PerspectiveCamera;
   readonly #composer: EffectComposer;
   readonly #occlusion: GTAOPass;
+  readonly #lens = new LensPass();
   readonly #refiner = new Refiner();
   #finest = false;
+  /** Whether the look has the glass, and whether anything is on it. */
+  #glass = false;
+  #glazed = false;
 
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws with them.
   constructor(renderer: WebGLRenderer, scene: Scene, camera: PerspectiveCamera) {
@@ -71,6 +78,9 @@ export class Passes {
     this.#composer.addPass(new RenderPass(scene, camera));
     this.#composer.addPass(this.#occlusion);
     this.#composer.addPass(new OutputPass());
+    // Last, and off while the lens is clear: the tone-mapped picture then goes to the canvas.
+    this.#lens.enabled = false;
+    this.#composer.addPass(this.#lens);
   }
 
   /** Whether the ambient-occlusion pass runs. */
@@ -84,9 +94,24 @@ export class Passes {
   }
 
   /** The passes `look` asks for. */
-  follow({ occlusion, finest }: Look): void {
+  follow({ occlusion, finest, glass }: Look): void {
     this.#occlusion.enabled = occlusion;
     this.#finest = finest;
+    this.#glass = glass;
+    this.#lens.enabled = glass && this.#glazed;
+  }
+
+  /** What is on the lens at `seconds` of the weather loop; null for a clear one. */
+  lens(glass: Glass | null, seconds: number): void {
+    this.#glazed = glass !== null;
+    this.#lens.enabled = this.#glass && this.#glazed;
+
+    if (glass !== null) this.#lens.show(glass, seconds);
+  }
+
+  /** The glass's colours for the theme. */
+  tint(dark: boolean): void {
+    this.#lens.tint(dark);
   }
 
   setSize(width: number, height: number, ratio: number): void {
@@ -96,6 +121,7 @@ export class Passes {
     this.#composer.setPixelRatio(ratio);
     this.#composer.setSize(width, height);
     this.#occlusion.setSize(Math.round(width * occluded), Math.round(height * occluded));
+    this.#lens.fit(width, height);
     this.#refiner.reset();
   }
 
@@ -103,6 +129,15 @@ export class Passes {
   render(): void {
     this.#refiner.reset();
     this.#composer.render();
+  }
+
+  /** Draws once with every pass, the glass too: each makes and first uses its programs. */
+  warm(): void {
+    const { enabled } = this.#lens;
+
+    this.#lens.enabled = true;
+    this.render();
+    this.#lens.enabled = enabled;
   }
 
   /**
@@ -132,6 +167,7 @@ export class Passes {
   dispose(): void {
     this.#composer.dispose();
     this.#occlusion.dispose();
+    this.#lens.dispose();
     this.#refiner.dispose();
   }
 }
