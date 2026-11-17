@@ -13,11 +13,11 @@ const WIDEST = 40;
 
 /**
  * The shadow's radius for the sampling below: the penumbra's width in texels per unit of the
- * shadow camera's depth. `spread` widens it under cloud (1 for a clear sky), `depth` is the
- * camera's near to far and `across` its width, in metres, and `texels` the map's side.
+ * shadow camera's depth. `depth` is the camera's near to far and `across` its width, in metres,
+ * and `texels` the map's side.
  */
-export function penumbra(spread: number, depth: number, across: number, texels: number): number {
-  return (SUN * spread * depth * texels) / across;
+export function penumbra(depth: number, across: number, texels: number): number {
+  return (SUN * depth * texels) / across;
 }
 
 const SAMPLING = `
