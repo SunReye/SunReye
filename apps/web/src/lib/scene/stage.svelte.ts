@@ -81,9 +81,9 @@ const same = <T>(last: T, next: T): T =>
   JSON.stringify(next) === JSON.stringify(last) ? last : next;
 
 /** The light and the weather of `sky`, each anew only when a value of it changed: a live tick
- * asks for the same weather again and must light nothing. `glazing` tells whether the look
- * draws the lens glass. */
-function steadied(sky: () => Sky, glazing: () => boolean) {
+ * asks for the same weather again and must light nothing. The studio's `look` tells
+ * whether it draws the lens glass, and `weather` what it draws of one. */
+function steadied(sky: () => Sky, look: Opened["look"], weatherOf: Opened["weather"]) {
   const sun = $derived(sky().sun);
   const diffuse = $derived(sky().diffuse);
   let last: Sky["weather"];
@@ -91,7 +91,7 @@ function steadied(sky: () => Sky, glazing: () => boolean) {
   let glazed: NonNullable<Sky["weather"]>["glass"] = null;
 
   const weather = $derived.by(() => {
-    last = same(last, sky().weather);
+    last = same(last, weatherOf(sky().weather));
 
     return last;
   });
@@ -106,7 +106,7 @@ function steadied(sky: () => Sky, glazing: () => boolean) {
   // As what falls is: the glass fades by itself, and a drying ground must not start it over.
   // None where the look draws none, at Niedrig: no loop is kept for it there.
   const glass = $derived.by(() => {
-    glazed = same(glazed, glazing() ? (weather?.glass ?? null) : null);
+    glazed = same(glazed, look().glass ? (weather?.glass ?? null) : null);
 
     return glazed;
   });
@@ -139,11 +139,11 @@ export function lit(
   sky: () => Sky,
   drawn: () => void,
 ): Lit {
-  const { studio, look, close } = openStudio(canvas, camera);
+  const { studio, look, weather, close } = openStudio(canvas, camera);
   const opened = new Opening(studio, drawn);
   const { flight, render } = opened;
   const shown = stage(studio);
-  const steady = steadied(sky, () => look().glass);
+  const steady = steadied(sky, look, weather);
   const day = $derived(steady.day);
   let colour = $state(0);
 

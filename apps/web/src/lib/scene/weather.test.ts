@@ -2,7 +2,7 @@
 import { expect, test } from "bun:test";
 import type { Weather } from "../weather/weather.ts";
 import { south } from "./light.harness.ts";
-import { DRY, fogColour, sceneWeather } from "./weather.ts";
+import { DRY, exact, fogColour, lightAlone, sceneWeather } from "./weather.ts";
 
 const MINUTE = 60_000;
 
@@ -226,4 +226,40 @@ test("the lens changes only where it would show: a tenth of a percent is the sam
   expect(glass({ celsius: -1.52, humidity: 84.1 })).toEqual(
     glass({ celsius: -1.5, humidity: 84.2 }),
   );
+});
+
+/** A thunderstorm in snow and fog over a snowed-in plant: all the scene's weather at once. */
+const ALL = sceneWeather(
+  weather({
+    code: 96,
+    visibility: 200,
+    dry: 0,
+    snowDepth: 0.05,
+    snowfall: 3,
+    wind: 4,
+    windDirection: 270,
+    celsius: -3,
+    humidity: 90,
+  }),
+  DARK_NOON,
+);
+
+test("without its effects the weather keeps its light alone: thunder, and nothing else", () => {
+  expect(ALL).toMatchObject({ fog: 1, wet: 1, snow: true, covered: true, thunder: true });
+  expect(ALL.falling).not.toBeNull();
+  expect(ALL.glass).not.toBeNull();
+
+  expect(lightAlone(ALL)).toEqual({ ...DRY, thunder: true });
+});
+
+test("for editing the weather leaves out fog, what falls and the glass, and keeps the ground", () => {
+  expect(exact(ALL)).toEqual({
+    fog: 0,
+    wet: 1,
+    snow: true,
+    covered: true,
+    thunder: true,
+    falling: null,
+    glass: null,
+  });
 });

@@ -200,3 +200,15 @@ export function sceneWeather(weather: Weather, plant: Plant = UNKNOWN): SceneWea
     glass: glassOf(weather, falling),
   };
 }
+
+/** The `weather`'s light alone (ADR 23 "Off switch"): thunder darkens the day, and nothing of
+ * the weather is drawn. */
+export function lightAlone({ thunder }: SceneWeather): SceneWeather {
+  return { ...DRY, thunder };
+}
+
+/** The `weather` as it is edited under (ADR 23 "Builder"): without fog, what falls and the
+ * glass, so faces and edges stay exact. */
+export function exact(weather: SceneWeather): SceneWeather {
+  return { ...weather, fog: 0, falling: null, glass: null };
+}
