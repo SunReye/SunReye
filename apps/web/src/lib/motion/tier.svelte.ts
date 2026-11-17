@@ -10,6 +10,7 @@ import { quality as sceneQuality, type QualityStore } from "../scene/quality.sve
 import {
   clampStrain,
   FrameStrain,
+  LOOP_JANK_FRAME_MS,
   LOW_POWER,
   MAX_STRAIN,
   type MotionTier,
@@ -35,6 +36,8 @@ export class MotionStore {
   #lowPower = $state(read(LOW_POWER) === "on");
 
   #frames = new FrameStrain();
+  /** The frames of a loop that draws on its own, judged by its own rate. */
+  #looped = new FrameStrain(LOOP_JANK_FRAME_MS);
   #raf: number | null = null;
   #settleTimer: ReturnType<typeof setTimeout> | null = null;
   #leases = 0;
@@ -82,6 +85,18 @@ export class MotionStore {
     };
   }
 
+  /**
+   * A frame the display gave a loop that draws on its own (ADR 23 "Motion"): judged by the
+   * loop's rate, for as long as it runs. The watch stops after a few windows; a loop that
+   * starts an hour later is what strains the device then.
+   */
+  frame(ts: number): void {
+    // Settling is no evidence, and the still tier has nothing to give.
+    if (this.#settleTimer !== null || this.still || !this.#gives()) return;
+
+    if (this.#looped.sample(ts)) this.#strained();
+  }
+
   #sync(): void {
     const wanted = this.#leases > 0 && !this.#lowPower && !this.#reduce.current && this.#gives();
 
@@ -108,9 +123,7 @@ export class MotionStore {
       this.#raf = null;
 
       if (this.#frames.sample(ts)) {
-        // A fresh window count: the next tier gets judged on its own merits.
-        this.#frames = new FrameStrain();
-        this.#downgrade();
+        this.#strained();
 
         return;
       }
@@ -119,6 +132,13 @@ export class MotionStore {
 
       if (this.#leases > 0 && this.#gives()) this.#tick();
     });
+  }
+
+  #strained(): void {
+    // A fresh window count: the next tier gets judged on its own merits.
+    this.#frames = new FrameStrain();
+    this.#looped = new FrameStrain(LOOP_JANK_FRAME_MS);
+    this.#downgrade();
   }
 
   #downgrade(): void {

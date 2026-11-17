@@ -1,10 +1,19 @@
 // The scene's weather at an instant (ADR 23 "Scene weather"): how far the fog closes in, how wet
-// the ground is, whether snow lies and covers the modules, and thunder. Pure: the studio and the
+// the ground is, whether snow lies and covers the modules, thunder, and what falls. Pure: the studio and the
 // drawn scene apply it, and nothing here moves.
 import type { Point } from "../builder/pv.ts";
 import type { Weather } from "../weather/weather.ts";
 import { mix, smoothstep } from "./colour.ts";
 import type { Triple } from "./tone.ts";
+
+/** Rain or snow in the air. */
+export interface Falling {
+  readonly kind: "rain" | "snow";
+  /** How much of the whole field falls, above 0 to 1. */
+  readonly density: number;
+  /** Metres a second the wind carries it: east, north. */
+  readonly wind: readonly [number, number];
+}
 
 export interface SceneWeather {
   /** How far the distance fog closes in toward grey, 0 to 1. */
@@ -17,6 +26,8 @@ export interface SceneWeather {
   readonly covered: boolean;
   /** A thunderstorm darkens the sky. */
   readonly thunder: boolean;
+  /** What falls; null while it is dry. */
+  readonly falling: Falling | null;
 }
 
 /** What the plant tells of an instant, which no weather series does. */
@@ -28,7 +39,14 @@ export interface Plant {
 }
 
 /** Clear and dry: an instant without weather. */
-export const DRY: SceneWeather = { fog: 0, wet: 0, snow: false, covered: false, thunder: false };
+export const DRY: SceneWeather = {
+  fog: 0,
+  wet: 0,
+  snow: false,
+  covered: false,
+  thunder: false,
+  falling: null,
+};
 
 const UNKNOWN: Plant = { sun: null, share: null };
 
@@ -79,6 +97,39 @@ function coveredBy({ clearness }: Weather, snow: boolean, { sun, share }: Plant)
   return snow && clearness === null && risen && idle;
 }
 
+/** The amounts from which the whole field falls: mm/h of rain, cm/h of snow. */
+const WHOLE = { rain: 8, snow: 3 };
+
+/** `value` to the nearest `step`: what falls changes only where it would show, so the scene is
+ * not lit anew for less. */
+const stepped = (value: number, step: number): number => Math.round(value / step) * step + 0;
+
+/** By the amount's root: drizzle shows, and a downpour is not ten times a shower. */
+function densityOf(amount: number, whole: number): number {
+  return Math.min(1, Math.max(0.1, stepped(Math.sqrt(amount / whole), 0.05)));
+}
+
+/** Where the wind carries what falls: away from where it blows from. */
+function carried({ wind, windDirection }: Weather): [number, number] {
+  if (wind === null || windDirection === null) return [0, 0];
+
+  const from = (windDirection * Math.PI) / 180;
+
+  return [stepped(-Math.sin(from) * wind, 0.5), stepped(-Math.cos(from) * wind, 0.5)];
+}
+
+/** Snow while snow falls, whose water the precipitation counts too; else rain. */
+function fallingOf(weather: Weather): Falling | null {
+  const snowfall = weather.snowfall ?? 0;
+  const rain = weather.precipitation ?? 0;
+
+  if (snowfall <= 0 && rain <= 0) return null;
+
+  return snowfall > 0
+    ? { kind: "snow", density: densityOf(snowfall, WHOLE.snow), wind: carried(weather) }
+    : { kind: "rain", density: densityOf(rain, WHOLE.rain), wind: carried(weather) };
+}
+
 /** Thick fog as it lands on screen, by theme: linear grey, a little cool. */
 const GREY = {
   light: [0.42, 0.44, 0.47],
@@ -104,5 +155,6 @@ export function sceneWeather(weather: Weather, plant: Plant = UNKNOWN): SceneWea
     snow,
     covered: coveredBy(weather, snow, plant),
     thunder: code !== null && code >= 95 && code <= 99,
+    falling: fallingOf(weather),
   };
 }

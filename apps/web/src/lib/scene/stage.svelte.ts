@@ -57,6 +57,13 @@ export interface Lit {
   readonly show: Staged["show"];
   /** When it draws: nothing before `opening.open` has prepared it. */
   readonly opening: Opening;
+  /**
+   * The weather loop (ADR 23 "Motion"): `keep(step)` runs it while something moves, `step` told
+   * the seconds it has run before each frame, until the release returned is called. It draws 30
+   * frames a second at most, on the full tier alone, and not while the tab is hidden or the
+   * canvas off screen.
+   */
+  readonly loop: Pick<Opening["loop"], "keep" | "running">;
   /** Frees the drawn group and the studio. */
   readonly dispose: () => void;
 }
@@ -69,19 +76,29 @@ export interface Sky {
   readonly weather: SceneWeather | undefined;
 }
 
+/** `next`, or `last` where it says the same. */
+const same = <T>(last: T, next: T): T =>
+  JSON.stringify(next) === JSON.stringify(last) ? last : next;
+
 /** The light and the weather of `sky`, each anew only when a value of it changed: a live tick
  * asks for the same weather again and must light nothing. */
 function steadied(sky: () => Sky) {
   const sun = $derived(sky().sun);
   const diffuse = $derived(sky().diffuse);
   let last: Sky["weather"];
+  let fell: NonNullable<Sky["weather"]>["falling"] = null;
 
   const weather = $derived.by(() => {
-    const next = sky().weather;
-
-    if (JSON.stringify(next) !== JSON.stringify(last)) last = next;
+    last = same(last, sky().weather);
 
     return last;
+  });
+
+  // Apart from the rest: the ground drying under it must not start the loop over.
+  const falling = $derived.by(() => {
+    fell = same(fell, weather?.falling ?? null);
+
+    return fell;
   });
 
   const day = $derived(daylight(sun, diffuse, weather?.thunder));
@@ -92,6 +109,9 @@ function steadied(sky: () => Sky) {
     },
     get weather() {
       return weather;
+    },
+    get falling() {
+      return falling;
     },
   };
 }
@@ -108,18 +128,16 @@ export function lit(
 ): Lit {
   const { studio, look, close } = openStudio(canvas, camera);
   const opened = new Opening(studio, drawn);
-  const { flight } = opened;
-  const { render } = opened;
+  const { flight, render } = opened;
   const shown = stage(studio);
   const steady = steadied(sky);
   const day = $derived(steady.day);
-  const weather = $derived(steady.weather);
   let colour = $state(0);
 
   $effect(() => {
-    studio.light(day, theme(dark()), cssColour("var(--background)"), weather);
+    studio.light(day, theme(dark()), cssColour("var(--background)"), steady.weather);
     shown.lamp(day.lamps);
-    shown.weather(weather);
+    shown.weather(steady.weather);
     colour = flowRgb("solar").getHex();
     render();
   });
@@ -128,6 +146,8 @@ export function lit(
     studio.follow(look());
     render();
   });
+
+  opened.falls(() => steady.falling);
 
   const glow = (): Glow => ({ colour, daylight: day.glow });
 
@@ -139,6 +159,7 @@ export function lit(
       easeGlow(group, shares, glow, render);
     },
     opening: opened,
+    loop: opened.loop,
     show: shown.show,
     dispose() {
       close();
