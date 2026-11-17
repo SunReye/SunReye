@@ -121,3 +121,24 @@ test("an inverter whose profile maps no temperature states none", async () => {
   expect(sheet.getByRole("term").filter({ hasText: "Temperatur" }).elements()).toHaveLength(0);
   expect(asked.some((a) => a.series === "inverter.temperature")).toBe(false);
 });
+
+test("an estimated string's energy and peak carry ≈; its forecast does not", async () => {
+  served.rolled = inverter({ "pv.string.power[1]": SOUTH });
+
+  const sheet = await sheetOf("string-1", "Süd");
+  const head = sheet.getByRole("banner");
+
+  await expect.element(head.getByText("4,0")).toBeVisible();
+  // The live power's ≈ and the range's.
+  expect(head.getByLabelText("geschätzt").elements()).toHaveLength(2);
+  await expect.element(sheet.getByRole("term").filter({ hasText: "Spitze ≈" })).toBeVisible();
+  expect(sheet.getByRole("term").filter({ hasText: "Prognose ≈" }).elements()).toHaveLength(0);
+});
+
+test("the plant's PV, measured whole, carries no ≈", async () => {
+  const sheet = await sheetOf("pv", "PV gesamt");
+
+  await expect.element(sheet.getByRole("term").filter({ hasText: "Spitze" })).toBeVisible();
+  expect(sheet.getByLabelText("geschätzt").elements()).toHaveLength(0);
+  expect(sheet.getByText("≈").elements()).toHaveLength(0);
+});

@@ -23,6 +23,8 @@ export interface PvRead {
   readonly forecast: number | null;
   /** The hottest rollup of the inverters' temperature; absent where no profile maps one. */
   readonly hottest?: Rolled | null;
+  /** The series is computed, not measured, as a string's sharing its input (ADR 17). */
+  readonly estimated: boolean;
 }
 
 /** What a PV sheet reads: its series, the inverters forecasting it, and whether it is the
@@ -52,20 +54,26 @@ function highest(rolled: readonly Rolled[]): Rolled | null {
   return best;
 }
 
-/** The devices whose profile maps an inverter temperature; none while capabilities fail. */
-async function thermometers(core: PvCore): Promise<number[]> {
+type Supported = Readonly<
+  Record<string, Readonly<{ series: readonly string[]; estimated: readonly string[] }>>
+>;
+
+/** What each device's profile maps; none while capabilities fail. */
+async function supportOf(core: PvCore): Promise<Supported> {
   const caps = await core.capabilities().catch(() => null);
 
-  if (caps === null || !("devices" in caps)) return [];
-
-  return Object.keys(caps.devices)
-    .filter((d) => caps.devices[d]?.series.includes(TEMPERATURE) === true)
-    .map(Number);
+  return caps !== null && "devices" in caps ? caps.devices : {};
 }
 
 /** The inverters' hottest rollup over the span; undefined where no profile maps a temperature. */
-async function hottestOf(core: PvCore, span: Readonly<PvSpan>): Promise<Rolled | null | undefined> {
-  const devices = await thermometers(core);
+async function hottestOf(
+  core: PvCore,
+  support: Supported,
+  span: Readonly<PvSpan>,
+): Promise<Rolled | null | undefined> {
+  const devices = Object.keys(support)
+    .filter((d) => support[d]?.series.includes(TEMPERATURE) === true)
+    .map(Number);
 
   if (devices.length === 0) return undefined;
 
@@ -99,12 +107,16 @@ async function forecastOf(
 export async function readPv(core: PvCore, a: PvSource, span: Readonly<PvSpan>): Promise<PvRead> {
   const [from, until] = [new Date(span.from), new Date(span.until)];
   const ran = span.from < span.until;
+  const supported = supportOf(core);
 
-  const [rolled, forecast, hottest] = await Promise.all([
+  const [rolled, forecast, support, hottest] = await Promise.all([
     ran ? rollups(strict(core), a.device, a.series, span.period, from, until) : [],
     forecastOf(core, a, span),
-    a.inverter && ran ? hottestOf(core, span) : undefined,
+    supported,
+    a.inverter && ran ? supported.then((s) => hottestOf(core, s, span)) : undefined,
   ]);
+
+  const estimated = support[String(a.device)]?.estimated.includes(a.series) === true;
 
   const read = rolled.filter((r) => r.covered > 0);
   const measured = read.length === 0 ? null : read.reduce((s, r) => s + r.integral, 0) / 1000;
@@ -113,7 +125,7 @@ export async function readPv(core: PvCore, a: PvSource, span: Readonly<PvSpan>):
   // A string that never ran has no peak.
   const peak = (top?.max ?? 0) > 0 ? top : null;
 
-  return { peak, measured, forecast, ...(hottest !== undefined && { hottest }) };
+  return { peak, measured, forecast, estimated, ...(hottest !== undefined && { hottest }) };
 }
 
 /** Where the range stands: its bands are hours, and the plant's timezone. */
@@ -146,7 +158,7 @@ export function pvFacts(read: Readonly<PvRead>, at: Readonly<PvAt>): Fact[] {
   const share = met(read);
 
   return [
-    topFact(m.detail_peak(), read.peak, "W", at),
+    topFact(read.estimated ? `${m.detail_peak()} ≈` : m.detail_peak(), read.peak, "W", at),
     {
       label: m.dash_forecast(),
       value: read.forecast,
