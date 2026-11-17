@@ -69,6 +69,33 @@ export interface Sky {
   readonly weather: SceneWeather | undefined;
 }
 
+/** The light and the weather of `sky`, each anew only when a value of it changed: a live tick
+ * asks for the same weather again and must light nothing. */
+function steadied(sky: () => Sky) {
+  const sun = $derived(sky().sun);
+  const diffuse = $derived(sky().diffuse);
+  let last: Sky["weather"];
+
+  const weather = $derived.by(() => {
+    const next = sky().weather;
+
+    if (JSON.stringify(next) !== JSON.stringify(last)) last = next;
+
+    return last;
+  });
+
+  const day = $derived(daylight(sun, diffuse, weather?.thunder));
+
+  return {
+    get day() {
+      return day;
+    },
+    get weather() {
+      return weather;
+    },
+  };
+}
+
 /** A studio on `canvas`, lit by `sky` and under its weather, drawn after each change; `drawn`
  * follows each draw. */
 export function lit(
@@ -84,13 +111,15 @@ export function lit(
   const { flight } = opened;
   const { render } = opened;
   const shown = stage(studio);
-  const day = $derived(daylight(sky().sun, sky().diffuse, sky().weather?.thunder));
+  const steady = steadied(sky);
+  const day = $derived(steady.day);
+  const weather = $derived(steady.weather);
   let colour = $state(0);
 
   $effect(() => {
-    studio.light(day, theme(dark()), cssColour("var(--background)"), sky().weather);
+    studio.light(day, theme(dark()), cssColour("var(--background)"), weather);
     shown.lamp(day.lamps);
-    shown.weather(sky().weather);
+    shown.weather(weather);
     colour = flowRgb("solar").getHex();
     render();
   });
