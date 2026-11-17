@@ -13,6 +13,8 @@ import { measureOf, type Measure, type MeasureInput, type Measured } from "./mea
 /** What the head and the analytics show of the range. */
 export interface HeadView {
   readonly state: "loading" | "error" | "before" | "ready";
+  /** What the figure is, where the sheet's title does not say it. */
+  readonly name?: string | undefined;
   /** The range's name: "Heute". */
   readonly label: string;
   readonly value: number | null;
@@ -101,6 +103,7 @@ export class RangeHead {
     const key = keyOf(measure);
 
     const none = {
+      name: measure.name,
       label: input.route.label,
       unit: measure.unit,
       digits: measure.digits,

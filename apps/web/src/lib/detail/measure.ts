@@ -22,6 +22,8 @@ export interface Measure {
   readonly digits: number;
   /** A share, whose change is in percentage points. */
   readonly points?: boolean;
+  /** What it is, where the sheet's title does not say it: a battery's "Entladen". */
+  readonly name?: string;
   /** The figure from `from` to before `to`, in ms, cut in `period`; rejects when the core fails. */
   readonly read: (from: number, to: number, period: RollupPeriod) => Promise<Measured>;
 }
@@ -123,5 +125,9 @@ export function measureOf({ id, core, strings }: MeasureInput): Measure | null {
 
   const a = analyticsOf(id, strings);
 
-  return a === null || a.energy === null ? null : integral(core, a.device, a.energy, KWH);
+  if (a === null || a.energy === null) return null;
+
+  const energy = integral(core, a.device, a.energy, KWH);
+
+  return a.way === null ? energy : { ...energy, name: a.way };
 }

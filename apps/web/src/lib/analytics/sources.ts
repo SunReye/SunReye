@@ -2,14 +2,17 @@
 // its heat grid reads per hour, and whether its strings compare. Pure.
 import { PLANT, type PvString } from "../api/core.ts";
 import { parseFigure } from "../detail/figures.ts";
+import { m } from "../paraglide/messages.js";
 
 export interface Analytics {
   readonly device: number;
   readonly series: string;
-  /** The series whose hourly energy the heat grid shows; null for a power that runs both ways. */
+  /** The series whose hourly energy the heat grid shows; null for none. */
   readonly heat: string | null;
   /** The series whose energy over the range heads the sheet; null where one figure cannot. */
   readonly energy: string | null;
+  /** The way the heat and the energy read, where the figure's name does not say it; else null. */
+  readonly way: string | null;
   /** The layout's strings are compared. */
   readonly compare: boolean;
   /** The inverters whose `pv.power` forecasts add up to what the figure expects; none for most. */
@@ -26,9 +29,12 @@ const PLANT_SERIES = new Map<string, [string, Analytics["heat"], Analytics["ener
   ["purchase", ["grid.power", "grid.import.power", "grid.import.power"]],
   ["grid", ["grid.power", "grid.import.power", null]],
   ["feedIn", ["grid.power", "grid.export.power", "grid.export.power"]],
-  ["battery", ["battery.power", null, null]],
+  ["battery", ["battery.power", "battery.discharge.power", "battery.discharge.power"]],
   ["generator", ["generator.power", "generator.power", "generator.power"]],
 ]);
+
+/** The figures whose heat and energy read one way of a power that runs both. */
+const WAYS = new Map([["battery", m.side_discharged]]);
 
 /** PV figures compare their strings, when there are several. */
 const PV = new Set(["production", "pv", "inverter"]);
@@ -50,6 +56,7 @@ export function analyticsOf(id: string, strings: readonly Readonly<PvString>[]):
           series: `pv.string.power[${s.id}]`,
           heat: `pv.string.power[${s.id}]`,
           energy: `pv.string.power[${s.id}]`,
+          way: null,
           compare: several,
           forecast: [],
         }
@@ -65,6 +72,7 @@ export function analyticsOf(id: string, strings: readonly Readonly<PvString>[]):
     series: plant[0],
     heat: plant[1],
     energy: plant[2],
+    way: WAYS.get(id)?.() ?? null,
     compare: several && PV.has(id),
     forecast: FORECAST.has(id) ? [...new Set(strings.map((s) => s.device))] : [],
   };
