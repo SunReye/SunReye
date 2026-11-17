@@ -76,8 +76,8 @@ const DRIES = 3_600_000;
 
 /**
  * Degrees of sun from which missing clear-sky indices tell of snow. The core measures none under
- * 5°, and the index that stands for an instant is of a quarter up to 35 minutes before it, when
- * the sun was lower.
+ * 5°, and the index that stands for an instant is of a quarter up to half an hour before it,
+ * when the sun was lower.
  */
 const SUN = 10;
 

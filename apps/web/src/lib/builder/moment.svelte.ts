@@ -16,8 +16,8 @@ export class Moment {
   /** The day's production once read, by string position. */
   production = $state.raw<Day>();
 
-  /** The day's stored weather once read: the scene's sky. */
-  #weather = $state.raw<WeatherRead>();
+  /** The day's stored weather once read, and when: the scene's sky. */
+  #weather = $state.raw<readonly [WeatherRead, number]>();
 
   /** Milliseconds since 1970; NaN while the day is cleared. */
   readonly at = $derived(new Date(`${this.day}T00:00`).getTime() + this.minutes * MINUTE);
@@ -58,9 +58,10 @@ export class Moment {
 
       if (day !== "") {
         void (async () => {
+          const asOf = Date.now();
           const read = await readWeather(core, ...spanOf(day));
 
-          if (current) this.#weather = read;
+          if (current) this.#weather = [read, asOf];
         })();
       }
 
@@ -72,7 +73,9 @@ export class Moment {
 
   /** The weather at the instant; nothing of it without weather for it. */
   get weather(): Weather {
-    return weatherAt(this.#weather, this.at);
+    const [read, asOf] = this.#weather ?? [];
+
+    return weatherAt(read, this.at, asOf);
   }
 
   /** Toward the sun, or null without the plant's location. */

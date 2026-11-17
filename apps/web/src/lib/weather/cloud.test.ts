@@ -101,3 +101,26 @@ test("the clear-sky index itself is told apart from the forecast's cloud: null w
   expect(weatherAt(weather, at("12:07"))).toMatchObject({ clearSkyIndex: 0.4 });
   expect(weatherAt(weather, at("12:30"))).toMatchObject({ clearSkyIndex: null, cloud: 1 });
 });
+
+test("a quarter the core closed without an index is a null stored: no earlier quarter stands in for it", async () => {
+  // Snow covered the modules from 11:45: the core stored null for that quarter.
+  const weather = await read({
+    history: { "weather.clearness": intervals(["11:30", "11:45", 0.4]) },
+  });
+
+  expect(weatherAt(weather, at("11:40")).clearSkyIndex).toBe(0.4);
+  // Not closed yet by 11:45:30, the quarter to 11:45 still stands.
+  expect(weatherAt(weather, at("11:50")).clearSkyIndex).toBe(0.4);
+  expect(weatherAt(weather, Date.parse("2026-11-14T12:00:30Z")).clearSkyIndex).toBe(0.4);
+  // The quarter to 12:00 has closed, and has none.
+  expect(weatherAt(weather, at("12:02")).clearSkyIndex).toBeNull();
+});
+
+test("read later, a past quarter without an index has none, and a day ahead takes none of today's", async () => {
+  const weather = await read({
+    history: { "weather.clearness": intervals(["11:30", "11:45", 0.4]) },
+  });
+
+  expect(weatherAt(weather, at("11:50"), at("15:00")).clearSkyIndex).toBeNull();
+  expect(weatherAt(weather, at("15:10"), at("11:50")).clearSkyIndex).toBeNull();
+});

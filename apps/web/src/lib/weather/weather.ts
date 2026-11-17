@@ -42,9 +42,11 @@ const MINUTE = 60_000;
 /** A forecast value is in force this long at most: the hourly quantities' step. */
 const STEP = 60 * MINUTE;
 
-/** The core closes a quarter's clear-sky index half a minute after its end, so the last one
- * stands for now until the next has closed: a quarter and that lag. */
-const INDEX_STANDS = 20 * MINUTE;
+const QUARTER = 15 * MINUTE;
+
+/** The core closes a quarter's clear-sky index half a minute after its end: a read this long
+ * after it is sure to hold what the core stored for it. */
+const CLOSES = MINUTE;
 
 /** The clear-sky indices of a closed and of a clear sky; between them the cloud is linear. */
 const INDEX = { closed: 0.25, clear: 1 };
@@ -240,16 +242,35 @@ function forecastCloud(ghi: number | null, dhi: number | null, cover: number | n
   return covered === null ? diffuse : (diffuse + covered) / 2;
 }
 
-/** The weather at `at`, ms since 1970: each quantity's value in force then. */
-export function weatherAt(read: WeatherRead | undefined, at: number): Weather {
+/**
+ * The clear-sky index that stands for `at` in a read made at `asOf`. A quarter the read is sure
+ * to hold and has no index for is a null the core stored (the sun low, or snow on the modules):
+ * nothing stands in for it. Past what the read is sure to hold, the latest closed quarter stands
+ * until the next has closed.
+ */
+function indexAt(quarters: readonly Held[], at: number, asOf: number): number | null {
+  const own = quarters.find(({ from, to }) => from <= at && at < to);
+
+  if (own !== undefined) return own.value;
+
+  // Where the last quarter the read is sure to hold ends.
+  const sure = Math.floor((asOf - CLOSES) / QUARTER) * QUARTER;
+
+  if (at < sure || at >= sure + QUARTER + CLOSES) return null;
+
+  return quarters.findLast(({ from, to }) => from <= at && to >= sure)?.value ?? null;
+}
+
+/**
+ * The weather at `at`, ms since 1970: each quantity's value in force then.
+ * @param asOf when `read` was made, for an instant read later; a read of now is made at `at`.
+ */
+export function weatherAt(read: WeatherRead | undefined, at: number, asOf = at): Weather {
   // History is listed first, so it wins over the forecast.
   const held = (role: Role): number | null =>
     read?.[role]?.find(({ from, to }) => from <= at && at < to)?.value ?? null;
 
-  // The latest quarter that stands: the one before yields once the next has closed.
-  const index =
-    read?.["weather.clearness"]?.findLast(({ from, to }) => from <= at && at < to + INDEX_STANDS)
-      ?.value ?? null;
+  const index = indexAt(read?.["weather.clearness"] ?? [], at, asOf);
 
   const [ghi, dhi, cover] = [held("weather.ghi"), held("weather.dhi"), held("weather.cloud_cover")];
 
