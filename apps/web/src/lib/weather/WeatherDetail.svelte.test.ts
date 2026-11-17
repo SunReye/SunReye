@@ -79,8 +79,8 @@ const DRY = {
   "weather.gusts": each(() => 7),
   "weather.wind_direction": each(() => 270),
   "weather.humidity": each(() => 80),
-  // Three sunny hours today, one tomorrow: an hourly target stands for its four slots.
-  "weather.sunshine": each((h) => ((h >= 11 && h < 14) || h === 36 ? 900 : 0)),
+  // Three sunny hours today, one tomorrow, in seconds per hour.
+  "weather.sunshine": each((h) => ((h >= 11 && h < 14) || h === 36 ? 3600 : 0)),
 } satisfies Record<string, Series>;
 
 async function show(stored: Stored) {

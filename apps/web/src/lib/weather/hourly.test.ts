@@ -134,23 +134,23 @@ test("the hour's icon is its code's, the worst of its quarters; an open sky at n
   expect(hour(sources, "22:00")?.sky).toBe("clear");
 });
 
-test("a day's sunshine is its slots' seconds in hours, measured ones not counted twice", () => {
+test("a day's sunshine is its hours' seconds in hours, measured ones not counted twice", () => {
   const [today, tomorrow] = days({
-    measured: { "weather.sunshine": [held("10:00", 900, 15), held("10:15", 450, 15)] },
+    measured: { "weather.sunshine": [held("10:00", 1800, 60)] },
     forecast: {
-      "weather.sunshine": [held("10:00", 900, 15), held("10:15", 900, 15), held("11:00", 900, 15)],
+      "weather.sunshine": [held("10:00", 3600, 60), held("11:00", 900, 60)],
     },
   });
 
-  // 900 s + 450 s measured in the tenth hour, 900 s forecast in the eleventh.
-  expect(today?.sunshine).toBe(0.625);
+  // 1800 s measured in the tenth hour, 900 s forecast in the eleventh.
+  expect(today?.sunshine).toBe(0.75);
   expect(tomorrow?.sunshine).toBeNull();
 });
 
-test("an hourly mean of measured sunshine counts each of its slots", () => {
-  const [today] = days({ measured: { "weather.sunshine": [held("10:00", 450, 60)] } });
+test("sunshine is seconds per hour in every tier: a day's mean counts for each of its hours", () => {
+  const [today] = days({ measured: { "weather.sunshine": [held("00:00", 900, 24 * 60)] } });
 
-  expect(today?.sunshine).toBe(0.5);
+  expect(today?.sunshine).toBe(6);
 });
 
 test("snow depth is the day's deepest, while snow lies: from 1 cm", () => {

@@ -69,7 +69,7 @@ pub struct Detail {
     pub gusts: Option<f64>,
     /// In °C.
     pub apparent_temperature: Option<f64>,
-    /// Seconds of sunshine in the slot.
+    /// Seconds of sunshine in the hour that ends at the slot; whole hours alone have it.
     pub sunshine: Option<f64>,
     /// In %; the forecast has it at whole hours only.
     pub cloud_cover: Option<f64>,

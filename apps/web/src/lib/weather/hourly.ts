@@ -48,9 +48,6 @@ export interface WeatherDay {
 
 const HOUR = 3_600_000;
 
-/** The sunshine's slot: its seconds are per quarter (ADR 23). */
-const SLOT = 900_000;
-
 /** A value and how long it was in force inside a span, in ms. */
 interface Part {
   readonly value: number;
@@ -105,7 +102,6 @@ interface Reading {
 function reading(sources: WeatherSources, at: number): Reading {
   const stored = storedIn(sources, at);
   const code = most(values(stored("weather.code")));
-  const sunshine = stored("weather.sunshine");
 
   return {
     hour: {
@@ -122,8 +118,8 @@ function reading(sources: WeatherSources, at: number): Reading {
       windDirection: stored("weather.wind_direction")[0]?.value ?? null,
       humidity: mean(stored("weather.humidity")),
     },
-    // A value stands for each slot it is held over: a rollup is the mean of its slots.
-    sunshine: sunshine.length === 0 ? null : sum(sunshine.map((p) => (p.value * p.ms) / SLOT)),
+    // Seconds per hour (ADR 23), as precipitation is a rate per hour.
+    sunshine: fallen(stored("weather.sunshine")),
     snowDepth: most(values(stored("weather.snow_depth"))),
     fog: codeKind(code) === "fog" ? least(values(stored("weather.visibility"))) : null,
   };

@@ -1,7 +1,8 @@
 //! The Open-Meteo adapters: keyless. The forecast at 15-minute resolution; the archive, past
 //! weather for learning (ADR 17), hourly.
 
-use std::time::{Duration, UNIX_EPOCH};
+use std::collections::HashMap;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use jiff::civil::Date;
 use serde::Deserialize;
@@ -143,14 +144,18 @@ struct Series {
 }
 
 /// The slots of an answer, its sums over 15 minutes as rates per hour; a slot missing anything
-/// the PV model reads but wind is dropped. Cloud cover and snow depth join the slots at whole
-/// hours.
+/// the PV model reads but wind is dropped. Sunshine is summed into hours (ADR 23), and cloud
+/// cover and snow depth join the slots at whole hours.
 pub fn parse(body: &str) -> Result<Vec<Slot>, Error> {
     let Body {
         minutely_15: s,
         hourly,
     } = serde_json::from_str(body).map_err(|_| Error::Format)?;
     let mut slots = slots(&s, 4.0);
+    let sunshine = sunshine_by_hour(&s);
+    for slot in &mut slots {
+        slot.detail.sunshine = sunshine.get(&slot.target).copied();
+    }
     if let Some(h) = hourly {
         for (i, &seconds) in h.time.iter().enumerate() {
             let target = UNIX_EPOCH + Duration::from_secs(seconds);
@@ -171,6 +176,27 @@ pub fn parse(body: &str) -> Result<Vec<Slot>, Error> {
 pub fn parse_archive(body: &str) -> Result<Vec<Slot>, Error> {
     let ArchiveBody { hourly: s } = serde_json::from_str(body).map_err(|_| Error::Format)?;
     Ok(slots(&s, 1.0))
+}
+
+/// Seconds of sunshine in the hour that ends at each whole UTC hour, as the archive has them:
+/// each value is of the 15 minutes before its time, so an hour is the four up to it. An hour
+/// missing one has none.
+fn sunshine_by_hour(s: &Series) -> HashMap<SystemTime, f64> {
+    const QUARTER: u64 = 900;
+    s.time
+        .iter()
+        .enumerate()
+        .filter(|(_, seconds)| *seconds % 3600 == 0)
+        .filter_map(|(i, &end)| {
+            let first = i.checked_sub(3)?;
+            // Four quarters in a row.
+            (s.time.get(first)? + 3 * QUARTER == end).then_some(())?;
+            let sum = (first..=i)
+                .map(|q| value(&s.sunshine, q))
+                .sum::<Option<f64>>()?;
+            Some((UNIX_EPOCH + Duration::from_secs(end), sum))
+        })
+        .collect()
 }
 
 fn value(series: &[Option<f64>], i: usize) -> Option<f64> {
