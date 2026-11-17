@@ -3,6 +3,8 @@ import { flowColour } from "../energy-colours.ts";
 import type { Day } from "../dashboard/day.ts";
 import { current } from "../dashboard/now.ts";
 import { m } from "../paraglide/messages.js";
+import { skyOf } from "../weather/sky.ts";
+import { SKY_WORDS } from "../weather/sky-words.ts";
 
 /** A day figure: one of today's energies. */
 export type Today = "production" | "consumption" | "feedIn" | "purchase";
@@ -212,15 +214,8 @@ function price(day?: Readonly<Day>, spot?: number): Facts {
   };
 }
 
-const SKIES = {
-  sunny: m.dash_sky_sunny,
-  partly: m.dash_sky_partly,
-  cloudy: m.dash_sky_cloudy,
-  night: m.dash_sky_night,
-};
-
 function weather(day: Readonly<Day> | undefined): Facts {
-  const sky = day?.weather.sky;
+  const sky = day === undefined ? null : skyOf(day.weather);
 
   const lead = {
     label: m.detail_now(),
@@ -229,7 +224,7 @@ function weather(day: Readonly<Day> | undefined): Facts {
     digits: 0,
   };
 
-  return { lead, stats: sky ? [{ label: m.dash_weather(), text: SKIES[sky]() }] : [] };
+  return { lead, stats: sky ? [{ label: m.dash_weather(), text: SKY_WORDS[sky]() }] : [] };
 }
 
 function peak(day: Readonly<Day> | undefined, kind: "production" | "consumption"): Fact {

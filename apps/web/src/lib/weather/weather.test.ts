@@ -8,11 +8,19 @@ const at = (time: string) => Date.parse(iso(time));
 
 /** Forecast targets, as the core serves them. */
 const targets = (...values: readonly (readonly [string, number])[]) =>
-  values.map(([time, value]) => ({ issued: iso("00:00"), target: iso(time), value }));
+  values.map(([time, value]) => ({
+    issued: iso("00:00"),
+    target: iso(time),
+    value,
+  }));
 
 /** History intervals, as the core serves them. */
 const intervals = (...values: readonly (readonly [string, string, number])[]) =>
-  values.map(([start, end, mean]) => ({ start: iso(start), end: iso(end), mean }));
+  values.map(([start, end, mean]) => ({
+    start: iso(start),
+    end: iso(end),
+    mean,
+  }));
 
 interface Stored {
   readonly history?: Readonly<Record<string, ReturnType<typeof intervals>>>;
@@ -27,7 +35,10 @@ function fake(stored: Stored) {
     history: (device, series) => {
       asked.push(`history ${device} ${series}`);
 
-      return Promise.resolve({ tier: "raw", points: stored.history?.[series] ?? [] });
+      return Promise.resolve({
+        tier: "raw",
+        points: stored.history?.[series] ?? [],
+      });
     },
     forecasts: (device, series) => {
       asked.push(`forecasts ${device} ${series}`);
@@ -125,7 +136,10 @@ test("past weather comes from history where it covers the instant, else from the
     celsius: -1.5,
     visibility: 4000,
   });
-  expect(weatherAt(weather, at("10:05"))).toMatchObject({ code: 3, celsius: 1 });
+  expect(weatherAt(weather, at("10:05"))).toMatchObject({
+    code: 3,
+    celsius: 1,
+  });
 });
 
 test("the cloud is the diffuse share of the global irradiance while the sun gives light", async () => {
@@ -133,7 +147,11 @@ test("the cloud is the diffuse share of the global irradiance while the sun give
     forecasts: {
       "weather.ghi": targets(["11:00", 400], ["12:00", 300], ["13:00", 10]),
       "weather.dhi": targets(["11:00", 60], ["12:00", 285], ["13:00", 11]),
-      "weather.cloud_cover": targets(["11:00", 100], ["12:00", 0], ["13:00", 0]),
+      "weather.cloud_cover": targets(
+        ["11:00", 100],
+        ["12:00", 0],
+        ["13:00", 0],
+      ),
     },
   });
 
@@ -217,8 +235,14 @@ test("the weather is read from the weather device: history and forecasts, the me
       "weather.dhi",
       "weather.cloud_cover",
     ]
-      .flatMap((series) => [`history ${WEATHER} ${series}`, `forecasts ${WEATHER} ${series}`])
-      .concat([`history ${WEATHER} weather.clearness`, `forecasts ${WEATHER} weather.visibility`])
+      .flatMap((series) => [
+        `history ${WEATHER} ${series}`,
+        `forecasts ${WEATHER} ${series}`,
+      ])
+      .concat([
+        `history ${WEATHER} weather.clearness`,
+        `forecasts ${WEATHER} weather.visibility`,
+      ])
       .toSorted(),
   );
 });

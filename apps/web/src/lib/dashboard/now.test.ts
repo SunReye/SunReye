@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { current, headline, priceLevel, sky } from "./now.ts";
+import { current, headline, priceLevel } from "./now.ts";
 
 test("the headline is PV power while PV produces", () => {
   expect(headline({ "pv.power": 4200, "load.power": 900 })).toEqual({
@@ -33,14 +33,7 @@ test("a price without a day to compare is not judged", () => {
   expect(priceLevel(0.1, [0.1, 0.1, 0.1])).toBe("normal");
 });
 
-test("the sky reads from how much of the light is diffuse", () => {
-  expect(sky({ ghi: 600, dhi: 90 })).toBe("sunny");
-  expect(sky({ ghi: 300, dhi: 180 })).toBe("partly");
-  expect(sky({ ghi: 120, dhi: 115 })).toBe("cloudy");
-  expect(sky({ ghi: 0, dhi: 0 })).toBe("night");
-});
-
-test("the weather now is the forecast target that began last", () => {
+test("the price now is the target that began last", () => {
   const targets = [
     { target: "2026-11-12T10:00:00Z", value: 7 },
     { target: "2026-11-12T10:15:00Z", value: 8 },

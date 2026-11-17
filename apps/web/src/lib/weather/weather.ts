@@ -43,7 +43,7 @@ const INDEX_STANDS = 20 * MINUTE;
 const INDEX = { closed: 0.25, clear: 1 };
 
 /** Under this global irradiance in W/m² the light tells nothing of the clouds. */
-const DARK = 1;
+export const DARK = 1;
 
 /** Each stored series the weather is read from, and where the core has it. */
 const SERIES = {
@@ -52,13 +52,21 @@ const SERIES = {
   dhi: { role: "weather.dhi", history: true, forecasts: true },
   cover: { role: "weather.cloud_cover", history: true, forecasts: true },
   code: { role: "weather.code", history: true, forecasts: true },
-  precipitation: { role: "weather.precipitation", history: true, forecasts: true },
+  precipitation: {
+    role: "weather.precipitation",
+    history: true,
+    forecasts: true,
+  },
   snowfall: { role: "weather.snowfall", history: true, forecasts: true },
   snowDepth: { role: "weather.snow_depth", history: true, forecasts: true },
   // The archive has none (ADR 23).
   visibility: { role: "weather.visibility", history: false, forecasts: true },
   wind: { role: "weather.wind", history: true, forecasts: true },
-  windDirection: { role: "weather.wind_direction", history: true, forecasts: true },
+  windDirection: {
+    role: "weather.wind_direction",
+    history: true,
+    forecasts: true,
+  },
   celsius: { role: "weather.temperature", history: true, forecasts: true },
 } as const;
 
@@ -78,7 +86,12 @@ export type WeatherRead = Readonly<Record<Name, readonly Held[]>>;
 
 type Reader = Pick<Core, "history" | "forecasts">;
 
-async function measured(core: Reader, name: Name, from: Date, to: Date): Promise<Held[]> {
+async function measured(
+  core: Reader,
+  name: Name,
+  from: Date,
+  to: Date,
+): Promise<Held[]> {
   const read = await core.history(WEATHER, SERIES[name].role, from, to);
 
   return "points" in read
@@ -90,7 +103,12 @@ async function measured(core: Reader, name: Name, from: Date, to: Date): Promise
     : [];
 }
 
-async function forecast(core: Reader, name: Name, from: Date, to: Date): Promise<Held[]> {
+async function forecast(
+  core: Reader,
+  name: Name,
+  from: Date,
+  to: Date,
+): Promise<Held[]> {
   const read = await core.forecasts(WEATHER, SERIES[name].role, from, to);
 
   if (!("points" in read)) return [];
@@ -100,7 +118,11 @@ async function forecast(core: Reader, name: Name, from: Date, to: Date): Promise
   return read.points.map(({ value }, i) => {
     const start = begun[i] ?? 0;
 
-    return { from: start, to: Math.min(begun[i + 1] ?? Infinity, start + STEP), value };
+    return {
+      from: start,
+      to: Math.min(begun[i + 1] ?? Infinity, start + STEP),
+      value,
+    };
   });
 }
 
@@ -117,7 +139,10 @@ export async function readWeather(
       const { history, forecasts } = SERIES[name];
 
       const sources = await Promise.all(
-        [history && measured(core, name, ...span), forecasts && forecast(core, name, ...span)]
+        [
+          history && measured(core, name, ...span),
+          forecasts && forecast(core, name, ...span),
+        ]
           .filter((source) => source !== false)
           .map((source) => source.catch((): Held[] => [])),
       );
@@ -139,7 +164,8 @@ export function weatherAt(read: WeatherRead | undefined, at: number): Weather {
 
   // The latest quarter that stands: the one before yields once the next has closed.
   const index =
-    read?.index.findLast(({ from, to }) => from <= at && at < to + INDEX_STANDS)?.value ?? null;
+    read?.index.findLast(({ from, to }) => from <= at && at < to + INDEX_STANDS)
+      ?.value ?? null;
 
   const [ghi, dhi, cover] = [held("ghi"), held("dhi"), held("cover")];
 
@@ -147,7 +173,8 @@ export function weatherAt(read: WeatherRead | undefined, at: number): Weather {
 
   if (ghi !== null && dhi !== null && ghi >= DARK) cloud = clamp(dhi / ghi);
 
-  if (index !== null) cloud = clamp((INDEX.clear - index) / (INDEX.clear - INDEX.closed));
+  if (index !== null)
+    cloud = clamp((INDEX.clear - index) / (INDEX.clear - INDEX.closed));
 
   return {
     cloud,

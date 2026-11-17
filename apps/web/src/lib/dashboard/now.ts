@@ -36,19 +36,6 @@ export function priceLevel(price: number, day: readonly number[]): PriceLevel | 
   return price > high ? "dear" : "normal";
 }
 
-export type Sky = "sunny" | "partly" | "cloudy" | "night";
-
-/** The sky from global and diffuse irradiance in W/m²: the more diffuse, the more cloud. */
-export function sky({ ghi, dhi }: { readonly ghi: number; readonly dhi: number }): Sky {
-  if (ghi < 1) return "night";
-
-  const diffuse = dhi / ghi;
-
-  if (diffuse >= 0.8) return "cloudy";
-
-  return diffuse >= 0.45 ? "partly" : "sunny";
-}
-
 /** The value of the target that began last at `now`; null before the first. */
 export function current(targets: readonly Target[], now: Readonly<Date>): number | null {
   const begun = targets.filter((t) => Date.parse(t.target) <= now.getTime());
