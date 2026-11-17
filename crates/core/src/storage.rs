@@ -574,6 +574,12 @@ impl Zones {
         self.current.subscribe()
     }
 
+    /// The zone now.
+    #[must_use]
+    pub fn now(&self) -> jiff::tz::TimeZone {
+        self.current.borrow().clone()
+    }
+
     /// Cuts days from now on in the IANA zone `name`, kept across restarts; `log` runs in the same
     /// transaction.
     ///

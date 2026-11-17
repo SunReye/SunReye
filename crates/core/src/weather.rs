@@ -121,6 +121,12 @@ impl From<storage::Error> for Error {
     }
 }
 
+/// The irradiance the backfill's span starts with, and the first of the roles of ADR 23.
+const GHI: &str = "weather.ghi";
+const CODE: &str = "weather.code";
+/// Snow depth, which the clear-sky index reads.
+pub const SNOW_DEPTH: &str = "weather.snow_depth";
+
 /// One stored quantity: its role, its kind, its unit's symbol, the step it is stored in, its
 /// value in a slot and whether the archive has it.
 struct Quantity {
@@ -137,7 +143,7 @@ const MODEL: usize = 5;
 
 const QUANTITIES: [Quantity; 16] = [
     Quantity {
-        role: "weather.ghi",
+        role: GHI,
         kind: RoleKind::Measurement,
         unit: Some("W/m²"),
         step: 0.1,
@@ -177,7 +183,7 @@ const QUANTITIES: [Quantity; 16] = [
         archived: true,
     },
     Quantity {
-        role: "weather.code",
+        role: CODE,
         kind: RoleKind::Status,
         unit: None,
         step: 1.0,
@@ -257,7 +263,7 @@ const QUANTITIES: [Quantity; 16] = [
         archived: true,
     },
     Quantity {
-        role: "weather.snow_depth",
+        role: SNOW_DEPTH,
         kind: RoleKind::Measurement,
         unit: Some("m"),
         step: 0.001,
@@ -520,7 +526,7 @@ impl<A: Archive> Past<A> {
                         .find(|c| c.device == self.device && c.series == role)
                         .map(|c| (c.first, c.last))
                 };
-                let (start, until) = match (bounds("weather.ghi"), bounds("weather.code")) {
+                let (start, until) = match (bounds(GHI), bounds(CODE)) {
                     (None, _) => (UNIX_EPOCH, UNIX_EPOCH),
                     (Some((first, _)), Some((code, _))) => (first, code),
                     (Some((first, last)), None) => (first, last),

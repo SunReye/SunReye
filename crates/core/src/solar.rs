@@ -117,7 +117,7 @@ impl SolarForecast {
         for input in inputs {
             grids.insert(input, corrections.grid(input.0, input.1).await?);
         }
-        let zone = storage.zones().watch().borrow().clone();
+        let zone = storage.zones().now();
         let inverters = self.layouts.inverters();
         let rating = |device| {
             let profile = inverters.profile(device)?;

@@ -27,6 +27,10 @@ use crate::solar::{self, Key};
 use crate::storage::{self, Aggregate, ChangePoint, Policy, Reader, Storage, Tier};
 use crate::weather;
 
+/// An inverter's PV power, and one MPPT input's.
+const PV_POWER: &str = "pv.power";
+const MPPT_POWER: &str = "pv.mppt.power";
+
 const QUARTER: Duration = Duration::from_mins(15);
 /// A run covers at most this much, so a backfill stores its progress as it goes.
 const CHUNK: Duration = Duration::from_hours(24);
@@ -36,7 +40,7 @@ const STEP: f64 = 0.001;
 /// Degrees: below it the clear-sky model is too dim to divide by.
 const SUN_ELEVATION: f64 = 5.0;
 /// Metres of snow depth from which modules may be snow-covered.
-const SNOW_DEPTH: f64 = 0.01;
+const SNOW_LIES: f64 = 0.01;
 /// Under this index with snow lying, the modules are snow-covered.
 const SNOW_COVERED: f64 = 0.05;
 /// How far back an inverter's highest peak is looked for, as the correction learner does.
@@ -141,7 +145,7 @@ impl ClearSkyIndex {
                 grids.insert((device, input), corrections.grid(device, input).await?);
             }
         }
-        let zone = storage.zones().watch().borrow().clone();
+        let zone = storage.zones().now();
         let run = Run {
             versions: &versions,
             grids: &grids,
@@ -237,7 +241,7 @@ impl ClearSkyIndex {
             let value = modelled.get(&q).and_then(|clear| {
                 let index = run.index(q, clear, &readings)?;
                 let covered =
-                    snow.at(q).is_some_and(|depth| depth >= SNOW_DEPTH) && index < SNOW_COVERED;
+                    snow.at(q).is_some_and(|depth| depth >= SNOW_LIES) && index < SNOW_COVERED;
                 (!covered).then_some(index)
             });
             if points.last().is_none_or(|p| p.value != value) {
@@ -298,7 +302,7 @@ impl ClearSkyIndex {
     /// The snow depth stored as history from `from` to `to`, and forecast.
     async fn snow(&self, from: SystemTime, to: SystemTime) -> Result<Snow, storage::Error> {
         let series = Series {
-            role: "weather.snow_depth".to_owned(),
+            role: weather::SNOW_DEPTH.to_owned(),
             index: None,
         };
         let history = self
@@ -345,7 +349,7 @@ impl Run<'_> {
                 .into_iter()
                 .map(|input| {
                     let watts = clear
-                        .get(&(device, "pv.mppt.power", Some(input)))
+                        .get(&(device, MPPT_POWER, Some(input)))
                         .copied()
                         .unwrap_or(0.0);
                     let factor = self
@@ -453,9 +457,9 @@ fn wired(versions: &[Version]) -> BTreeMap<DeviceId, BTreeSet<u32>> {
 fn power(input: Option<u32>) -> Series {
     Series {
         role: if input.is_some() {
-            "pv.mppt.power"
+            MPPT_POWER
         } else {
-            "pv.power"
+            PV_POWER
         }
         .to_owned(),
         index: input,
