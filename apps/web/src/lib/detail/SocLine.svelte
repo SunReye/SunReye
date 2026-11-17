@@ -52,7 +52,10 @@
     </span>
     {#if shown}
       {@const v = socOf(shown)}
-      <span class="font-medium tabular-nums">{v === null ? "–" : `${num(v)} %`}</span>
+      <span class="flex gap-1.5 tabular-nums">
+        <span class="text-muted-foreground">{shown.title}</span>
+        <span class="font-medium">{v === null ? "–" : `${num(v)} %`}</span>
+      </span>
     {/if}
   </div>
   <div class="grid grid-cols-[2.25rem_minmax(0,1fr)] gap-x-1">

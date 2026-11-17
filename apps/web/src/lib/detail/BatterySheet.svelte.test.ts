@@ -97,7 +97,29 @@ test("the state of charge runs as a line under the power, and reads where the po
   const line = soc.element().querySelector("[data-plot]")!;
 
   await userEvent.hover(line, { position: over(line, 8) });
+  await expect.element(soc.getByText("8:00–9:00 Uhr")).toBeVisible();
   await expect.element(soc.getByText("40 %")).toBeVisible();
+
+  // An hour without a reading is a break in the line, never 0 %.
+  await userEvent.hover(line, { position: over(line, 9) });
+  await expect.element(soc.getByText("–", { exact: true })).toBeVisible();
+});
+
+test("a range whose battery fails to read says so under the power, with a retry", async () => {
+  served.rolled = (a) =>
+    a.series === "battery.soc"
+      ? Response.json({ status: 500, code: "store.failed" }, { status: 500 })
+      : plant(DAY)(a);
+
+  const { sheet, head } = await sheetOf();
+
+  await expect.element(head.getByText("3,6 kWh")).toBeVisible();
+  await expect.element(sheet.getByRole("alert")).toBeVisible();
+  served.rolled = plant(DAY);
+  await sheet.getByRole("alert").getByRole("button", { name: "Erneut laden" }).click();
+
+  await expect.element(sheet.getByRole("group", { name: "Ladezustand" })).toBeVisible();
+  await expect.element(sheet.getByRole("alert")).not.toBeInTheDocument();
 });
 
 test("the facts state the round-trip efficiency and the range's full cycles", async () => {
