@@ -10,7 +10,7 @@
   import { factsOf } from "./autarky.ts";
   import { AutarkyRange } from "./autarky-range.svelte.ts";
   import DetailStats from "./DetailStats.svelte";
-  import type { HeadView } from "./head.svelte.ts";
+  import { FAILED } from "./head.svelte.ts";
   import RangeState from "./RangeState.svelte";
   import ShareBar from "./ShareBar.svelte";
   import ShareChart from "./ShareChart.svelte";
@@ -18,17 +18,6 @@
   let { input }: { input: AnalyticsInput } = $props();
 
   const range = new AutarkyRange(() => input);
-
-  /** The range's own read failed, though the head's did not. */
-  const FAILED: HeadView = {
-    state: "error",
-    label: "",
-    value: null,
-    unit: "",
-    digits: 0,
-    versus: "",
-    notes: [],
-  };
 </script>
 
 <RangeState head={range.failed ? FAILED : null} onretry={range.retry}>

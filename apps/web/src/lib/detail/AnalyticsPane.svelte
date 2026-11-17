@@ -43,7 +43,7 @@
     core={input.core}
     route={input.route}
     source={{ device: analytics.device, series: analytics.heat }}
-    name={title}
+    name={analytics.way ?? title}
     {colour}
   />
 {:else if tab === "compare"}

@@ -782,6 +782,8 @@
   "detail_no_tariff_short": "Kein Tarif",
   "detail_pv_covered": "Direkt aus PV",
   "detail_month_mean": "Ø 30 Tage",
+  "detail_round_trip": "Wirkungsgrad",
+  "detail_cycles": "Vollzyklen",
   "heat_by_time": "{name} nach Tageszeit",
   "heat_keys": "{label}. Pfeiltasten wählen eine Zelle, Eingabe öffnet die Spalte.",
   "heat_idle": "{name} je Stunde",

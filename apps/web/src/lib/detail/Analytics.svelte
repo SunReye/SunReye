@@ -1,6 +1,7 @@
 <!--
   A figure's range analytics (ADR 21): the sheet's range control, then its tabs, which all read
-  it. Autarky, which no one series holds, reads its range in a panel of its own. Any other figure
+  it. Autarky, which no one series holds, reads its range in a panel of its own; the battery adds
+  its state of charge and its facts to its tabs. Any other figure
   without a series in history shows `fallback` instead.
 -->
 <script lang="ts" module>
@@ -36,6 +37,7 @@
   import RangeControl from "../range/RangeControl.svelte";
   import AnalyticsTabs from "./AnalyticsTabs.svelte";
   import AutarkyPanel from "./AutarkyPanel.svelte";
+  import BatteryPanel from "./BatteryPanel.svelte";
   import { flowOf } from "./flow.ts";
   import FlowPanel from "./FlowPanel.svelte";
   import type { HeadView } from "./head.svelte.ts";
@@ -75,7 +77,9 @@
   >
     <RangeControl model={input.route} />
     <RangeState {head} {onretry}>
-      {#if analytics}
+      {#if analytics && id === "battery"}
+        <BatteryPanel {id} {title} {colour} {analytics} {input} />
+      {:else if analytics}
         <AnalyticsTabs {id} {title} {colour} {analytics} {input} />
         {#if flow}
           <FlowPanel {input} {flow} {priced} />

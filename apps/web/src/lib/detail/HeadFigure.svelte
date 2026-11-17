@@ -22,6 +22,10 @@
     >
   {/if}
   <span class="mt-1 flex flex-wrap gap-x-1.5 text-xs text-muted-foreground">
+    {#if view.name}
+      <span>{view.name}</span>
+      <span aria-hidden="true">·</span>
+    {/if}
     <span>{view.label}</span>
     {#if view.versus}
       <span aria-hidden="true">·</span>

@@ -16,6 +16,8 @@ export interface Target {
   readonly plot: Element | null;
   readonly ondrill?: ((index: number) => void) | undefined;
   readonly onbrush?: ((from: number, to: number) => void) | undefined;
+  /** Told the band being read, as it changes, for a chart that reads along. */
+  readonly onread?: ((index: number | null) => void) | undefined;
 }
 
 /** What a handler reads of a pointer event. */
@@ -29,7 +31,7 @@ type Key = Readonly<Pick<KeyboardEvent, "key" | "preventDefault" | "shiftKey">>;
 const clamp = (v: number, last: number) => Math.min(last, Math.max(0, v));
 
 export class Reading {
-  active = $state<number | null>(null);
+  #active = $state<number | null>(null);
   pinned = $state(false);
   brush = $state<[number, number] | null>(null);
   /** The span being selected, in order. */
@@ -42,6 +44,16 @@ export class Reading {
   #dragged = false;
 
   readonly #finger: Finger<Pointer>;
+
+  /** The band being read; null with none. */
+  get active(): number | null {
+    return this.#active;
+  }
+
+  set active(i: number | null) {
+    this.#active = i;
+    this.#target().onread?.(i);
+  }
 
   /** @param hold whether a finger reads only once held: inside a sheet, read at setup */
   constructor(target: () => Target, hold = inSheet()) {

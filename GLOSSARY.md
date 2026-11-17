@@ -152,6 +152,14 @@ _Avoid_: Self-sufficiency, independence
 The energy a full battery gives today, inferred from its state of charge over whole discharges, not read from the device.
 _Avoid_: State of health, SOH, nameplate
 
+**Round-trip efficiency**:
+The share of the energy that went through the battery that it gave back over a range: what it gave, over what it took less what it holds more at the range's end than at its start.
+_Avoid_: Battery efficiency, inverter efficiency (the inverter's own, of the moment)
+
+**Full cycles**:
+What the battery gave over a range, counted in its capacities.
+_Avoid_: Cycles (the vendor's own count is something else)
+
 **Deadband**:
 The smallest change in a role's unit that is stored. The stored series is never wrong by more than this.
 _Avoid_: Threshold, tolerance

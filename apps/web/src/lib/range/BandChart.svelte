@@ -60,6 +60,7 @@
     label,
     ondrill,
     onbrush,
+    onread,
   }: {
     bands: Band[];
     up: SeriesMeta[];
@@ -87,6 +88,8 @@
     label: string;
     ondrill?: ((index: number) => void) | undefined;
     onbrush?: ((from: number, to: number) => void) | undefined;
+    /** Told the band being read, for a chart that reads along. */
+    onread?: ((index: number | null) => void) | undefined;
   } = $props();
 
   const scale = $derived(scaleOf(bands, down.length > 0, max));
@@ -178,7 +181,7 @@
 
   const linePath = $derived(loading ? null : lineOf(bands, scale, plotW, plotHeight));
 
-  const reading = new Reading(() => ({ bands, plot, ondrill, onbrush }));
+  const reading = new Reading(() => ({ bands, plot, ondrill, onbrush, onread }));
   const active = $derived(reading.active);
   const sel = $derived(reading.sel);
   const shown = $derived(active !== null && active < bands.length ? bands[active]! : null);

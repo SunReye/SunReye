@@ -13,6 +13,8 @@ import { measureOf, type Measure, type MeasureInput, type Measured } from "./mea
 /** What the head and the analytics show of the range. */
 export interface HeadView {
   readonly state: "loading" | "error" | "before" | "ready";
+  /** What the figure is, where the sheet's title does not say it. */
+  readonly name?: string | undefined;
   /** The range's name: "Heute". */
   readonly label: string;
   readonly value: number | null;
@@ -23,6 +25,17 @@ export interface HeadView {
   /** Where the record begins or its readings stop inside the range; before it, the one sentence. */
   readonly notes: readonly string[];
 }
+
+/** A range whose own read failed, though the head's did not: it says so with a retry. */
+export const FAILED: HeadView = {
+  state: "error",
+  label: "",
+  value: null,
+  unit: "",
+  digits: 0,
+  versus: "",
+  notes: [],
+};
 
 /** The sheet's figure, what it reads through and the record's edges. */
 export interface HeadInput extends MeasureInput {
@@ -101,6 +114,7 @@ export class RangeHead {
     const key = keyOf(measure);
 
     const none = {
+      name: measure.name,
       label: input.route.label,
       unit: measure.unit,
       digits: measure.digits,

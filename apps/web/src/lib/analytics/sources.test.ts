@@ -28,8 +28,19 @@ test("a string reads its own series from its inverter, and compares with its sib
   expect(analyticsOf("house", STRINGS)!.compare).toBe(false);
 });
 
-test("a signed battery has no heat; figures without a series have no analytics", () => {
-  expect(analyticsOf("battery", STRINGS)!.heat).toBeNull();
+test("the battery heats and heads with what it discharged, as the plant splits it", () => {
+  const battery = analyticsOf("battery", STRINGS)!;
+
+  expect([battery.device, battery.series]).toEqual([PLANT, "battery.power"]);
+  expect([battery.heat, battery.energy]).toEqual([
+    "battery.discharge.power",
+    "battery.discharge.power",
+  ]);
+  expect(battery.way).toBe("Entladen");
+  expect(analyticsOf("feedIn", STRINGS)!.way).toBeNull();
+});
+
+test("figures without a series have no analytics", () => {
   expect(analyticsOf("price", STRINGS)).toBeNull();
   expect(analyticsOf("string-9", STRINGS)).toBeNull();
 });
@@ -48,5 +59,4 @@ test("a one-way figure heads with its energy; a two-way one with none", () => {
   expect(analyticsOf("production", STRINGS)!.energy).toBe("pv.power");
   expect(analyticsOf("string-4", STRINGS)!.energy).toBe("pv.string.power[4]");
   expect(analyticsOf("grid", STRINGS)!.energy).toBeNull();
-  expect(analyticsOf("battery", STRINGS)!.energy).toBeNull();
 });

@@ -21,6 +21,7 @@
     series,
     route,
     forecast = [],
+    onread,
   }: {
     core: Readonly<Pick<Core, "statistics" | "forecasts">>;
     device: number;
@@ -28,6 +29,8 @@
     route: RangeRoute;
     /** The devices whose `series` forecasts add up to what this series expects. */
     forecast?: readonly number[];
+    /** Told the band being read, for a chart that reads along. */
+    onread?: (index: number | null) => void;
   } = $props();
 
   const data = new RangeData(
@@ -157,4 +160,5 @@
   label={m.history_chart({ series: meta[0]!.label })}
   ondrill={data.drill}
   onbrush={data.brush}
+  {onread}
 />
