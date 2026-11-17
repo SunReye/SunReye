@@ -611,7 +611,7 @@ async fn capabilities_report_the_profile_table_the_wasm_reports() {
                         "weather.wind", "weather.code", "weather.precipitation", "weather.snowfall",
                         "weather.visibility", "weather.humidity", "weather.wind_direction",
                         "weather.gusts", "weather.apparent_temperature", "weather.sunshine",
-                        "weather.cloud_cover", "weather.snow_depth",
+                        "weather.cloud_cover", "weather.snow_depth", "weather.clearness",
                     ],
                 },
             },

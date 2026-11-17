@@ -8,6 +8,7 @@ pub mod bus;
 pub mod capture;
 pub mod cars;
 pub mod changes;
+pub mod clear_sky_index;
 pub mod correction;
 pub mod devices;
 pub mod endpoint;
