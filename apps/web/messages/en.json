@@ -725,6 +725,7 @@
   "detail_max": "Max",
   "detail_mean": "Avg",
   "detail_total": "Total",
+  "detail_forecast_met": "{share}% reached",
   "detail_peak": "Peak",
   "detail_earned": "Earned",
   "detail_paid": "Cost",

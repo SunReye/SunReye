@@ -15,7 +15,9 @@
     (from, to, now) => {
       const [core, a, period] = [input.core, analytics, periodOf(input.route.range)];
 
-      return readPv(core, a, { from: from.getTime(), to: Math.min(to.getTime(), now), period });
+      const [a0, b] = [from.getTime(), to.getTime()];
+
+      return readPv(core, a, { from: a0, until: Math.min(b, now), to: b, period });
     },
   );
 

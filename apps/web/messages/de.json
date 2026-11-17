@@ -725,6 +725,7 @@
   "detail_max": "Max",
   "detail_mean": "Ø",
   "detail_total": "Gesamt",
+  "detail_forecast_met": "{share}\u00a0% erreicht",
   "detail_peak": "Spitze",
   "detail_earned": "Vergütung",
   "detail_paid": "Kosten",

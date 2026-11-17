@@ -80,3 +80,22 @@ test("past a day the peak names its day", async () => {
 
   await expect.element(peak).toHaveTextContent("3,1 kW 11. Nov.");
 });
+
+test("the facts row sets the range's forecast against what was measured", async () => {
+  served.rolled = inverter({ "pv.string.power[1]": SOUTH });
+
+  const sheet = await sheetOf("string-1", "Süd");
+  const forecast = sheet.getByRole("definition").filter({ hasText: "erreicht" });
+
+  // 4 kWh made of the 8 kWh its inverter forecasts for the string today.
+  await expect.element(forecast).toHaveTextContent("8,0 kWh 50 % erreicht");
+});
+
+test("the forecast fact reads the whole range, past today", async () => {
+  const sheet = await sheetOf("string-1", "Süd", "range=week");
+
+  await expect.element(sheet.getByRole("term").filter({ hasText: "Prognose" })).toBeVisible();
+  expect(fetched).toContain(
+    "/api/v1/devices/1/forecasts pv.string.power[1] 2026-11-09T00:00:00.000Z",
+  );
+});
