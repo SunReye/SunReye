@@ -186,13 +186,16 @@ test("the scene's sky is the weather of the slider's day", async () => {
     to: new Date("2026-11-02T00:00").toISOString(),
   }).toString();
 
-  const weather = (series: string) =>
+  const weather = (route: string, series: string) =>
     asked.find(
-      (url) => url.includes(`/devices/4294967295/forecasts?series=${series}&`) && url.endsWith(day),
+      (url) => url.includes(`/devices/4294967295/${route}?series=${series}&`) && url.endsWith(day),
     );
 
-  await expect.poll(() => weather("weather.ghi")).toBeDefined();
-  await expect.poll(() => weather("weather.dhi")).toBeDefined();
+  await expect.poll(() => weather("forecasts", "weather.ghi")).toBeDefined();
+  await expect.poll(() => weather("forecasts", "weather.dhi")).toBeDefined();
+  // A past day's sky is the measured one, and its weather the archive's.
+  await expect.poll(() => weather("history", "weather.clearness")).toBeDefined();
+  await expect.poll(() => weather("history", "weather.code")).toBeDefined();
 });
 
 test("each MPPT input shows its learned correction at the slider's hour and its last 30 days", async () => {

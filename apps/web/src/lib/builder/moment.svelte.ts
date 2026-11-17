@@ -1,9 +1,9 @@
 // The time slider's instant (ADR 20): the day and time the admin picks, the sun then and each
 // string's production. It reads the draft and never writes it: nothing changes the scene.
 import { today } from "./day.ts";
-import { diffuseAt, irradiance, type Irradiance } from "../scene/diffuse.ts";
 import { load, spanOf, wattsAt, type Day, type Reading } from "./moment.ts";
 import { sunAt, type Point } from "./pv.ts";
+import { readWeather, weatherAt, type Weather, type WeatherRead } from "../weather/weather.ts";
 
 const MINUTE = 60_000;
 
@@ -15,8 +15,8 @@ export class Moment {
   /** The day's production once read, by string position. */
   production = $state.raw<Day>();
 
-  /** The day's forecast irradiance once read: the scene's sky. */
-  #irradiance = $state.raw<Irradiance>();
+  /** The day's stored weather once read: the scene's sky. */
+  #weather = $state.raw<WeatherRead>();
 
   /** Milliseconds since 1970; NaN while the day is cleared. */
   readonly at = $derived(new Date(`${this.day}T00:00`).getTime() + this.minutes * MINUTE);
@@ -53,9 +53,9 @@ export class Moment {
 
       if (day !== "") {
         void (async () => {
-          const read = await irradiance(core, ...spanOf(day));
+          const read = await readWeather(core, ...spanOf(day));
 
-          if (current) this.#irradiance = read;
+          if (current) this.#weather = read;
         })();
       }
 
@@ -65,9 +65,9 @@ export class Moment {
     });
   }
 
-  /** How diffuse the sky's light is at the instant, 0 to 1; null without weather for it. */
-  get diffuse(): number | null {
-    return diffuseAt(this.#irradiance, this.at);
+  /** The weather at the instant; nothing of it without weather for it. */
+  get weather(): Weather {
+    return weatherAt(this.#weather, this.at);
   }
 
   /** Toward the sun, or null without the plant's location. */

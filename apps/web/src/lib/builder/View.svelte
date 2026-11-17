@@ -85,7 +85,7 @@
       {geometry}
       {panels}
       sun={moment.sun}
-      diffuse={moment.diffuse}
+      diffuse={moment.weather.cloud}
       {cars}
       {onpick}
       {editing}

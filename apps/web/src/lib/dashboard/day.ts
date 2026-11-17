@@ -1,9 +1,8 @@
 // Reads today from the core: the plant's energy from its rollups, the PV forecast, the day's prices, the weather
 // and the money (ADR 12, 14, 15, 17). Nothing here is live; the dashboard rereads it.
-import { PLANT, SPOT, WEATHER, type Core } from "../api/core.ts";
+import { PLANT, SPOT, type Core } from "../api/core.ts";
 import type { CostDays } from "../api/tariff.ts";
 import { plantMidnight } from "../plant-day.ts";
-import { current, sky, type Sky } from "./now.ts";
 import {
   combined,
   dayRows,
@@ -16,6 +15,7 @@ import {
   type Target,
   type Today,
 } from "./today.ts";
+import { readWeather, weatherAt, type Weather } from "../weather/weather.ts";
 
 const HOUR = 3_600_000;
 
@@ -32,7 +32,8 @@ export interface Day {
   readonly pv: { readonly total: number; readonly remaining: number };
   /** The day's spot prices in EUR/kWh, each from its slot's start; none without the spot-price device. */
   readonly prices: readonly Target[];
-  readonly weather: { readonly celsius: number | null; readonly sky: Sky | null };
+  /** As of `now`. */
+  readonly weather: Weather;
   /** EUR; null when the core refused, as without a tariff. */
   readonly money: Readonly<CostDays["total"]> | null;
 }
@@ -103,19 +104,10 @@ async function inverters(core: Reader): Promise<readonly number[]> {
   return [...devices];
 }
 
-async function weatherNow(core: Reader, now: Readonly<Date>) {
+async function weatherNow(core: Reader, now: Readonly<Date>): Promise<Weather> {
   const around = [new Date(now.getTime() - HOUR), new Date(now.getTime() + HOUR)] as const;
 
-  const [celsius = null, ghi = null, dhi = null] = await Promise.all(
-    ["weather.temperature", "weather.ghi", "weather.dhi"].map(async (series) =>
-      current(await forecast(core, WEATHER, series, ...around), now),
-    ),
-  );
-
-  return {
-    celsius,
-    sky: ghi === null || dhi === null ? null : sky({ ghi, dhi }),
-  };
+  return weatherAt(await readWeather(core, ...around), now.getTime());
 }
 
 /** Today in the plant's zone, as of `now`. */

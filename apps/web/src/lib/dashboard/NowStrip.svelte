@@ -7,6 +7,9 @@
   import { getLocale } from "../paraglide/runtime.js";
   import type { Day } from "./day.ts";
   import { priceLevel } from "./now.ts";
+  import SkyIcon from "../weather/SkyIcon.svelte";
+  import { skyOf } from "../weather/sky.ts";
+  import { SKY_WORDS } from "../weather/sky-words.ts";
 
   let {
     spot,
@@ -55,13 +58,6 @@
 
   const levelClass = $derived(level === null ? "" : LEVELS[level].cls);
 
-  const SKIES = {
-    sunny: m.dash_sky_sunny,
-    partly: m.dash_sky_partly,
-    cloudy: m.dash_sky_cloudy,
-    night: m.dash_sky_night,
-  };
-
   const tenths = new Intl.NumberFormat(getLocale(), {
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,
@@ -75,7 +71,7 @@
 
   const celsius = $derived(day?.weather.celsius ?? null);
 
-  const skyWord = $derived(day?.weather.sky ? SKIES[day.weather.sky]() : BLANK);
+  const sky = $derived(day === undefined ? null : skyOf(day.weather));
 
   const cell =
     "flex min-w-0 flex-col items-start gap-0.5 px-3 py-3 text-left sm:px-4";
@@ -112,6 +108,13 @@
       ><AnimatedNumber value={celsius} digits={0} />
       <span class={unit}>°C</span></span
     >
-    <span class={sub}>{skyWord}</span>
+    <span class="{sub} flex items-center gap-1">
+      {#if sky === null}
+        {BLANK}
+      {:else}
+        <SkyIcon {sky} class="size-3.5 shrink-0" />
+        <span class="truncate">{SKY_WORDS[sky]()}</span>
+      {/if}
+    </span>
   </Pressable>
 </Card.Root>
