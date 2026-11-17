@@ -54,10 +54,11 @@ function weigh(j: Readonly<Judging>, a: number, b: number) {
   const f = bandFigure(j.series, j.measured, a, b);
   const measured = f.covered > 0;
   const until = Math.min(b, j.now);
-  // Compared only where the forecast covers the time measured: a layout laid out mid-day has a
-  // forecast for the rest of that day alone, against the whole day's production.
+  // Compared only where the forecast covers the band's time so far: a layout laid out mid-day has
+  // a forecast for the rest of that day alone, against the whole day's production. A rollup says
+  // how long it was read, not when, so readings over fewer hours prove nothing.
   const forecast = spread(j.forecast, a, until, () => 0).covered;
-  const comparable = measured && forecast >= f.covered * 0.95;
+  const comparable = measured && forecast >= (until - a) * 0.95;
 
   return {
     covered: f.covered,
