@@ -2,6 +2,7 @@
 // forecast issued for it, and what is still expected. Pure but for `readForecast`.
 import type { Core } from "../api/core.ts";
 import { combined, type Target } from "../dashboard/today.ts";
+import { forecastTargets } from "../forecast/forecast.ts";
 import type { Band } from "../range/bands.ts";
 import { bandsOf, intervals, spread } from "../range/fill.ts";
 import { num } from "../range/format.ts";
@@ -19,15 +20,11 @@ export async function readForecast(
   from: number,
   to: number,
 ): Promise<Target[]> {
-  const reads = await Promise.all(
-    inverters.map((id) => core.forecasts(id, "pv.power", new Date(from), new Date(to))),
+  return combined(
+    await Promise.all(
+      inverters.map((id) => forecastTargets(core, id, "pv.power", new Date(from), new Date(to))),
+    ),
   );
-
-  const each: Target[][] = [];
-
-  for (const read of reads) each.push("points" in read ? read.points : []);
-
-  return combined(each);
 }
 
 /** kWh of forecast in [a, b). */

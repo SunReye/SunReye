@@ -126,7 +126,10 @@ function fake(stored: Readonly<Record<string, Watts>>) {
 
       const of = device === WEATHER ? SKY.get(series) : stored[series];
 
-      return Promise.resolve(targets(of, from.getTime(), to.getTime()));
+      const read = targets(of, from.getTime(), to.getTime());
+
+      // The core refuses a read of more than 1,500 points (ADR 9).
+      return Promise.resolve(read.points.length > 1500 ? { problem: "forecast.range" } : read);
     },
     statistics: (device, series, period) => {
       asked.push(`statistics ${device} ${series} ${period}`);
