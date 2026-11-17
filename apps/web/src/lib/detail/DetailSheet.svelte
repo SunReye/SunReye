@@ -89,8 +89,9 @@
   /** The topology's points, which viewers read too (ADR 9, 14). */
   let points = $state.raw<Source["points"]>([]);
 
-  /** The series with stored history, each `device/series` (ADR 22); none until the catalog is read. */
-  let stored = $state.raw<readonly string[]>([]);
+  /** The series with stored history by `device/series`, each with its first reading (ADR 22); none
+   * until the catalog is read. */
+  let stored = $state.raw<ReadonlyMap<string, number>>(new Map());
 
   let now = $state(Date.now());
 

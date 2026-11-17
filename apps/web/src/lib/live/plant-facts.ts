@@ -26,20 +26,26 @@ export async function estimatedSeries(
     : {};
 }
 
-/** The series with stored history, each `device/series` (ADR 22); none while the catalog cannot be read. */
-export async function storedSeries(core: Readonly<Pick<Core, "series">>): Promise<string[]> {
-  const found: string[] = [];
+/**
+ * The series with stored history, each `device/series`, and its first reading in ms (ADR 22); none
+ * while the catalog cannot be read.
+ */
+export async function storedSeries(
+  core: Readonly<Pick<Core, "series">>,
+): Promise<ReadonlyMap<string, number>> {
+  const found = new Map<string, number>();
 
   try {
     const catalog = await core.series();
 
-    if ("problem" in catalog) return [];
+    if ("problem" in catalog) return found;
 
     for (const device of catalog)
-      for (const stored of device.series) found.push(`${device.id}/${stored.series}`);
+      for (const stored of device.series)
+        found.set(`${device.id}/${stored.series}`, Date.parse(stored.first));
   } catch {
     // An unreachable core, or an answer that is no catalog: no reading links.
-    return [];
+    return new Map();
   }
 
   return found;

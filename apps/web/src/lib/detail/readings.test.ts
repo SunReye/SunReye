@@ -257,7 +257,7 @@ test("a string on no known device has nothing to draw", () => {
 });
 
 /** Only the battery's temperature and the plant's heat pump have stored history. */
-const link = exploreLinks(["2/battery.temperature", `${PLANT}/point.power[2]`], {
+const link = exploreLinks(new Set(["2/battery.temperature", `${PLANT}/point.power[2]`]), {
   range: "week",
   at: null,
 });
