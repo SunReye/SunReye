@@ -66,7 +66,18 @@ const SERIES = [
   { role: "weather.temperature", history: true, forecasts: true },
 ] as const;
 
+/** What the weather detail reads besides (ADR 23 "Dashboard"). */
+const DETAIL = [
+  { role: "weather.humidity", history: true, forecasts: true },
+  { role: "weather.gusts", history: true, forecasts: true },
+  { role: "weather.apparent_temperature", history: true, forecasts: true },
+  { role: "weather.sunshine", history: true, forecasts: true },
+] as const;
+
 type Role = (typeof SERIES)[number]["role"];
+
+/** A series the weather detail reads. */
+export type DetailRole = (typeof SERIES | typeof DETAIL)[number]["role"];
 
 /** A value from `from` to before `to`, in ms since 1970. */
 export interface Held {
@@ -86,7 +97,13 @@ type Interval = History["points"][number];
 
 type Target = Forecasts["points"][number];
 
-async function measured(core: WeatherReader, role: Role, span: Span): Promise<Held[]> {
+/** A span's stored weather with its history and its forecasts apart. */
+export interface WeatherSources {
+  readonly measured: WeatherRead;
+  readonly forecast: WeatherRead;
+}
+
+async function measured(core: WeatherReader, role: DetailRole, span: Span): Promise<Held[]> {
   const read = await core.history(WEATHER, role, ...span);
 
   return "points" in read
@@ -98,7 +115,7 @@ async function measured(core: WeatherReader, role: Role, span: Span): Promise<He
     : [];
 }
 
-async function forecast(core: WeatherReader, role: Role, span: Span): Promise<Held[]> {
+async function forecast(core: WeatherReader, role: DetailRole, span: Span): Promise<Held[]> {
   const read = await core.forecasts(WEATHER, role, ...span);
 
   if (!("points" in read)) return [];
@@ -123,26 +140,62 @@ async function source(wanted: boolean, read: () => Promise<Held[]>): Promise<Hel
   }
 }
 
+/** One series from both sources. */
+type Stored = Readonly<{ role: DetailRole; past: readonly Held[]; ahead: readonly Held[] }>;
+
+/** Each of `series` from both sources; a series the core refuses or fails is empty. */
+function stored(
+  core: WeatherReader,
+  series: readonly (typeof SERIES | typeof DETAIL)[number][],
+  spans: Readonly<{ past: Span; ahead: Span }>,
+): Promise<readonly Stored[]> {
+  return Promise.all(
+    series.map(async ({ role, history, forecasts }) => {
+      const [past, ahead] = await Promise.all([
+        source(history, () => measured(core, role, spans.past)),
+        source(forecasts, () => forecast(core, role, spans.ahead)),
+      ]);
+
+      return { role, past, ahead };
+    }),
+  );
+}
+
+const spanOf = (from: Readonly<Date>, to: Readonly<Date>): Span => [
+  new Date(from.getTime()),
+  new Date(to.getTime()),
+];
+
 /** The stored weather from `from` to before `to`; a series the core refuses or fails is empty. */
 export async function readWeather(
   core: WeatherReader,
   from: Readonly<Date>,
   to: Readonly<Date>,
 ): Promise<WeatherRead> {
-  const span = [new Date(from.getTime()), new Date(to.getTime())] as const;
+  const span = spanOf(from, to);
+  const read = await stored(core, SERIES, { past: span, ahead: span });
 
-  const stored = await Promise.all(
-    SERIES.map(async ({ role, history, forecasts }) => {
-      const [past, ahead] = await Promise.all([
-        source(history, () => measured(core, role, span)),
-        source(forecasts, () => forecast(core, role, span)),
-      ]);
+  return Object.fromEntries(read.map(({ role, past, ahead }) => [role, [...past, ...ahead]]));
+}
 
-      return [role, [...past, ...ahead]] as const;
-    }),
-  );
+/**
+ * The weather detail's read from `from` to before `to`: every series, its sources apart.
+ * @param measuredTo where history ends. A day or less of it is read raw; a longer span comes as
+ * hourly means, which blur the wind's direction and its gusts.
+ */
+export async function readWeatherSources(
+  core: WeatherReader,
+  from: Readonly<Date>,
+  to: Readonly<Date>,
+  measuredTo: Readonly<Date>,
+): Promise<WeatherSources> {
+  const spans = { past: spanOf(from, measuredTo), ahead: spanOf(from, to) };
+  const read = await stored(core, [...SERIES, ...DETAIL], spans);
 
-  return Object.fromEntries(stored);
+  return {
+    measured: Object.fromEntries(read.map(({ role, past }) => [role, past])),
+    forecast: Object.fromEntries(read.map(({ role, ahead }) => [role, ahead])),
+  };
 }
 
 const clamp = (value: number) => Math.min(1, Math.max(0, value));

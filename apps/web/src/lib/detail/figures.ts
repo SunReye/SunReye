@@ -19,7 +19,9 @@ export interface Figure {
   readonly diverging?: readonly [string, string];
   /** Today's energy the sheet leads with, before the live power. */
   readonly today?: Today;
-  readonly chart: "pv" | "price" | null;
+  /** What stands where a figure has no series in history: a chart of today, or the weather by
+   * the hour (ADR 23). */
+  readonly chart: "pv" | "price" | "weather" | null;
 }
 
 const SOLAR = flowColour("solar");
@@ -50,7 +52,7 @@ const FIGURES: Readonly<Record<Fixed, Figure>> = {
   saved: { colour: SOLAR, node: null, chart: null },
   price: { colour: HOUSE, node: null, chart: "price" },
   forecast: { colour: SOLAR, node: null, chart: "pv" },
-  weather: { colour: SOLAR, node: null, chart: null },
+  weather: { colour: SOLAR, node: null, chart: "weather" },
   pv: { colour: SOLAR, node: "pv", chart: "pv" },
   inverter: { colour: SOLAR, node: "inverter", chart: null },
   battery: {

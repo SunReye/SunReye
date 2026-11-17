@@ -61,7 +61,7 @@ function openness(code: number | null, cloud: number | null): Sky | null {
 }
 
 /** The word for `weather`'s sky; null where neither a code nor a cloud value tells. */
-export function skyOf({ code, cloud, ghi }: Weather): Sky | null {
+export function skyOf({ code, cloud, ghi }: Pick<Weather, "code" | "cloud" | "ghi">): Sky | null {
   const wet = falling(code);
 
   if (wet !== null) return wet;
