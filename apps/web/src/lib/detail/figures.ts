@@ -187,7 +187,6 @@ const unit =
 
 const kwh = unit("kWh", 1);
 const eur = unit("€", 2);
-const pct = unit("%", 0);
 const ct = unit("ct/kWh", 1);
 
 /** Rounds away float noise from a EUR → ct conversion. */
@@ -241,13 +240,6 @@ const only = (stats: readonly Fact[]): Facts => ({ lead: null, stats });
 const DAY_FACTS = new Map<string, Read>([
   ["weather", weather],
   ["saved", (day) => ({ lead: eur(m.detail_today(), day?.money?.saved ?? null), stats: [] })],
-  [
-    "autarky",
-    (day) => ({
-      lead: pct(m.dash_autarky(), day?.today.autarky ?? null),
-      stats: [pct(m.dash_self_use(), day?.today.selfUse ?? null)],
-    }),
-  ],
   [
     "production",
     (day) => only([peak(day, "production"), kwh(m.dash_forecast(), day?.pv.total ?? null)]),

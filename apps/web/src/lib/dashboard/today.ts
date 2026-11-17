@@ -42,7 +42,8 @@ export interface Energies {
   readonly "self.supply.power": number;
 }
 
-const share = (part: number, whole: number): number | null =>
+/** `part` of `whole` in %, held to 0–100; null with nothing to measure. */
+export const share = (part: number, whole: number): number | null =>
   whole > 0 ? Math.min(Math.max(part / whole, 0), 1) * 100 : null;
 
 /** The four figures and the two meters, from the `plant` device's day rollups. */

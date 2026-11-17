@@ -1,7 +1,8 @@
 // What a measured sheet's head reads over a range (ADR 21): its figure, and where its readings
 // stop. A refused read fails like a lost one: the sheet says so instead of showing an empty range.
-import type { Core, PvString } from "../api/core.ts";
+import { PLANT, type Core, type PvString } from "../api/core.ts";
 import { analyticsOf } from "../analytics/sources.ts";
+import { share } from "../dashboard/today.ts";
 import { rollups, type Rolled, type RollupPeriod } from "../history/history.ts";
 
 export interface Measured {
@@ -18,6 +19,8 @@ export interface Measure {
   readonly series: string;
   readonly unit: string;
   readonly digits: number;
+  /** A share, whose change is in percentage points. */
+  readonly points?: boolean;
   /** The figure from `from` to before `to`, in ms, cut in `period`; rejects when the core fails. */
   readonly read: (from: number, to: number, period: RollupPeriod) => Promise<Measured>;
 }
@@ -25,7 +28,7 @@ export interface Measure {
 export type MeasureCore = Readonly<Pick<Core, "statistics">>;
 
 /** The core with every refusal thrown. */
-const strict = (core: MeasureCore): MeasureCore => ({
+export const strict = (core: MeasureCore): MeasureCore => ({
   statistics: async (...args: Readonly<Parameters<MeasureCore["statistics"]>>) => {
     const read = await core.statistics(...args);
 
@@ -68,6 +71,28 @@ function energy(core: MeasureCore, device: number, series: string): Measure {
   };
 }
 
+/** The share of `whole`'s energy that `part` holds, in %: the house load met on site is autarky. */
+function shareOf(core: MeasureCore, part: string, whole: string): Measure {
+  const sure = strict(core);
+
+  return {
+    device: PLANT,
+    // The record's edges and stops follow what the share is of.
+    series: whole,
+    unit: "%",
+    digits: 0,
+    points: true,
+    read: async (from, to, period) => {
+      const read = (series: string) =>
+        rollups(sure, PLANT, series, period, new Date(from), new Date(to));
+      const [of, all] = await Promise.all([read(part), read(whole)]);
+      const kwh = (rolled: readonly Rolled[]) => rolled.reduce((a, r) => a + r.integral, 0) / 1000;
+
+      return { value: share(kwh(of), kwh(all)), stops: stopOf(all, to) };
+    },
+  };
+}
+
 /** What a sheet's figure reads through: its id, the core and the layout's strings. */
 export interface MeasureInput {
   readonly id: string;
@@ -75,8 +100,10 @@ export interface MeasureInput {
   readonly strings: readonly Readonly<PvString>[];
 }
 
-/** The head figure of sheet `id`: its series' energy; null for a sheet without one. */
+/** The head figure of sheet `id`: autarky, or its series' energy; null for a sheet without one. */
 export function measureOf({ id, core, strings }: MeasureInput): Measure | null {
+  if (id === "autarky") return shareOf(core, "self.supply.power", "load.power");
+
   const a = analyticsOf(id, strings);
 
   return a === null || a.energy === null ? null : energy(core, a.device, a.energy);
