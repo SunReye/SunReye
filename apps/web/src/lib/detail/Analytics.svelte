@@ -1,8 +1,6 @@
 <!--
-  A figure's range analytics (ADR 21): the sheet's range control, then its tabs, which all read
-  it. Autarky, which no one series holds, reads its range in a panel of its own; the battery adds
-  its state of charge and its facts to its tabs. Any other figure
-  without a series in history shows `fallback` instead.
+  A figure's range analytics (ADR 21): the sheet's range control, then the panel that reads it.
+  Any other figure without a series in history shows `fallback` instead.
 -->
 <script lang="ts" module>
   import type { Core, PvString } from "../api/core.ts";
@@ -37,14 +35,8 @@
   import { analyticsOf } from "../analytics/sources.ts";
   import { m } from "../paraglide/messages.js";
   import RangeControl from "../range/RangeControl.svelte";
-  import AnalyticsTabs from "./AnalyticsTabs.svelte";
-  import AutarkyPanel from "./AutarkyPanel.svelte";
-  import BatteryPanel from "./BatteryPanel.svelte";
-  import { flowOf } from "./flow.ts";
-  import FlowPanel from "./FlowPanel.svelte";
   import type { HeadView } from "./head.svelte.ts";
-  import PvFacts from "./PvFacts.svelte";
-  import { isPv } from "./pv-range.ts";
+  import RangePanel from "./RangePanel.svelte";
   import RangeState from "./RangeState.svelte";
 
   let {
@@ -71,7 +63,6 @@
   } = $props();
 
   const analytics = $derived(analyticsOf(id, input.strings));
-  const flow = $derived(flowOf(id));
 </script>
 
 {#if analytics || id === "autarky"}
@@ -81,18 +72,7 @@
   >
     <RangeControl model={input.route} />
     <RangeState {head} {onretry}>
-      {#if analytics && id === "battery"}
-        <BatteryPanel {id} {title} {colour} {analytics} {input} />
-      {:else if analytics}
-        <AnalyticsTabs {id} {title} {colour} {analytics} {input} />
-        {#if flow}
-          <FlowPanel {input} {flow} {priced} />
-        {:else if isPv(id)}
-          <PvFacts {analytics} inverter={id === "inverter"} {input} />
-        {/if}
-      {:else}
-        <AutarkyPanel {input} />
-      {/if}
+      <RangePanel {id} {title} {colour} {analytics} {input} {priced} />
     </RangeState>
   </section>
 {:else}
