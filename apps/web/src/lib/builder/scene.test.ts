@@ -225,6 +225,28 @@ test("live, each module's cells glow in the solar colour by its string's share o
   expect(glows[0]?.emissiveIntensity).toBe(0);
 });
 
+test("under a closed sky a string that makes little keeps its cell grid: a faint glow, and none without production", () => {
+  const group = buildScene(house, [
+    { corners, string: 0 },
+    { corners, string: 1 },
+    { corners, string: 2 },
+    { corners, string: 3 },
+  ]);
+
+  tint(group, [0.12, 0.02, 0, 0.8], { colour: 0xffa63a, daylight: 1 });
+
+  const [little, less, none, much] = group
+    .getObjectsByProperty("name", "module")
+    // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own objects.
+    .map((mesh) => glass(mesh).emissiveIntensity);
+
+  expect(little).toBeGreaterThan(0);
+  expect(less).toBe(little);
+  expect(none).toBe(0);
+  // Far under a good day's glow: it tells the cells apart, not the production.
+  expect(little).toBeLessThan((much ?? 0) / 2);
+});
+
 /** Each part's name, in order. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's group.
 const names = (group: Object3D): string[] => group.children.map((child) => child.name);

@@ -39,6 +39,14 @@ export interface Glow {
 /** Faint even at peak: the cells light, the glass stays black. */
 const GLOW = 0.1;
 
+/** The least a producing string glows, as a share of peak squared: on a grey day the cells still
+ * tell apart, where the tone mapping would leave a black slab. */
+const FAINT = 0.2;
+
+/** How far a string at `share` of its peak glows: by the share's square, and never under the
+ * faint glow while it makes anything. */
+const lit = (share: number): number => (share > 0 ? Math.max(share * share, FAINT) : 0);
+
 /** Lights the group's modules by their strings' shares of peak, in `buildScene`'s order. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js recolours in place.
 export function tint(group: Group, shares: readonly (number | null)[], glow: Glow): void {
@@ -47,7 +55,7 @@ export function tint(group: Group, shares: readonly (number | null)[], glow: Glo
       const share = shares[i] ?? 0;
 
       mesh.material.emissive.setHex(glow.colour);
-      mesh.material.emissiveIntensity = share * share * GLOW * glow.daylight;
+      mesh.material.emissiveIntensity = lit(share) * GLOW * glow.daylight;
     }
   }
 }
