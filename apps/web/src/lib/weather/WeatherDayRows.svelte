@@ -1,14 +1,16 @@
 <!--
   One day of the weather detail (ADR 23 "Dashboard"): the code's icons over the hours, then a row
   per quantity on the same hours. No axes: each row says its day's range, and the rule marks now.
+  Under the pointer, or a finger held on it, one rule crosses every row at its hour and each row
+  says its value there (ADR 21 "Chart reading").
 -->
 <script lang="ts">
   import ArrowUp from "@lucide/svelte/icons/arrow-up";
-  import { flowColour } from "../energy-colours.ts";
   import { m } from "../paraglide/messages.js";
   import { getLocale } from "../paraglide/runtime.js";
   import HourBars, { SNOW } from "./HourBars.svelte";
-  import HourLines, { type Quantity } from "./HourLines.svelte";
+  import HourLines, { PLAIN, WARM, type Quantity } from "./HourLines.svelte";
+  import { HourReading } from "./hour-reading.svelte.ts";
   import HourMarks from "./HourMarks.svelte";
   import type { WeatherDay } from "./hourly.ts";
   import SkyIcon from "./SkyIcon.svelte";
@@ -24,9 +26,6 @@
     now: number;
     zone: string;
   } = $props();
-
-  const WARM = flowColour("solar");
-  const PLAIN = "var(--muted-foreground)";
 
   const span = $derived([day.start, day.end] as const);
 
@@ -75,17 +74,44 @@
   const nowAt = $derived(
     now >= day.start && now < day.end ? ((now - day.start) / (day.end - day.start)) * 100 : null,
   );
+
+  const reading = new HourReading(() => ({ hours: day.hours, snows, indexed }));
+  const read = $derived(reading.figures);
 </script>
 
-<div class="relative flex flex-col gap-4">
-  <HourMarks hours={day.hours} {span} class="h-10">
-    {#snippet mark(hour)}
+{#snippet arrow(from: number)}
+  <!-- The arrow flies with the wind: away from where it blows from. -->
+  <span class="flex" data-wind-from={from} style:rotate="{(from + 180) % 360}deg">
+    <ArrowUp class="size-3.5" aria-hidden="true" />
+  </span>
+{/snippet}
+
+<!-- A held finger leads across the hours; up and down stays the sheet's scroll, and while it reads
+  the drawer leaves the finger alone. -->
+<div
+  class="relative flex touch-pan-y flex-col gap-4 select-none"
+  role="presentation"
+  data-hours
+  data-vaul-no-drag={reading.at === null ? undefined : ""}
+  onpointerdown={reading.down}
+  onpointermove={reading.move}
+  onpointerup={reading.up}
+  onpointercancel={reading.end}
+  onpointerleave={reading.end}
+>
+  <HourMarks hours={day.hours} {span} read={reading.at} class="h-10">
+    {#snippet mark(hour, marks)}
       {#if hour.sky}
         <SkyIcon sky={hour.sky} class="size-5" />
       {:else}
         <span class="size-5"></span>
       {/if}
-      <span class="text-[11px] text-muted-foreground tabular-nums">{clock.format(hour.at)}</span>
+      <span
+        class={[
+          "text-[11px] tabular-nums",
+          marks ? "font-medium text-foreground" : "text-muted-foreground",
+        ]}>{clock.format(hour.at)}</span
+      >
     {/snippet}
   </HourMarks>
 
@@ -93,6 +119,7 @@
     label={m.rd_temperature()}
     also={{ label: m.weather_apparent_temperature(), colour: WARM, dashed: true }}
     figure={range("celsius", "°C")}
+    read={read?.temperature}
   >
     <HourLines
       hours={day.hours}
@@ -109,6 +136,7 @@
     label={m.weather_precipitation()}
     also={snows ? { label: m.weather_snowfall(), colour: SNOW } : null}
     figure={fallen}
+    read={read?.precipitation}
   >
     <HourBars hours={day.hours} label={m.weather_precipitation()} />
   </WeatherRow>
@@ -117,6 +145,7 @@
     label={m.weather_cloud_cover()}
     also={indexed ? { label: m.weather_clear_sky_index(), colour: WARM } : null}
     figure={range("cloudCover", "%")}
+    read={read?.cloud}
   >
     <HourLines
       hours={sky}
@@ -134,7 +163,13 @@
     label={m.explore_wind()}
     also={{ label: m.weather_gusts(), colour: PLAIN, dashed: true }}
     figure={range("wind", "m/s")}
+    read={read?.wind}
   >
+    {#snippet tail()}
+      {#if reading.hour !== null && reading.hour.windDirection !== null}
+        {@render arrow(reading.hour.windDirection)}
+      {/if}
+    {/snippet}
     <HourLines
       hours={day.hours}
       {span}
@@ -145,23 +180,22 @@
         { of: "gusts", colour: PLAIN, dashed: true },
       ]}
     />
-    <HourMarks hours={day.hours} {span} class="h-4">
-      {#snippet mark(hour)}
+    <HourMarks hours={day.hours} {span} read={reading.at} class="h-4">
+      {#snippet mark(hour, marks)}
         {#if hour.windDirection !== null}
-          <!-- The arrow flies with the wind: away from where it blows from. -->
-          <span
-            class="flex text-muted-foreground"
-            data-wind-from={hour.windDirection}
-            style:rotate="{(hour.windDirection + 180) % 360}deg"
-          >
-            <ArrowUp class="size-3.5" aria-hidden="true" />
+          <span class={marks ? "text-foreground" : "text-muted-foreground"}>
+            {@render arrow(hour.windDirection)}
           </span>
         {/if}
       {/snippet}
     </HourMarks>
   </WeatherRow>
 
-  <WeatherRow label={m.weather_humidity()} figure={range("humidity", "%")}>
+  <WeatherRow
+    label={m.weather_humidity()}
+    figure={range("humidity", "%")}
+    read={read?.humidity}
+  >
     <HourLines
       hours={day.hours}
       {span}
@@ -176,6 +210,15 @@
       class="pointer-events-none absolute inset-y-0 w-px bg-foreground/25"
       style:left="{nowAt}%"
       data-now
+    ></span>
+  {/if}
+
+  {#if reading.at !== null}
+    <!-- At the hour's middle, where its line points and its bar stand. -->
+    <span
+      class="pointer-events-none absolute inset-y-0 w-px bg-foreground/60"
+      style:left="{((reading.at + 0.5) / day.hours.length) * 100}%"
+      data-read
     ></span>
   {/if}
 </div>
