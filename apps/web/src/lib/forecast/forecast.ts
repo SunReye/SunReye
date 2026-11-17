@@ -1,6 +1,6 @@
 // What the solar forecast screen shows (ADR 17): each inverter's total, each MPPT input and its
 // strings, with estimated strings marked.
-import type { Core, Forecasts, PvString } from "../api/core.ts";
+import type { Core, PvString } from "../api/core.ts";
 import { flowColour, mpptColour } from "../energy-colours.ts";
 import { m } from "../paraglide/messages.js";
 import { intervals, spread, type Span } from "../range/fill.ts";
@@ -53,7 +53,7 @@ function inputParts(input: Readonly<Line>, lines: readonly Readonly<Line>[]): St
 }
 
 /** The colour of the `nth` part on MPPT input `input`: the input's colour, lightened per string. */
-function partColour(input: number, nth: number): string {
+export function partColour(input: number, nth: number): string {
   const base = mpptColour(input);
 
   return nth === 0 ? base : `color-mix(in oklab, ${base} ${100 - nth * 30}%, white)`;
@@ -174,6 +174,15 @@ export interface Planned extends Span {
   readonly power: number;
 }
 
+/** Forecast targets as powers, each held from its target to the next. */
+export function held(points: readonly Readonly<{ target: string; value: number }>[]): Planned[] {
+  return intervals(points, (p) => Date.parse(p.target)).map(({ start, end, item }) => ({
+    start,
+    end,
+    power: item.value,
+  }));
+}
+
 /** A line's latest forecasts from `from` to before `to`. */
 export async function planned(
   core: Readonly<Pick<Core, "forecasts">>,
@@ -184,14 +193,7 @@ export async function planned(
 ): Promise<Planned[]> {
   const forecasts = await core.forecasts(device, series, new Date(from), new Date(to));
 
-  const points: readonly Readonly<Forecasts["points"][number]>[] =
-    "points" in forecasts ? forecasts.points : [];
-
-  return intervals(points, (p) => Date.parse(p.target)).map(({ start, end, item }) => ({
-    start,
-    end,
-    power: item.value,
-  }));
+  return held("points" in forecasts ? forecasts.points : []);
 }
 
 /** The energy a forecast expects in [from, to), in kWh. */
