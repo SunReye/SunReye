@@ -2,7 +2,8 @@
 // forecast issued for it, and what is still expected. Pure but for `readForecast`.
 import type { Core } from "../api/core.ts";
 import { combined, type Target } from "../dashboard/today.ts";
-import { forecastTargets } from "../forecast/forecast.ts";
+import { forecastTargets, held } from "../forecast/forecast.ts";
+import { judge } from "../forecast/judge.ts";
 import type { Band } from "../range/bands.ts";
 import { bandsOf, intervals, spread } from "../range/fill.ts";
 import { num } from "../range/format.ts";
@@ -49,8 +50,11 @@ export interface ForecastView {
   readonly accuracy: Accuracy;
 }
 
+/**
+ * The range's bands and sum, and its accuracy judged as the Forecast screen and the PV forecast
+ * sheet judge it (ADR 21).
+ */
 export function forecastView(got: Loaded, targets: readonly Target[]): ForecastView {
-  let [measured, forecast, error, days] = [0, 0, 0, 0];
   const total = { measured: 0, forecast: 0 };
 
   const bands = bandsOf(got.list, (edge, i) => {
@@ -62,13 +66,6 @@ export function forecastView(got: Loaded, targets: readonly Target[]): ForecastV
     total.measured += s.production;
     total.forecast += fc;
 
-    if (past) {
-      [measured, forecast] = [measured + s.production, forecast + fc];
-
-      if (edge.t1 - edge.t0 === 24)
-        [error, days] = [error + Math.abs(s.production / fc - 1), days + 1];
-    }
-
     return {
       up: [s.production],
       down: [],
@@ -79,15 +76,23 @@ export function forecastView(got: Loaded, targets: readonly Target[]): ForecastV
     };
   });
 
-  return {
-    bands,
-    total,
-    accuracy: {
-      error: days > 0 ? error / days : null,
-      bias: forecast > 0 ? measured / forecast - 1 : null,
-      days,
-    },
-  };
+  // A range's bands share one length: under a day they read the hourly rollups.
+  const first = got.list[0];
+  const rollups = first && first.t1 - first.t0 < 24 ? got.plant.hours : got.plant.days;
+
+  // The tab's figures judge whole past days alone (ADR 21), not the band in progress.
+  const past = got.list.flatMap((edge, i) => (edge.state === "past" ? [i] : []));
+
+  const { accuracy } = judge({
+    series: "pv.power",
+    list: past.map((i) => got.list[i]!),
+    spans: past.map((i) => got.spans[i]!),
+    now: got.now,
+    measured: rollups.pv,
+    forecast: held(targets),
+  });
+
+  return { bands, total, accuracy };
 }
 
 /** The accuracy's three figures as written; dashes while loading or without a forecast. */
