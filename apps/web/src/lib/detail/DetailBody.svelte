@@ -63,5 +63,8 @@
     <DetailStats stats={shown.stats} />
   {/if}
 
-  <HistoryLink route={input.route} {id} />
+  <!-- The PV forecast's days end on the Forecast screen, their own way onward (ADR 21). -->
+  {#if spec.chart !== "forecast"}
+    <HistoryLink route={input.route} {id} />
+  {/if}
 </div>

@@ -8,12 +8,12 @@
   import ArrowUp from "@lucide/svelte/icons/arrow-up";
   import { m } from "../paraglide/messages.js";
   import { getLocale } from "../paraglide/runtime.js";
+  import DayRows from "./DayRows.svelte";
   import HourBars, { SNOW } from "./HourBars.svelte";
   import HourLines, { PLAIN, WARM, type Quantity } from "./HourLines.svelte";
-  import { HourReading } from "./hour-reading.svelte.ts";
+  import { hourFigures } from "./hour-figures.ts";
   import HourMarks from "./HourMarks.svelte";
   import type { WeatherDay } from "./hourly.ts";
-  import SkyIcon from "./SkyIcon.svelte";
   import WeatherRow from "./WeatherRow.svelte";
 
   let {
@@ -28,10 +28,6 @@
   } = $props();
 
   const span = $derived([day.start, day.end] as const);
-
-  const clock = $derived(
-    new Intl.DateTimeFormat(getLocale(), { hour: "2-digit", minute: "2-digit", timeZone: zone }),
-  );
 
   const whole = new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 0 });
 
@@ -63,20 +59,24 @@
 
   /** The index on the cloud cover's scale: a clear sky's 1 at the top. */
   const sky = $derived(
-    day.hours.map((h) => ({ ...h, clearSkyIndex: h.clearSkyIndex === null ? null : Math.min(1, h.clearSkyIndex) * 100 })),
+    day.hours.map((h) =>
+      Object.assign({}, h, {
+        clearSkyIndex: h.clearSkyIndex === null ? null : Math.min(1, h.clearSkyIndex) * 100,
+      }),
+    ),
   );
 
   const indexed = $derived(known("clearSkyIndex").length > 0);
 
   const windTop = $derived(Math.max(5, ...known("wind"), ...known("gusts")) + 1);
 
-  /** Where now is across the day; null on another day. */
-  const nowAt = $derived(
-    now >= day.start && now < day.end ? ((now - day.start) / (day.end - day.start)) * 100 : null,
-  );
+  /** The index of the hour being read; null with none. */
+  let at = $state<number | null>(null);
 
-  const reading = new HourReading(() => ({ hours: day.hours, snows, indexed }));
-  const read = $derived(reading.figures);
+  const readHour = $derived(at === null ? null : (day.hours[at] ?? null));
+
+  /** Each row's values at that hour. */
+  const read = $derived(readHour === null ? null : hourFigures(readHour, { snows, indexed }));
 </script>
 
 {#snippet arrow(from: number)}
@@ -86,35 +86,7 @@
   </span>
 {/snippet}
 
-<!-- A held finger leads across the hours; up and down stays the sheet's scroll, and while it reads
-  the drawer leaves the finger alone. -->
-<div
-  class="relative flex touch-pan-y flex-col gap-4 select-none"
-  role="presentation"
-  data-hours
-  data-vaul-no-drag={reading.at === null ? undefined : ""}
-  onpointerdown={reading.down}
-  onpointermove={reading.move}
-  onpointerup={reading.up}
-  onpointercancel={reading.end}
-  onpointerleave={reading.end}
->
-  <HourMarks hours={day.hours} {span} read={reading.at} class="h-10">
-    {#snippet mark(hour, marks)}
-      {#if hour.sky}
-        <SkyIcon sky={hour.sky} class="size-5" />
-      {:else}
-        <span class="size-5"></span>
-      {/if}
-      <span
-        class={[
-          "text-[11px] tabular-nums",
-          marks ? "font-medium text-foreground" : "text-muted-foreground",
-        ]}>{clock.format(hour.at)}</span
-      >
-    {/snippet}
-  </HourMarks>
-
+<DayRows hours={day.hours} {span} {zone} {now} bind:read={at}>
   <WeatherRow
     label={m.rd_temperature()}
     also={{ label: m.weather_apparent_temperature(), colour: WARM, dashed: true }}
@@ -166,8 +138,8 @@
     read={read?.wind}
   >
     {#snippet tail()}
-      {#if reading.hour !== null && reading.hour.windDirection !== null}
-        {@render arrow(reading.hour.windDirection)}
+      {#if readHour !== null && readHour.windDirection !== null}
+        {@render arrow(readHour.windDirection)}
       {/if}
     {/snippet}
     <HourLines
@@ -180,7 +152,7 @@
         { of: "gusts", colour: PLAIN, dashed: true },
       ]}
     />
-    <HourMarks hours={day.hours} {span} read={reading.at} class="h-4">
+    <HourMarks hours={day.hours} {span} read={at} class="h-4">
       {#snippet mark(hour, marks)}
         {#if hour.windDirection !== null}
           <span class={marks ? "text-foreground" : "text-muted-foreground"}>
@@ -204,21 +176,4 @@
       lines={[{ of: "humidity", colour: PLAIN }]}
     />
   </WeatherRow>
-
-  {#if nowAt !== null}
-    <span
-      class="pointer-events-none absolute inset-y-0 w-px bg-foreground/25"
-      style:left="{nowAt}%"
-      data-now
-    ></span>
-  {/if}
-
-  {#if reading.at !== null}
-    <!-- At the hour's middle, where its line points and its bar stand. -->
-    <span
-      class="pointer-events-none absolute inset-y-0 w-px bg-foreground/60"
-      style:left="{((reading.at + 0.5) / day.hours.length) * 100}%"
-      data-read
-    ></span>
-  {/if}
-</div>
+</DayRows>

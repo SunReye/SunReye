@@ -37,26 +37,29 @@
     <span class="size-2 shrink-0 -translate-y-px rounded-[1px]" style:background={colour}></span>
     <span class="line-clamp-2 min-w-0 break-words">{title}</span>
   </h2>
-  <div class="flex items-end justify-between gap-4">
-    {#if spec.today}
-      <p class="flex flex-col">
-        <span class="text-4xl leading-none font-semibold tracking-tight"
-          ><Quantity
-            value={day?.today[spec.today] ?? null}
-            unit="kWh"
-            unitClass="text-lg font-medium text-muted-foreground"
-          /></span
-        >
-        <span class="mt-1 text-xs text-muted-foreground">{m.detail_today()}</span>
-      </p>
-    {/if}
-    {#if spec.node !== null}
-      <DetailPower {spec} {node} loading={status === "loading"} />
-    {:else if lead}
-      <p class="flex flex-col">
-        <FactValue fact={lead} big />
-        <span class="mt-1 text-xs text-muted-foreground">{lead.label}</span>
-      </p>
-    {/if}
-  </div>
+  <!-- A sheet whose days head with their own figures has its name alone. -->
+  {#if spec.today || spec.node !== null || lead}
+    <div class="flex items-end justify-between gap-4">
+      {#if spec.today}
+        <p class="flex flex-col">
+          <span class="text-4xl leading-none font-semibold tracking-tight"
+            ><Quantity
+              value={day?.today[spec.today] ?? null}
+              unit="kWh"
+              unitClass="text-lg font-medium text-muted-foreground"
+            /></span
+          >
+          <span class="mt-1 text-xs text-muted-foreground">{m.detail_today()}</span>
+        </p>
+      {/if}
+      {#if spec.node !== null}
+        <DetailPower {spec} {node} loading={status === "loading"} />
+      {:else if lead}
+        <p class="flex flex-col">
+          <FactValue fact={lead} big />
+          <span class="mt-1 text-xs text-muted-foreground">{lead.label}</span>
+        </p>
+      {/if}
+    </div>
+  {/if}
 </header>

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import de from "../../messages/de.json";
 import en from "../../messages/en.json";
-import { isSigned, roleLabel, seriesName, sidesOf, stateName } from "./roles.ts";
+import { indexName, isSigned, roleLabel, seriesName, sidesOf, stateName } from "./roles.ts";
 
 test("a signed series' sides are named by its sign: the grid imports above, exports below", () => {
   expect(sidesOf("grid.power")).toEqual([
@@ -107,4 +107,10 @@ test("a weather code's state is its word; a code the table lacks stays a number"
   expect(stateName("weather.code", 61)).toBe("Leichter Regen");
   expect(stateName("weather.code", 3)).toBe("Bedeckt");
   expect(stateName("weather.code", 4)).toBe("4");
+});
+
+test("an indexed series' index is named by what it counts; a series without one has none", () => {
+  expect(indexName("pv.mppt.power[2]")).toBe("Eingang 2");
+  expect(indexName("pv.string.power[4]")).toBe("String 4");
+  expect(indexName("pv.power")).toBeNull();
 });

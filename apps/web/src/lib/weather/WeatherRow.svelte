@@ -25,8 +25,8 @@
     also?: Also | null;
     /** The day's range or sum; null without a value. */
     figure: string | null;
-    /** The row's value at the hour being read, then its second reading's; undefined while none is. */
-    read?: readonly string[] | undefined;
+    /** The row's value at the hour being read, then its second reading's; null while none is. */
+    read?: readonly string[] | null | undefined;
     /** After the read values, as the wind's direction. */
     tail?: Snippet;
     children: Snippet;
