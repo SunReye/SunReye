@@ -48,6 +48,16 @@
     },
   );
 
+  /** How a series' figures are written, and what one of its units is worth in them. */
+  function readsOf(s: string) {
+    if (isPower(s)) return { fmt: kwh, unit: "kWh", per: 1 };
+
+    if (s.startsWith("price."))
+      return { fmt: (v: number) => `${num(v, 2)} ct/kWh`, unit: "ct/kWh", per: 100 };
+
+    return { fmt: (v: number) => num(v, 1), unit: "", per: 1 };
+  }
+
   const LOADING = {
     loading: true,
     via: undefined,
@@ -78,9 +88,17 @@
     if (!got) return LOADING;
 
     const { series: s, points, plans } = got.data;
+    const { per } = readsOf(s);
+
+    /** The band's figure in the unit it is written in. */
+    const figure = (a: number, b: number) => {
+      const f = bandFigure(s, points, a, b);
+
+      return { ...f, value: f.value * per };
+    };
 
     const figures = got.spans.map(([a, b]) => ({
-      ...bandFigure(s, points, a, b),
+      ...figure(a, b),
       planned: expected(plans ?? [], a, b),
       elapsed: Math.max(0, Math.min(b, got.now) - a),
     }));
@@ -104,7 +122,7 @@
       down: signed ? [sidesOf(s)[1]] : [],
       sum: isPower(s)
         ? { up: [total(figures, 1)], down: signed ? [total(figures, -1)] : [] }
-        : split(bandFigure(s, points, ...whole(got.spans)).value),
+        : split(figure(...whole(got.spans)).value),
     };
   });
 
@@ -115,10 +133,8 @@
 
   const meta = $derived([keyOf(series)]);
 
-  // A power reads as energy; anything else as its mean, in its own unit.
-  const reads = $derived(
-    isPower(series) ? { fmt: kwh, unit: "kWh" } : { fmt: (v: number) => num(v, 1), unit: "" },
-  );
+  // A power reads as energy, a price in cents (ADR 12); anything else as its mean, in its own unit.
+  const reads = $derived(readsOf(series));
 </script>
 
 <BandChart
