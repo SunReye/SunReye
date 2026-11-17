@@ -12,7 +12,7 @@ export interface Analytics {
   readonly energy: string | null;
   /** The layout's strings are compared. */
   readonly compare: boolean;
-  /** The inverters whose `pv.power` forecasts add up to what the figure expects; none for most. */
+  /** The inverters whose forecasts of `series` add up to what the figure expects; none for most. */
   readonly forecast: readonly number[];
 }
 
@@ -34,7 +34,7 @@ const PLANT_SERIES = new Map<string, [string, Analytics["heat"], Analytics["ener
 const PV = new Set(["production", "pv", "inverter"]);
 
 /** The figures that overlay the plant's PV forecast. */
-const FORECAST = new Set(["production", "pv"]);
+const FORECAST = new Set(["production", "pv", "inverter"]);
 
 /** The analytics of figure `id`; null for one without a series in history. */
 export function analyticsOf(id: string, strings: readonly Readonly<PvString>[]): Analytics | null {
@@ -51,7 +51,8 @@ export function analyticsOf(id: string, strings: readonly Readonly<PvString>[]):
           heat: `pv.string.power[${s.id}]`,
           energy: `pv.string.power[${s.id}]`,
           compare: several,
-          forecast: [],
+          // Stored under its inverter, beside its history (ADR 17).
+          forecast: [s.device],
         }
       : null;
   }

@@ -34,13 +34,15 @@ test("a signed battery has no heat; figures without a series have no analytics",
   expect(analyticsOf("string-9", STRINGS)).toBeNull();
 });
 
-test("production and PV expect what the strings' inverters forecast; others expect nothing", () => {
+test("PV figures expect what their inverters forecast; others expect nothing", () => {
   const other = { ...STRINGS[0]!, id: 6, device: 7 };
 
   expect(analyticsOf("production", [...STRINGS, other])!.forecast).toEqual([3, 7]);
   expect(analyticsOf("pv", STRINGS)!.forecast).toEqual([3]);
+  expect(analyticsOf("inverter", [...STRINGS, other])!.forecast).toEqual([3, 7]);
   expect(analyticsOf("house", STRINGS)!.forecast).toEqual([]);
-  expect(analyticsOf("string-4", STRINGS)!.forecast).toEqual([]);
+  // A string's forecast is stored under its inverter, beside its history (ADR 17).
+  expect(analyticsOf("string-6", [...STRINGS, other])!.forecast).toEqual([7]);
 });
 
 test("a one-way figure heads with its energy; a two-way one with none", () => {
