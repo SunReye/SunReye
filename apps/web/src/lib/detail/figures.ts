@@ -172,6 +172,8 @@ export type Fact =
       readonly value: number | null;
       readonly unit: string;
       readonly digits: number;
+      /** When it was, under the value: an hour or a day. */
+      readonly note?: string;
     }
   | { readonly label: string; readonly text: string };
 

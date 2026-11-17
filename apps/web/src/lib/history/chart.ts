@@ -33,7 +33,7 @@ const share = (v: number, s: Sum) =>
   s.consumption > 0 ? (Math.max(0, v) / s.consumption) * 100 : 0;
 
 /** Where the house load came from: the plant directly, the battery, the grid. */
-function sources(s: Sum, battery: boolean): number[] {
+export function sources(s: Sum, battery: boolean): number[] {
   const own = Math.max(0, s.consumption - s.purchase);
 
   if (!battery) return [share(own, s), share(s.purchase, s)];
