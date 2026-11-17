@@ -1,6 +1,12 @@
 // The battery sheet's range (ADR 21 "Sheet content"): the plant's state of charge laid on its
 // bands, and what went in and out, from the plant's battery split (ADR 14).
-import { bandFigure, periodOf, rollups, type Rolled } from "../history/history.ts";
+import {
+  bandFigure,
+  periodOf,
+  rollups,
+  type Rolled,
+  type RollupPeriod,
+} from "../history/history.ts";
 import { bandsOf } from "../range/fill.ts";
 import { RangeData } from "../range/range-data.svelte.ts";
 import type { RangeRoute } from "../range/route.svelte.ts";
@@ -20,9 +26,13 @@ interface Read {
   readonly discharge: readonly Rolled[];
   readonly soc: readonly Rolled[];
   readonly capacity: readonly Rolled[];
+  /** The state of charge at the range's first and last read hour; null without one. */
+  readonly ends: readonly [number, number] | null;
 }
 
-const NONE: Read = { charge: [], discharge: [], soc: [], capacity: [] };
+const NONE: Read = { charge: [], discharge: [], soc: [], capacity: [], ends: null };
+
+const DAY = 86_400_000;
 
 /** All of a series' rollups. */
 const whole = (series: string, rolled: readonly Rolled[]) =>
@@ -35,12 +45,31 @@ function meanOf(series: string, rolled: readonly Rolled[]): number | null {
   return f.covered > 0 ? f.value : null;
 }
 
-/** The first and the last read state of charge; null without one. */
-function endsOf(soc: readonly Rolled[]): readonly [number, number] | null {
-  const read = soc.filter((r) => r.covered > 0);
-  const [first, last] = [read[0], read.at(-1)];
+/** The first read state of charge of `head` and the last of `tail`, by the hour; null without. */
+function endsOf(head: readonly Rolled[], tail: readonly Rolled[]): Read["ends"] {
+  const [first, last] = [head.find((r) => r.covered > 0), tail.findLast((r) => r.covered > 0)];
 
   return first && last ? [first.mean, last.mean] : null;
+}
+
+type Reader = (series: string, period: RollupPeriod, from: Date, to: Date) => Promise<Rolled[]>;
+
+/** The state of charge at the range's ends: a day's mean is no end, so its hours are read there. */
+async function endsAt(
+  read: Reader,
+  soc: readonly Rolled[],
+  period: RollupPeriod,
+  a: Date,
+  b: Date,
+) {
+  if (period === "hour") return endsOf(soc, soc);
+
+  const [head, tail] = await Promise.all([
+    read("battery.soc", "hour", a, new Date(Math.min(a.getTime() + DAY, b.getTime()))),
+    read("battery.soc", "hour", new Date(Math.max(b.getTime() - DAY, a.getTime())), b),
+  ]);
+
+  return endsOf(head, tail);
 }
 
 export class BatteryRange {
@@ -57,7 +86,8 @@ export class BatteryRange {
         if (a.getTime() >= b.getTime()) return NONE;
 
         const sure = strict(core);
-        const read = (series: string) => rollups(sure, PLANT, series, period, a, b);
+        const any: Reader = (series, p, x, y) => rollups(sure, PLANT, series, p, x, y);
+        const read = (series: string) => any(series, period, a, b);
 
         const [charge, discharge, soc, capacity] = await Promise.all([
           read("battery.charge.power"),
@@ -66,7 +96,7 @@ export class BatteryRange {
           read("battery.capacity"),
         ]);
 
-        return { charge, discharge, soc, capacity };
+        return { charge, discharge, soc, capacity, ends: await endsAt(any, soc, period, a, b) };
       },
     );
   }
@@ -105,7 +135,7 @@ export class BatteryRange {
 
     return {
       bands,
-      efficiency: roundTrip({ charged, discharged, soc: endsOf(soc), capacity }),
+      efficiency: roundTrip({ charged, discharged, soc: got.data.ends, capacity }),
       cycles: cyclesOf(discharged, capacity),
     };
   });

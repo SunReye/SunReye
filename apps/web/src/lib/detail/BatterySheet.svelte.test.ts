@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import { userEvent, type Locator } from "vitest/browser";
 import "../../app.css";
 import { prepare, restore, served, show } from "./detail.harness.ts";
-import { hours, plant } from "./flows.harness.ts";
+import { byDay, hours, plant } from "./flows.harness.ts";
 
 beforeEach(prepare);
 
@@ -123,4 +123,24 @@ test("an efficiency that would pass 100 % is not stated", async () => {
 
   await expect.poll(() => fact(sheet, "Vollzyklen")).toBe("0,7");
   expect(fact(sheet, "Wirkungsgrad")).toContain("––");
+});
+
+test("past a day the efficiency balances the charge at the range's ends, not its first and last days", async () => {
+  // Monday it began at 10 %, Thursday it stands at 90 %: 8 of the 18 kWh it took are still in it,
+  // and it gave 9 of the other 10. Its day means, 30 % and 70 %, would hold 4 and read 64 %.
+  served.rolled = byDay({
+    "battery.charge.power": hours("2026-11-10", [10, 11, 12, 13, 14, 15], 3000),
+    "battery.discharge.power": hours("2026-11-11", [18, 19, 20], 3000),
+    "battery.soc": {
+      ...hours("2026-11-09", [0], 10),
+      ...hours("2026-11-09", [12], 50),
+      ...hours(TODAY, [0], 50),
+      ...hours(TODAY, [11], 90),
+    },
+    "battery.capacity": hours("2026-11-09", [0], 10),
+  });
+
+  const { sheet } = await sheetOf("range=week&at=2026-11-09");
+
+  await expect.poll(() => fact(sheet, "Wirkungsgrad")).toBe("90 %");
 });
