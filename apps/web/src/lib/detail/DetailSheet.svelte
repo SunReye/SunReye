@@ -8,7 +8,7 @@
 
 <script lang="ts">
   import * as Sheet from "#lib/components/ui/sheet/index.js";
-  import { SPOT, type Core, type Live, type PvString } from "../api/core.ts";
+  import { SPOT, TARIFF, type Core, type Live, type PvString } from "../api/core.ts";
   import DrawerSheet from "../components/drawer-sheet.svelte";
   import {
     estimatedSeries,
@@ -30,6 +30,7 @@
     series,
     day,
     names,
+    admin,
     params,
     go,
     onopen,
@@ -49,6 +50,8 @@
       | "topology"
       | "series"
       | "history"
+      | "costs"
+      | "payback"
     >;
     live: Live | undefined;
     /** The live stream's last two minutes, for a sheet's live graph. */
@@ -56,6 +59,7 @@
     day: Day | undefined;
     /** Device names, which only the admin may list (ADR 9). */
     names: ReadonlyMap<number, string>;
+    admin: boolean;
     /** The hash route's query: the sheet's range sits beside its figure. */
     params: URLSearchParams;
     go: Go;
@@ -145,6 +149,12 @@
 
   const values = $derived(live !== undefined && "devices" in live ? live.devices : {});
 
+  // The tariff publishes its prices while one is in force (ADR 12). Only a stream that answered
+  // with its devices says none is: one not yet read or refused says nothing.
+  const priced = $derived(
+    live === undefined || !("devices" in live) || values[TARIFF]?.["price.import"] !== undefined,
+  );
+
   const source = $derived<Source>({
     strings,
     values,
@@ -176,6 +186,8 @@
     spot={values[SPOT]}
     input={{ core, route, strings }}
     record={stored}
+    {priced}
+    {admin}
     {onopen}
   />
 {/snippet}

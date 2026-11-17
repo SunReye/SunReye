@@ -79,8 +79,8 @@ test("the forecast's energy stands in its day tabs, not in the sheet's head", ()
   expect(figure("forecast")?.chart).toBe("forecast");
 });
 
-test("money figures read in euros", () => {
-  expect(facts("saved", DAY).lead).toMatchObject({ value: 5.93, unit: "€" });
+test("money figures read in euros; the savings head reads the range instead of today", () => {
+  expect(facts("saved", DAY)).toEqual({ lead: null, stats: [] });
   expect(facts("feedIn", DAY).stats[0]).toMatchObject({ value: 1.39, unit: "€" });
 });
 

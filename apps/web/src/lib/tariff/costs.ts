@@ -1,6 +1,9 @@
 // The core's daily costs laid onto a range's bands (ADR 12): savings split into the import they
 // avoided and the feed-in pay, and what was paid: the import bill and the standing charge.
 import type { CostDays } from "../api/tariff";
+import { flowColour } from "../energy-colours.ts";
+import { m } from "../paraglide/messages.js";
+import type { SeriesMeta } from "../range/bands.ts";
 import type { Edge } from "../range/edges.ts";
 import { spread, type Fill } from "../range/fill.ts";
 
@@ -15,11 +18,54 @@ export function split(money?: Readonly<CostDays["total"]>) {
   return { up: [Math.max(0, saved - earned), earned], down: [paid, standing] };
 }
 
-/** Each band's share of the days it overlaps. */
+/** What was saved, avoided import first, above the baseline; the import it could not avoid below. */
+function savingsSplit(money?: Readonly<CostDays["total"]>) {
+  const { up, down } = split(money);
+
+  return { up, down: down.slice(0, 1) };
+}
+
+/** How a chart lays the days out: its sides, what is below the baseline and its name. */
+interface CostChart {
+  readonly sides: typeof split;
+  readonly up: SeriesMeta[];
+  readonly down: SeriesMeta[];
+  readonly groups: [string, string];
+  readonly label: string;
+}
+
+const up = () => [
+  { label: m.tariff_avoided(), colour: flowColour("solar") },
+  { label: m.tariff_feed_in_pay(), colour: flowColour("export") },
+];
+
+/** The Tariff screen's savings and costs, and the savings sheet's savings over what was paid. */
+export const COST_CHARTS = {
+  costs: (): CostChart => ({
+    sides: split,
+    up: up(),
+    down: [
+      { label: m.tariff_import_cost(), colour: flowColour("import") },
+      { label: m.tariff_standing(), colour: flowColour("house") },
+    ],
+    groups: [m.tariff_saving_group(), m.tariff_cost_group()],
+    label: m.tariff_chart(),
+  }),
+  savings: (): CostChart => ({
+    sides: savingsSplit,
+    up: up(),
+    down: [{ label: m.detail_unavoided(), colour: flowColour("import") }],
+    groups: [m.tariff_saving_group(), m.detail_paid()],
+    label: m.detail_savings_chart(),
+  }),
+};
+
+/** Each band's share of the days it overlaps, its sides as `sides` splits them. */
 export function costBands(
   days: readonly Readonly<CostDays["days"][number]>[],
   spans: readonly (readonly [number, number])[],
   now: number,
+  sides: typeof split = split,
 ): (edge: Edge, index: number) => Fill {
   const spanned: readonly Readonly<Money & { start: number; end: number }>[] = days.map((d) => ({
     paid: d.paid,
@@ -35,7 +81,7 @@ export function costBands(
     const part = (key: keyof Money) => spread(spanned, a, b, (d) => d[key]).sum;
 
     return {
-      ...split({
+      ...sides({
         paid: part("paid"),
         earned: part("earned"),
         saved: part("saved"),

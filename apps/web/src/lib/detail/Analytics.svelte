@@ -9,10 +9,20 @@
 
   /** What the analytics read: the core, the sheet's range and the layout's strings. The weather
    * detail, which stands in their place, reads `history` (ADR 23); the PV forecast's days read
-   * the `layout` (ADR 21). */
+   * the `layout` (ADR 21); the savings read `costs` and `payback` (ADR 12). */
   export interface AnalyticsInput {
     readonly core: Readonly<
-      Pick<Core, "statistics" | "forecasts" | "moduleTypes" | "corrections" | "history" | "layout">
+      Pick<
+        Core,
+        | "statistics"
+        | "forecasts"
+        | "moduleTypes"
+        | "corrections"
+        | "history"
+        | "layout"
+        | "costs"
+        | "payback"
+      >
     >;
     readonly route: RangeRoute;
     readonly strings: readonly PvString[];

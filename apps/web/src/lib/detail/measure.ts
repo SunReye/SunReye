@@ -1,6 +1,7 @@
 // What a measured sheet's head reads over a range (ADR 21): its figure, and where its readings
 // stop. A refused read fails like a lost one: the sheet says so instead of showing an empty range.
 import { PLANT, type Core, type PvString } from "../api/core.ts";
+import { TARIFF } from "../api/computed-devices.ts";
 import { analyticsOf } from "../analytics/sources.ts";
 import { share } from "../dashboard/today.ts";
 import { rollups, type Rolled, type RollupPeriod } from "../history/history.ts";
@@ -50,21 +51,30 @@ function stopOf(rolled: readonly Rolled[], end: number): number | null {
   return Math.min(last.end, last.start + last.covered);
 }
 
+/** How a series' rollups sum to a figure: its unit and digits, and what one unit integrates to. */
+type Sum = Readonly<{ unit: string; digits: number; per: number }>;
+
 /** A power series' energy in kWh. */
-function energy(core: MeasureCore, device: number, series: string): Measure {
+const KWH: Sum = { unit: "kWh", digits: 1, per: 1000 };
+
+/** A rate in EUR/h integrates to EUR (ADR 12). */
+const EUR: Sum = { unit: "€", digits: 2, per: 1 };
+
+/** A series' integral over the span, in `sum`'s unit. */
+function integral(core: MeasureCore, device: number, series: string, sum: Sum): Measure {
   const sure = strict(core);
 
   return {
     device,
     series,
-    unit: "kWh",
-    digits: 1,
+    unit: sum.unit,
+    digits: sum.digits,
     read: async (from, to, period) => {
       const rolled = await rollups(sure, device, series, period, new Date(from), new Date(to));
       const read = rolled.filter((r) => r.covered > 0);
 
       return {
-        value: read.length === 0 ? null : read.reduce((a, r) => a + r.integral, 0) / 1000,
+        value: read.length === 0 ? null : read.reduce((a, r) => a + r.integral, 0) / sum.per,
         stops: stopOf(rolled, to),
       };
     },
@@ -100,11 +110,12 @@ export interface MeasureInput {
   readonly strings: readonly Readonly<PvString>[];
 }
 
-/** The head figure of sheet `id`: autarky, or its series' energy; null for a sheet without one. */
+/** The head figure of sheet `id`: autarky, the euros saved, or its series' energy; null for a sheet without one. */
 export function measureOf({ id, core, strings }: MeasureInput): Measure | null {
   if (id === "autarky") return shareOf(core, "self.supply.power", "load.power");
+  if (id === "saved") return integral(core, TARIFF, "cost.savings.rate", EUR);
 
   const a = analyticsOf(id, strings);
 
-  return a === null || a.energy === null ? null : energy(core, a.device, a.energy);
+  return a === null || a.energy === null ? null : integral(core, a.device, a.energy, KWH);
 }

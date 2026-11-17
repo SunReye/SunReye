@@ -18,6 +18,7 @@
   import HistoryLink from "./HistoryLink.svelte";
   import LiveSection from "./LiveSection.svelte";
   import Readings from "./Readings.svelte";
+  import SavingsPane from "./SavingsPane.svelte";
   import TodayChart from "./TodayChart.svelte";
 
   let {
@@ -30,6 +31,8 @@
     spot,
     input,
     record,
+    priced,
+    admin,
     onopen,
   }: {
     id: string;
@@ -44,6 +47,9 @@
     input: AnalyticsInput;
     /** The stored series by `device/series` (ADR 22); null until the catalog is read. */
     record: ReadonlyMap<string, Stored> | null;
+    /** A tariff is in force (ADR 12). */
+    priced: boolean;
+    admin: boolean;
     onopen: (id: string) => void;
   } = $props();
 
@@ -65,7 +71,11 @@
 
   <Analytics {id} {title} colour={spec.colour} {input} head={head.view} onretry={head.retry}>
     {#snippet fallback()}
-      <TodayChart chart={spec.chart} {day} core={input.core} />
+      {#if id === "saved"}
+        <SavingsPane {input} head={head.view} onretry={head.retry} {priced} {admin} />
+      {:else}
+        <TodayChart chart={spec.chart} {day} core={input.core} />
+      {/if}
     {/snippet}
   </Analytics>
 
