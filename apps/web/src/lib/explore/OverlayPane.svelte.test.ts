@@ -95,7 +95,7 @@ test("a status overlaid names each period's state, as the sheet's Readings do", 
   await expect.element(rows.nth(1)).toHaveTextContent("Mo., 9. November Fehler");
 });
 
-test("a quick pick adds its period as a step back can undo, and its chip removes it", async () => {
+test("a quick pick adds its offset as a step back can undo, and its chip removes it", async () => {
   await desk();
 
   const { screen, went } = await show(`${TENTH}&vs=2026-11-03`);
@@ -105,13 +105,26 @@ test("a quick pick adds its period as a step back can undo, and its chip removes
 
   await expect
     .poll(() => went.at(-1))
-    .toMatchObject({ push: true, patch: { vs: "2026-11-03,2026-11-09" } });
+    .toMatchObject({ push: true, patch: { vs: "2026-11-03,-1d" } });
   // A period drawn is no longer offered.
   await expect.element(chart.getByRole("button", { name: "Tag davor" })).not.toBeInTheDocument();
 
   await chart.getByRole("button", { name: "Di., 3. November entfernen" }).click();
 
-  await expect.poll(() => went.at(-1)).toMatchObject({ push: true, patch: { vs: "2026-11-09" } });
+  await expect.poll(() => went.at(-1)).toMatchObject({ push: true, patch: { vs: "-1d" } });
+});
+
+test("a route's offsets are read against its range, so it stays relative", async () => {
+  await desk();
+
+  const { screen } = await show(`${TENTH}&vs=-1d,-1w,-1y`);
+  const chart = screen.getByRole("region", { name: "Überlagern" });
+
+  const chips = chart.getByRole("list", { name: "Vergleichen mit" }).getByRole("listitem");
+
+  await expect.element(chips.nth(0)).toHaveTextContent("Mo., 9. November");
+  await expect.element(chips.nth(1)).toHaveTextContent("Di., 3. November");
+  await expect.element(chips.nth(2)).toHaveTextContent("Mo., 10. November 2025");
 });
 
 test("a chart of five periods offers no more, and says why", async () => {

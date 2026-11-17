@@ -28,7 +28,8 @@
     full: boolean;
     /** The last day that can be picked, `2026-11-16`. */
     max: string;
-    onadd: (day: string) => void;
+    /** Takes a quick pick's offset, `-1d`, or a picked date. */
+    onadd: (entry: string) => void;
     onremove: (period: OverlayPeriod) => void;
   } = $props();
 
@@ -69,7 +70,7 @@
           size="sm"
           onclick={() => {
             haptics.light();
-            onadd(pick.day);
+            onadd(pick.entry);
           }}
         >
           <Plus data-icon="inline-start" />{pick.text}
