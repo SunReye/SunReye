@@ -7,8 +7,9 @@ import { WEATHER, type Core, type Forecasts, type History } from "../api/core.ts
 export interface Weather {
   /**
    * How closed the sky is, on the scale of the diffuse share of the global irradiance: 0 under
-   * a clear sky to 1 under a closed one. The clear-sky index where it has a value; else the
-   * diffuse share while the sun gives light, and the cloud cover while it gives none.
+   * a clear sky to 1 under a closed one. The clear-sky index alone where it has a value; else
+   * the diffuse share with the cloud cover while the sun gives light, and the cloud cover while
+   * it gives none. Not the cloud cover itself, which an hour's `cloudCover` is.
    */
   readonly cloud: number | null;
   /** The WMO weather code. */
@@ -222,6 +223,23 @@ function dryAt(fallen: readonly Held[], at: number): number | null {
   return ends.length === 0 ? null : Math.max(0, at - Math.max(...ends));
 }
 
+/**
+ * The cloud by the forecast or the archive (ADR 23 "The sky"): the diffuse share with the cloud
+ * cover. In daylight it is midway between the two, as each over-reads where the other does not:
+ * the diffuse share at a low sun, whose light is diffuse under a clear sky too, and the cloud
+ * cover under thin high cloud, which the sun shines through. Either alone where the other is
+ * missing; at night the light tells nothing.
+ */
+function forecastCloud(ghi: number | null, dhi: number | null, cover: number | null) {
+  const covered = cover === null ? null : clamp(cover / 100);
+
+  if (ghi === null || dhi === null || ghi < DARK) return covered;
+
+  const diffuse = clamp(dhi / ghi);
+
+  return covered === null ? diffuse : (diffuse + covered) / 2;
+}
+
 /** The weather at `at`, ms since 1970: each quantity's value in force then. */
 export function weatherAt(read: WeatherRead | undefined, at: number): Weather {
   // History is listed first, so it wins over the forecast.
@@ -235,11 +253,10 @@ export function weatherAt(read: WeatherRead | undefined, at: number): Weather {
 
   const [ghi, dhi, cover] = [held("weather.ghi"), held("weather.dhi"), held("weather.cloud_cover")];
 
-  let cloud = cover === null ? null : clamp(cover / 100);
-
-  if (ghi !== null && dhi !== null && ghi >= DARK) cloud = clamp(dhi / ghi);
-
-  if (index !== null) cloud = clamp((INDEX.clear - index) / (INDEX.clear - INDEX.closed));
+  const cloud =
+    index === null
+      ? forecastCloud(ghi, dhi, cover)
+      : clamp((INDEX.clear - index) / (INDEX.clear - INDEX.closed));
 
   return {
     cloud,

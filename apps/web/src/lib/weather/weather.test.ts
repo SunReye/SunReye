@@ -1,58 +1,7 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import type { Forecasts, History } from "../api/core.ts";
+import { at, fake, intervals, read, targets, WEATHER } from "./weather.harness.ts";
 import { readWeather, weatherAt, type Weather } from "./weather.ts";
-
-const WEATHER = 4_294_967_295;
-const iso = (time: string) => `2026-11-14T${time}:00Z`;
-const at = (time: string) => Date.parse(iso(time));
-
-/** Forecast targets, as the core serves them. */
-const targets = (...values: readonly (readonly [string, number])[]) =>
-  values.map(([time, value]) => ({
-    issued: iso("00:00"),
-    target: iso(time),
-    value,
-  }));
-
-/** History intervals, as the core serves them. */
-const intervals = (...values: readonly (readonly [string, string, number])[]) =>
-  values.map(([start, end, mean]) => ({
-    start: iso(start),
-    end: iso(end),
-    mean,
-  }));
-
-interface Stored {
-  readonly history?: Readonly<Record<string, readonly Readonly<History["points"][number]>[]>>;
-  readonly forecasts?: Readonly<Record<string, readonly Readonly<Forecasts["points"][number]>[]>>;
-}
-
-/** A core that holds `stored` for the weather device, and what was asked of it. */
-function fake(stored: Stored) {
-  const asked: string[] = [];
-
-  const core: Parameters<typeof readWeather>[0] = {
-    history: (device, series) => {
-      asked.push(`history ${device} ${series}`);
-
-      return Promise.resolve({
-        tier: "raw",
-        points: [...(stored.history?.[series] ?? [])],
-      });
-    },
-    forecasts: (device, series) => {
-      asked.push(`forecasts ${device} ${series}`);
-
-      return Promise.resolve({ points: [...(stored.forecasts?.[series] ?? [])] });
-    },
-  };
-
-  return { core, asked };
-}
-
-const read = (stored: Stored) =>
-  readWeather(fake(stored).core, new Date(at("00:00")), new Date(at("23:59")));
 
 const NONE: Weather = {
   cloud: null,
@@ -150,77 +99,6 @@ test("past weather comes from history where it covers the instant, else from the
   });
 });
 
-test("the cloud is the diffuse share of the global irradiance while the sun gives light", async () => {
-  const weather = await read({
-    forecasts: {
-      "weather.ghi": targets(["11:00", 400], ["12:00", 300], ["13:00", 10]),
-      "weather.dhi": targets(["11:00", 60], ["12:00", 285], ["13:00", 11]),
-      "weather.cloud_cover": targets(["11:00", 100], ["12:00", 0], ["13:00", 0]),
-    },
-  });
-
-  expect(weatherAt(weather, at("11:30")).cloud).toBeCloseTo(0.15);
-  expect(weatherAt(weather, at("12:20")).cloud).toBeCloseTo(0.95);
-  // The forecast's rounding never makes more than all of it diffuse.
-  expect(weatherAt(weather, at("13:10")).cloud).toBe(1);
-});
-
-test("at night, when the light tells nothing, the cloud is the cloud cover", async () => {
-  const weather = await read({
-    forecasts: {
-      "weather.ghi": targets(["02:00", 0]),
-      "weather.dhi": targets(["02:00", 0]),
-      "weather.cloud_cover": targets(["02:00", 70], ["04:00", 20]),
-    },
-  });
-
-  expect(weatherAt(weather, at("02:30")).cloud).toBeCloseTo(0.7);
-  // No irradiance stored at all: the cloud cover still tells.
-  expect(weatherAt(weather, at("04:30")).cloud).toBeCloseTo(0.2);
-});
-
-test("where the clear-sky index has a value the cloud is the measured sky, whatever the forecast says", async () => {
-  const forecasts = {
-    "weather.ghi": targets(["11:00", 400], ["12:00", 400]),
-    "weather.dhi": targets(["11:00", 60], ["12:00", 60]),
-  };
-
-  const weather = await read({
-    history: {
-      "weather.clearness": intervals(
-        ["11:00", "11:15", 1],
-        ["11:15", "11:30", 0.25],
-        ["11:30", "11:45", 0.625],
-        ["11:45", "12:00", 1.2],
-      ),
-    },
-    forecasts,
-  });
-
-  expect(weatherAt(weather, at("11:05")).cloud).toBe(0);
-  expect(weatherAt(weather, at("11:20")).cloud).toBe(1);
-  expect(weatherAt(weather, at("11:40")).cloud).toBeCloseTo(0.5);
-  // Cloud edges can lift the plant over its clear-sky estimate.
-  expect(weatherAt(weather, at("11:50")).cloud).toBe(0);
-  // Past the index, the forecast again.
-  expect(weatherAt(weather, at("12:30")).cloud).toBeCloseTo(0.15);
-});
-
-test("the last closed quarter's clear-sky index stands for now until the next one closes", async () => {
-  // The core closes a quarter half a minute after its end, so now is never inside an interval.
-  const weather = await read({
-    history: { "weather.clearness": intervals(["11:45", "12:00", 0.25]) },
-    forecasts: {
-      "weather.ghi": targets(["12:00", 400], ["12:15", 400]),
-      "weather.dhi": targets(["12:00", 60], ["12:15", 60]),
-    },
-  });
-
-  expect(weatherAt(weather, at("12:07")).cloud).toBe(1);
-  expect(weatherAt(weather, at("12:15")).cloud).toBe(1);
-  expect(weatherAt(weather, at("12:21")).cloud).toBeCloseTo(0.15);
-});
-
 test("the weather is read from the weather device: history and forecasts, the measured index from history alone, visibility from forecasts alone", async () => {
   const { core, asked } = fake({});
 
@@ -260,16 +138,6 @@ test("a refused or failed read is no weather for its quantity", async () => {
   );
 
   expect(weatherAt(weather, at("12:05"))).toEqual({ ...NONE, code: 45 });
-});
-
-test("the clear-sky index itself is told apart from the forecast's cloud: null where none stands", async () => {
-  const weather = await read({
-    history: { "weather.clearness": intervals(["11:45", "12:00", 0.4]) },
-    forecasts: { "weather.cloud_cover": targets(["12:00", 100], ["13:00", 100]) },
-  });
-
-  expect(weatherAt(weather, at("12:07"))).toMatchObject({ clearSkyIndex: 0.4 });
-  expect(weatherAt(weather, at("12:30"))).toMatchObject({ clearSkyIndex: null, cloud: 1 });
 });
 
 test("an instant knows how long it has been dry: 0 while it falls, then since it last fell", async () => {
