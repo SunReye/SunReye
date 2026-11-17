@@ -22,7 +22,9 @@ function open(dark = false, level: Level = "medium"): Studio {
   camera.position.set(0, 6, 34);
   camera.lookAt(0, 4, 0);
   document.body.append(canvas);
-  studio = new Studio(canvas, camera, () => drawn(level, { capable: false, steps: 0, tier: "full" }));
+  studio = new Studio(canvas, camera, () =>
+    drawn(level, { capable: false, steps: 0, tier: "full" }),
+  );
   studio.setSize(SIDE, SIDE);
   studio.frame(new Vector3(), 10);
   studio.light(
@@ -168,7 +170,8 @@ test("Niedrig draws no glass", () => {
 test("the glass bends the picture alone: the canvas and the camera a pointer is cast through are as they were", () => {
   const opened = open();
   const { camera, renderer } = opened;
-  const facts = (): unknown => [
+
+  const facts = () => [
     renderer.domElement.width,
     renderer.domElement.height,
     renderer.getPixelRatio(),

@@ -38,11 +38,13 @@ export class Fade {
   at(seconds: number): Glass | null {
     const by = Math.max(0, seconds - (this.#moved ?? seconds)) / FADE;
     const { rain, snow, frost } = this.#shown;
+
     const shown = {
       rain: nearer(rain, this.#target.rain, by),
       snow: nearer(snow, this.#target.snow, by),
       frost: nearer(frost, this.#target.frost, by),
     };
+
     const left = shown.rain + shown.snow + shown.frost > 0;
 
     this.#shown = left ? shown : NONE;

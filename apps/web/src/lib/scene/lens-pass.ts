@@ -2,7 +2,14 @@
 // it and bends the picture; snow settles at its edges and melts; frost creeps in from the
 // corners. It only draws over the finished picture: the canvas, the camera and so every label
 // and pointer cast through them are as without it.
-import { ShaderMaterial, Vector2, Vector3, type WebGLRenderer, WebGLRenderTarget } from "three";
+import {
+  ShaderMaterial,
+  type Texture,
+  Vector2,
+  Vector3,
+  type WebGLRenderer,
+  WebGLRenderTarget,
+} from "three";
 import { FullScreenQuad, Pass } from "three/addons/postprocessing/Pass.js";
 import { FIELD, GLASS, VERTEX } from "./lens-shaders.ts";
 import type { Glass } from "./weather.ts";
@@ -27,6 +34,13 @@ const SHADE = {
 
 const quiet = { depthTest: false, depthWrite: false } as const;
 
+/** A uniform that holds a texture once there is one. */
+interface Sampler {
+  value: Texture | null;
+}
+
+const sampler = (): Sampler => ({ value: null });
+
 export class LensPass extends Pass {
   readonly #fieldUniforms = {
     uSize: { value: new Vector2(1, 1) },
@@ -34,8 +48,8 @@ export class LensPass extends Pass {
     uGlass: { value: new Vector3() },
   };
   readonly #glassUniforms = {
-    tDiffuse: { value: null as unknown },
-    tField: { value: null as unknown },
+    tDiffuse: sampler(),
+    tField: sampler(),
     uBend: { value: new Vector2() },
     uWet: { value: new Vector3() },
     uShade: { value: 0 },
@@ -77,9 +91,9 @@ export class LensPass extends Pass {
   tint(dark: boolean): void {
     const { wet, shade, white } = dark ? SHADE.dark : SHADE.light;
 
-    this.#glassUniforms.uWet.value.set(...wet);
+    this.#glassUniforms.uWet.value.fromArray(wet);
     this.#glassUniforms.uShade.value = shade;
-    this.#glassUniforms.uWhite.value.set(...white);
+    this.#glassUniforms.uWhite.value.fromArray(white);
   }
 
   /** Fits the glass to a picture of `width` by `height` CSS pixels. */
