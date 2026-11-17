@@ -3,7 +3,11 @@
   import { parseView, presetView, type View } from "../builder/camera.ts";
   import { panels } from "../builder/modules.ts";
   import { sunAt, type Location, type Point, type Pv, type Scene } from "../builder/pv.ts";
-  import SceneCanvas, { type Projector } from "../builder/SceneCanvas.svelte";
+  import SceneCanvas, {
+    type Plant,
+    type Projector,
+    type SceneWeather,
+  } from "../builder/SceneCanvas.svelte";
   import { motion } from "../motion/tier.svelte.ts";
   import { m } from "../paraglide/messages.js";
   import { arrange, Steady, type Box, type Frame, type Label } from "./chips.ts";
@@ -20,6 +24,7 @@
     model,
     location,
     diffuse,
+    weather,
     locked = false,
     top = 0,
     onselect,
@@ -39,6 +44,9 @@
     location?: Location | undefined;
     /** How diffuse the sky's light is now, 0 to 1: the weather; null or none for a clear sky. */
     diffuse?: number | null | undefined;
+    /** The scene's weather now for where the sun is and the share of its peak the plant makes
+     * (ADR 23); none, clear and dry. */
+    weather?: ((plant: Plant) => SceneWeather) | undefined;
     /** The camera stays put and a finger on the scene scrolls the page (ADR 20). */
     locked?: boolean;
     /** Pixels at the top the chips leave free: the hero's headline. */
@@ -124,6 +132,14 @@
       stands: geometry.stands,
     }),
   );
+
+  /** The scene's weather now. Snow covers the modules only while no string with a reading makes
+   * anything to speak of. */
+  const sky = $derived.by(() => {
+    const read = live.shares.filter((share) => share !== null);
+
+    return weather?.({ sun, share: read.length === 0 ? null : Math.max(...read) });
+  });
 
   /** Where `point` lands on the canvas, or null behind the camera or before the first draw. */
   function at(point: Point | null): readonly [number, number] | null {
@@ -249,6 +265,7 @@
     cars={live.cars}
     {sun}
     {diffuse}
+    weather={sky}
     {model}
     view={kept ?? presetView("isometric", geometry)}
     {locked}

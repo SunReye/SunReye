@@ -16,6 +16,7 @@ mod routes;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::ops::ControlFlow;
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use jiff::civil::Date;
@@ -27,11 +28,12 @@ use tokio::time::Instant;
 
 pub use grid::{Cell, Grid, Hour};
 
-use crate::bus::{Bus, DeviceId, Series};
+use crate::bus::{DeviceId, Series};
 use crate::layout::{Layouts, Version, in_force};
 use crate::location::Location;
 use crate::solar::{self, Key};
 use crate::storage::{self, Aggregate, Database, Reader, Storage, Tier};
+use crate::utc_day;
 use crate::weather::{self, Archive, Error, Past, Slot};
 
 const HOUR: Duration = Duration::from_hours(1);
@@ -87,7 +89,7 @@ const RECENT: Duration = Duration::from_hours(30 * 24);
 
 /// The correction learner, the one writer of the learned grids.
 pub struct Learner<A> {
-    past: Past<A>,
+    past: Arc<Past<A>>,
     corrections: Corrections,
 }
 
@@ -120,16 +122,11 @@ pub struct Recent {
 }
 
 impl<A: Archive> Learner<A> {
-    /// Learns from `archive`, storing its weather under the weather device `weather`.
-    pub fn new(
-        archive: A,
-        weather: DeviceId,
-        layouts: Layouts,
-        storage: &Storage,
-        bus: &Bus,
-    ) -> Self {
+    /// Learns from the archive weather `past` fetches and stores under the weather device
+    /// `weather`.
+    pub fn new(past: Arc<Past<A>>, weather: DeviceId, layouts: Layouts, storage: &Storage) -> Self {
         Self {
-            past: Past::new(archive, weather, bus),
+            past,
             corrections: Corrections::new(layouts, weather, storage),
         }
     }
@@ -204,7 +201,7 @@ impl<A: Archive> Learner<A> {
             return Ok(());
         };
         self.past.fetch(storage, location, first, last).await?;
-        let (from, to) = (midnight(first), midnight(last) + DAY);
+        let (from, to) = (utc_day::start(first), utc_day::start(last) + DAY);
         let plant = c.plant(location, zone, from..to).await?;
         let mut grids = c.database.run(grids).await?;
         let mut learned = None;
@@ -216,7 +213,7 @@ impl<A: Archive> Learner<A> {
         let Some(learned) = learned else {
             return Ok(());
         };
-        let day = utc_date(learned).to_string();
+        let day = utc_day::of(learned).to_string();
         c.database.run(move |db| save(db, &grids, &day)).await?;
         Ok(())
     }
@@ -504,7 +501,7 @@ impl Plant {
         };
         let at_limit = inverter
             .zip(measured.peak)
-            .is_some_and(|((_, max), peak)| max >= AT_LIMIT * peak && inverter_modelled > peak);
+            .is_some_and(|((_, max), peak)| at_limit(max, inverter_modelled, peak));
         if at_limit {
             return Some(Observed::AtLimit);
         }
@@ -521,9 +518,16 @@ impl Plant {
     }
 }
 
+/// Whether an inverter whose measured power peaked at `max` while the model expected `modelled`
+/// is at its AC limit `cap`: its declared rating, or the highest peak it has measured.
+#[must_use]
+pub fn at_limit(max: f64, modelled: f64, cap: f64) -> bool {
+    max >= AT_LIMIT * cap && modelled > cap
+}
+
 /// The settled UTC days not yet learned, first and last; none when none is due.
 fn window(through: Option<Date>, now: SystemTime) -> Option<(Date, Date)> {
-    let last = utc_date(now)
+    let last = utc_day::of(now)
         .checked_sub(jiff::Span::new().days(SETTLE_DAYS))
         .ok()?;
     let first = match through {
@@ -535,20 +539,9 @@ fn window(through: Option<Date>, now: SystemTime) -> Option<(Date, Date)> {
     (first <= last).then_some((first, last))
 }
 
-fn utc_date(time: SystemTime) -> Date {
-    jiff::Timestamp::try_from(time)
-        .unwrap_or(jiff::Timestamp::UNIX_EPOCH)
-        .to_zoned(TimeZone::UTC)
-        .date()
-}
-
-fn midnight(day: Date) -> SystemTime {
-    day.to_zoned(TimeZone::UTC)
-        .map_or(UNIX_EPOCH, |z| SystemTime::from(z.timestamp()))
-}
-
 /// The plant-local month and hour an hour starts in.
-pub(crate) fn plant_hour(start: SystemTime, zone: &TimeZone) -> (u8, u8) {
+#[must_use]
+pub fn plant_hour(start: SystemTime, zone: &TimeZone) -> (u8, u8) {
     let local = jiff::Timestamp::try_from(start)
         .unwrap_or(jiff::Timestamp::UNIX_EPOCH)
         .to_zoned(zone.clone());

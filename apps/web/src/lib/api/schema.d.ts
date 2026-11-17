@@ -1526,7 +1526,9 @@ export interface components {
             maxInputVoltage?: number | null;
             /**
              * @description The series its profile publishes, extras left out, such as `load.phase.power[2]`: what
-             *     it can report, not what it reports now.
+             *     it can report, not what it reports now. The weather device lists its fixed `weather.*`
+             *     roles; `weather.code` is a WMO weather code as Open-Meteo serves it, and
+             *     `weather.clearness` the measured clear-sky index (ADR 23).
              */
             series: string[];
             /** @description What its profile lets the core write, in the profile's order. */

@@ -1166,7 +1166,7 @@
             ]
           },
           "series": {
-            "description": "The series its profile publishes, extras left out, such as `load.phase.power[2]`: what\nit can report, not what it reports now.",
+            "description": "The series its profile publishes, extras left out, such as `load.phase.power[2]`: what\nit can report, not what it reports now. The weather device lists its fixed `weather.*`\nroles; `weather.code` is a WMO weather code as Open-Meteo serves it, and\n`weather.clearness` the measured clear-sky index (ADR 23).",
             "items": {
               "type": "string"
             },

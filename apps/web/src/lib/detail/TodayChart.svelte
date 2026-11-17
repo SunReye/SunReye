@@ -1,4 +1,5 @@
-<!-- Today's chart of a figure without a series in history: the PV day or the spot prices. -->
+<!-- What a figure without a series in history shows: the PV day, the spot prices or the weather by
+  the hour. -->
 <script lang="ts">
   import type { Day } from "../dashboard/day.ts";
   import DayChart from "../dashboard/DayChart.svelte";
@@ -7,8 +8,19 @@
   import { getLocale } from "../paraglide/runtime.js";
   import type { Figure } from "./figures.ts";
   import PriceChart from "./PriceChart.svelte";
+  import type { WeatherReader } from "../weather/weather.ts";
+  import WeatherDetail from "../weather/WeatherDetail.svelte";
 
-  let { chart, day }: { chart: Figure["chart"]; day: Day | undefined } = $props();
+  let {
+    chart,
+    day,
+    core,
+  }: {
+    chart: Figure["chart"];
+    day: Day | undefined;
+    /** What the weather detail reads (ADR 23). */
+    core: WeatherReader;
+  } = $props();
 
   const clock = $derived(
     new Intl.DateTimeFormat(getLocale(), {
@@ -19,7 +31,9 @@
   );
 </script>
 
-{#if chart}
+{#if chart === "weather"}
+  <WeatherDetail {core} {day} />
+{:else if chart}
   <section class="flex flex-col gap-3 border-t border-border/60 px-5 pt-4 pb-4 sm:px-6">
     {#if chart === "price"}
       <PriceChart {day} />

@@ -2,7 +2,7 @@
 import { expect, test } from "bun:test";
 import type { Core, ModuleType } from "../api/core.ts";
 import { emptyDraft, type Draft } from "./modules.ts";
-import { load, sourceOf, wattsAt } from "./moment.ts";
+import { load, shareAt, sourceOf, wattsAt } from "./moment.ts";
 import { loadPv } from "./pv.ts";
 
 const wasm = new URL(
@@ -96,7 +96,15 @@ function reading(history: boolean) {
       await Promise.resolve();
       asked.push(`forecasts ${device} ${series}`);
 
-      return { points: [{ target: from.toISOString(), issued: from.toISOString(), value: 640 }] };
+      return {
+        points: [
+          {
+            target: from.toISOString(),
+            issued: from.toISOString(),
+            value: 640,
+          },
+        ],
+      };
     },
   };
 
@@ -158,4 +166,26 @@ test("without the plant's location a clear sky has nothing to show", async () =>
   });
 
   expect(day.strings).toEqual([[], []]);
+});
+
+/** A day whose strings each read their `watts` from 0 to before 10. */
+const day = (source: "measured" | "forecast", ...watts: readonly number[]) => ({
+  source,
+  strings: watts.map((value) => [{ from: 0, to: 10, watts: value }]),
+});
+
+test("the plant's share of its peak is told for a measured instant alone", () => {
+  // Two strings of 16 modules of 400 W: 12.8 kW of peak.
+  const strings = [
+    { ...wiring, id: 1, name: "Süd" },
+    { ...wiring, id: 2, name: "Nord" },
+  ];
+
+  expect(shareAt(day("measured", 400, 240), strings, [MODULE], 5)).toBeCloseTo(0.05);
+  // One string without a value leaves the other's, of the whole peak.
+  expect(shareAt(day("measured", 640), strings, [MODULE], 5)).toBeCloseTo(0.05);
+  expect(shareAt(day("measured", 400, 240), strings, [MODULE], 10)).toBeNull();
+  expect(shareAt(day("forecast", 400, 240), strings, [MODULE], 5)).toBeNull();
+  expect(shareAt(undefined, strings, [MODULE], 5)).toBeNull();
+  expect(shareAt(day("measured"), [], [MODULE], 5)).toBeNull();
 });

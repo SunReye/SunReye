@@ -84,6 +84,13 @@ export function parseStrain(raw: string | null | undefined): number {
 export const JANK_FRAME_MS = 32;
 
 /**
+ * The same for the weather loop (ADR 23 "Motion"), which draws 30 times a second by design: a
+ * draw that misses one frame of a 60 Hz display still holds the loop's rate. Felt is a gap that
+ * misses the loop's own 30th of a second, by half as much again.
+ */
+export const LOOP_JANK_FRAME_MS = 48;
+
+/**
  * How much of a window has to be janky before the device is judged over budget.
  * Deliberately high — a scroll, a dialog opening or a chart mounting all drop
  * frames on hardware that is otherwise fine, and a downgrade is visible.
@@ -117,6 +124,12 @@ export class FrameStrain {
   #frames = 0;
   #janky = 0;
   #windows = 0;
+  readonly #jankMs: number;
+
+  /** `jankMs`: a frame at least this long was felt. */
+  constructor(jankMs: number = JANK_FRAME_MS) {
+    this.#jankMs = jankMs;
+  }
 
   /**
    * How many windows have closed, strained or not.
@@ -152,7 +165,7 @@ export class FrameStrain {
 
     this.#frames += 1;
 
-    if (gap >= JANK_FRAME_MS) this.#janky += 1;
+    if (gap >= this.#jankMs) this.#janky += 1;
 
     if (this.#frames < STRAIN_WINDOW) return false;
 

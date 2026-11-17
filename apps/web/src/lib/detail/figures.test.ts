@@ -25,7 +25,21 @@ const DAY: Day = {
     { target: at("12:00"), value: 0.368 },
     { target: at("13:00"), value: 0.193 },
   ],
-  weather: { celsius: 21, sky: "sunny" },
+  weather: {
+    cloud: 0.1,
+    code: 0,
+    precipitation: 0,
+    snowfall: 0,
+    snowDepth: 0,
+    visibility: 30_000,
+    wind: 2,
+    windDirection: 200,
+    celsius: 21,
+    humidity: null,
+    ghi: 500,
+    clearSkyIndex: null,
+    dry: null,
+  },
   money: { paid: 0.19, earned: 1.39, saved: 5.93, standing: 0 },
 };
 

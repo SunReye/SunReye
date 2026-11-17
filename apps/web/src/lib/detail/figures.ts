@@ -3,6 +3,8 @@ import { flowColour } from "../energy-colours.ts";
 import type { Day } from "../dashboard/day.ts";
 import { current } from "../dashboard/now.ts";
 import { m } from "../paraglide/messages.js";
+import { skyOf } from "../weather/sky.ts";
+import { SKY_WORDS } from "../weather/sky-words.ts";
 
 /** A day figure: one of today's energies. */
 export type Today = "production" | "consumption" | "feedIn" | "purchase";
@@ -17,7 +19,9 @@ export interface Figure {
   readonly diverging?: readonly [string, string];
   /** Today's energy the sheet leads with, before the live power. */
   readonly today?: Today;
-  readonly chart: "pv" | "price" | null;
+  /** What stands where a figure has no series in history: a chart of today, or the weather by
+   * the hour (ADR 23). */
+  readonly chart: "pv" | "price" | "weather" | null;
 }
 
 const SOLAR = flowColour("solar");
@@ -48,7 +52,7 @@ const FIGURES: Readonly<Record<Fixed, Figure>> = {
   saved: { colour: SOLAR, node: null, chart: null },
   price: { colour: HOUSE, node: null, chart: "price" },
   forecast: { colour: SOLAR, node: null, chart: "pv" },
-  weather: { colour: SOLAR, node: null, chart: null },
+  weather: { colour: SOLAR, node: null, chart: "weather" },
   pv: { colour: SOLAR, node: "pv", chart: "pv" },
   inverter: { colour: SOLAR, node: "inverter", chart: null },
   battery: {
@@ -212,15 +216,8 @@ function price(day?: Readonly<Day>, spot?: number): Facts {
   };
 }
 
-const SKIES = {
-  sunny: m.dash_sky_sunny,
-  partly: m.dash_sky_partly,
-  cloudy: m.dash_sky_cloudy,
-  night: m.dash_sky_night,
-};
-
 function weather(day: Readonly<Day> | undefined): Facts {
-  const sky = day?.weather.sky;
+  const sky = day === undefined ? null : skyOf(day.weather);
 
   const lead = {
     label: m.detail_now(),
@@ -229,7 +226,7 @@ function weather(day: Readonly<Day> | undefined): Facts {
     digits: 0,
   };
 
-  return { lead, stats: sky ? [{ label: m.dash_weather(), text: SKIES[sky]() }] : [] };
+  return { lead, stats: sky ? [{ label: m.dash_weather(), text: SKY_WORDS[sky]() }] : [] };
 }
 
 function peak(day: Readonly<Day> | undefined, kind: "production" | "consumption"): Fact {

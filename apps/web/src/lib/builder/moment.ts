@@ -49,6 +49,29 @@ export function wattsAt(intervals: readonly Interval[], at: number): number | nu
   return intervals.find(({ from, to }) => from <= at && at < to)?.watts ?? null;
 }
 
+/**
+ * The measured PV power at `at` as a share of the strings' peak; null for a forecast or a clear
+ * sky, and without a value: only a reading tells what the modules made.
+ */
+export function shareAt(
+  day: Day | undefined,
+  strings: Draft["strings"],
+  moduleTypes: readonly Readonly<Pick<ModuleType, "id" | "pmax">>[],
+  at: number,
+): number | null {
+  if (day?.source !== "measured") return null;
+
+  const read = day.strings.flatMap((intervals) => wattsAt(intervals, at) ?? []);
+
+  const peak = strings.reduce(
+    (sum, { modules, moduleType }) =>
+      sum + modules * (moduleTypes.find(({ id }) => id === moduleType)?.pmax ?? 0),
+    0,
+  );
+
+  return read.length === 0 || peak <= 0 ? null : read.reduce((sum, watts) => sum + watts, 0) / peak;
+}
+
 /** What a day is read from and run with. */
 export interface Reading {
   readonly core: Pick<Core, "history" | "forecasts">;

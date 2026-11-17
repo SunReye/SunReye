@@ -38,6 +38,7 @@ use crate::storage;
 use crate::tariff::Tariffs;
 use crate::topology::Topologies;
 use crate::views::Views;
+use crate::weather;
 
 const ROUTE: Problem = Problem {
     status: StatusCode::NOT_FOUND,
@@ -244,7 +245,9 @@ struct DeviceSupport {
     /// in parallel (ADR 17).
     estimated: Vec<String>,
     /// The series its profile publishes, extras left out, such as `load.phase.power[2]`: what
-    /// it can report, not what it reports now.
+    /// it can report, not what it reports now. The weather device lists its fixed `weather.*`
+    /// roles; `weather.code` is a WMO weather code as Open-Meteo serves it, and
+    /// `weather.clearness` the measured clear-sky index (ADR 23).
     series: Vec<String>,
     /// Whether the admin switched its writes on (ADR 7).
     writes: bool,
@@ -322,6 +325,10 @@ async fn capabilities(
             .or_default()
             .max_input_voltage = Some(volts);
     }
+    support
+        .entry(weather::DEVICE.0.to_string())
+        .or_default()
+        .series = weather::roles().map(str::to_owned).collect();
     let devices = support;
     let support = sunreye_profile::SUPPORT;
     Ok(Json(Support {

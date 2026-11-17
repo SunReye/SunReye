@@ -35,7 +35,7 @@ export interface Daylight {
   readonly clouds: Clouds;
   /** How hazy the sky model is: 1 at a low sun, 0 at a high one. */
   readonly haze: number;
-  /** The shadow's blur radius in shadow-map texels: wider under cloud. */
+  /** How strong the cast shadow is: 1 under a clear sky, 0 under a closed one. */
   readonly shadow: number;
   /** The moon lights the plant. */
   readonly night: boolean;
@@ -102,14 +102,11 @@ const SKY = { light: 0.45, most: 10 };
  * so a white model keeps its form on a grey day. */
 const THROUGH = 0.35;
 
-/** The shadow's blur radius under a clear sky and a closed one. */
-const SHADOW = { clear: 3.5, closed: 9 };
+/** The share of the day's light a thunderstorm takes: the sun's, the sky's and the fill's alike. */
+const STORM = 0.35;
 
-/** The radius under a clear sky: what a shadow's spread under cloud is measured against. */
-export const CLEAR_SHADOW = SHADOW.clear;
-
-/** The diffuse fractions where cloud starts to show and where the sky is closed: the dashboard
- * calls 0.45 partly cloudy and 0.8 cloudy. */
+/** The cloud (the diffuse fraction's scale) where it starts to show and where the sky is closed:
+ * the sky's word is fair from 0.45 and overcast from 0.85 (`weather/sky.ts`). */
 const CLOUD = [0.25, 0.85] as const;
 
 /** Degrees under the horizon where civil twilight ends and the moon starts to show. */
@@ -161,26 +158,28 @@ function twilight(sky: Sky): Daylight {
       sky: environment * skylight(sky.elevation, sky.clouds.coverage),
     }),
     glow: 0,
-    shadow: SHADOW.clear,
+    shadow: 1,
     night: true,
   };
 }
 
-/** Over the horizon, under `cloud` of a closed sky. */
-function day(sky: Sky, cloud: number): Daylight {
+/** Over the horizon, under `cloud` of a closed sky, a thunderstorm's while `thunder`. */
+function day(sky: Sky, cloud: number, thunder: boolean): Daylight {
   const k = 1 - sky.haze;
   // The sun's own light fades out toward the horizon, and the sky's makes up for it.
   const risen = smoothstep(0, DUSK, sky.elevation);
+  // The storm darkens as the sun rises: the twilight is left as it is.
+  const left = thunder ? 1 - STORM * risen : 1;
   // Cloud shows as the sun rises: at the horizon every sky is the twilight's.
   const veil = cloud * risen;
   const model = skylight(sky.elevation, sky.clouds.coverage);
 
   const direct = {
     colour: blend(linear(LOW.colour), linear(HIGH.colour), k),
-    intensity: mix(LOW.intensity, HIGH.intensity, k) * risen * mix(1, THROUGH, veil),
+    intensity: mix(LOW.intensity, HIGH.intensity, k) * risen * mix(1, THROUGH, veil) * left,
   };
 
-  const environment = Math.min(SKY.most, SKY.light / Math.max(model, 1e-6));
+  const environment = Math.min(SKY.most, SKY.light / Math.max(model, 1e-6)) * left;
 
   const clear =
     sky.elevation < DUSK
@@ -197,9 +196,12 @@ function day(sky: Sky, cloud: number): Daylight {
     ...direct,
     toward: sky.sun,
     environment,
-    fill: fill(tint, FAINT.day, FLOOR.day, { ...direct, sky: environment * model }),
+    fill: fill(tint, FAINT.day * left, FLOOR.day * left, {
+      ...direct,
+      sky: environment * model,
+    }),
     glow: mix(LOW.glow, HIGH.glow, k) * risen,
-    shadow: mix(SHADOW.clear, SHADOW.closed, cloud),
+    shadow: 1 - cloud,
     night: false,
   };
 }
@@ -207,11 +209,16 @@ function day(sky: Sky, cloud: number): Daylight {
 /**
  * The light for a sun toward `sun` under a sky whose light is `diffuse` of the way diffuse
  * (diffuse over global irradiance); a null sun is a fixed afternoon one, a null sky a clear one.
+ * `thunder` closes the sky and darkens the day (ADR 23).
  */
-export function daylight(sun: Point | null, diffuse: number | null = null): Daylight {
+export function daylight(
+  sun: Point | null,
+  diffuse: number | null = null,
+  thunder = false,
+): Daylight {
   const toward = sun ?? FIXED;
   const elevation = Math.asin(Math.max(-1, Math.min(1, toward[2]))) / DEGREES;
-  const cloud = smoothstep(...CLOUD, diffuse ?? 0);
+  const cloud = thunder ? 1 : smoothstep(...CLOUD, diffuse ?? 0);
 
   const sky = {
     sun: toward,
@@ -224,7 +231,7 @@ export function daylight(sun: Point | null, diffuse: number | null = null): Dayl
     lamps: smoothstep(DUSK, CIVIL_END, elevation),
   };
 
-  return elevation <= 0 ? twilight(sky) : day(sky, cloud);
+  return elevation <= 0 ? twilight(sky) : day(sky, cloud, thunder);
 }
 
 /** The fill's colours `k` of the way `from` one sky `to` the next. */

@@ -22,14 +22,16 @@ export interface Look {
   readonly shadowMap: number;
   /** The ambient-occlusion pass: the full motion tier's, from Mittel up. */
   readonly occlusion: boolean;
+  /** The lens glass (ADR 23): the full motion tier's, from Mittel up. */
+  readonly glass: boolean;
   /** Hoch's: shadows that harden where they touch their caster. */
   readonly contact: boolean;
   /** Ultra's: the antialiasing burst, and occlusion at full resolution. */
   readonly finest: boolean;
 }
 
-const BARE = { occlusion: false } as const;
-const FULL = { occlusion: true } as const;
+const BARE = { occlusion: false, glass: false } as const;
+const FULL = { occlusion: true, glass: true } as const;
 
 const LOOKS: Readonly<Record<Level, Look>> = {
   low: { level: "low", pixelRatio: 1, shadowMap: 1024, ...BARE, contact: false, finest: false },
@@ -77,7 +79,7 @@ function auto(device: Device): Level {
 }
 
 /** What is drawn for `choice` on this device. A chosen level keeps its sharpness on any tier;
- * occlusion is the full motion tier's alone (ADR 21). */
+ * occlusion and the lens glass are the full motion tier's alone (ADR 21, ADR 23). */
 export function drawn(choice: Quality, device: Device): Look {
   const look = LOOKS[choice === "auto" ? auto(device) : choice];
 

@@ -1,22 +1,32 @@
-// A studio drawn in this browser's 3D quality (ADR 20 Look, Rendering quality), and counted
-// while it is on show: a strain the frame watch measures then is its drawing's too.
+// A studio drawn in this browser's 3D quality (ADR 20 Look, Rendering quality) and under what
+// this browser draws of the weather (ADR 23 "Off switch"), and counted while it is on show: a
+// strain the frame watch measures then is its drawing's too.
 import { untrack } from "svelte";
 import type { PerspectiveCamera } from "three";
 import { motion } from "../motion/tier.svelte.ts";
+import { weatherEffects } from "./weather-effects.svelte.ts";
 import { quality } from "./quality.svelte.ts";
 import type { Look } from "./quality.ts";
 import { Studio } from "./studio.ts";
+import { lightAlone, type SceneWeather } from "./weather.ts";
 
 export interface Opened {
   readonly studio: Studio;
   /** What the studio is to draw now: read in an effect, it follows the choice and the tier. */
   readonly look: () => Look;
+  /** What the studio is to draw of `given`: read in an effect, it follows the Wettereffekte
+   * switch. */
+  readonly weather: (given: SceneWeather | undefined) => SceneWeather | undefined;
   /** The studio is off show. */
   readonly close: () => void;
 }
 
 /** What this browser draws now: its 3D quality on its motion tier. */
 const look = (): Look => quality.look(motion.tier);
+
+/** What this browser draws of `given`: its light alone while the Wettereffekte switch is off. */
+const weather = (given: SceneWeather | undefined): SceneWeather | undefined =>
+  given === undefined || weatherEffects.on ? given : lightAlone(given);
 
 /** A studio on `canvas` in the look of the moment. */
 export function openStudio(
@@ -40,6 +50,7 @@ export function openStudio(
   return {
     studio,
     look,
+    weather,
     close() {
       unwatch();
       hide();

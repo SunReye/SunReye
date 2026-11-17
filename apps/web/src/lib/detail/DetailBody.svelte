@@ -55,7 +55,7 @@
 
   <Analytics {id} {title} colour={spec.colour} {input}>
     {#snippet fallback()}
-      <TodayChart chart={spec.chart} {day} />
+      <TodayChart chart={spec.chart} {day} core={input.core} />
     {/snippet}
   </Analytics>
 

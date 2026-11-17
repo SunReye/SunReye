@@ -82,7 +82,8 @@
         {capabilities}
         {model}
         {location}
-        diffuse={sky.diffuse}
+        diffuse={sky.weather.cloud}
+        weather={sky.scene}
         {locked}
         {top}
         {onselect}

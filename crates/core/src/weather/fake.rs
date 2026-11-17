@@ -41,10 +41,11 @@ impl Provider for Fake {
     }
 }
 
-/// Past weather for tests: answers each fetch with the `slots` on the days asked, and reports
-/// each call.
+/// Past weather for tests: answers each fetch with the `slots` on the days asked, failing those
+/// set by [`FakeArchive::failing`], and reports each call.
 pub struct FakeArchive {
     slots: Vec<Slot>,
+    fail: Mutex<Vec<bool>>,
     calls: mpsc::UnboundedSender<(Instant, Location, Date, Date)>,
 }
 
@@ -57,7 +58,15 @@ impl FakeArchive {
         mpsc::UnboundedReceiver<(Instant, Location, Date, Date)>,
     ) {
         let (calls, received) = mpsc::unbounded_channel();
-        (Self { slots, calls }, received)
+        let fail = Mutex::new(Vec::new());
+        (Self { slots, fail, calls }, received)
+    }
+
+    /// Fails the fetches listed in `fail`, in order.
+    #[must_use]
+    pub fn failing(self, fail: &[bool]) -> Self {
+        let fail = Mutex::new(fail.iter().rev().copied().collect());
+        Self { fail, ..self }
     }
 }
 
@@ -69,6 +78,9 @@ impl Archive for FakeArchive {
         to: Date,
     ) -> impl Future<Output = Result<Vec<Slot>, Error>> + Send {
         self.calls.send((Instant::now(), location, from, to)).ok();
+        if self.fail.lock().unwrap().pop() == Some(true) {
+            return std::future::ready(Err(Error::Fetch("refused".into())));
+        }
         let day = |s: &Slot| {
             let at = jiff::Timestamp::try_from(s.target).ok()?;
             Some(at.to_zoned(jiff::tz::TimeZone::UTC).date())

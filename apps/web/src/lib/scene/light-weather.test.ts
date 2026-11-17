@@ -55,9 +55,30 @@ test("overcast, a third of the sun's own light is left: a soft key light under t
 
   expect(overcast.intensity / clear.intensity).toBeGreaterThan(0.25);
   expect(overcast.intensity / clear.intensity).toBeLessThan(0.5);
-  expect(overcast.shadow).toBeGreaterThan(2 * clear.shadow);
   // The sky leads: the sun adds under half of what it gives a shadowed face.
   expect(overcast.intensity * luma(overcast.colour)).toBeLessThan(0.5 * ambientOf(overcast));
+});
+
+test("the sun's cast shadow fades out as the sky closes: whole when clear, none when overcast", () => {
+  expect(daylight(south(60)).shadow).toBe(1);
+  expect(daylight(south(60), 0.95).shadow).toBe(0);
+  // The sun still models the faces: one turned to it stays brighter than one in the shade.
+  expect(lightOf(daylight(south(60), 0.95))).toBeGreaterThan(
+    1.2 * ambientOf(daylight(south(60), 0.95)),
+  );
+
+  let last = 1;
+
+  for (let hundredths = 0; hundredths <= 100; hundredths++) {
+    const { shadow } = daylight(south(40), hundredths / 100);
+
+    expect(shadow).toBeGreaterThanOrEqual(0);
+    expect(shadow).toBeLessThanOrEqual(last);
+    last = shadow;
+  }
+
+  // Half closed, half a shadow.
+  expect(daylight(south(40), 0.55).shadow).toBeCloseTo(0.5, 5);
 });
 
 test("a partly cloudy sky lies between the clear and the overcast one", () => {
@@ -101,5 +122,32 @@ test("the weather steps nowhere: the light eases from sky to sky and across the 
       expect(Math.abs(luma(next.fill.sky) - luma(last.fill.sky))).toBeLessThan(0.01);
       last = next;
     }
+  }
+});
+
+test("thunder closes the sky and darkens the day by about a third, whatever the cloud was", () => {
+  const [overcast, storm] = [daylight(south(40), 1), daylight(south(40), 0.3, true)];
+
+  expect(storm.shadow).toBe(0);
+  expect(storm.clouds).toEqual(overcast.clouds);
+  expect(lightOf(storm) / lightOf(overcast)).toBeGreaterThan(0.55);
+  expect(lightOf(storm) / lightOf(overcast)).toBeLessThan(0.75);
+  expect(ambientOf(storm) / ambientOf(overcast)).toBeLessThan(0.75);
+  expect(storm.night).toBe(false);
+  expect(daylight(south(40), 1, true)).toEqual(storm);
+});
+
+test("thunder leaves the night as it is, and darkens without a step as the sun rises", () => {
+  for (const elevation of [-12, -20]) {
+    expect(daylight(south(elevation), 1, true)).toEqual(daylight(south(elevation), 1));
+  }
+
+  let last = daylight(south(-8), 1, true);
+
+  for (let i = 1; i <= 320; i++) {
+    const next = daylight(south(-8 + i * 0.05), 1, true);
+
+    expect(Math.abs(lightOf(next) - lightOf(last))).toBeLessThan(0.1);
+    last = next;
   }
 });

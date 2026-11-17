@@ -7,9 +7,10 @@
   import type { Core, PvString } from "../api/core.ts";
   import type { RangeRoute } from "../range/route.svelte.ts";
 
-  /** What the analytics read: the core, the sheet's range and the layout's strings. */
+  /** What the analytics read: the core, the sheet's range and the layout's strings. The weather
+   * detail, which stands in their place, reads `history` (ADR 23). */
   export interface AnalyticsInput {
-    readonly core: Readonly<Pick<Core, "statistics" | "forecasts" | "moduleTypes" | "corrections">>;
+    readonly core: Readonly<Pick<Core, "statistics" | "forecasts" | "moduleTypes" | "corrections" | "history">>;
     readonly route: RangeRoute;
     readonly strings: readonly PvString[];
   }

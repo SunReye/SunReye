@@ -4,6 +4,7 @@ use std::fmt;
 use std::future::{Future, IntoFuture};
 use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use tokio::net::TcpListener;
@@ -15,6 +16,7 @@ use crate::backup::Backups;
 use crate::bus::Bus;
 use crate::cars::CarBodies;
 use crate::changes::Changes;
+use crate::clear_sky_index::ClearSkyIndex;
 use crate::correction::{Corrections, Learner};
 use crate::devices::Devices;
 use crate::estimates::StringEstimates;
@@ -32,7 +34,7 @@ use crate::storage::{self, Storage};
 use crate::tariff::{TariffDevice, Tariffs};
 use crate::topology::Topologies;
 use crate::views::Views;
-use crate::weather::{self, Archive, Provider, Weather};
+use crate::weather::{self, Archive, Past, Provider, Weather};
 
 const DEFAULT_LISTEN: SocketAddr =
     SocketAddr::new(IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED), 8099);
@@ -407,8 +409,8 @@ impl Computed {
     }
 }
 
-/// Runs the weather device, the solar forecast, the correction learner and the spot-price device
-/// until storage stops.
+/// Runs the weather device, the solar forecast, the correction learner, the weather backfill, the
+/// clear-sky index and the spot-price device until storage stops.
 async fn forecast(
     storage: &Storage,
     (provider, archive, spot): (impl Provider, impl Archive, impl spot::Provider),
@@ -422,7 +424,9 @@ async fn forecast(
     let weather = Weather::new(provider, weather::DEVICE, bus);
     let solar = SolarForecast::new(layouts.clone(), weather::DEVICE, bus);
     let corrections = Corrections::new(layouts.clone(), weather::DEVICE, storage);
-    let learner = Learner::new(archive, weather::DEVICE, layouts, storage, bus);
+    let index = ClearSkyIndex::new(layouts.clone(), weather::DEVICE, storage, bus);
+    let past = Arc::new(Past::new(archive, weather::DEVICE, bus));
+    let learner = Learner::new(Arc::clone(&past), weather::DEVICE, layouts, storage);
     let spot = SpotPrices::new(spot, bus);
     tokio::join!(
         weather.run(storage, location.clone(), SystemTime::now),
@@ -433,7 +437,15 @@ async fn forecast(
             SystemTime::now
         ),
         // Boxed: its learn run alone would make the core's future large.
-        Box::pin(learner.run(storage, location, storage.zones().watch(), SystemTime::now)),
+        Box::pin(index.run(storage, &corrections, location.clone(), SystemTime::now)),
+        Box::pin(learner.run(
+            storage,
+            location.clone(),
+            storage.zones().watch(),
+            SystemTime::now
+        )),
+        // Once after the upgrade (ADR 23).
+        Box::pin(past.backfill(storage, location)),
         spot.run(storage, zone, SystemTime::now),
     );
 }

@@ -2,6 +2,10 @@
 import { Box3, BufferGeometry, Material, Mesh, Sphere, type Group, type Object3D } from "three";
 import type { Studio } from "./studio.ts";
 import { lamps } from "./wall-openings.ts";
+import { DRY, type SceneWeather } from "./weather.ts";
+import { weathered } from "./weathered.ts";
+
+export { DRY, type SceneWeather };
 
 /** Frees a drawn part's meshes; textures are shared and stay. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js frees in place.
@@ -23,6 +27,8 @@ export interface Staged {
   readonly dispose: () => void;
   /** How far the house's lamps are on. */
   readonly lamp: (level: number) => void;
+  /** Wets, snows on and dries what is drawn, and what is drawn after. */
+  readonly weather: (weather: SceneWeather | undefined) => void;
 }
 
 /** Draws one group at a time in `studio`, freeing the last. */
@@ -30,12 +36,18 @@ export interface Staged {
 export function stage(studio: Studio): Staged {
   let drawn: Group | undefined;
   let lamplight = 0;
+  let sky = DRY;
 
   return {
     lamp(level) {
       lamplight = level;
 
       if (drawn !== undefined) lamps(drawn, level);
+    },
+    weather(weather = DRY) {
+      sky = weather;
+
+      if (drawn !== undefined) weathered(drawn, weather);
     },
     // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws it.
     show(group) {
@@ -45,6 +57,7 @@ export function stage(studio: Studio): Staged {
       }
 
       lamps(group, lamplight);
+      weathered(group, sky);
       studio.scene.add(group);
       drawn = group;
 

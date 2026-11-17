@@ -1,6 +1,6 @@
 // The studio the scene is drawn in (ADR 20 Look): renderer, sun and moon, sky environment, a
 // backdrop in the page colour, a floor that fades into it, and the passes its 3D quality asks for.
-// It draws only when asked: never in a loop.
+// It draws only when asked: the loop is the weather's (ADR 23 "Motion"), and not the studio's.
 import {
   Color,
   DirectionalLight,
@@ -18,12 +18,13 @@ import {
 } from "three";
 import { toThree } from "../builder/scene.ts";
 import { aim, backdrop, sky } from "./backdrop.ts";
-import { CLEAR_SHADOW, type Daylight, type Theme } from "./light.ts";
+import { Fall } from "./falling.ts";
+import type { Daylight, Theme } from "./light.ts";
 import { Passes } from "./passes.ts";
 import { Plot } from "./plot.ts";
 import { gpuOf, type Look } from "./quality.ts";
 import { shade, shadowFor, soften } from "./sun-shadow.ts";
-import { untone } from "./tone.ts";
+import { DRY, fogColour, type Falling, type Glass, type SceneWeather } from "./weather.ts";
 
 export class Studio {
   readonly renderer: WebGLRenderer;
@@ -31,8 +32,6 @@ export class Studio {
 
   readonly #passes: Passes;
   #look: Look;
-  /** The shadow's spread under the sky last lit: 1 when clear. */
-  #spread = 1;
   readonly #sun = new DirectionalLight(0xffffff, 3);
   /** A faint sky and ground bounce on top of the image-based light; at night, the sky itself. */
   readonly #fill = new HemisphereLight();
@@ -40,6 +39,8 @@ export class Studio {
   readonly #sky = sky(1000);
   readonly #skyScene = new Scene();
   readonly #plot = new Plot();
+  /** Rain and snow in the air: the studio's own, like the floor, and no part of what is built. */
+  readonly #fall = new Fall();
   #environment: WebGLRenderTarget | undefined;
   /** What the environment and the backdrop were made for: either is made again only on change. */
   #environed = "";
@@ -75,7 +76,7 @@ export class Studio {
     this.#pmrem = new PMREMGenerator(this.renderer);
     this.#skyScene.add(this.#sky);
     soften(this.#sun);
-    this.scene.add(this.#sun, this.#sun.target, this.#fill, this.#plot.floor);
+    this.scene.add(this.#sun, this.#sun.target, this.#fill, this.#plot.floor, this.#fall.object);
     this.scene.fog = this.#plot.fog;
 
     this.#passes = new Passes(this.renderer, this.scene, camera);
@@ -111,6 +112,7 @@ export class Studio {
     this.#centre.set(centre.x, centre.y, centre.z);
     this.#radius = Math.max(radius, 5);
     this.#plot.fit(centre.x, centre.z, this.#radius);
+    this.#fall.fit(centre.x, centre.z, this.#radius);
 
     const reach = this.#radius + 2;
     const camera = this.#sun.shadow.camera;
@@ -123,13 +125,13 @@ export class Studio {
     this.#shade();
   }
 
-  /** Sun or moon, sky, environment, backdrop, fog and exposure for the time and the theme. */
-  light(day: Daylight, look: Theme, page: Readonly<Color>): void {
+  /** Sun or moon, sky, environment, backdrop, fog and exposure for the time and the theme, and
+   * the `weather`'s fog, which greys backdrop and fog alike, and floor (ADR 23). */
+  light(day: Daylight, look: Theme, page: Readonly<Color>, weather?: SceneWeather): void {
     this.#toward.set(...toThree(day.toward));
     this.#sun.color.setRGB(day.colour.r, day.colour.g, day.colour.b);
     this.#sun.intensity = day.intensity;
-    this.#spread = day.shadow / CLEAR_SHADOW;
-    this.#shade();
+    this.#sun.shadow.intensity = day.shadow;
     this.#fill.color.setRGB(day.fill.sky.r, day.fill.sky.g, day.fill.sky.b);
     this.#fill.groundColor.setRGB(day.fill.ground.r, day.fill.ground.g, day.fill.ground.b);
     this.#fill.intensity = day.fill.intensity;
@@ -138,20 +140,40 @@ export class Studio {
     if (this.#held === undefined) this.#environ(day, look);
     else this.#held = [day, look];
 
-    const untoned = new Color(...untone([page.r, page.g, page.b], look.exposure));
-
-    const backdropped = JSON.stringify([page.r, page.g, page.b, look]);
+    // The air's colour: the page's, greyed by the weather's fog, a twentieth at a time.
+    const given = weather ?? DRY;
+    const air = fogColour([page.r, page.g, page.b], look.dark, Math.round(given.fog * 20) / 20);
+    const backdropped = JSON.stringify([air, look]);
 
     this.renderer.toneMappingExposure = look.exposure;
 
     if (backdropped !== this.#backdropped) {
       this.#backdropped = backdropped;
       this.#backdrop?.dispose();
-      this.#backdrop = backdrop(new Color(page.r, page.g, page.b), look.exposure, look.dark);
+      this.#backdrop = backdrop(new Color(...air), look.exposure, look.dark);
       this.scene.background = this.#backdrop;
     }
 
-    this.#plot.fog.color.copy(untoned);
+    this.#plot.weather(given, air, look.exposure);
+    this.#fall.tint(look.dark, look.exposure);
+    this.#passes.tint(look.dark);
+  }
+
+  /** What is on the lens at `seconds` of the weather loop (ADR 23); null for a clear one. The
+   * look decides whether it is drawn: not at Niedrig, and on the full tier alone. */
+  lens(glass: Glass | null, seconds: number): void {
+    this.#passes.lens(glass, seconds);
+  }
+
+  /** Rain or snow in the air (ADR 23): `sparse` for the lite tier's thin field, null for none.
+   * Apart from `light`: what falls is the motion tier's to show. */
+  fall(falling: Falling | null, sparse: boolean): void {
+    this.#fall.show(falling, sparse);
+  }
+
+  /** Moves what falls to where it is after `seconds` of the weather loop. */
+  drift(seconds: number): void {
+    this.#fall.drift(seconds);
   }
 
   setSize(width: number, height: number): void {
@@ -159,6 +181,7 @@ export class Studio {
     this.renderer.setPixelRatio(this.pixelRatio);
     this.renderer.setSize(width, height, false);
     this.#passes.setSize(width, height, this.pixelRatio);
+    this.#fall.size(height * this.pixelRatio);
   }
 
   /** Draws the scene as it is now. */
@@ -207,12 +230,13 @@ export class Studio {
     const [width, height] = this.#size;
 
     this.setSize(4, 4);
-    this.render();
+    this.#passes.warm();
     this.setSize(width, height);
   }
 
   dispose(): void {
     this.#passes.dispose();
+    this.#fall.dispose();
     this.#environment?.dispose();
     this.#backdrop?.dispose();
     this.#pmrem.dispose();
@@ -254,7 +278,7 @@ export class Studio {
   }
 
   #shade(): void {
-    shade(this.#sun, this.#look, this.#spread);
+    shade(this.#sun, this.#look);
   }
 
   #distance(): number {

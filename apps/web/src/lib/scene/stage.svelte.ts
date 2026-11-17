@@ -8,7 +8,7 @@ import { cssColour, flowRgb } from "./backdrop.ts";
 import { daylight, theme } from "./light.ts";
 import { easeGlow } from "./live-glow.svelte.ts";
 import { Opening } from "./opening.svelte.ts";
-import { stage, type Staged } from "./staged.ts";
+import { DRY, stage, type SceneWeather, type Staged } from "./staged.ts";
 import { openStudio, type Opened } from "./studio-look.svelte.ts";
 
 /** Follows mode-watcher's class on the root element. */
@@ -61,27 +61,111 @@ export interface Lit {
   readonly dispose: () => void;
 }
 
-/** A studio on `canvas`, lit by `sky`, drawn after each change; `drawn` follows each draw. The
- * sky is the sun (null for a fixed one) and how diffuse its light is (null for a clear sky). */
+/** The sun (null for a fixed one), how diffuse its light is (null for a clear sky) and the
+ * scene's weather (none, clear and dry). */
+export interface Sky {
+  readonly sun: Parameters<typeof daylight>[0];
+  readonly diffuse: number | null;
+  readonly weather: SceneWeather | undefined;
+}
+
+type Falling = NonNullable<SceneWeather["falling"]>;
+
+type Glass = NonNullable<SceneWeather["glass"]>;
+
+/** What falls, anew only when a value of it changed. */
+function steadyFalling(given: () => Falling | null): () => Falling | null {
+  const kind = $derived(given()?.kind);
+  const density = $derived(given()?.density ?? 0);
+  const east = $derived(given()?.wind[0] ?? 0);
+  const north = $derived(given()?.wind[1] ?? 0);
+
+  const falling = $derived(
+    kind === undefined ? null : { kind, density, wind: [east, north] as const },
+  );
+
+  return () => falling;
+}
+
+/** What is on the lens, anew only when a value of it changed. */
+function steadyGlass(given: () => Glass | null): () => Glass | null {
+  const on = $derived(given() !== null);
+  const rain = $derived(given()?.rain ?? 0);
+  const snow = $derived(given()?.snow ?? 0);
+  const frost = $derived(given()?.frost ?? 0);
+  const glass = $derived(on ? { rain, snow, frost } : null);
+
+  return () => glass;
+}
+
+/**
+ * The light and the weather of `sky`, each anew only when a value of it changed: a live tick
+ * asks for the same weather again and must light nothing. Each value is derived on its own and
+ * the weather composed of them, as a derived value that comes out the same wakes nothing. The
+ * studio's `look` tells whether it draws the lens glass, and `weatherOf` what it draws of a
+ * weather.
+ */
+function steadied(sky: () => Sky, look: Opened["look"], weatherOf: Opened["weather"]) {
+  const sun = $derived(sky().sun);
+  const diffuse = $derived(sky().diffuse);
+  const read = $derived(weatherOf(sky().weather));
+  const known = $derived(read !== undefined);
+  const given = $derived(read ?? DRY);
+  const fog = $derived(given.fog);
+  const wet = $derived(given.wet);
+  const snow = $derived(given.snow);
+  const covered = $derived(given.covered);
+  const thunder = $derived(given.thunder);
+  // Apart from the rest: the ground drying under it must not start the loop over.
+  const falling = steadyFalling(() => given.falling);
+  const whole = steadyGlass(() => given.glass);
+
+  const weather = $derived(
+    known ? { fog, wet, snow, covered, thunder, falling: falling(), glass: whole() } : undefined,
+  );
+
+  // None where the look draws none, at Niedrig: no loop is kept for it there.
+  const glass = $derived(look().glass ? whole() : null);
+  const day = $derived(daylight(sun, diffuse, thunder));
+
+  return {
+    get day() {
+      return day;
+    },
+    get weather() {
+      return weather;
+    },
+    get falling() {
+      return falling();
+    },
+    get glass() {
+      return glass;
+    },
+  };
+}
+
+/** A studio on `canvas`, lit by `sky` and under its weather, drawn after each change; `drawn`
+ * follows each draw. */
 export function lit(
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws on it.
   canvas: HTMLCanvasElement,
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws with it.
   camera: PerspectiveCamera,
-  sky: () => Readonly<{ sun: Parameters<typeof daylight>[0]; diffuse: number | null }>,
+  sky: () => Sky,
   drawn: () => void,
 ): Lit {
-  const { studio, look, close } = openStudio(canvas, camera);
+  const { studio, look, weather, close } = openStudio(canvas, camera);
   const opened = new Opening(studio, drawn);
-  const { flight } = opened;
-  const { render } = opened;
+  const { flight, render } = opened;
   const shown = stage(studio);
-  const day = $derived(daylight(sky().sun, sky().diffuse));
+  const steady = steadied(sky, look, weather);
+  const day = $derived(steady.day);
   let colour = $state(0);
 
   $effect(() => {
-    studio.light(day, theme(dark()), cssColour("var(--background)"));
+    studio.light(day, theme(dark()), cssColour("var(--background)"), steady.weather);
     shown.lamp(day.lamps);
+    shown.weather(steady.weather);
     colour = flowRgb("solar").getHex();
     render();
   });
@@ -90,6 +174,8 @@ export function lit(
     studio.follow(look());
     render();
   });
+
+  opened.moves(steady);
 
   const glow = (): Glow => ({ colour, daylight: day.glow });
 

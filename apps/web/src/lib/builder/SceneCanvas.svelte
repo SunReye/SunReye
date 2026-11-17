@@ -1,4 +1,6 @@
 <script lang="ts" module>
+  export type { Plant, SceneWeather } from "../scene/weather.ts";
+
   export type { Editing, Painting, Projector } from "./drawing.svelte.ts";
 </script>
 
@@ -9,7 +11,7 @@
   import { openGarage, type Garage, type ModelLoader } from "../cars/garage.ts";
   import type { Parked } from "../cars/parked.ts";
   import { m } from "../paraglide/messages.js";
-  import { Ghost, lit, type Lit, type SceneFailure } from "../scene/stage.svelte.ts";
+  import { Ghost, lit, type Lit, type SceneFailure, type Sky } from "../scene/stage.svelte.ts";
   import { FOV, type View } from "./camera.ts";
   import {
     Brushwork,
@@ -33,6 +35,7 @@
     cars = [],
     sun = null,
     diffuse = null,
+    weather,
     model,
     view,
     locked = false,
@@ -55,6 +58,8 @@
     sun?: Point | null | undefined;
     /** How diffuse the sky's light is, 0 clear to 1 overcast: the weather; null for a clear sky. */
     diffuse?: number | null | undefined;
+    /** Fog, wet ground, lying snow and thunder at the instant shown (ADR 23); none, clear and dry. */
+    weather?: Sky["weather"];
     /** Reads an uploaded car body. */
     model?: ModelLoader | undefined;
     view: View;
@@ -216,7 +221,7 @@
       return lit(
         canvas,
         camera,
-        () => ({ sun: sun ?? null, diffuse: diffuse ?? null }),
+        () => ({ sun: sun ?? null, diffuse: diffuse ?? null, weather }),
         () => {
           const project = projector(canvas, camera.clone());
 
