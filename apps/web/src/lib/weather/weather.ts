@@ -65,7 +65,7 @@ const SERIES = [
 type Role = (typeof SERIES)[number]["role"];
 
 /** A value from `from` to before `to`, in ms since 1970. */
-interface Held {
+export interface Held {
   readonly from: number;
   readonly to: number;
   readonly value: number;
@@ -74,7 +74,7 @@ interface Held {
 /** A span's stored weather, by series: hand it to `weatherAt`. History comes before forecasts. */
 export type WeatherRead = Readonly<Record<string, readonly Held[]>>;
 
-type Reader = Pick<Core, "history" | "forecasts">;
+export type WeatherReader = Pick<Core, "history" | "forecasts">;
 
 type Span = readonly [Date, Date];
 
@@ -82,7 +82,7 @@ type Interval = History["points"][number];
 
 type Target = Forecasts["points"][number];
 
-async function measured(core: Reader, role: Role, span: Span): Promise<Held[]> {
+async function measured(core: WeatherReader, role: Role, span: Span): Promise<Held[]> {
   const read = await core.history(WEATHER, role, ...span);
 
   return "points" in read
@@ -94,7 +94,7 @@ async function measured(core: Reader, role: Role, span: Span): Promise<Held[]> {
     : [];
 }
 
-async function forecast(core: Reader, role: Role, span: Span): Promise<Held[]> {
+async function forecast(core: WeatherReader, role: Role, span: Span): Promise<Held[]> {
   const read = await core.forecasts(WEATHER, role, ...span);
 
   if (!("points" in read)) return [];
@@ -121,7 +121,7 @@ async function source(wanted: boolean, read: () => Promise<Held[]>): Promise<Hel
 
 /** The stored weather from `from` to before `to`; a series the core refuses or fails is empty. */
 export async function readWeather(
-  core: Reader,
+  core: WeatherReader,
   from: Readonly<Date>,
   to: Readonly<Date>,
 ): Promise<WeatherRead> {

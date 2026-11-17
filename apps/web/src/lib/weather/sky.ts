@@ -46,13 +46,27 @@ function byCloud(cloud: number): Sky {
   return cloud >= FAIR ? "fair" : "sunny";
 }
 
+/** What the code says falls or hangs; null for a dry code or none. */
+function falling(code: number | null): Sky | null {
+  if (code === null) return null;
+
+  return CODES.find(([first]) => code >= first)?.[1] ?? null;
+}
+
+/** How open a dry sky is: by its cloud, else by its code. */
+function openness(code: number | null, cloud: number | null): Sky | null {
+  if (cloud !== null) return byCloud(cloud);
+
+  return BY_CODE[code ?? -1] ?? null;
+}
+
 /** The word for `weather`'s sky; null where neither a code nor a cloud value tells. */
 export function skyOf({ code, cloud, ghi }: Weather): Sky | null {
-  const falling = CODES.find(([first]) => code !== null && code >= first)?.[1] ?? null;
+  const wet = falling(code);
 
-  if (falling !== null) return falling;
+  if (wet !== null) return wet;
 
-  const open = cloud === null ? (BY_CODE[code ?? -1] ?? null) : byCloud(cloud);
+  const open = openness(code, cloud);
   const night = ghi !== null && ghi < DARK;
 
   return night && (open === "sunny" || open === "fair") ? "clear" : open;
