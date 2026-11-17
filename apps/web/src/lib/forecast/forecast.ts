@@ -187,8 +187,8 @@ export function held(points: readonly Readonly<{ target: string; value: number }
 const PIECE = 1400 * 900_000;
 
 /**
- * A series' latest forecast targets from `from` to before `to`, read in pieces the core serves; a
- * refused piece holds none.
+ * A series' latest forecast targets from `from` to before `to`, read in pieces the core serves;
+ * none when any piece is refused.
  */
 export async function forecastTargets(
   core: Readonly<Pick<Core, "forecasts">>,
@@ -209,7 +209,12 @@ export async function forecastTargets(
 
   const points: { target: string; value: number }[] = [];
 
-  for (const read of reads) if ("points" in read) points.push(...read.points);
+  // A held target would bridge a refused piece's hole with one stale value.
+  for (const read of reads) {
+    if (!("points" in read)) return [];
+
+    points.push(...read.points);
+  }
 
   return points;
 }

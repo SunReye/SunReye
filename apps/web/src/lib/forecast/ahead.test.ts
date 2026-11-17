@@ -3,7 +3,7 @@ import { expect, test } from "bun:test";
 import type { Rolled } from "../history/history.ts";
 import { daySpans } from "../weather/hourly.ts";
 import { aheadDays, powerAt, track } from "./ahead.ts";
-import { held } from "./forecast.ts";
+import { forecastTargets, held } from "./forecast.ts";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -151,4 +151,31 @@ test("a forecast's power holds from its target to the next", () => {
   expect(powerAt(PLANT, START + 14 * HOUR)).toBe(0);
   // Past the last target's hour nothing is forecast.
   expect(powerAt(PLANT, START + 3 * DAY)).toBeNull();
+});
+
+test("a read refused in any of its pieces holds no forecast, not one with a hole", async () => {
+  const asked: number[] = [];
+
+  const core = {
+    forecasts: (_device: number, _series: string, from: Readonly<Date>) => {
+      asked.push(from.getTime());
+
+      return Promise.resolve(
+        asked.length === 2
+          ? { problem: "forecast.range" }
+          : { points: [{ target: from.toISOString(), issued: from.toISOString(), value: 1 }] },
+      );
+    },
+  };
+
+  const read = await forecastTargets(
+    core,
+    1,
+    "pv.power",
+    new Date(START),
+    new Date(START + 33 * DAY),
+  );
+
+  expect(asked).toHaveLength(3);
+  expect(read).toEqual([]);
 });
