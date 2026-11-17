@@ -1,5 +1,6 @@
 import { tick } from "svelte";
 import { expect, test } from "vitest";
+import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import type { Band } from "./bands.ts";
@@ -87,6 +88,24 @@ test("on a full screen, a finger reads at once and follows; lifted, its band sta
 
   await screen.getByRole("button", { name: "Öffnen" }).click();
   expect(drilled).toEqual([0]);
+});
+
+test("a band a finger left to open stays offered while a mouse leaves the plot for it", async () => {
+  const drilled: number[] = [];
+
+  const screen = await mount((i) => {
+    drilled.push(i);
+  });
+
+  // A touch laptop: the cursor rests on the chart while a finger reads it.
+  await userEvent.hover(document.querySelector<HTMLElement>("[data-scrub]")!);
+  finger("pointerdown", 0.25);
+  finger("pointermove", 0.75);
+  finger("pointerup", 0.75);
+  await tick();
+
+  await screen.getByRole("button", { name: "Öffnen" }).click();
+  expect(drilled).toEqual([1]);
 });
 
 test("on a full screen, a tap opens its band", async () => {

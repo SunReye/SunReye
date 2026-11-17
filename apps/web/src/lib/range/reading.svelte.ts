@@ -168,8 +168,9 @@ export class Reading {
     this.#drill(from);
   };
 
+  /** A mouse leaving takes only what hovering read: a band a finger or a key left to open stays. */
   leave = (e: Pointer): void => {
-    if (e.pointerType === "mouse" && this.#dragFrom === null) this.#set(null);
+    if (e.pointerType === "mouse" && this.#dragFrom === null && !this.pinned) this.#set(null);
   };
 
   /** The browser took the finger, to scroll. */
