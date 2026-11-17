@@ -19,6 +19,7 @@ use tokio::time::Instant;
 use crate::bus::{Bus, DeviceId, Series, SeriesId};
 use crate::location::Location;
 use crate::storage::{self, ChangePoint, Issue, Policy, Storage};
+use crate::utc_day;
 
 #[cfg(test)]
 pub use open_meteo::parse_archive;
@@ -475,10 +476,10 @@ impl<A: Archive> Past<A> {
                 .await?;
             return Ok(ControlFlow::Break(()));
         }
-        let last = utc_date(until - Duration::from_secs(1));
-        let first = utc_date(start).max(last - jiff::Span::new().days(CHUNK_DAYS - 1));
+        let last = utc_day::of(until - Duration::from_secs(1));
+        let first = utc_day::of(start).max(last - jiff::Span::new().days(CHUNK_DAYS - 1));
         let slots = self.archive.fetch(location.rounded(), first, last).await?;
-        let from = midnight(first).max(start);
+        let from = utc_day::start(first).max(start);
         let detail = QUANTITIES[MODEL..]
             .iter()
             .zip(&self.series[MODEL..])
@@ -600,20 +601,6 @@ pub async fn archived(
             })
         })
         .collect())
-}
-
-/// The UTC day `time` falls on.
-pub(crate) fn utc_date(time: SystemTime) -> jiff::civil::Date {
-    jiff::Timestamp::try_from(time)
-        .unwrap_or(jiff::Timestamp::UNIX_EPOCH)
-        .to_zoned(jiff::tz::TimeZone::UTC)
-        .date()
-}
-
-/// The start of the UTC `day`.
-pub(crate) fn midnight(day: jiff::civil::Date) -> SystemTime {
-    day.to_zoned(jiff::tz::TimeZone::UTC)
-        .map_or(UNIX_EPOCH, |z| SystemTime::from(z.timestamp()))
 }
 
 fn seconds(time: SystemTime) -> i64 {

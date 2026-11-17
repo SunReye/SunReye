@@ -38,6 +38,7 @@ pub mod sunspec;
 pub mod tariff;
 pub mod topology;
 pub mod transport;
+mod utc_day;
 pub mod views;
 pub mod weather;
 pub mod zone;
