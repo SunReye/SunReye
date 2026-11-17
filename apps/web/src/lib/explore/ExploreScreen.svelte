@@ -89,7 +89,7 @@
           <ExploreChips {x} onadd={add} />
         {/if}
         <div class={look.chart} bind:clientHeight={room}>
-          <ChartArea {core} {x} {fill} bind:plotted />
+          <ChartArea {core} {x} {fill} full={full.on} bind:plotted />
         </div>
       {/if}
     </Card.Root>

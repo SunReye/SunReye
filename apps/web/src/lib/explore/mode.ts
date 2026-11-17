@@ -20,6 +20,8 @@ export interface ModeProps {
   periods: readonly string[];
   /** The chart's height in px. */
   height: number;
+  /** Whether the chart is fullscreen: a pane shows only its chart and legend (ADR 22). */
+  full?: boolean | undefined;
 }
 
 /** A pane's props: its mode's, and how the screen reads what it plotted, for the export. */
