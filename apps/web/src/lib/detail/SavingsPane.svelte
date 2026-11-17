@@ -1,6 +1,7 @@
 <!--
   The savings sheet's range (ADR 21 "Sheet content", ADR 12): its control, then what was saved
-  over it and its parts.
+  over it and its parts, the way to the tariff, and for the admin the savings since installation
+  against the investment.
 -->
 <script lang="ts">
   import { m } from "../paraglide/messages.js";
@@ -10,6 +11,8 @@
   import type { HeadView } from "./head.svelte.ts";
   import NoTariff from "./NoTariff.svelte";
   import RangeState from "./RangeState.svelte";
+  import SavingsPayback from "./SavingsPayback.svelte";
+  import TariffLink from "./TariffLink.svelte";
 
   let {
     input,
@@ -38,7 +41,12 @@
     <RangeState {head} {onretry}>
       <Costs core={input.core} route={input.route} chart="savings" />
     </RangeState>
+    <TariffLink route={input.route} />
   {:else}
     <NoTariff {admin} />
   {/if}
 </section>
+
+{#if priced && admin}
+  <SavingsPayback core={input.core} />
+{/if}

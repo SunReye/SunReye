@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, expect, test } from "vitest";
 import "../../app.css";
 import {
+  fetched,
   LIVE,
   prepare,
   restore,
@@ -129,4 +130,48 @@ test("a viewer without a tariff is told who sets one", async () => {
   await expect.element(sheet.getByText("Ohne Tarif gibt es keine Ersparnis.")).toBeVisible();
   await expect.element(sheet.getByText(/Der Admin legt ihn/u)).toBeVisible();
   expect(sheet.getByRole("link", { name: "Tarif festlegen" }).elements()).toEqual([]);
+});
+
+test("the admin reads the savings since installation against the investment", async () => {
+  served.payback = {
+    investment: 10_000,
+    savings: 2500,
+    remaining: 7500,
+    pace: 1200,
+    reached: "2032-03-31",
+    months: [],
+  };
+
+  const { sheet } = await sheetOf("range=month&at=2026-11-01", true);
+  const facts = sheet.getByRole("definition");
+
+  await expect.element(sheet.getByText("Insgesamt")).toBeVisible();
+  await expect.element(facts.getByText("2.500")).toBeVisible();
+  await expect.element(facts.getByText("25")).toBeVisible();
+  await expect.element(facts.getByText("2032")).toBeVisible();
+});
+
+test("without an investment the admin reads the savings so far, and no payback", async () => {
+  served.payback = { investment: null, savings: 250, remaining: null, months: [] };
+
+  const { sheet } = await sheetOf("", true);
+
+  await expect.element(sheet.getByText("Insgesamt")).toBeVisible();
+  await expect.element(sheet.getByText("keine Investition")).toBeVisible();
+});
+
+test("a viewer, who may not read the investment, is not asked for it", async () => {
+  const { sheet } = await sheetOf();
+
+  await expect.element(sheet.getByRole("link", { name: /Tarif/u })).toBeVisible();
+  expect(fetched.filter((f) => f.startsWith("/api/v1/payback"))).toEqual([]);
+  expect(sheet.element().textContent).not.toContain("Insgesamt");
+});
+
+test("the sheet links the tariff at its range", async () => {
+  const { sheet } = await sheetOf("range=month&at=2026-10-01");
+
+  await expect
+    .element(sheet.getByRole("link", { name: "Preise und Kosten im Tarif" }))
+    .toHaveAttribute("href", "#/tariff?range=month&at=2026-10-01");
 });
