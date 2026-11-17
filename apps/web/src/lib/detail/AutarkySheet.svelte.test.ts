@@ -86,11 +86,11 @@ const FULL = {
 /** The chart's plot, which the pointer reads. */
 const plot = () => document.querySelector<HTMLElement>("[data-plot]")!;
 
-/** A point over the middle of the day's `hour`, in the plot's own box. */
-function over(hour: number) {
+/** A point over the middle of band `at` of `bands`, in the plot's own box. */
+function over(at: number, bands = 24) {
   const box = plot().getBoundingClientRect();
 
-  return { x: (box.width * (hour + 0.5)) / 24, y: box.height / 2 };
+  return { x: (box.width * (at + 0.5)) / bands, y: box.height / 2 };
 }
 
 test("the pointer reads an hour's autarky and self-consumption in the rows' headers", async () => {
@@ -158,4 +158,51 @@ test("a refused read says so in place of the range, never 0 %", async () => {
     .element(sheet.getByRole("alert").getByText("Dieser Zeitraum konnte nicht gelesen werden."))
     .toBeVisible();
   expect(sheet.getByRole("figure").elements()).toHaveLength(0);
+});
+
+test("past a day the shares read by day", async () => {
+  // Tuesday the house ran on its own for three of its four hours.
+  const TUESDAY = "2026-11-10";
+
+  served.rolled = plant({
+    ...FULL,
+    "load.power": { ...FULL["load.power"], ...hours(TUESDAY, [8, 9, 10, 11], 1000) },
+    "self.supply.power": { ...FULL["self.supply.power"], ...hours(TUESDAY, [10], 3000) },
+  });
+
+  const { sheet } = await sheetOf("range=week&at=2026-11-09");
+  const chart = sheet.getByRole("figure");
+
+  await expect.element(chart.getByText("Je Tag")).toBeVisible();
+  await userEvent.hover(plot(), { position: over(3, 7) });
+
+  await expect.element(chart.getByText("Do., 12. November")).toBeVisible();
+  await expect.element(chart.getByText("75 %")).toBeVisible();
+  await expect.element(chart.getByText("60 %")).toBeVisible();
+  // Today still runs, so it is neither best nor worst.
+  const facts = sheet.getByRole("definition");
+
+  await expect
+    .element(facts.filter({ hasText: "Di., 10. November" }))
+    .toHaveTextContent("75 % Di., 10. November");
+  await expect
+    .element(facts.filter({ hasText: "Mi., 11. November" }))
+    .toHaveTextContent("25 % Mi., 11. November");
+});
+
+test("a range whose flows fail to read says so under the head's figure, with a retry", async () => {
+  served.rolled = (a) =>
+    a.series === "pv.power" && a.period === "hour"
+      ? Response.json({ status: 500, code: "store.failed" }, { status: 500 })
+      : plant(FULL)(a);
+
+  const { sheet, head } = await sheetOf();
+
+  await expect.element(head.getByText("75 %")).toBeVisible();
+  await expect.element(sheet.getByRole("alert")).toBeVisible();
+  served.rolled = plant(FULL);
+  await sheet.getByRole("alert").getByRole("button", { name: "Erneut laden" }).click();
+
+  await expect.element(sheet.getByRole("figure")).toBeVisible();
+  await expect.element(sheet.getByRole("alert")).not.toBeInTheDocument();
 });
