@@ -63,6 +63,10 @@ export type Offset = keyof typeof OFFSETS;
 
 const isOffset = (entry: string): entry is Offset => Object.hasOwn(OFFSETS, entry);
 
+/** Whether a route entry names a period: an offset or a date. */
+export const isPeriod = (entry: string): boolean =>
+  isOffset(entry) || /^\d{4}-\d{2}-\d{2}$/u.test(entry);
+
 /** A day in the period a route entry names: an offset from the range, or a date as it is. */
 const dayIn = (range: Range, entry: string): number =>
   isOffset(entry) ? OFFSETS[entry](range) : dayOfIso(entry);
