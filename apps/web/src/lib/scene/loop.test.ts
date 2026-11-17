@@ -43,7 +43,7 @@ function display() {
 
 function open() {
   const screen = display();
-  const seen = { draws: 0, counted: 0 };
+  const seen = { draws: 0, counted: 0, stopped: 0 };
 
   const loop = new Loop({
     frames: screen.frames,
@@ -54,6 +54,9 @@ function open() {
     },
     count() {
       seen.counted += 1;
+    },
+    stopped() {
+      seen.stopped += 1;
     },
   });
 
@@ -106,8 +109,11 @@ test("the loop runs while any keeper holds it and stops with the last", () => {
   expect(loop.running).toBe(true);
   expect(screen.run(4)).toBe(true);
 
+  expect(seen.stopped).toBe(0);
   glass();
   expect([loop.running, screen.asked]).toEqual([false, false]);
+  // Whoever draws on is told, once: the last frame is theirs to settle.
+  expect(seen.stopped).toBe(1);
 
   const { draws } = seen;
 
@@ -172,6 +178,7 @@ test("a picture that changed besides is drawn in the next frame, and on while th
       return flying > 0;
     },
     count() {},
+    stopped() {},
   });
 
   loop.keep(() => {});
@@ -190,4 +197,15 @@ test("a picture that changed besides is drawn in the next frame, and on while th
   // Then the cap again.
   screen.run(1);
   expect(draws).toBe(7);
+});
+
+test("a keeper that lets go in its own step ends the loop there, and the stop is told", () => {
+  const { screen, seen, loop } = open();
+
+  const release = loop.keep(() => {
+    release();
+  });
+
+  screen.run(1);
+  expect([loop.running, screen.asked, seen.stopped]).toEqual([false, false, 1]);
 });

@@ -1,8 +1,9 @@
-// When a studio draws (ADR 20): once per frame on a change and while the camera flies, never in a
-// loop, and nothing before it is prepared, so the first frame never waits on a compile. Ported
-// from the prototype's background load.
+// When a studio draws (ADR 20): once per frame on a change and while the camera flies, in a loop
+// only while the weather's moves (ADR 23 "Motion"), and nothing before it is prepared, so the
+// first frame never waits on a compile. Ported from the prototype's background load.
 import { motion } from "../motion/tier.svelte.ts";
 import { Flight } from "./flight.ts";
+import { Loop, pauseUnseen } from "./loop.ts";
 import { ahead, gpuIdle, nextFrame, pause, prepare } from "./prepare.ts";
 import type { Ghost } from "./stage.svelte.ts";
 import type { Studio } from "./studio.ts";
@@ -24,27 +25,62 @@ export class Opening {
   #held = true;
   #gone = false;
   #later: ReturnType<typeof setTimeout> | undefined;
+  /** A change waits for the loop's next frame: the picture is not the last one moved on. */
+  #changed = false;
+  readonly #unwatch: () => void;
+
+  /**
+   * The weather loop (ADR 23 "Motion"): the one loop this studio is drawn in. What moves keeps
+   * it running with `keep`, and it draws while anything is kept, the picture is prepared, the
+   * tier is full, the tab is shown and the canvas is on screen. Every change asked for with
+   * `render` is drawn in its frames while it runs.
+   */
+  readonly loop: Loop = new Loop({
+    frames: {
+      request: (frame) => requestAnimationFrame(frame),
+      cancel: (id) => {
+        cancelAnimationFrame(id);
+      },
+    },
+    draw: (now) => this.#paint(now),
+    count: (now) => {
+      motion.frame(now);
+    },
+    // One frame more: it places the labels and starts the burst the loop's frames went without.
+    stopped: () => {
+      this.#changed = false;
+      this.render();
+    },
+  });
 
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws with it.
   constructor(studio: Studio, drawn: () => void) {
     this.#studio = studio;
     this.#drawn = drawn;
+    this.loop.pause("held", true);
+    this.#unwatch = pauseUnseen(this.loop, studio.renderer.domElement);
   }
 
   /** Draws in the next frame, unless held. */
   readonly render = (): void => {
-    if (this.#held) return;
+    if (this.#held || this.#gone) return;
 
     // The picture is about to change: what refined the last one is void.
     this.#rest();
+
+    // One frame, one draw: the loop's own is the next, whatever its cap.
+    if (this.loop.running) {
+      this.#changed = true;
+      this.loop.ask();
+
+      return;
+    }
+
     this.#frame ||= requestAnimationFrame((now) => {
-      const flying = this.flight.step(now);
-
-      // Where the flight moved the camera is drawn in this frame, not the next.
       this.#frame = 0;
-      this.#draw();
+      this.#changed = true;
 
-      if (flying) this.render();
+      if (this.#paint(now)) this.render();
     });
   };
 
@@ -58,6 +94,8 @@ export class Opening {
     if (this.#gone || !(await prepare(this.#studio, this.#isGone))) return;
 
     this.#held = false;
+    this.loop.pause("held", false);
+    this.#changed = true;
     this.#draw();
     // Not before the GPU has drawn it: a fade over a frame still rasterising is a cut.
     await gpuIdle(this.#studio.renderer);
@@ -82,6 +120,7 @@ export class Opening {
 
     if (fade) {
       // Drawn and taken in one task, while the canvas still holds the frame.
+      this.#changed = true;
       this.#draw();
 
       const still = await createImageBitmap(canvas);
@@ -110,6 +149,8 @@ export class Opening {
 
   dispose(): void {
     this.#gone = true;
+    this.#unwatch();
+    this.loop.pause("gone", true);
     clearTimeout(this.#later);
     cancelAnimationFrame(this.#frame);
     this.#rest();
@@ -117,11 +158,30 @@ export class Opening {
 
   readonly #isGone = (): boolean => this.#gone;
 
+  /** A frame at `now`: where the flight moved the camera is drawn in it, not the next. True
+   * while the flight goes on. */
+  #paint(now: number): boolean {
+    const flying = this.flight.step(now);
+
+    this.#changed ||= flying;
+    this.#draw();
+
+    return flying;
+  }
+
+  /** Draws; `drawn` hears of a changed picture alone, and not of rain that fell on. */
   #draw(): void {
+    const changed = this.#changed;
+
+    this.#changed = false;
     this.#studio.render();
-    this.#drawn();
+
+    if (changed) this.#drawn();
+
     this.#rest();
-    this.#refine();
+
+    // A picture that moves on in a 30th of a second is never settled.
+    if (!this.loop.running) this.#refine();
   }
 
   /** A frame of the burst in each of the next frames, until the studio has had its fill, the
@@ -156,6 +216,8 @@ export class Opening {
 
   #hold(on: boolean): void {
     this.#held = on;
+    // Paused, it stops and asks for a frame, which waits while held; resumed, it draws.
+    this.loop.pause("held", on);
 
     if (!on) this.render();
   }

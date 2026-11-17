@@ -1,6 +1,6 @@
 // The weather loop (ADR 23 "Motion"): the one loop the scene draws in, and only while something
 // that moves is kept on show. At most 30 frames a second, none while paused, and every frame the
-// display gives is counted for the frame watch (ADR 21). Pure: the frames are handed in.
+// display gives is counted for the frame watch (ADR 21). The frames are handed in.
 
 /** The display's frames, as `requestAnimationFrame` gives them. */
 export interface Frames {
@@ -14,6 +14,8 @@ export interface Looped {
   readonly draw: (now: number) => boolean;
   /** Told of every frame the display gives while the loop runs, drawn in or not. */
   readonly count: (now: number) => void;
+  /** The loop has stopped or paused: the picture it leaves is settled by whoever draws on. */
+  readonly stopped: () => void;
 }
 
 /** What moves in the loop: told the seconds the loop has run, before each frame it draws. */
@@ -40,6 +42,8 @@ export class Loop {
   /** Milliseconds run. */
   #clock = 0;
   #due = false;
+  /** Whether it ran when last looked at: a stop is told once. */
+  #ran = false;
 
   constructor(on: Looped) {
     this.#on = on;
@@ -81,14 +85,26 @@ export class Loop {
   }
 
   #sync(): void {
-    if (this.running) {
+    const { running } = this;
+
+    if (running === this.#ran) return;
+
+    this.#ran = running;
+
+    if (running) {
       this.#next();
-    } else if (this.#frame !== undefined) {
-      this.#on.frames.cancel(this.#frame);
-      this.#frame = undefined;
-      this.#drawn = undefined;
-      this.#given = undefined;
+
+      return;
     }
+
+    // None pending while a step of its own frame ended it.
+    if (this.#frame !== undefined) this.#on.frames.cancel(this.#frame);
+
+    this.#frame = undefined;
+    this.#drawn = undefined;
+    this.#given = undefined;
+    this.#due = false;
+    this.#on.stopped();
   }
 
   #next(): void {
@@ -110,4 +126,26 @@ export class Loop {
       if (this.running) this.#next();
     });
   }
+}
+
+/** Pauses `loop` while `canvas` cannot be seen: the tab is hidden, or the canvas is off screen.
+ * The disposer stops watching. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the browser's own, only watched.
+export function pauseUnseen(loop: Loop, canvas: HTMLCanvasElement): () => void {
+  const hidden = (): void => {
+    loop.pause("hidden", document.visibilityState === "hidden");
+  };
+
+  const screen = new IntersectionObserver((entries) => {
+    loop.pause("off screen", entries.at(-1)?.isIntersecting === false);
+  });
+
+  document.addEventListener("visibilitychange", hidden);
+  screen.observe(canvas);
+  hidden();
+
+  return () => {
+    document.removeEventListener("visibilitychange", hidden);
+    screen.disconnect();
+  };
 }
