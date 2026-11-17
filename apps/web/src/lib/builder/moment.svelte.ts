@@ -3,7 +3,7 @@
 import { today } from "./day.ts";
 import { load, shareAt, spanOf, wattsAt, type Day, type Reading } from "./moment.ts";
 import { sunAt, type Point } from "./pv.ts";
-import { sceneWeather, type SceneWeather } from "../scene/weather.ts";
+import { exact, sceneWeather, type SceneWeather } from "../scene/weather.ts";
 import { readWeather, weatherAt, type Weather, type WeatherRead } from "../weather/weather.ts";
 
 const MINUTE = 60_000;
@@ -78,13 +78,14 @@ export class Moment {
     return location === undefined || Number.isNaN(this.at) ? null : sunAt(pv, location, this.at);
   }
 
-  /** The scene's weather at the instant, without its fog: faces and edges stay exact (ADR 23
-   * "Builder"). Snow covers the modules only where the day's production was measured. */
+  /** The scene's weather at the instant, as it is edited under: without fog, what falls and the
+   * glass (ADR 23 "Builder"). Snow covers the modules only where the day's production was
+   * measured. */
   get scene(): SceneWeather {
     const { draft, moduleTypes } = this.#reading();
     const share = shareAt(this.production, draft.strings, moduleTypes, this.at);
 
-    return { ...sceneWeather(this.weather, { sun: this.sun, share }), fog: 0 };
+    return exact(sceneWeather(this.weather, { sun: this.sun, share }));
   }
 
   /** Each string's watts at the instant, null without a value. */
