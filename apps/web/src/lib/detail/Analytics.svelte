@@ -36,6 +36,8 @@
   import RangeControl from "../range/RangeControl.svelte";
   import AnalyticsTabs from "./AnalyticsTabs.svelte";
   import AutarkyPanel from "./AutarkyPanel.svelte";
+  import { flowOf } from "./flow.ts";
+  import FlowPanel from "./FlowPanel.svelte";
   import type { HeadView } from "./head.svelte.ts";
   import RangeState from "./RangeState.svelte";
 
@@ -60,6 +62,7 @@
   } = $props();
 
   const analytics = $derived(analyticsOf(id, input.strings));
+  const flow = $derived(flowOf(id));
 </script>
 
 {#if analytics || id === "autarky"}
@@ -71,6 +74,9 @@
     <RangeState {head} {onretry}>
       {#if analytics}
         <AnalyticsTabs {id} {title} {colour} {analytics} {input} />
+        {#if flow}
+          <FlowPanel {input} {flow} />
+        {/if}
       {:else}
         <AutarkyPanel {input} />
       {/if}

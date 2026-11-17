@@ -79,9 +79,9 @@ test("the forecast's energy stands in its day tabs, not in the sheet's head", ()
   expect(figure("forecast")?.chart).toBe("forecast");
 });
 
-test("money figures read in euros; the savings head reads the range instead of today", () => {
-  expect(facts("saved", DAY)).toEqual({ lead: null, stats: [] });
-  expect(facts("feedIn", DAY).stats[0]).toMatchObject({ value: 1.39, unit: "€" });
+test("the savings and flow sheets read their range instead of today", () => {
+  for (const id of ["saved", "consumption", "feedIn", "purchase"])
+    expect(facts(id, DAY)).toEqual({ lead: null, stats: [] });
 });
 
 test("before the day is read every figure is unknown, not zero", () => {
