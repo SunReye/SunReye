@@ -173,6 +173,16 @@ export function describe(series: string): Described {
   };
 }
 
+/** What a series' index counts, by name: "Eingang 2"; null for a series or a role without one. */
+export function indexName(series: string): string | null {
+  const indexed = INDEXED.exec(series)?.groups;
+  const family = BY_ROLE.get(indexed?.["role"] ?? "")?.family;
+
+  return indexed === undefined || family === undefined
+    ? null
+    : INDEX[family](Number(indexed["index"]));
+}
+
 /** A namespace's place among the groups; an unknown one after the known, extras last. */
 export function namespaceOrder(namespace: string): number {
   if (namespace === EXTRA) return NAMESPACES.length + 1;
