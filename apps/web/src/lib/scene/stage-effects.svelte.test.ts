@@ -1,6 +1,6 @@
 import { flushSync } from "svelte";
 import { afterEach, expect, test } from "vitest";
-import { weatherEffects } from "./effects.svelte.ts";
+import { weatherEffects } from "./weather-effects.svelte.ts";
 import { DROPS, open, RAIN, shut } from "./stage.harness.svelte.ts";
 import { DRY } from "./weather.ts";
 

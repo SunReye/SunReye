@@ -9,7 +9,7 @@
   import { HAPTICS, haptics, hapticsOn } from "../haptics.ts";
   import { motion } from "../motion/tier.svelte.ts";
   import { m } from "../paraglide/messages.js";
-  import { weatherEffects } from "../scene/effects.svelte.ts";
+  import { weatherEffects } from "../scene/weather-effects.svelte.ts";
 
   const touch = new MediaQuery("(pointer: coarse)");
   const reduce = new MediaQuery("(prefers-reduced-motion: reduce)");
