@@ -10,7 +10,7 @@
   import DetailStats from "./DetailStats.svelte";
   import type { Flow } from "./flow.ts";
   import { FlowRange } from "./flow-range.svelte.ts";
-  import type { HeadView } from "./head.svelte.ts";
+  import { FAILED } from "./head.svelte.ts";
   import RangeState from "./RangeState.svelte";
 
   let {
@@ -25,17 +25,6 @@
   } = $props();
 
   const range = new FlowRange(() => ({ core: input.core, route: input.route, flow, priced }));
-
-  /** The range's own read failed, though the head's did not. */
-  const FAILED: HeadView = {
-    state: "error",
-    label: "",
-    value: null,
-    unit: "",
-    digits: 0,
-    versus: "",
-    notes: [],
-  };
 </script>
 
 {#if flow.price && priced}
