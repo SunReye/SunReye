@@ -118,7 +118,9 @@ export class RangeHead {
 
     const data = this.#data.current?.data;
 
-    return data?.key === key ? ready(none, data, measure.points === true) : { ...none, state: "loading" };
+    return data?.key === key
+      ? ready(none, data, measure.points === true)
+      : { ...none, state: "loading" };
   }
 
   retry = (): void => {
