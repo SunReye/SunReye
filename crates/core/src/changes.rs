@@ -51,6 +51,8 @@ pub enum Subject {
     Spot,
     /// A deadband override (ADR 4); the id is the device's, the state names the role.
     Deadband,
+    /// An Explore saved view (ADR 22).
+    View,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
