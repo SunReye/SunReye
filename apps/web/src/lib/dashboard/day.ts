@@ -1,6 +1,6 @@
 // Reads today from the core: the plant's energy from its rollups, the PV forecast, the day's prices, the weather
 // and the money (ADR 12, 14, 15, 17). Nothing here is live; the dashboard rereads it.
-import { PLANT, SPOT, WEATHER, type Core } from "../api/core.ts";
+import { PLANT, SPOT, type Core } from "../api/core.ts";
 import type { CostDays } from "../api/tariff.ts";
 import { plantMidnight } from "../plant-day.ts";
 import {

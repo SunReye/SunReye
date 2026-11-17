@@ -102,8 +102,8 @@ const SKY = { light: 0.45, most: 10 };
  * so a white model keeps its form on a grey day. */
 const THROUGH = 0.35;
 
-/** The diffuse fractions where cloud starts to show and where the sky is closed: the dashboard
- * calls 0.45 partly cloudy and 0.8 cloudy. */
+/** The cloud (the diffuse fraction's scale) where it starts to show and where the sky is closed:
+ * the sky's word is fair from 0.45 and overcast from 0.85 (`weather/sky.ts`). */
 const CLOUD = [0.25, 0.85] as const;
 
 /** Degrees under the horizon where civil twilight ends and the moon starts to show. */

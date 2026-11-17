@@ -48,8 +48,7 @@ function byCloud(cloud: number): Sky {
 
 /** The word for `weather`'s sky; null where neither a code nor a cloud value tells. */
 export function skyOf({ code, cloud, ghi }: Weather): Sky | null {
-  const falling =
-    CODES.find(([first]) => code !== null && code >= first)?.[1] ?? null;
+  const falling = CODES.find(([first]) => code !== null && code >= first)?.[1] ?? null;
 
   if (falling !== null) return falling;
 

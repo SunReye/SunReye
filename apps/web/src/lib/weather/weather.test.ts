@@ -1,5 +1,6 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
+import type { Forecasts, History } from "../api/core.ts";
 import { readWeather, weatherAt, type Weather } from "./weather.ts";
 
 const WEATHER = 4_294_967_295;
@@ -23,8 +24,8 @@ const intervals = (...values: readonly (readonly [string, string, number])[]) =>
   }));
 
 interface Stored {
-  readonly history?: Readonly<Record<string, ReturnType<typeof intervals>>>;
-  readonly forecasts?: Readonly<Record<string, ReturnType<typeof targets>>>;
+  readonly history?: Readonly<Record<string, readonly Readonly<History["points"][number]>[]>>;
+  readonly forecasts?: Readonly<Record<string, readonly Readonly<Forecasts["points"][number]>[]>>;
 }
 
 /** A core that holds `stored` for the weather device, and what was asked of it. */
@@ -37,13 +38,13 @@ function fake(stored: Stored) {
 
       return Promise.resolve({
         tier: "raw",
-        points: stored.history?.[series] ?? [],
+        points: [...(stored.history?.[series] ?? [])],
       });
     },
     forecasts: (device, series) => {
       asked.push(`forecasts ${device} ${series}`);
 
-      return Promise.resolve({ points: stored.forecasts?.[series] ?? [] });
+      return Promise.resolve({ points: [...(stored.forecasts?.[series] ?? [])] });
     },
   };
 
@@ -147,11 +148,7 @@ test("the cloud is the diffuse share of the global irradiance while the sun give
     forecasts: {
       "weather.ghi": targets(["11:00", 400], ["12:00", 300], ["13:00", 10]),
       "weather.dhi": targets(["11:00", 60], ["12:00", 285], ["13:00", 11]),
-      "weather.cloud_cover": targets(
-        ["11:00", 100],
-        ["12:00", 0],
-        ["13:00", 0],
-      ),
+      "weather.cloud_cover": targets(["11:00", 100], ["12:00", 0], ["13:00", 0]),
     },
   });
 
@@ -235,14 +232,8 @@ test("the weather is read from the weather device: history and forecasts, the me
       "weather.dhi",
       "weather.cloud_cover",
     ]
-      .flatMap((series) => [
-        `history ${WEATHER} ${series}`,
-        `forecasts ${WEATHER} ${series}`,
-      ])
-      .concat([
-        `history ${WEATHER} weather.clearness`,
-        `forecasts ${WEATHER} weather.visibility`,
-      ])
+      .flatMap((series) => [`history ${WEATHER} ${series}`, `forecasts ${WEATHER} ${series}`])
+      .concat([`history ${WEATHER} weather.clearness`, `forecasts ${WEATHER} weather.visibility`])
       .toSorted(),
   );
 });

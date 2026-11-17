@@ -16,8 +16,7 @@ function fake(zone: string) {
       const url = new URL(request.url);
       const route = url.pathname.split("/").at(-1) ?? "";
 
-      if (route === "timezone")
-        return Promise.resolve(Response.json({ name: zone }));
+      if (route === "timezone") return Promise.resolve(Response.json({ name: zone }));
 
       if (["history", "statistics", "forecasts"].includes(route))
         asked.push({
@@ -44,9 +43,7 @@ test("the dashboard's day names each series and starts at the plant's midnight (
 
   expect(days.length).toBeGreaterThan(0);
   expect(asked.every((a) => (a.series ?? "") !== "")).toBe(true);
-  expect(new Set(days.map((a) => a.from))).toEqual(
-    new Set(["2026-11-09T10:00:00.000Z"]),
-  );
+  expect(new Set(days.map((a) => a.from))).toEqual(new Set(["2026-11-09T10:00:00.000Z"]));
 });
 
 test("the day's weather is the weather device's at the instant it was read", async () => {
