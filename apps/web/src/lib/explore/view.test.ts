@@ -58,6 +58,12 @@ test("what the route cannot mean is dropped: an unknown mode, a broken series, a
   expect(view.periods).toEqual(["2026-11-14"]);
 });
 
+test("overlay offsets are read beside dates; an unknown offset is dropped", () => {
+  const view = viewOf(params("vs=-1d,-1w,-1y,-2d,+1d,-1m,1d,2026-11-14"));
+
+  expect(view.periods).toEqual(["-1d", "-1w", "-1y", "2026-11-14"]);
+});
+
 test("picking a series adds it after the chosen ones, picking it again removes it", () => {
   const input = { device: 3, series: "pv.mppt.voltage[1]" };
   const added = toggled([PV, LOAD], input);
