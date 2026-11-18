@@ -30,10 +30,10 @@
   );
 </script>
 
-{#if flow.price && priced}
-  <HistoryChart core={input.core} device={TARIFF} series="price.import" route={input.route} />
-{/if}
 <RangeState failed={range.failed} onretry={range.retry}>
+  {#if flow.price && priced}
+    <HistoryChart core={input.core} device={TARIFF} series="price.import" route={input.route} />
+  {/if}
   <!-- The facts row spans the sheet, as every sheet's does. -->
   <div class="-mx-5 -mb-4 pt-2 sm:-mx-6">
     <DetailStats stats={range.view} />

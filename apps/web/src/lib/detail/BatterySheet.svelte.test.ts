@@ -144,6 +144,24 @@ test("a range whose battery fails to read says so under the power, with a retry"
   await expect.element(sheet.getByRole("alert")).not.toBeInTheDocument();
 });
 
+test("a range that fails after one that read shows none of the last one's charge or facts", async () => {
+  served.rolled = plant(DAY);
+
+  const { sheet } = await sheetOf();
+
+  await expect.element(sheet.getByRole("term").filter({ hasText: "Wirkungsgrad" })).toBeVisible();
+  served.rolled = (a) =>
+    a.series === "battery.soc"
+      ? Response.json({ status: 500, code: "store.failed" }, { status: 500 })
+      : plant(DAY)(a);
+  await sheet.getByRole("button", { name: "Früher" }).click();
+
+  await expect.element(sheet.getByRole("alert")).toBeVisible();
+  expect(sheet.getByRole("alert").elements()).toHaveLength(1);
+  expect(sheet.getByRole("term").filter({ hasText: "Wirkungsgrad" }).elements()).toHaveLength(0);
+  expect(sheet.getByRole("group", { name: "Ladezustand" }).elements()).toHaveLength(0);
+});
+
 test("the facts state the round-trip efficiency and the range's full cycles", async () => {
   served.rolled = plant({
     ...DAY,

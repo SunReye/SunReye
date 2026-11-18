@@ -7,7 +7,6 @@
   import HistoryChart from "../history/HistoryChart.svelte";
   import { m } from "../paraglide/messages.js";
   import type { AnalyticsInput } from "./Analytics.svelte";
-  import RangeState from "./RangeState.svelte";
   import type { Band } from "../range/bands.ts";
   import type { Analytics } from "./sheets.ts";
   import SocLine from "./SocLine.svelte";
@@ -20,7 +19,6 @@
     /** The battery's range: its state of charge by band, null unread. */
     range: Readonly<{
       failed: boolean;
-      retry: () => void;
       view: Readonly<{ bands: readonly Band[]; mean: number | null }> | null;
     }>;
     analytics: Analytics;
@@ -39,7 +37,8 @@
     route={input.route}
     onread={(i) => (read = i)}
   />
-  <RangeState failed={range.failed} onretry={range.retry}>
+  <!-- A failed read says so once, in place of the facts: nothing of the last range stands. -->
+  {#if !range.failed}
     {#if range.view}
       <SocLine
         bands={range.view.bands}
@@ -50,5 +49,5 @@
     {:else}
       <Skeleton class="h-20" role="status" aria-label={m.loading()} />
     {/if}
-  </RangeState>
+  {/if}
 </div>

@@ -170,6 +170,10 @@ test("a range whose facts fail to read says so in their place, with a retry", as
 
   await expect.element(alert).toBeVisible();
   expect(sheet.getByText("Spitze").elements()).toHaveLength(0);
+  // The price chart stands with the facts: a failed read shows neither.
+  expect(sheet.getByRole("group", { name: /Bezugspreis über die Zeit/u }).elements()).toHaveLength(
+    0,
+  );
   served.rolled = rolled(BOUGHT);
   await alert.getByRole("button", { name: "Erneut laden" }).click();
 
