@@ -67,11 +67,11 @@ test("PV figures expect what their inverters forecast; others expect nothing", (
   expect(analyticsOf("string-6", [...STRINGS, other])!.forecast).toEqual([7]);
 });
 
-test("a one-way figure heads with its energy; a two-way one with none", () => {
+test("a figure heads with its energy; the grid with what was bought", () => {
   expect(energyOf("feedIn")).toBe("grid.export.power");
   expect(energyOf("production")).toBe("pv.power");
   expect(energyOf("string-4")).toBe("pv.string.power[4]");
-  expect(energyOf("grid")).toBeNull();
+  expect(energyOf("grid")).toBe("grid.import.power");
 });
 
 test("the EV charts the plant's charging power, a loadpoint its own device's", () => {

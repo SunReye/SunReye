@@ -65,10 +65,25 @@
     route: input.route,
     record,
   }));
+
+  const beside = new RangeHead(() => ({
+    head: sheet?.beside ?? null,
+    core: input.core,
+    route: input.route,
+    record,
+  }));
 </script>
 
 <div class="flex min-h-full flex-col">
-  <DetailHead {title} {spec} {node} {status} head={head.view} lead={shown.lead} />
+  <DetailHead
+    {title}
+    {spec}
+    {node}
+    {status}
+    head={head.view}
+    beside={beside.view}
+    lead={shown.lead}
+  />
 
   {#if power}
     <LiveSection {spec} points={node?.points ?? []} {silent} {status} />

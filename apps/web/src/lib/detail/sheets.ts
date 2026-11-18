@@ -5,14 +5,7 @@ import { TARIFF } from "../api/computed-devices.ts";
 import type { Day } from "../dashboard/day.ts";
 import { flowColour } from "../energy-colours.ts";
 import { m } from "../paraglide/messages.js";
-import {
-  gridFacts,
-  priceFacts,
-  weatherFacts,
-  type Facts,
-  type Figure,
-  type Fixed,
-} from "./figures.ts";
+import { priceFacts, weatherFacts, type Facts, type Figure, type Fixed } from "./figures.ts";
 import { EARNED, PAID, type SheetFlow } from "./flow.ts";
 import type { Metric, Tab } from "../history/view.ts";
 import { AUTARKY, type Head } from "./measure.ts";
@@ -46,6 +39,8 @@ export interface Sheet {
   readonly analytics: Analytics | null;
   /** Its figure over the range; null for a sheet that heads with none. */
   readonly head: Head | null;
+  /** The smaller figure on the head's right, where other sheets show their live power. */
+  readonly beside: Head | null;
   /** What reads its range; null for a sheet of today alone. */
   readonly panel: Panel | null;
   /** What a sheet of today leads with and states, from the day and the spot price in EUR/kWh. */
@@ -71,7 +66,8 @@ export interface Charted {
 }
 
 /** A fixed figure's sheet: its title, and its series charted without the layout's strings. */
-export interface Row extends Omit<Sheet, "analytics" | "facts" | "history"> {
+export interface Row extends Omit<Sheet, "analytics" | "facts" | "history" | "beside"> {
+  readonly beside?: Head;
   readonly title: () => string;
   readonly charted: Charted | null;
   readonly facts?: Sheet["facts"];
@@ -178,9 +174,9 @@ export const ROWS: Readonly<Record<Fixed, Row>> = {
     title: m.detail_grid,
     figure: grid(flowColour("export")),
     charted: plant("grid.power", "grid.import.power"),
-    head: null,
+    head: energy("grid.import.power", m.side_imported),
+    beside: energy("grid.export.power", m.side_exported),
     panel: { kind: "tabs" },
-    facts: gridFacts,
   },
   generator: {
     title: m.flow_generator,

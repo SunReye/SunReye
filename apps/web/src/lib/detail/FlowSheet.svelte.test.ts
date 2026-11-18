@@ -208,3 +208,23 @@ test("past a day the peak names its day", async () => {
 
   await expect.element(facts.filter({ hasText: "Nov" })).toHaveTextContent("5,4 kW 10. Nov.");
 });
+
+test("the grid sheet heads with what was bought, and states what was fed in on its right", async () => {
+  served.stored = { [PLANT]: ["grid.import.power", "grid.export.power"] };
+  served.rolled = rolled({
+    [PLANT]: {
+      "grid.import.power": { [at(8)]: [1200, 2000] },
+      "grid.export.power": { [at(11)]: [3300, 4000] },
+    },
+  });
+
+  const sheet = await sheetOf("grid", "Netz");
+  const head = sheet.getByRole("banner");
+
+  await expect.element(head.getByText("1,2 kWh")).toBeVisible();
+  await expect.element(head.getByText("Bezogen")).toBeVisible();
+  await expect.element(head.getByText("3,3 kWh")).toBeVisible();
+  await expect.element(head.getByText("Eingespeist")).toBeVisible();
+  // The live power is the live graph's and the readings', not the head's.
+  expect(head.getByText(/jetzt/u).elements()).toHaveLength(0);
+});

@@ -89,7 +89,6 @@ const unit =
   (u: string, digits: number) =>
   (label: string, value: number | null): Fact => ({ label, value, unit: u, digits });
 
-const kwh = unit("kWh", 1);
 const ct = unit("ct/kWh", 1);
 
 /** Rounds away float noise from a EUR → ct conversion. */
@@ -125,11 +124,3 @@ export function weatherFacts(day?: Readonly<Day>): Facts {
 
   return { lead, stats: [] };
 }
-
-const only = (stats: readonly Fact[]): Facts => ({ lead: null, stats });
-
-export const gridFacts = (day?: Readonly<Day>): Facts =>
-  only([
-    kwh(m.dash_grid_import(), day?.today.purchase ?? null),
-    kwh(m.dash_grid_export(), day?.today.feedIn ?? null),
-  ]);

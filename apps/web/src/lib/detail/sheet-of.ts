@@ -66,6 +66,7 @@ function loadpoint(device: number, look: Figure): Sheet {
       forecast: [],
     },
     head: { kind: "energy", device, series },
+    beside: null,
     panel: { kind: "ev" },
     facts: null,
     history: DEFAULT,
@@ -79,7 +80,15 @@ function stringSheet(id: number, look: Figure, strings: readonly Readonly<PvStri
   const history: Onward = { metric: "plant", tab: "strings", sid: String(id) };
 
   if (s === undefined)
-    return { figure: look, analytics: null, head: null, panel: null, facts: null, history };
+    return {
+      figure: look,
+      analytics: null,
+      head: null,
+      beside: null,
+      panel: null,
+      facts: null,
+      history,
+    };
 
   return {
     figure: look,
@@ -94,6 +103,7 @@ function stringSheet(id: number, look: Figure, strings: readonly Readonly<PvStri
       forecast: [s.device],
     },
     head: { kind: "energy", device: s.device, series },
+    beside: null,
     panel: { kind: "pv", inverter: false },
     facts: null,
     history,
@@ -132,6 +142,7 @@ export function sheetOf(id: string, strings: readonly Readonly<PvString>[]): She
     figure: row.figure,
     analytics: analyticsOf(row.charted, strings),
     head: row.head,
+    beside: row.beside ?? null,
     panel: row.panel,
     facts: row.facts ?? null,
     history: { ...DEFAULT, ...row.history },
