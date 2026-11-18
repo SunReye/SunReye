@@ -244,23 +244,20 @@ const CHARGE: Sides = { words: [m.side_charged, m.side_discharged] };
 const GRID: Sides = { words: [m.side_imported, m.side_exported], flows: ["import", "export"] };
 const SIGNED: Sides = { words: [m.side_above, m.side_below] };
 
-/** ADR 4's signed roles, by what their sign means; any other role is never below zero. */
+/** ADR 4's signed flows, by what their sign means. A price or a cost is signed but no flow: like any
+ * other role it is named for itself, and above and below zero only where it went below. */
 const SIDES = new Map<string, Sides>([
   ["battery.power", CHARGE],
   ["battery.current", CHARGE],
   ["grid.power", GRID],
   ["grid.phase.power", GRID],
   ["grid.phase.current", GRID],
-  ...["inverter.power", "point.power", "price.import", "price.export", "price.spot"].map(
-    (role) => [role, SIGNED] as const,
-  ),
-  ...["cost.import.rate", "cost.export.rate", "cost.savings.rate"].map(
-    (role) => [role, SIGNED] as const,
-  ),
+  ["inverter.power", SIGNED],
+  ["point.power", SIGNED],
 ]);
 
-/** Whether a series' role is signed (ADR 4), so its upper side is named for its sign. */
-export const isSigned = (series: string): boolean => SIDES.has(seriesRole(series));
+/** Whether a series' role is a signed flow (ADR 4), so its upper side is named for its sign. */
+export const isSignedFlow = (series: string): boolean => SIDES.has(seriesRole(series));
 
 /**
  * The upper side's key and the lower side's of a series that runs both ways, named and coloured;

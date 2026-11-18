@@ -8,7 +8,7 @@
   import { planned, plannedEnergy, type Planned } from "../forecast/forecast.ts";
   import { m } from "../paraglide/messages.js";
   import BandChart from "../range/BandChart.svelte";
-  import { describe, isSigned, keyOf, sidesOf } from "../roles.ts";
+  import { describe, isSignedFlow, keyOf, sidesOf } from "../roles.ts";
   import { bandsOf } from "../range/fill.ts";
   import { kwh, num } from "../range/format.ts";
   import { RangeData } from "../range/range-data.svelte.ts";
@@ -119,9 +119,9 @@
         return { ...f, ...split(f.value), line: plans ? f.planned : null };
       }),
       expected: plans && figures.reduce((a, f) => a + f.planned, 0),
-      // A signed role's sides are named for its sign, as charged and discharged, even on a day
+      // A signed flow's sides are named for its sign, as charged and discharged, even on a day
       // that ran one way only.
-      up: signed || isSigned(s) ? [sidesOf(s)[0]] : null,
+      up: signed || isSignedFlow(s) ? [sidesOf(s)[0]] : null,
       down: signed ? [sidesOf(s)[1]] : [],
       sum: isPower(s)
         ? { up: [total(figures, 1)], down: signed ? [total(figures, -1)] : [] }

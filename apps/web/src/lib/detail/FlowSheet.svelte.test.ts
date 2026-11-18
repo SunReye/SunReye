@@ -141,6 +141,9 @@ test("the purchase sheet charts the price bought at by hour, in cents", async ()
   // At rest the legend reads the range's mean price, and names it.
   await expect.element(sheet.getByText("Ø Bezugspreis · Heute")).toBeVisible();
   await expect.element(sheet.getByText("25,00 ct/kWh")).toBeVisible();
+  // A price is no flow: its key is its name, not a side of zero it never crossed.
+  await expect.element(sheet.getByRole("term").filter({ hasText: "Bezugspreis" })).toBeVisible();
+  expect(sheet.getByText("Über null").elements()).toHaveLength(0);
 });
 
 test("the consumption sheet charts no price", async () => {
