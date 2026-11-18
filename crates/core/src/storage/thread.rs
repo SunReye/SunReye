@@ -350,7 +350,7 @@ struct Stored {
     kind: RoleKind,
     /// Whether it stores hourly rollups: one at an hourly cadence reads its hours from its
     /// change points (ADR 3).
-    hours: bool,
+    rolls_hours: bool,
     track: Track,
 }
 
@@ -360,7 +360,7 @@ impl Stored {
             device: device.0,
             series: self.id,
             kind: self.kind,
-            hours: self.hours,
+            rolls_hours: self.rolls_hours,
         }
     }
 }
@@ -700,7 +700,7 @@ impl Store {
         let stored = Stored {
             id,
             kind: policy.kind,
-            hours: stores_hours(policy.cadence),
+            rolls_hours: stores_hours(policy.cadence),
             track,
         };
         self.tracks.insert((device, series), stored);

@@ -51,7 +51,7 @@ impl Store {
                 device: device.0,
                 series: id,
                 kind: policy.kind,
-                hours: stores_hours(policy.cadence),
+                rolls_hours: stores_hours(policy.cadence),
             };
             self.recompute(&tx, series, floor(first.time)..end.min(limit), limit)?;
         }

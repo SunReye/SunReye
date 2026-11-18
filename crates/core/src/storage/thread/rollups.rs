@@ -24,7 +24,7 @@ pub(super) struct Roll {
     pub series: i64,
     pub kind: RoleKind,
     /// False for a series at an hourly cadence, which stores no hourly rollups (ADR 3).
-    pub hours: bool,
+    pub rolls_hours: bool,
 }
 
 impl Store {
@@ -72,7 +72,7 @@ impl Store {
             device,
             series,
             kind,
-            hours: stored,
+            rolls_hours,
         }: Roll,
         Range {
             start: from,
@@ -92,7 +92,7 @@ impl Store {
                 .then(|| rollup::roll(kind, window(&points, start, end), start, end))
                 .flatten()
         };
-        if stored {
+        if rolls_hours {
             let hours = from.div_euclid(HOUR)..ceil(to);
             let hourly: Vec<_> = hours
                 .clone()
@@ -306,7 +306,9 @@ impl Store {
             .query_row(params![device.0, series], |row| row.get(0))
             .optional()?
             .flatten();
-        Ok(cadence.is_some_and(|seconds| seconds >= 3600))
+        Ok(cadence.is_some_and(|seconds| {
+            !super::stores_hours(Duration::from_secs(u64::try_from(seconds).unwrap_or(0)))
+        }))
     }
 
     /// The kind stored for a series, as storage last saw it declared.
