@@ -100,7 +100,6 @@ test("the state of charge runs as a line under the power, and reads where the po
   const soc = sheet.getByRole("group", { name: "Ladezustand" });
 
   await expect.element(soc).toBeVisible();
-  // The power's plot, read by the pointer.
   const power = sheet.element().querySelector("[data-scrub]")!;
 
   await userEvent.hover(power, { position: over(power, 7) });

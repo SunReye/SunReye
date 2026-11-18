@@ -79,7 +79,7 @@ test("today's facts are one row on a narrow phone: the sky's sunshine, the best 
     .poll(() => row().map((cell) => cell.querySelector("dt")?.textContent.trim()))
     .toEqual(["Sonnenschein", "Beste 3 h", "Heute bisher", "Ø Abweichung"]);
   expect(document.querySelectorAll("[data-facts] dl")).toHaveLength(1);
-  // The figures count up to their values.
+  // Polled: the figures roll up to their values.
   await expect.poll(() => figure("facts", "Sonnenschein")).toBe("3,0 h");
   // One line inside the screen, nothing cut short.
   expect(new Set(row().map((cell) => Math.round(cell.getBoundingClientRect().top))).size).toBe(1);

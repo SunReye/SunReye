@@ -151,7 +151,6 @@
       : m.range_mean({ series: describe(series).label, range: route.label }),
   );
 
-  // A power reads as energy, a price in cents (ADR 12); anything else as its mean, in its own unit.
   const reads = $derived(readsOf(series));
 </script>
 
