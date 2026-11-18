@@ -2,10 +2,11 @@
 // "Sheet content"): the peak with its time, for the house the share PV covered directly, and for
 // feed-in and purchase their euros. Pure.
 import { rollupSum, type Rollups } from "../history/flows.ts";
-import { highest, whenOf } from "../history/peaks.ts";
+import { peakIn } from "../history/peaks.ts";
 import type { Rolled } from "../history/history.ts";
 import { m } from "../paraglide/messages.js";
 import { coverOf } from "./autarky.ts";
+import { peakFact } from "./facts.ts";
 import type { Fact } from "./figures.ts";
 
 /** A flow sheet: the `plant` power it peaks in, and the tariff's rate that prices it (ADR 12). */
@@ -42,14 +43,11 @@ const euros = (label: string, value: number | null): Fact => ({
   digits: value !== null && Math.abs(value) >= 100 ? 0 : 2,
 });
 
-function peakOf(read: Readonly<FlowRead> | null): Fact {
-  const top = read === null ? null : highest(read.peak, -Infinity, Infinity);
-  const fact: Fact = { label: m.detail_peak(), value: top?.max ?? null, unit: "W", digits: 0 };
-
-  return top === null || read === null
-    ? fact
-    : { ...fact, note: whenOf(top.start, read.hours, read.zone) };
-}
+/** The flow's peak with its time; unknown while the range is read. */
+const peakOf = (read: Readonly<FlowRead> | null): Fact =>
+  read === null
+    ? { label: m.detail_peak(), value: null, unit: "W", digits: 0 }
+    : peakFact(m.detail_peak(), peakIn(read.peak), "W", read);
 
 /** The euros of the rollups read; null without any. */
 function sumOf(rolled: readonly Rolled[] | null): number | null {
