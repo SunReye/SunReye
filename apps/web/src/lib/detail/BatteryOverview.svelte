@@ -9,7 +9,6 @@
   import { m } from "../paraglide/messages.js";
   import type { AnalyticsInput } from "./Analytics.svelte";
   import type { BatteryRange } from "./battery-range.svelte.ts";
-  import { FAILED } from "./head.svelte.ts";
   import RangeState from "./RangeState.svelte";
   import SocLine from "./SocLine.svelte";
 
@@ -31,7 +30,7 @@
     route={input.route}
     onread={(i) => (read = i)}
   />
-  <RangeState head={range.failed ? FAILED : null} onretry={range.retry}>
+  <RangeState failed={range.failed} onretry={range.retry}>
     {#if range.view}
       <SocLine bands={range.view.bands} bind:read />
     {:else}

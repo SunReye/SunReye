@@ -12,13 +12,21 @@
   import type { HeadView } from "./head.svelte.ts";
 
   let {
-    head,
+    head = null,
+    failed = false,
     onretry,
     children,
-  }: { head: HeadView | null; onretry: () => void; children: Snippet } = $props();
+  }: {
+    /** The sheet's figure over the range; null where it heads with none. */
+    head?: HeadView | null;
+    /** The panel's own read of the range failed, though the head's did not. */
+    failed?: boolean;
+    onretry: () => void;
+    children: Snippet;
+  } = $props();
 </script>
 
-{#if head?.state === "error"}
+{#if failed || head?.state === "error"}
   <div class="flex flex-col items-start gap-3 py-6" role="alert">
     <p class="flex items-center gap-2 text-sm">
       <TriangleAlert class="size-4 shrink-0 text-warning" />

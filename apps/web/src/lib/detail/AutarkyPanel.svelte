@@ -10,7 +10,6 @@
   import { factsOf } from "./autarky.ts";
   import { AutarkyRange } from "./autarky-range.svelte.ts";
   import DetailStats from "./DetailStats.svelte";
-  import { FAILED } from "./head.svelte.ts";
   import RangeState from "./RangeState.svelte";
   import ShareBar from "./ShareBar.svelte";
   import ShareChart from "./ShareChart.svelte";
@@ -20,7 +19,7 @@
   const range = new AutarkyRange(() => input);
 </script>
 
-<RangeState head={range.failed ? FAILED : null} onretry={range.retry}>
+<RangeState failed={range.failed} onretry={range.retry}>
   {#if range.view}
     {@const v = range.view}
     <ShareChart bands={v.bands} grain={v.grain} selfUse={v.all.selfUse} />

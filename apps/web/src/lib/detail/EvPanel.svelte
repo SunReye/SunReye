@@ -9,7 +9,6 @@
   import DetailStats from "./DetailStats.svelte";
   import { whenOf } from "./ev.ts";
   import { EvRange } from "./ev-range.svelte.ts";
-  import { FAILED } from "./head.svelte.ts";
   import Quantity from "./Quantity.svelte";
   import RangeState from "./RangeState.svelte";
 
@@ -28,7 +27,7 @@
   ]);
 </script>
 
-<RangeState head={range.failed ? FAILED : null} onretry={range.retry}>
+<RangeState failed={range.failed} onretry={range.retry}>
   {#if view && view.sessions.length === 0}
     <p class="py-2 text-sm text-muted-foreground">{m.detail_no_sessions()}</p>
   {:else if view}
