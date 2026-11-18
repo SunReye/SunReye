@@ -1,8 +1,6 @@
 // What a measured sheet's head reads over a range (ADR 21): its figure, and where its readings
 // stop. A refused read fails like a lost one: the sheet says so instead of showing an empty range.
-import { PLANT, type Core, type PvString } from "../api/core.ts";
-import { TARIFF } from "../api/computed-devices.ts";
-import { analyticsOf } from "../analytics/sources.ts";
+import { PLANT, type Core } from "../api/core.ts";
 import { share } from "../dashboard/today.ts";
 import { rollups, type Rolled, type RollupPeriod } from "../history/history.ts";
 
@@ -110,24 +108,25 @@ function shareOf(core: MeasureCore, part: string, whole: string): Measure {
   };
 }
 
-/** What a sheet's figure reads through: its id, the core and the layout's strings. */
-export interface MeasureInput {
-  readonly id: string;
-  readonly core: MeasureCore;
-  readonly strings: readonly Readonly<PvString>[];
-}
+/** What a sheet's head figure is over its range: a series' energy or euros, or a share of the house load. */
+export type Head =
+  | {
+      readonly kind: "energy" | "money";
+      readonly device: number;
+      readonly series: string;
+      /** What it is, where the sheet's title does not say it. */
+      readonly name?: () => string;
+    }
+  | { readonly kind: "share"; readonly part: string; readonly whole: string };
 
-/** The head figure of sheet `id`: autarky, the euros saved, or its series' energy; null for a sheet without one. */
-export function measureOf({ id, core, strings }: MeasureInput): Measure | null {
-  if (id === "autarky") return shareOf(core, "self.supply.power", "load.power");
+/** The house load met on site: autarky. */
+export const AUTARKY: Head = { kind: "share", part: "self.supply.power", whole: "load.power" };
 
-  if (id === "saved") return integral(core, TARIFF, "cost.savings.rate", EUR);
+/** How head `head` reads through `core`. */
+export function measureOf(head: Readonly<Head>, core: MeasureCore): Measure {
+  if (head.kind === "share") return shareOf(core, head.part, head.whole);
 
-  const a = analyticsOf(id, strings);
+  const measure = integral(core, head.device, head.series, head.kind === "money" ? EUR : KWH);
 
-  if (a === null || a.energy === null) return null;
-
-  const energy = integral(core, a.device, a.energy, KWH);
-
-  return a.way === null ? energy : { ...energy, name: a.way };
+  return head.name === undefined ? measure : { ...measure, name: head.name() };
 }

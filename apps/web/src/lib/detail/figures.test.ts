@@ -1,6 +1,11 @@
 import { expect, test } from "bun:test";
 import type { Day } from "../dashboard/day.ts";
-import { facts, figure, formatFigure, parseFigure } from "./figures.ts";
+import { formatFigure, parseFigure } from "./figures.ts";
+import { figure, sheetOf } from "./sheet-of.ts";
+
+/** What sheet `id` leads with and states of the day, as the sheet reads them. */
+const facts = (id: string, day?: Day, spot?: number) =>
+  sheetOf(id, [])?.facts?.(day, spot) ?? { lead: null, stats: [] };
 
 const at = (time: string) => `2026-11-12T${time}:00Z`;
 

@@ -1,7 +1,5 @@
 // What the statistics screen shows beside its range, as the hash route holds it (ADR 21): the
 // figure asked about (`metric`), its tab, the baseline (`cmp`) and a chosen string (`sid`).
-import { parseFigure } from "../detail/figures.ts";
-
 export type Metric = "energy" | "money" | "autarky" | "plant";
 
 export type Tab =
@@ -55,24 +53,4 @@ export function viewOf(p: Readonly<URLSearchParams>, battery: boolean): StatsVie
     cmp: p.get("cmp") === "year" ? "year" : "prev",
     sid: Number.isInteger(sid) ? sid : null,
   };
-}
-
-const FIGURES = new Map<string, readonly [Metric | null, Tab | null]>([
-  ["saved", ["money", null]],
-  ["price", ["money", "tariff"]],
-  ["autarky", ["autarky", null]],
-  ["forecast", [null, "forecast"]],
-  ["battery", ["plant", "battery"]],
-  ["inverter", ["plant", "data"]],
-]);
-
-/** Where a detail sheet's figure lands: its view's parameters, null for the default. */
-export function figureView(id: string): Record<"metric" | "tab" | "sid", string | null> {
-  const ref = parseFigure(id);
-
-  if (ref?.kind === "string") return { metric: "plant", tab: "strings", sid: String(ref.id) };
-
-  const [metric, tab] = FIGURES.get(id) ?? [null, null];
-
-  return { metric, tab, sid: null };
 }

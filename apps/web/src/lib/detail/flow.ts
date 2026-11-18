@@ -9,7 +9,7 @@ import { coverOf } from "./autarky.ts";
 import type { Fact } from "./figures.ts";
 
 /** A flow sheet: the `plant` power it peaks in, and the tariff's rate that prices it (ADR 12). */
-export interface Flow {
+export interface SheetFlow {
   readonly series: string;
   /** The house load: what share PV covered directly, as the autarky sheet's bar reads it. */
   readonly cover: boolean;
@@ -18,19 +18,8 @@ export interface Flow {
   readonly money: { readonly series: string; readonly label: () => string } | null;
 }
 
-const PAID = { series: "cost.import.rate", label: m.detail_paid };
-const EARNED = { series: "cost.export.rate", label: m.detail_earned };
-
-const FLOWS = new Map<string, Flow>([
-  ["consumption", { series: "load.power", cover: true, price: false, money: null }],
-  ["house", { series: "load.power", cover: true, price: false, money: null }],
-  ["feedIn", { series: "grid.export.power", cover: false, price: false, money: EARNED }],
-  ["purchase", { series: "grid.import.power", cover: false, price: true, money: PAID }],
-  ["generator", { series: "generator.power", cover: false, price: false, money: null }],
-]);
-
-/** The flow sheet `id` is; null for any other. */
-export const flowOf = (id: string): Flow | null => FLOWS.get(id) ?? null;
+export const PAID = { series: "cost.import.rate", label: m.detail_paid };
+export const EARNED = { series: "cost.export.rate", label: m.detail_earned };
 
 /** What a flow sheet read of its range. */
 export interface FlowRead {
@@ -78,7 +67,11 @@ function coveredOf(flows: Rollups | null): Fact {
 }
 
 /** What the flow was paid or earned; without a tariff in force, that none is (ADR 12). */
-function moneyOf(money: Flow["money"], read: Readonly<FlowRead> | null, priced: boolean): Fact[] {
+function moneyOf(
+  money: SheetFlow["money"],
+  read: Readonly<FlowRead> | null,
+  priced: boolean,
+): Fact[] {
   if (money === null) return [];
 
   if (!priced) return [{ label: money.label(), text: m.detail_no_tariff_short() }];
@@ -91,7 +84,7 @@ function moneyOf(money: Flow["money"], read: Readonly<FlowRead> | null, priced: 
  * @param priced a tariff is in force
  */
 export function flowFacts(
-  flow: Readonly<Flow>,
+  flow: Readonly<SheetFlow>,
   read: Readonly<FlowRead> | null,
   priced: boolean,
 ): Fact[] {

@@ -19,9 +19,9 @@
   import { RangeRoute, type Go } from "../range/route.svelte.ts";
   import { input } from "../shell/input.svelte.ts";
   import DetailBody from "./DetailBody.svelte";
-  import { figure, titleOf } from "./figures.ts";
   import { markSheet } from "./in-sheet.ts";
   import { exploreLinks, nodeReadings, type Source } from "./readings.ts";
+  import { figure, titleOf } from "./sheet-of.ts";
 
   let {
     id,

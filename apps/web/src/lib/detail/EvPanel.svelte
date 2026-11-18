@@ -8,16 +8,21 @@
   import type { AnalyticsInput } from "./Analytics.svelte";
   import DetailStats from "./DetailStats.svelte";
   import { whenOf } from "./ev.ts";
-  import { EvRange } from "./ev-range.svelte.ts";
+  import { EV_RANGE } from "./ev-range.ts";
   import Quantity from "./Quantity.svelte";
   import RangeState from "./RangeState.svelte";
+  import { SheetRange } from "./sheet-range.svelte.ts";
 
   let { input, device }: { input: AnalyticsInput; device: number } = $props();
 
   /** Past this many, the earlier sessions are counted, not listed. */
   const SHOWN = 10;
 
-  const range = new EvRange(() => ({ core: input.core, route: input.route, device }));
+  const range = new SheetRange(
+    () => ({ core: input.core, route: input.route, key: String(device), device }),
+    EV_RANGE,
+  );
+
   const view = $derived(range.view);
   const zone = $derived(input.route.place.zone);
 

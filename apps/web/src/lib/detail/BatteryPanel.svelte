@@ -4,32 +4,34 @@
   range's full cycles, whichever tab is open. All from the plant's battery (ADR 14).
 -->
 <script lang="ts">
-  import type { Analytics } from "../analytics/sources.ts";
   import type { AnalyticsInput } from "./Analytics.svelte";
   import AnalyticsTabs from "./AnalyticsTabs.svelte";
   import { factsOf } from "./battery.ts";
-  import { BatteryRange } from "./battery-range.svelte.ts";
+  import { BATTERY_RANGE } from "./battery-range.ts";
   import BatteryOverview from "./BatteryOverview.svelte";
   import DetailStats from "./DetailStats.svelte";
+  import { SheetRange } from "./sheet-range.svelte.ts";
+  import type { Analytics } from "./sheets.ts";
 
   let {
-    id,
     title,
     colour,
     analytics,
     input,
   }: {
-    id: string;
     title: string;
     colour: string;
     analytics: Analytics;
     input: AnalyticsInput;
   } = $props();
 
-  const range = new BatteryRange(() => input);
+  const range = new SheetRange(
+    () => ({ core: input.core, route: input.route, key: "plant" }),
+    BATTERY_RANGE,
+  );
 </script>
 
-<AnalyticsTabs {id} {title} {colour} {analytics} {input}>
+<AnalyticsTabs {title} {colour} {analytics} {input}>
   {#snippet overview()}
     <BatteryOverview {range} {analytics} {input} />
   {/snippet}

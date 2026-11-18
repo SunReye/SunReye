@@ -8,7 +8,7 @@ import { RangeData } from "../range/range-data.svelte.ts";
 import { hourInstant, t1Of, type Calendar, type Range } from "../range/range.ts";
 import type { RangeRoute } from "../range/route.svelte.ts";
 import { beforeText, notesOf, versus } from "./head-words.ts";
-import { measureOf, type Measure, type MeasureInput, type Measured } from "./measure.ts";
+import { measureOf, type Head, type Measure, type MeasureCore, type Measured } from "./measure.ts";
 
 /** What the head and the analytics show of the range. */
 export interface HeadView {
@@ -27,7 +27,10 @@ export interface HeadView {
 }
 
 /** The sheet's figure, what it reads through and the record's edges. */
-export interface HeadInput extends MeasureInput {
+export interface HeadInput {
+  /** Null for a sheet that heads with none. */
+  readonly head: Head | null;
+  readonly core: MeasureCore;
   readonly route: RangeRoute;
   /** The stored series by `device/series` (ADR 22); null until the catalog is read. */
   readonly record: ReadonlyMap<string, Stored> | null;
@@ -52,6 +55,10 @@ interface Read {
 const NOTHING: Measured = { value: null, stops: null };
 
 const keyOf = (measure: Readonly<Measure>) => `${measure.device}/${measure.series}`;
+
+/** How the sheet's head reads; null for a sheet that heads with none. */
+const measureFor = (head: Readonly<Head> | null, core: MeasureCore) =>
+  head === null ? null : measureOf(head, core);
 
 /** Where the route stands: its range, the plant's clock, and the range's name. */
 type At = Readonly<Pick<RangeRoute, "range" | "place" | "label">>;
@@ -83,8 +90,8 @@ export class RangeHead {
     this.#data = new RangeData(
       () => input().route,
       (from, to, now) => {
-        const { route, record } = input();
-        const measure = measureOf(input());
+        const { route, record, head, core } = input();
+        const measure = measureFor(head, core);
 
         // The record's edges decide what to read, so the range is read once, after the catalog.
         if (measure === null || record === null) return Promise.resolve(null);
@@ -96,7 +103,7 @@ export class RangeHead {
 
   get view(): HeadView | null {
     const input = this.#input();
-    const measure = measureOf(input);
+    const measure = measureFor(input.head, input.core);
 
     if (measure === null) return null;
 

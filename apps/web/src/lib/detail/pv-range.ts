@@ -1,18 +1,16 @@
 // The PV, inverter and string sheets' facts over their range (ADR 21 "Sheet content"): the peak
 // with its time, from the rollups' `max` (ADR 3), the range's forecast against what was measured, and
 // the inverter's highest temperature where its profile maps one.
-import type { Analytics } from "../analytics/sources.ts";
 import type { Core } from "../api/core.ts";
 import { planned, plannedEnergy, type Planned } from "../forecast/forecast.ts";
-import { rollups, type Rolled, type RollupPeriod } from "../history/history.ts";
+import { periodOf, rollups, type Rolled, type RollupPeriod } from "../history/history.ts";
 import { whenOf } from "../history/peaks.ts";
 import { m } from "../paraglide/messages.js";
-import { parseFigure, type Fact } from "./figures.ts";
+import { grainOf } from "../range/range.ts";
+import type { Fact } from "./figures.ts";
 import { strict, type MeasureCore } from "./measure.ts";
-
-/** The PV sheets: PV, the inverter and each string. */
-export const isPv = (id: string): boolean =>
-  id === "pv" || id === "inverter" || parseFigure(id)?.kind === "string";
+import type { RangeInput, RangeReader } from "./sheet-range.svelte.ts";
+import type { Analytics } from "./sheets.ts";
 
 /** What the range read: its highest rollup, and its energy measured and forecast in kWh. */
 export interface PvRead {
@@ -34,7 +32,7 @@ export type PvSource = Readonly<Pick<Analytics, "device" | "series" | "forecast"
 };
 
 /** The range in ms since the epoch, measured up to `until`, cut in `period`. */
-export interface PvSpan {
+interface PvSpan {
   readonly from: number;
   readonly until: number;
   readonly to: number;
@@ -104,7 +102,7 @@ async function forecastOf(
 }
 
 /** The sheet's series over the span; rejects when the core fails or refuses a rollup. */
-export async function readPv(core: PvCore, a: PvSource, span: Readonly<PvSpan>): Promise<PvRead> {
+async function readPv(core: PvCore, a: PvSource, span: Readonly<PvSpan>): Promise<PvRead> {
   const [from, until] = [new Date(span.from), new Date(span.until)];
   const ran = span.from < span.until;
   const supported = supportOf(core);
@@ -132,7 +130,7 @@ export async function readPv(core: PvCore, a: PvSource, span: Readonly<PvSpan>):
 }
 
 /** Where the range stands: its bands are hours, and the plant's timezone. */
-export interface PvAt {
+interface PvAt {
   readonly hours: boolean;
   readonly zone: string;
 }
@@ -157,7 +155,7 @@ function topFact(label: string, top: Rolled | null, unit: string, at: Readonly<P
 
 /** The facts row: the peak with its hour, or past a day its day; the forecast and how much of it
  * was measured; the inverter's highest temperature where its profile maps one. */
-export function pvFacts(read: Readonly<PvRead>, at: Readonly<PvAt>): Fact[] {
+function pvFacts(read: Readonly<PvRead>, at: Readonly<PvAt>): Fact[] {
   const share = met(read);
 
   return [
@@ -174,3 +172,25 @@ export function pvFacts(read: Readonly<PvRead>, at: Readonly<PvAt>): Fact[] {
       : [topFact(m.detail_temperature_max(), read.hottest, "°C", at)]),
   ];
 }
+
+export interface PvInput extends RangeInput {
+  readonly core: PvCore;
+  readonly source: PvSource;
+}
+
+/** The facts row; null unread. */
+export const PV_RANGE = {
+  load: (input, from, to, now) => {
+    const { core, route, source } = input();
+
+    return readPv(core, source, {
+      from: from.getTime(),
+      until: Math.min(to.getTime(), now),
+      to: to.getTime(),
+      period: periodOf(route.range),
+    });
+  },
+  view: (got, input) =>
+    got &&
+    pvFacts(got.data, { hours: grainOf(got.range) === "hour", zone: input().route.place.zone }),
+} satisfies RangeReader<PvInput, PvRead, Fact[] | null>;

@@ -3,15 +3,15 @@
   import { m } from "../paraglide/messages.js";
   import { rangeParams } from "../range/params.ts";
   import type { RangeRoute } from "../range/route.svelte.ts";
-  import { figureView } from "../history/view.ts";
   import OnwardLink from "./OnwardLink.svelte";
+  import type { Onward } from "./sheets.ts";
 
-  let { route, id }: { route: RangeRoute; id: string } = $props();
+  let { route, onward }: { route: RangeRoute; onward: Onward } = $props();
 
   const href = $derived.by(() => {
     const query = Object.entries({
       ...rangeParams(route.place.cal, route.range),
-      ...figureView(id),
+      ...onward,
     }).filter((e): e is [string, string] => e[1] !== null);
 
     return `#/history?${new URLSearchParams(query).toString()}`;

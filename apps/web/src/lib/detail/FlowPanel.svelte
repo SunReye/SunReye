@@ -8,9 +8,10 @@
   import HistoryChart from "../history/HistoryChart.svelte";
   import type { AnalyticsInput } from "./Analytics.svelte";
   import DetailStats from "./DetailStats.svelte";
-  import type { Flow } from "./flow.ts";
-  import { FlowRange } from "./flow-range.svelte.ts";
+  import type { SheetFlow } from "./flow.ts";
+  import { FLOW_RANGE } from "./flow-range.ts";
   import RangeState from "./RangeState.svelte";
+  import { SheetRange } from "./sheet-range.svelte.ts";
 
   let {
     input,
@@ -18,12 +19,15 @@
     priced,
   }: {
     input: AnalyticsInput;
-    flow: Flow;
+    flow: SheetFlow;
     /** A tariff is in force (ADR 12). */
     priced: boolean;
   } = $props();
 
-  const range = new FlowRange(() => ({ core: input.core, route: input.route, flow, priced }));
+  const range = new SheetRange(
+    () => ({ core: input.core, route: input.route, key: flow.series, flow, priced }),
+    FLOW_RANGE,
+  );
 </script>
 
 {#if flow.price && priced}
@@ -32,6 +36,6 @@
 <RangeState failed={range.failed} onretry={range.retry}>
   <!-- The facts row spans the sheet, as every sheet's does. -->
   <div class="-mx-5 -mb-4 pt-2 sm:-mx-6">
-    <DetailStats stats={range.facts} />
+    <DetailStats stats={range.view} />
   </div>
 </RangeState>

@@ -3,21 +3,19 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import * as Tabs from "#lib/components/ui/tabs/index.js";
-  import type { Analytics } from "../analytics/sources.ts";
-  import { haptics } from "../haptics.ts";
+    import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
   import type { AnalyticsInput } from "./Analytics.svelte";
   import AnalyticsPane from "./AnalyticsPane.svelte";
+  import type { Analytics } from "./sheets.ts";
 
   let {
-    id,
     title,
     colour,
     analytics,
     input,
     overview,
   }: {
-    id: string;
     title: string;
     /** The figure's energy token. */
     colour: string;
@@ -68,7 +66,7 @@
       {#if t === "overview" && overview}
         {@render overview()}
       {:else}
-        <AnalyticsPane tab={t} {id} {title} {colour} {analytics} {input} />
+        <AnalyticsPane tab={t} {title} {colour} {analytics} {input} />
       {/if}
     </Tabs.Content>
   {/each}

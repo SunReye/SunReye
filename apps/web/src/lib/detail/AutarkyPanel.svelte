@@ -8,15 +8,24 @@
   import { m } from "../paraglide/messages.js";
   import type { AnalyticsInput } from "./Analytics.svelte";
   import { factsOf } from "./autarky.ts";
-  import { AutarkyRange } from "./autarky-range.svelte.ts";
+  import { AUTARKY_RANGE, monthAutarky } from "./autarky-range.ts";
   import DetailStats from "./DetailStats.svelte";
   import RangeState from "./RangeState.svelte";
+  import { SheetRange } from "./sheet-range.svelte.ts";
   import ShareBar from "./ShareBar.svelte";
   import ShareChart from "./ShareChart.svelte";
 
   let { input }: { input: AnalyticsInput } = $props();
 
-  const range = new AutarkyRange(() => input);
+  const range = new SheetRange(
+    () => ({ core: input.core, route: input.route, key: "plant" }),
+    AUTARKY_RANGE,
+  );
+
+  // Read once per plant day, not per range.
+  const month = $derived(
+    monthAutarky(input.core, input.route.place.zone, input.route.place.cal.today),
+  );
 </script>
 
 <RangeState failed={range.failed} onretry={range.retry}>
@@ -29,7 +38,7 @@
     </div>
     <!-- The facts row spans the sheet, as every sheet's does. -->
     <div class="-mx-5 -mb-4 pt-2 sm:-mx-6">
-      {#await range.month}
+      {#await month}
         <DetailStats stats={factsOf(v.best, v.worst, null)} />
       {:then mean}
         <DetailStats stats={factsOf(v.best, v.worst, mean)} />
