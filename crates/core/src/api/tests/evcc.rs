@@ -47,7 +47,12 @@ impl Loadpoint {
         let dir = tempfile::tempdir().unwrap();
         let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
         let mut broker = fake::serve(0).await;
-        for (topic, payload) in [(MODE, mode), (LIMIT, "0"), (EFFECTIVE, "80"), (BOOST, "false")] {
+        for (topic, payload) in [
+            (MODE, mode),
+            (LIMIT, "0"),
+            (EFFECTIVE, "80"),
+            (BOOST, "false"),
+        ] {
             broker.retain(topic, payload);
         }
         let (relay, published) = mpsc::unbounded_channel();
