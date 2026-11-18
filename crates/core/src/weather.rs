@@ -517,7 +517,8 @@ impl<A: Archive> Past<A> {
             // Newer history may start at `until`; where none does, nothing is known past it.
             let newer = catalog
                 .iter()
-                .any(|c| c.device == self.device && c.series == quantity.role && c.last >= until);
+                .filter(|c| c.device == self.device)
+                .any(|c| c.series == quantity.role && c.last >= until);
             let range = if newer {
                 from..until
             } else {
