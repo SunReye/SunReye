@@ -360,6 +360,10 @@ _Avoid_: Clearness (alone), cloud factor
 The WMO code the weather provider gives an instant: clear, cloudy, fog, drizzle, rain, snow, showers or thunder, with intensity.
 _Avoid_: Condition, weather type
 
+**Trial weather**:
+A whole instant's weather the builder's weather button shows the plant in, in place of the stored weather; held by the page, never saved. German UI: the button's words (Klar, Regen, …).
+_Avoid_: Sample (a reading), preset (a camera view), demo weather
+
 **Correction**:
 A multiplier the plant learns per MPPT input, plant-local month and hour: measured over modelled PV power on past weather.
 _Avoid_: Calibration, bias factor
