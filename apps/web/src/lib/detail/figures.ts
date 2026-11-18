@@ -126,21 +126,7 @@ export function weatherFacts(day?: Readonly<Day>): Facts {
   return { lead, stats: [] };
 }
 
-function peak(day: Readonly<Day> | undefined, kind: "production" | "consumption"): Fact {
-  const watts = day?.today.peaks[kind]?.watts;
-
-  return {
-    label: m.detail_peak(),
-    value: watts ?? null,
-    unit: "W",
-    digits: 0,
-  };
-}
-
 const only = (stats: readonly Fact[]): Facts => ({ lead: null, stats });
-
-export const productionFacts = (day?: Readonly<Day>): Facts =>
-  only([peak(day, "production"), kwh(m.dash_forecast(), day?.pv.total ?? null)]);
 
 export const gridFacts = (day?: Readonly<Day>): Facts =>
   only([

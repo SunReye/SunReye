@@ -7,6 +7,7 @@ import {
   asked,
   fetched,
   INVERTER,
+  PLANT,
   prepare,
   restore,
   rollup,
@@ -81,6 +82,25 @@ test("past a day the peak names its day", async () => {
   const peak = sheet.getByRole("definition").filter({ hasText: "11. Nov." });
 
   await expect.element(peak).toHaveTextContent("3,1 kW 11. Nov.");
+});
+
+test("the production sheet's facts follow the range: past a day its peak names its day", async () => {
+  const pv = [hour(10, 9000, 4100, "2026-11-10"), hour(10, 8000, 3000, "2026-11-11")];
+
+  served.rolled = (a) =>
+    a.device === PLANT && a.series === "pv.power"
+      ? Response.json({
+          points: pv.filter(
+            (p: Readonly<{ start: string }>) => p.start >= a.from && p.start < a.to,
+          ),
+          period: a.period,
+        })
+      : undefined;
+
+  const sheet = await sheetOf("production", "Produktion", "range=week");
+  const peak = sheet.getByRole("definition").filter({ hasText: "10. Nov." });
+
+  await expect.element(peak).toHaveTextContent("4,1 kW 10. Nov.");
 });
 
 test("the facts row sets the range's forecast against what was measured", async () => {

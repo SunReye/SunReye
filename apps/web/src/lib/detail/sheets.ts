@@ -8,7 +8,6 @@ import { m } from "../paraglide/messages.js";
 import {
   gridFacts,
   priceFacts,
-  productionFacts,
   weatherFacts,
   type Facts,
   type Figure,
@@ -130,8 +129,7 @@ export const ROWS: Readonly<Record<Fixed, Row>> = {
     figure: { colour: SOLAR, node: "pv", chart: "pv" },
     charted: PV,
     head: energy("pv.power"),
-    panel: { kind: "tabs" },
-    facts: productionFacts,
+    panel: { kind: "pv", inverter: false },
   },
   pv: {
     title: m.detail_pv,
