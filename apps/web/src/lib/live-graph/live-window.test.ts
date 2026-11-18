@@ -263,8 +263,8 @@ describe("sampleUnder", () => {
   /** A sample a second for a minute up to T0, 100 W above the one before. */
   const points = Array.from({ length: 60 }, (_, i) => ({ t: T0 - (59 - i) * 1000, v: i * 100 }));
 
-  const at = (share: number, cursor = T0, glide = false) =>
-    sampleUnder(points, { share, window: 120_000, interval: 1000, cursor, glide });
+  const at = (share: number, cursor = T0, glide = false, now = T0) =>
+    sampleUnder(points, { share, window: 120_000, interval: 1000, cursor, glide, now });
 
   test("standing still, a place on the plot is its time in the window", () => {
     expect(at(0.75)).toEqual({ ago: 30, watts: 2900 });
@@ -282,8 +282,13 @@ describe("sampleUnder", () => {
     expect(at(0.25)).toEqual({ ago: 90, watts: null });
   });
 
+  test("a sample's age counts from now, so a stalled stream's grows", () => {
+    expect(at(1, T0, false, T0 + 60_000)).toEqual({ ago: 60, watts: 5900 });
+    expect(at(0.75, T0, false, T0 + 60_000)).toEqual({ ago: 90, watts: 2900 });
+  });
+
   test("without samples nothing is read", () => {
-    const none = { share: 0.5, window: 120_000, interval: 1000, cursor: 0, glide: false };
+    const none = { share: 0.5, window: 120_000, interval: 1000, cursor: 0, glide: false, now: 0 };
 
     expect(sampleUnder([], none)).toBeNull();
   });

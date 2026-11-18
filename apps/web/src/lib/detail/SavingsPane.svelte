@@ -4,10 +4,8 @@
   against the investment.
 -->
 <script lang="ts">
-  import { m } from "../paraglide/messages.js";
-  import RangeControl from "../range/RangeControl.svelte";
   import Costs from "../tariff/Costs.svelte";
-  import type { AnalyticsInput } from "./Analytics.svelte";
+  import Analytics, { type AnalyticsInput } from "./Analytics.svelte";
   import type { HeadView } from "./head.svelte.ts";
   import NoTariff from "./NoTariff.svelte";
   import RangeState from "./RangeState.svelte";
@@ -32,11 +30,7 @@
   } = $props();
 </script>
 
-<section
-  class="flex flex-col gap-3 border-t border-border/60 px-5 pt-4 pb-4 sm:px-6"
-  aria-label={m.detail_analytics()}
->
-  <RangeControl model={input.route} />
+<Analytics route={input.route}>
   {#if priced}
     <RangeState {head} {onretry}>
       <Costs core={input.core} route={input.route} chart="savings" />
@@ -45,7 +39,7 @@
   {:else}
     <NoTariff {admin} />
   {/if}
-</section>
+</Analytics>
 
 {#if priced && admin}
   <SavingsPayback core={input.core} />

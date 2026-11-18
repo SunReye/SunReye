@@ -1,5 +1,7 @@
-// The plant's flows as the detail sheet tests serve them: each series' power by the hour.
-import { PLANT, rollup, type Asked } from "./detail.harness.ts";
+// The plant's flows as the detail sheet tests serve them, each series' power by the hour, and the
+// wait until no more is asked for.
+import { expect } from "vitest";
+import { asked, PLANT, rollup, type Asked } from "./detail.harness.ts";
 
 /** Each plant series' power in W by the UTC hour it starts. */
 export type Flows = Readonly<Partial<Record<string, Readonly<Record<string, number>>>>>;
@@ -57,3 +59,21 @@ export const byDay =
 
     return Response.json({ points, period: "day" });
   };
+
+/** Until no read has been asked for over one poll. */
+export async function settled(): Promise<void> {
+  let seen = -1;
+
+  await expect
+    .poll(
+      () => {
+        const still = seen === asked.length;
+
+        seen = asked.length;
+
+        return still;
+      },
+      { interval: 100 },
+    )
+    .toBe(true);
+}

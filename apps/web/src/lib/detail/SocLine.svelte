@@ -1,8 +1,8 @@
 <!--
   The battery's state of charge as a line under its power (ADR 21 "Sheet content"): a band's mean,
-  0–100 %, in the power chart's columns, so each point stands under its bar. It reads the band
-  under the pointer, its own or the power chart's, in its header (ADR 21 "Chart reading"). A band
-  without readings breaks the line, never 0 %.
+  0–100 %, in the power chart's columns, so each point stands under its bar. At rest its header
+  states its mean over the range; it reads the band under the pointer, its own or the power
+  chart's (ADR 21 "Chart reading"). A band without readings breaks the line, never 0 %.
 -->
 <script lang="ts">
   import { flowColour } from "../energy-colours.ts";
@@ -13,9 +13,15 @@
 
   let {
     bands,
+    mean,
+    label,
     read = $bindable(null),
   }: {
     bands: readonly Band[];
+    /** The mean over the range, in %; null without a reading. */
+    mean: number | null;
+    /** The range's name: "Heute". */
+    label: string;
     /** The index of the band being read here or on the power chart; null with none. */
     read?: number | null;
   } = $props();
@@ -42,6 +48,9 @@
   );
 
   const shown = $derived(read === null ? undefined : bands[read]);
+
+  /** The band's state of charge being read, else the range's mean. */
+  const value = $derived(shown ? socOf(shown) : mean);
 </script>
 
 <div class="flex flex-col gap-1.5" role="group" aria-label={m.rd_soc()}>
@@ -50,13 +59,12 @@
       <span class="h-0.5 w-3 rounded-full" style:background={COLOUR}></span>
       {m.rd_soc()}
     </span>
-    {#if shown}
-      {@const v = socOf(shown)}
-      <span class="flex gap-1.5 tabular-nums">
-        <span class="text-muted-foreground">{shown.title}</span>
-        <span class="font-medium">{v === null ? "–" : `${num(v)} %`}</span>
-      </span>
-    {/if}
+    <span class="flex gap-1.5 tabular-nums">
+      <span class="text-muted-foreground"
+        >{shown ? shown.title : m.range_mean({ series: m.rd_soc(), range: label })}</span
+      >
+      <span class="font-medium">{value === null ? "–" : `${num(value)} %`}</span>
+    </span>
   </div>
   <div class="grid grid-cols-[2.25rem_minmax(0,1fr)] gap-x-1">
     <div

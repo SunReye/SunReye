@@ -1,10 +1,9 @@
 // What a measured sheet's head reads over a range (ADR 21): its figure, and where its readings
 // stop. A refused read fails like a lost one: the sheet says so instead of showing an empty range.
-import { PLANT, type Core, type PvString } from "../api/core.ts";
-import { TARIFF } from "../api/computed-devices.ts";
-import { analyticsOf } from "../analytics/sources.ts";
+import { PLANT, type Core } from "../api/core.ts";
 import { share } from "../dashboard/today.ts";
-import { rollups, type Rolled, type RollupPeriod } from "../history/history.ts";
+import { euroDigits } from "../range/format.ts";
+import { coveredSum, rollups, type Rolled, type RollupPeriod } from "../history/history.ts";
 
 export interface Measured {
   /** Null where nothing was read. */
@@ -19,7 +18,8 @@ export interface Measure {
   readonly device: number;
   readonly series: string;
   readonly unit: string;
-  readonly digits: number;
+  /** The digits a value is written with. */
+  readonly digits: (value: number) => number;
   /** A share, whose change is in percentage points. */
   readonly points?: boolean;
   /** What it is, where the sheet's title does not say it: a battery's "Entladen". */
@@ -54,13 +54,13 @@ function stopOf(rolled: readonly Rolled[], end: number): number | null {
 }
 
 /** How a series' rollups sum to a figure: its unit and digits, and what one unit integrates to. */
-type Sum = Readonly<{ unit: string; digits: number; per: number }>;
+type Sum = Readonly<{ unit: string; digits: (value: number) => number; per: number }>;
 
 /** A power series' energy in kWh. */
-const KWH: Sum = { unit: "kWh", digits: 1, per: 1000 };
+const KWH: Sum = { unit: "kWh", digits: () => 1, per: 1000 };
 
 /** A rate in EUR/h integrates to EUR (ADR 12). */
-const EUR: Sum = { unit: "€", digits: 2, per: 1 };
+const EUR: Sum = { unit: "€", digits: euroDigits, per: 1 };
 
 /** A series' integral over the span, in `sum`'s unit. */
 function integral(core: MeasureCore, device: number, series: string, sum: Sum): Measure {
@@ -73,10 +73,10 @@ function integral(core: MeasureCore, device: number, series: string, sum: Sum): 
     digits: sum.digits,
     read: async (from, to, period) => {
       const rolled = await rollups(sure, device, series, period, new Date(from), new Date(to));
-      const read = rolled.filter((r) => r.covered > 0);
+      const total = coveredSum(rolled);
 
       return {
-        value: read.length === 0 ? null : read.reduce((a, r) => a + r.integral, 0) / sum.per,
+        value: total === null ? null : total / sum.per,
         stops: stopOf(rolled, to),
       };
     },
@@ -97,7 +97,7 @@ function shareOf(core: MeasureCore, part: string, whole: string): Measure {
     // The record's edges and stops follow what the share is of.
     series: whole,
     unit: "%",
-    digits: 0,
+    digits: () => 0,
     points: true,
     read: async (from, to, period) => {
       const read = (series: string) =>
@@ -110,24 +110,25 @@ function shareOf(core: MeasureCore, part: string, whole: string): Measure {
   };
 }
 
-/** What a sheet's figure reads through: its id, the core and the layout's strings. */
-export interface MeasureInput {
-  readonly id: string;
-  readonly core: MeasureCore;
-  readonly strings: readonly Readonly<PvString>[];
-}
+/** What a sheet's head figure is over its range: a series' energy or euros, or a share of the house load. */
+export type Head =
+  | {
+      readonly kind: "energy" | "money";
+      readonly device: number;
+      readonly series: string;
+      /** What it is, where the sheet's title does not say it. */
+      readonly name?: () => string;
+    }
+  | { readonly kind: "share"; readonly part: string; readonly whole: string };
 
-/** The head figure of sheet `id`: autarky, the euros saved, or its series' energy; null for a sheet without one. */
-export function measureOf({ id, core, strings }: MeasureInput): Measure | null {
-  if (id === "autarky") return shareOf(core, "self.supply.power", "load.power");
+/** The house load met on site: autarky. */
+export const AUTARKY: Head = { kind: "share", part: "self.supply.power", whole: "load.power" };
 
-  if (id === "saved") return integral(core, TARIFF, "cost.savings.rate", EUR);
+/** How head `head` reads through `core`. */
+export function measureOf(head: Readonly<Head>, core: MeasureCore): Measure {
+  if (head.kind === "share") return shareOf(core, head.part, head.whole);
 
-  const a = analyticsOf(id, strings);
+  const measure = integral(core, head.device, head.series, head.kind === "money" ? EUR : KWH);
 
-  if (a === null || a.energy === null) return null;
-
-  const energy = integral(core, a.device, a.energy, KWH);
-
-  return a.way === null ? energy : { ...energy, name: a.way };
+  return head.name === undefined ? measure : { ...measure, name: head.name() };
 }

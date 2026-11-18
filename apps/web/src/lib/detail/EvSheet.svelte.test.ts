@@ -91,6 +91,18 @@ test("a loadpoint's sheet reads its own charging power, not the plant's", async 
   await expect.poll(() => sessions(sheet)).toHaveLength(2);
 });
 
+test("while the sessions read, a skeleton holds their place", async () => {
+  served.rolled = (a) =>
+    a.series === "battery.discharge.power" ? new Promise<Response>(() => {}) : plant(CHARGED)(a);
+
+  const { sheet, head } = await sheetOf("ev");
+
+  await expect.element(head.getByText("12,0 kWh")).toBeVisible();
+  await expect
+    .element(sheet.getByRole("region", { name: "Verlauf" }).getByRole("status"))
+    .toBeVisible();
+});
+
 test("a range no car charged in says so in place of the sessions", async () => {
   served.rolled = plant({
     ...CHARGED,

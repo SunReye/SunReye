@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { connect } from "../api/core.ts";
 import { rangeFor } from "../range/range.ts";
-import { bandFigure, periodOf, rollups } from "./history.ts";
+import { bandFigure, coveredSum, periodOf, rollups } from "./history.ts";
 
 const H = 3_600_000;
 const DAY = 24 * H;
@@ -15,6 +15,17 @@ test("a power series fills a band with the energy of the rollups starting in it"
   ];
 
   expect(bandFigure("grid.power", hours, H, 3 * H)).toEqual({ value: 2, covered: 1.5 * H });
+});
+
+test("a sum takes the rollups that read anything, and none read sums to nothing, never 0", () => {
+  const hours = [
+    { start: 0, end: H, integral: 2000, mean: 2000, max: null, covered: H },
+    { start: H, end: 2 * H, integral: 0, mean: 0, max: null, covered: 0 },
+    { start: 2 * H, end: 3 * H, integral: 500, mean: 1000, max: null, covered: H / 2 },
+  ];
+
+  expect(coveredSum(hours)).toBe(2500);
+  expect(coveredSum(hours.slice(1, 2))).toBeNull();
 });
 
 test("any other series fills a band with its mean, weighted by the time each rollup was read", () => {

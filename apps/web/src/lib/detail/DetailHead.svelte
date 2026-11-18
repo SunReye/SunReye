@@ -1,5 +1,7 @@
-<!-- A detail sheet's header: the figure's name, its figure over the range, its live power or its lead fact. -->
+<!-- A detail sheet's header: the figure's name, its figure over the range, then on the right a
+  second figure over the range, its live power or its lead fact. -->
 <script lang="ts">
+  import BesideFigure from "./BesideFigure.svelte";
   import DetailPower from "./DetailPower.svelte";
   import FactValue from "./FactValue.svelte";
   import type { Fact, Figure } from "./figures.ts";
@@ -13,6 +15,7 @@
     node,
     status,
     head,
+    beside,
     lead,
   }: {
     title: string;
@@ -21,6 +24,8 @@
     status: "loading" | "live" | "stopped";
     /** The figure over the sheet's range; null for a sheet that reads none. */
     head: HeadView | null;
+    /** A second figure over the range, in place of the live power; null for none. */
+    beside: HeadView | null;
     lead: Fact | null;
   } = $props();
 
@@ -43,7 +48,9 @@
       {#if head}
         <HeadFigure view={head} estimated={node?.leadEstimated ?? false} />
       {/if}
-      {#if spec.node !== null}
+      {#if beside}
+        <BesideFigure view={beside} />
+      {:else if spec.node !== null}
         <DetailPower {spec} {node} loading={status === "loading"} second={head !== null} />
       {:else if lead}
         <p class="flex flex-col">

@@ -1,12 +1,13 @@
 // The PV, inverter and string sheets (ADR 21 "Sheet content"): the range's energy and its peak
 // with time, actual against forecast, and the inverter's temperature where its profile maps one.
 import { afterEach, beforeEach, expect, test } from "vitest";
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import "../../app.css";
 import {
   asked,
   fetched,
   INVERTER,
+  PLANT,
   prepare,
   restore,
   rollup,
@@ -83,6 +84,25 @@ test("past a day the peak names its day", async () => {
   await expect.element(peak).toHaveTextContent("3,1 kW 11. Nov.");
 });
 
+test("the production sheet's facts follow the range: past a day its peak names its day", async () => {
+  const pv = [hour(10, 9000, 4100, "2026-11-10"), hour(10, 8000, 3000, "2026-11-11")];
+
+  served.rolled = (a) =>
+    a.device === PLANT && a.series === "pv.power"
+      ? Response.json({
+          points: pv.filter(
+            (p: Readonly<{ start: string }>) => p.start >= a.from && p.start < a.to,
+          ),
+          period: a.period,
+        })
+      : undefined;
+
+  const sheet = await sheetOf("production", "Produktion", "range=week");
+  const peak = sheet.getByRole("definition").filter({ hasText: "10. Nov." });
+
+  await expect.element(peak).toHaveTextContent("4,1 kW 10. Nov.");
+});
+
 test("the facts row sets the range's forecast against what was measured", async () => {
   served.rolled = inverter({ "pv.string.power[1]": SOUTH });
 
@@ -136,6 +156,35 @@ test("an estimated string's energy and peak carry ≈; its forecast does not", a
   expect(sheet.getByRole("term").filter({ hasText: "Prognose ≈" }).elements()).toHaveLength(0);
 });
 
+test("under the pointer an estimated string's chart value carries ≈; its forecast does not", async () => {
+  const sheet = await sheetOf("string-1", "Süd");
+  const overview = sheet.getByRole("tabpanel", { name: "Übersicht" });
+  const plot = overview.element().querySelector<HTMLElement>("[data-scrub]")!;
+  const box = plot.getBoundingClientRect();
+
+  await userEvent.hover(plot, { position: { x: (box.width * 10.5) / 24, y: box.height / 2 } });
+
+  await expect.element(overview.getByText("≈ 12,0 kWh")).toBeVisible();
+  await expect.element(overview.getByText("2,0 kWh", { exact: true })).toBeVisible();
+});
+
+test("an estimated string's heat cells carry ≈ too", async () => {
+  served.rolled = inverter({ "pv.string.power[1]": SOUTH });
+
+  const sheet = await sheetOf("string-1", "Süd");
+
+  await sheet.getByRole("tab", { name: "Heatmap" }).click();
+
+  const grid = sheet.getByRole("group", { name: /nach Tageszeit/u });
+
+  await expect.element(grid).toBeVisible();
+  grid.element().focus();
+  // The first arrow reads Sunday at noon; Thursday the 12th at 10:00 is three days and two hours back.
+  await userEvent.keyboard("{ArrowUp}{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowUp}{ArrowUp}");
+
+  await expect.element(sheet.getByText("· ≈ 2,00 kWh")).toBeVisible();
+});
+
 test("the plant's PV, measured whole, carries no ≈", async () => {
   const sheet = await sheetOf("pv", "PV gesamt");
 
@@ -161,6 +210,33 @@ test("a failed temperature read leaves the peak and forecast standing", async ()
   await expect
     .element(sheet.getByRole("definition").filter({ hasText: "°C" }))
     .toHaveTextContent("0–– °C");
+});
+
+test("while the facts read, a skeleton holds their place", async () => {
+  served.publishes = ["inverter.temperature"];
+  served.rolled = (a) =>
+    a.series === "inverter.temperature" ? new Promise<Response>(() => {}) : undefined;
+
+  const sheet = await sheetOf("inverter", "Wechselrichter");
+
+  await expect
+    .element(sheet.getByRole("region", { name: "Verlauf" }).getByRole("status"))
+    .toBeVisible();
+  expect(sheet.getByRole("term").filter({ hasText: "Spitze" }).elements()).toHaveLength(0);
+});
+
+test("facts that fail to read say so in their place, with a retry", async () => {
+  served.forecasts = () => Promise.reject(new Error("the core is lost"));
+
+  const sheet = await sheetOf("string-1", "Süd");
+  const alert = sheet.getByRole("alert");
+
+  await expect.element(alert).toBeVisible();
+  served.forecasts = null;
+  await alert.getByRole("button", { name: "Erneut laden" }).click();
+
+  await expect.element(sheet.getByRole("term").filter({ hasText: "Spitze" })).toBeVisible();
+  await expect.element(alert).not.toBeInTheDocument();
 });
 
 test("another string's sheet never shows the last one's facts while it reads", async () => {

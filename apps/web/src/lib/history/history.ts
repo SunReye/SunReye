@@ -23,6 +23,15 @@ export interface Rolled {
 
 export type RollupPeriod = "hour" | "day";
 
+/** The integral of the rollups that read anything; null where none did, never 0. */
+export function coveredSum(rolled: readonly Rolled[]): number | null {
+  let sum: number | null = null;
+
+  for (const r of rolled) if (r.covered > 0) sum = (sum ?? 0) + r.integral;
+
+  return sum;
+}
+
 /** A power series is charted as its energy; any other as its mean. */
 export const isPower = (series: string): boolean => /\.power(\[\d+\])?$/u.test(series);
 

@@ -1,18 +1,22 @@
 // The PV, inverter and string sheets' facts over their range (ADR 21 "Sheet content"): the peak
 // with its time, from the rollups' `max` (ADR 3), the range's forecast against what was measured, and
 // the inverter's highest temperature where its profile maps one.
-import type { Analytics } from "../analytics/sources.ts";
 import type { Core } from "../api/core.ts";
 import { planned, plannedEnergy, type Planned } from "../forecast/forecast.ts";
-import { rollups, type Rolled, type RollupPeriod } from "../history/history.ts";
-import { whenOf } from "../history/peaks.ts";
+import {
+  coveredSum,
+  periodOf,
+  rollups,
+  type Rolled,
+  type RollupPeriod,
+} from "../history/history.ts";
+import { highest, peakIn } from "../history/peaks.ts";
 import { m } from "../paraglide/messages.js";
-import { parseFigure, type Fact } from "./figures.ts";
+import { grainOf } from "../range/range.ts";
+import { peakFact, type RangeAt } from "./facts.ts";
+import type { Fact } from "./figures.ts";
 import { strict, type MeasureCore } from "./measure.ts";
-
-/** The PV sheets: PV, the inverter and each string. */
-export const isPv = (id: string): boolean =>
-  id === "pv" || id === "inverter" || parseFigure(id)?.kind === "string";
+import type { RangeInput, RangeReader } from "./sheet-range.svelte.ts";
 
 /** What the range read: its highest rollup, and its energy measured and forecast in kWh. */
 export interface PvRead {
@@ -29,12 +33,16 @@ export interface PvRead {
 
 /** What a PV sheet reads: its series, the inverters forecasting it, and whether it is the
  * inverter's, which also reads its temperature. */
-export type PvSource = Readonly<Pick<Analytics, "device" | "series" | "forecast">> & {
+export interface PvSource {
+  readonly device: number;
+  readonly series: string;
+  /** The inverters whose forecasts of `series` add up to what the sheet expects. */
+  readonly forecast: readonly number[];
   readonly inverter: boolean;
-};
+}
 
 /** The range in ms since the epoch, measured up to `until`, cut in `period`. */
-export interface PvSpan {
+interface PvSpan {
   readonly from: number;
   readonly until: number;
   readonly to: number;
@@ -44,15 +52,6 @@ export interface PvSpan {
 export type PvCore = MeasureCore & Readonly<Pick<Core, "forecasts" | "capabilities">>;
 
 const TEMPERATURE = "inverter.temperature";
-
-/** The rollup with the highest reading; null where none has one. */
-function highest(rolled: readonly Rolled[]): Rolled | null {
-  let best: Rolled | null = null;
-
-  for (const r of rolled) if (r.max !== null && (best?.max ?? -Infinity) < r.max) best = r;
-
-  return best;
-}
 
 type Supported = Readonly<
   Record<string, Readonly<{ series: readonly string[]; estimated: readonly string[] }>>
@@ -89,7 +88,7 @@ async function hottestOf(
 /** What the inverters forecast for the sheet's series over the whole range, in kWh. */
 async function forecastOf(
   core: PvCore,
-  a: Readonly<Pick<Analytics, "series" | "forecast">>,
+  a: Readonly<Pick<PvSource, "series" | "forecast">>,
   span: Readonly<PvSpan>,
 ): Promise<number | null> {
   const [from, to] = [new Date(span.from), new Date(span.to)];
@@ -104,7 +103,7 @@ async function forecastOf(
 }
 
 /** The sheet's series over the span; rejects when the core fails or refuses a rollup. */
-export async function readPv(core: PvCore, a: PvSource, span: Readonly<PvSpan>): Promise<PvRead> {
+async function readPv(core: PvCore, a: PvSource, span: Readonly<PvSpan>): Promise<PvRead> {
   const [from, until] = [new Date(span.from), new Date(span.until)];
   const ran = span.from < span.until;
   const supported = supportOf(core);
@@ -121,20 +120,12 @@ export async function readPv(core: PvCore, a: PvSource, span: Readonly<PvSpan>):
 
   const estimated = support[String(a.device)]?.estimated.includes(a.series) === true;
 
-  const read = rolled.filter((r) => r.covered > 0);
-  const measured = read.length === 0 ? null : read.reduce((s, r) => s + r.integral, 0) / 1000;
-  const top = highest(rolled);
-
+  const wh = coveredSum(rolled);
+  const measured = wh === null ? null : wh / 1000;
   // A string that never ran has no peak.
-  const peak = (top?.max ?? 0) > 0 ? top : null;
+  const peak = peakIn(rolled);
 
   return { peak, measured, forecast, estimated, ...(hottest !== undefined && { hottest }) };
-}
-
-/** Where the range stands: its bands are hours, and the plant's timezone. */
-export interface PvAt {
-  readonly hours: boolean;
-  readonly zone: string;
 }
 
 /** How much of the forecast was measured, in whole %; null without both. */
@@ -144,24 +135,13 @@ function met({ measured, forecast }: Readonly<PvRead>): number | null {
     : Math.round((measured / forecast) * 100);
 }
 
-/** A rollup's highest reading in `unit`, noted with its hour or day. */
-function topFact(label: string, top: Rolled | null, unit: string, at: Readonly<PvAt>): Fact {
-  return {
-    label,
-    value: top?.max ?? null,
-    unit,
-    digits: 0,
-    ...(top && { note: whenOf(top.start, at.hours, at.zone) }),
-  };
-}
-
 /** The facts row: the peak with its hour, or past a day its day; the forecast and how much of it
  * was measured; the inverter's highest temperature where its profile maps one. */
-export function pvFacts(read: Readonly<PvRead>, at: Readonly<PvAt>): Fact[] {
+function pvFacts(read: Readonly<PvRead>, at: Readonly<RangeAt>): Fact[] {
   const share = met(read);
 
   return [
-    topFact(read.estimated ? `${m.detail_peak()} ≈` : m.detail_peak(), read.peak, "W", at),
+    peakFact(read.estimated ? `${m.detail_peak()} ≈` : m.detail_peak(), read.peak, "W", at),
     {
       label: m.dash_forecast(),
       value: read.forecast,
@@ -171,6 +151,28 @@ export function pvFacts(read: Readonly<PvRead>, at: Readonly<PvAt>): Fact[] {
     },
     ...(read.hottest === undefined
       ? []
-      : [topFact(m.detail_temperature_max(), read.hottest, "°C", at)]),
+      : [peakFact(m.detail_temperature_max(), read.hottest, "°C", at)]),
   ];
 }
+
+export interface PvInput extends RangeInput {
+  readonly core: PvCore;
+  readonly source: PvSource;
+}
+
+/** The facts row; null unread. */
+export const PV_RANGE = {
+  load: (input, from, to, now) => {
+    const { core, route, source } = input();
+
+    return readPv(core, source, {
+      from: from.getTime(),
+      until: Math.min(to.getTime(), now),
+      to: to.getTime(),
+      period: periodOf(route.range),
+    });
+  },
+  view: (got, input) =>
+    got &&
+    pvFacts(got.data, { hours: grainOf(got.range) === "hour", zone: input().route.place.zone }),
+} satisfies RangeReader<PvInput, PvRead, Fact[] | null>;

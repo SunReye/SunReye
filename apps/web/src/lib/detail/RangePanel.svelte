@@ -1,53 +1,55 @@
 <!--
-  What a sheet's range control reads into (ADR 21 "Sheet content"): the battery its own panel; a
-  measured figure its tabs, then its flow's or its PV's facts; autarky, which no one series holds,
-  a panel of its own.
+  What reads a sheet's range (ADR 21 "Sheet content"), by its panel, under the range control: a
+  failed or empty range stands in its place. The savings, which have no tabs, frame their own.
 -->
 <script lang="ts">
-  import type { Analytics } from "../analytics/sources.ts";
-  import type { AnalyticsInput } from "./Analytics.svelte";
-  import AnalyticsTabs from "./AnalyticsTabs.svelte";
+  import Analytics, { type AnalyticsInput } from "./Analytics.svelte";
   import AutarkyPanel from "./AutarkyPanel.svelte";
   import BatteryPanel from "./BatteryPanel.svelte";
-  import EvPanel from "./EvPanel.svelte";
-  import { flowOf } from "./flow.ts";
-  import FlowPanel from "./FlowPanel.svelte";
-  import PvFacts from "./PvFacts.svelte";
-  import { isPv } from "./pv-range.ts";
+  import type { HeadView } from "./head.svelte.ts";
+  import RangeState from "./RangeState.svelte";
+  import SavingsPane from "./SavingsPane.svelte";
+  import type { Analytics as Charted, Panel } from "./sheets.ts";
+  import TabbedPanel from "./TabbedPanel.svelte";
 
   let {
-    id,
+    panel,
+    analytics,
     title,
     colour,
-    analytics,
     input,
+    head,
+    onretry,
     priced,
+    admin,
   }: {
-    id: string;
+    panel: Panel;
+    analytics: Charted | null;
     title: string;
     /** The figure's energy token. */
     colour: string;
-    /** Null for autarky. */
-    analytics: Analytics | null;
     input: AnalyticsInput;
+    /** The figure over the range: what the range holds and whether it could be read. */
+    head: HeadView | null;
+    onretry: () => void;
     /** A tariff is in force (ADR 12). */
     priced: boolean;
+    admin: boolean;
   } = $props();
-
-  const flow = $derived(flowOf(id));
 </script>
 
-{#if analytics === null}
-  <AutarkyPanel {input} />
-{:else if id === "battery"}
-  <BatteryPanel {id} {title} {colour} {analytics} {input} />
+{#if panel.kind === "savings"}
+  <SavingsPane {input} {head} {onretry} {priced} {admin} />
 {:else}
-  <AnalyticsTabs {id} {title} {colour} {analytics} {input} />
-  {#if analytics.series === "ev.charge.power"}
-    <EvPanel {input} device={analytics.device} />
-  {:else if flow}
-    <FlowPanel {input} {flow} {priced} />
-  {:else if isPv(id)}
-    <PvFacts {analytics} inverter={id === "inverter"} {input} />
-  {/if}
+  <Analytics route={input.route}>
+    <RangeState {head} {onretry}>
+      {#if panel.kind === "autarky"}
+        <AutarkyPanel {input} />
+      {:else if analytics && panel.kind === "battery"}
+        <BatteryPanel {title} {colour} {analytics} {input} />
+      {:else if analytics}
+        <TabbedPanel {panel} {title} {colour} {analytics} {input} {priced} />
+      {/if}
+    </RangeState>
+  </Analytics>
 {/if}

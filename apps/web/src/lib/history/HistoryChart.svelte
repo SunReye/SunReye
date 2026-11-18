@@ -8,7 +8,7 @@
   import { planned, plannedEnergy, type Planned } from "../forecast/forecast.ts";
   import { m } from "../paraglide/messages.js";
   import BandChart from "../range/BandChart.svelte";
-  import { describe, isSigned, keyOf, sidesOf } from "../roles.ts";
+  import { describe, isSignedFlow, keyOf, sidesOf } from "../roles.ts";
   import { bandsOf } from "../range/fill.ts";
   import { kwh, num } from "../range/format.ts";
   import { RangeData } from "../range/range-data.svelte.ts";
@@ -21,6 +21,7 @@
     series,
     route,
     forecast = [],
+    estimated = false,
     onread,
   }: {
     core: Readonly<Pick<Core, "statistics" | "forecasts">>;
@@ -29,6 +30,8 @@
     route: RangeRoute;
     /** The devices whose `series` forecasts add up to what this series expects. */
     forecast?: readonly number[];
+    /** The series is computed, not measured, so its values carry ≈ (ADR 17). */
+    estimated?: boolean;
     /** Told the band being read, for a chart that reads along. */
     onread?: (index: number | null) => void;
   } = $props();
@@ -67,7 +70,7 @@
     bands: [],
     up: null,
     down: [],
-    sum: { up: [0], down: [] },
+    sum: { up: [0], down: [], bare: false },
     expected: null,
   };
 
@@ -119,13 +122,18 @@
         return { ...f, ...split(f.value), line: plans ? f.planned : null };
       }),
       expected: plans && figures.reduce((a, f) => a + f.planned, 0),
-      // A signed role's sides are named for its sign, as charged and discharged, even on a day
+      // A signed flow's sides are named for its sign, as charged and discharged, even on a day
       // that ran one way only.
-      up: signed || isSigned(s) ? [sidesOf(s)[0]] : null,
+      up: signed || isSignedFlow(s) ? [sidesOf(s)[0]] : null,
       down: signed ? [sidesOf(s)[1]] : [],
       sum: isPower(s)
-        ? { up: [total(figures, 1)], down: signed ? [total(figures, -1)] : [] }
-        : split(figure(...whole(got.spans)).value),
+        ? {
+            up: [total(figures, 1)],
+            down: signed ? [total(figures, -1)] : [],
+            // One series' sum is the sheet's head; several split it.
+            bare: !signed && !isSignedFlow(s),
+          }
+        : { ...split(figure(...whole(got.spans)).value), bare: false },
     };
   });
 
@@ -136,14 +144,16 @@
 
   const meta = $derived([keyOf(series)]);
 
+  // A sum the head states stands under no title of its own: the range's name alone.
+  const sumTitle = $derived(view.sum.bare ? route.label : data.title);
+
   // A power's bands sum to the range's; any other series' bands to its mean, which names it.
   const title = $derived(
     isPower(series)
-      ? data.title
+      ? sumTitle
       : m.range_mean({ series: describe(series).label, range: route.label }),
   );
 
-  // A power reads as energy, a price in cents (ADR 12); anything else as its mean, in its own unit.
   const reads = $derived(readsOf(series));
 </script>
 
@@ -157,6 +167,7 @@
   fmt={reads.fmt}
   unit={reads.unit}
   loading={view.loading}
+  {estimated}
   label={m.history_chart({ series: meta[0]!.label })}
   ondrill={data.drill}
   onbrush={data.brush}

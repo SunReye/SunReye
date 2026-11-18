@@ -129,7 +129,7 @@ test("today's facts are one row on a narrow phone: the sky now, then the day's",
   await expect.element(screen.getByText("Heiter")).toBeVisible();
 
   expect(document.querySelectorAll("dl")).toHaveLength(1);
-  // The figures count up to their values.
+  // Polled: the figures roll up to their values.
   await expect
     .poll(() => facts().map(({ term, value }) => [term, value]))
     .toEqual([

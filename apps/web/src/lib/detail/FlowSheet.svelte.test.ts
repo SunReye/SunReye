@@ -2,6 +2,7 @@
 // range's peak with its time, the share PV covered the house, what was paid or earned, and the
 // price bought by hour.
 import { afterEach, beforeEach, expect, test } from "vitest";
+import { userEvent } from "vitest/browser";
 import "../../app.css";
 import {
   LIVE,
@@ -141,6 +142,17 @@ test("the purchase sheet charts the price bought at by hour, in cents", async ()
   // At rest the legend reads the range's mean price, and names it.
   await expect.element(sheet.getByText("Ø Bezugspreis · Heute")).toBeVisible();
   await expect.element(sheet.getByText("25,00 ct/kWh")).toBeVisible();
+  // A price is no flow: its key is its name, not a side of zero it never crossed.
+  await expect.element(sheet.getByRole("term").filter({ hasText: "Bezugspreis" })).toBeVisible();
+  expect(sheet.getByText("Über null").elements()).toHaveLength(0);
+
+  // Each hour reads in cents too: 0,30 €/kWh bought at 08:00.
+  const plot = sheet.getByRole("group", { name: /Bezugspreis über die Zeit/u });
+  const box = plot.element().getBoundingClientRect();
+
+  await userEvent.hover(plot, { position: { x: (box.width * 8.5) / 24, y: box.height / 2 } });
+  await expect.element(sheet.getByText("8:00–9:00 Uhr")).toBeVisible();
+  await expect.element(sheet.getByText("30,00 ct/kWh")).toBeVisible();
 });
 
 test("the consumption sheet charts no price", async () => {
@@ -167,6 +179,10 @@ test("a range whose facts fail to read says so in their place, with a retry", as
 
   await expect.element(alert).toBeVisible();
   expect(sheet.getByText("Spitze").elements()).toHaveLength(0);
+  // The price chart stands with the facts: a failed read shows neither.
+  expect(sheet.getByRole("group", { name: /Bezugspreis über die Zeit/u }).elements()).toHaveLength(
+    0,
+  );
   served.rolled = rolled(BOUGHT);
   await alert.getByRole("button", { name: "Erneut laden" }).click();
 
@@ -207,4 +223,24 @@ test("past a day the peak names its day", async () => {
   const facts = sheet.getByRole("definition");
 
   await expect.element(facts.filter({ hasText: "Nov" })).toHaveTextContent("5,4 kW 10. Nov.");
+});
+
+test("the grid sheet heads with what was bought, and states what was fed in on its right", async () => {
+  served.stored = { [PLANT]: ["grid.import.power", "grid.export.power"] };
+  served.rolled = rolled({
+    [PLANT]: {
+      "grid.import.power": { [at(8)]: [1200, 2000] },
+      "grid.export.power": { [at(11)]: [3300, 4000] },
+    },
+  });
+
+  const sheet = await sheetOf("grid", "Netz");
+  const head = sheet.getByRole("banner");
+
+  await expect.element(head.getByText("1,2 kWh")).toBeVisible();
+  await expect.element(head.getByText("Bezogen")).toBeVisible();
+  await expect.element(head.getByText("3,3 kWh")).toBeVisible();
+  await expect.element(head.getByText("Eingespeist")).toBeVisible();
+  // The live power is the live graph's and the readings', not the head's.
+  expect(head.getByText(/jetzt/u).elements()).toHaveLength(0);
 });

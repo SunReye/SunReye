@@ -1,12 +1,14 @@
-<!-- The PV, inverter and string sheets' facts over their range (ADR 21 "Sheet content"). -->
+<!-- The PV, inverter and string sheets' facts over their range (ADR 21 "Sheet content"): a
+  skeleton holds their place while they read, and a failed read says so with a retry. -->
 <script lang="ts">
-  import type { Analytics } from "../analytics/sources.ts";
-  import { periodOf } from "../history/history.ts";
-  import { RangeData } from "../range/range-data.svelte.ts";
-  import { grainOf } from "../range/range.ts";
+  import { Skeleton } from "#lib/components/ui/skeleton/index.js";
+  import { m } from "../paraglide/messages.js";
   import type { AnalyticsInput } from "./Analytics.svelte";
   import DetailStats from "./DetailStats.svelte";
-  import { pvFacts, readPv } from "./pv-range.ts";
+  import { PV_RANGE } from "./pv-range.ts";
+  import RangeState from "./RangeState.svelte";
+  import { SheetRange } from "./sheet-range.svelte.ts";
+  import type { Analytics } from "./sheets.ts";
 
   let {
     analytics,
@@ -19,36 +21,22 @@
     input: AnalyticsInput;
   } = $props();
 
-  // A sheet keeps this row while another figure opens: only its own read is shown.
-  const key = $derived(`${analytics.device}/${analytics.series}`);
-
-  const data = new RangeData(
-    () => input.route,
-    (from, to, now) => {
-      const [core, a, period] = [input.core, { ...analytics, inverter }, periodOf(input.route.range)];
-      const [a0, b, at] = [from.getTime(), to.getTime(), key];
-
-      return readPv(core, a, { from: a0, until: Math.min(b, now), to: b, period }).then(
-        (read) => ({ key: at, read }),
-      );
-    },
+  const range = new SheetRange(
+    () => ({
+      core: input.core,
+      route: input.route,
+      key: `${analytics.device}/${analytics.series}`,
+      source: { ...analytics, inverter },
+    }),
+    PV_RANGE,
   );
-
-  const stats = $derived.by(() => {
-    const got = data.current;
-
-    if (got === undefined || data.failed || got.data.key !== key) return null;
-
-    return pvFacts(got.data.read, {
-      hours: grainOf(got.range) === "hour",
-      zone: input.route.place.zone,
-    });
-  });
 </script>
 
-{#if stats}
-  <!-- The facts row spans the sheet, as every sheet's does. -->
-  <div class="-mx-5 -mb-4 pt-2 sm:-mx-6">
-    <DetailStats {stats} />
-  </div>
-{/if}
+<RangeState failed={range.failed} onretry={range.retry}>
+  {#if range.view}
+    <DetailStats panel stats={range.view} />
+  {:else}
+    <!-- A facts row's height: its label, value and note. -->
+    <Skeleton class="mt-2 h-[4.5rem]" role="status" aria-label={m.loading()} />
+  {/if}
+</RangeState>

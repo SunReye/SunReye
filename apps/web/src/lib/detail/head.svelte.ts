@@ -8,7 +8,7 @@ import { RangeData } from "../range/range-data.svelte.ts";
 import { hourInstant, t1Of, type Calendar, type Range } from "../range/range.ts";
 import type { RangeRoute } from "../range/route.svelte.ts";
 import { beforeText, notesOf, versus } from "./head-words.ts";
-import { measureOf, type Measure, type MeasureInput, type Measured } from "./measure.ts";
+import { measureOf, type Head, type Measure, type MeasureCore, type Measured } from "./measure.ts";
 
 /** What the head and the analytics show of the range. */
 export interface HeadView {
@@ -26,19 +26,11 @@ export interface HeadView {
   readonly notes: readonly string[];
 }
 
-/** A range whose own read failed, though the head's did not: it says so with a retry. */
-export const FAILED: HeadView = {
-  state: "error",
-  label: "",
-  value: null,
-  unit: "",
-  digits: 0,
-  versus: "",
-  notes: [],
-};
-
 /** The sheet's figure, what it reads through and the record's edges. */
-export interface HeadInput extends MeasureInput {
+export interface HeadInput {
+  /** Null for a sheet that heads with none. */
+  readonly head: Head | null;
+  readonly core: MeasureCore;
   readonly route: RangeRoute;
   /** The stored series by `device/series` (ADR 22); null until the catalog is read. */
   readonly record: ReadonlyMap<string, Stored> | null;
@@ -64,6 +56,10 @@ const NOTHING: Measured = { value: null, stops: null };
 
 const keyOf = (measure: Readonly<Measure>) => `${measure.device}/${measure.series}`;
 
+/** How the sheet's head reads; null for a sheet that heads with none. */
+const measureFor = (head: Readonly<Head> | null, core: MeasureCore) =>
+  head === null ? null : measureOf(head, core);
+
 /** Where the route stands: its range, the plant's clock, and the range's name. */
 type At = Readonly<Pick<RangeRoute, "range" | "place" | "label">>;
 
@@ -75,13 +71,14 @@ const recorded = (at: At, first: number) =>
 const beforeOf = (at: At, first: number | null) =>
   first === null || recorded(at, first) ? null : beforeText(at.place.zone, first);
 
-/** The head of a range read; a share's change is in points. */
-const ready = (none: Omit<HeadView, "state">, got: Read, points: boolean): HeadView => ({
+/** The head of a range read, written with its value's digits; a share's change is in points. */
+const ready = (none: Omit<HeadView, "state">, got: Read, measure: Readonly<Measure>): HeadView => ({
   ...none,
   state: "ready",
   label: got.label,
   value: got.got.value,
-  versus: versus(got.cal, got.base, got.got.value, got.was.value, points),
+  digits: measure.digits(got.got.value ?? 0),
+  versus: versus(got.cal, got.base, got.got.value, got.was.value, measure.points === true),
   notes: notesOf({ ...got, stops: got.got.stops }),
 });
 
@@ -94,8 +91,8 @@ export class RangeHead {
     this.#data = new RangeData(
       () => input().route,
       (from, to, now) => {
-        const { route, record } = input();
-        const measure = measureOf(input());
+        const { route, record, head, core } = input();
+        const measure = measureFor(head, core);
 
         // The record's edges decide what to read, so the range is read once, after the catalog.
         if (measure === null || record === null) return Promise.resolve(null);
@@ -107,7 +104,7 @@ export class RangeHead {
 
   get view(): HeadView | null {
     const input = this.#input();
-    const measure = measureOf(input);
+    const measure = measureFor(input.head, input.core);
 
     if (measure === null) return null;
 
@@ -117,7 +114,7 @@ export class RangeHead {
       name: measure.name,
       label: input.route.label,
       unit: measure.unit,
-      digits: measure.digits,
+      digits: measure.digits(0),
       value: null,
       versus: "",
       notes: [],
@@ -132,9 +129,7 @@ export class RangeHead {
 
     const data = this.#data.current?.data;
 
-    return data?.key === key
-      ? ready(none, data, measure.points === true)
-      : { ...none, state: "loading" };
+    return data?.key === key ? ready(none, data, measure) : { ...none, state: "loading" };
   }
 
   retry = (): void => {

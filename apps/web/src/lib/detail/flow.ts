@@ -2,14 +2,15 @@
 // "Sheet content"): the peak with its time, for the house the share PV covered directly, and for
 // feed-in and purchase their euros. Pure.
 import { rollupSum, type Rollups } from "../history/flows.ts";
-import { highest, whenOf } from "../history/peaks.ts";
-import type { Rolled } from "../history/history.ts";
+import { peakIn } from "../history/peaks.ts";
+import { coveredSum, type Rolled } from "../history/history.ts";
 import { m } from "../paraglide/messages.js";
 import { coverOf } from "./autarky.ts";
+import { euros, peakFact, pvCoveredFact } from "./facts.ts";
 import type { Fact } from "./figures.ts";
 
 /** A flow sheet: the `plant` power it peaks in, and the tariff's rate that prices it (ADR 12). */
-export interface Flow {
+export interface SheetFlow {
   readonly series: string;
   /** The house load: what share PV covered directly, as the autarky sheet's bar reads it. */
   readonly cover: boolean;
@@ -18,19 +19,8 @@ export interface Flow {
   readonly money: { readonly series: string; readonly label: () => string } | null;
 }
 
-const PAID = { series: "cost.import.rate", label: m.detail_paid };
-const EARNED = { series: "cost.export.rate", label: m.detail_earned };
-
-const FLOWS = new Map<string, Flow>([
-  ["consumption", { series: "load.power", cover: true, price: false, money: null }],
-  ["house", { series: "load.power", cover: true, price: false, money: null }],
-  ["feedIn", { series: "grid.export.power", cover: false, price: false, money: EARNED }],
-  ["purchase", { series: "grid.import.power", cover: false, price: true, money: PAID }],
-  ["generator", { series: "generator.power", cover: false, price: false, money: null }],
-]);
-
-/** The flow sheet `id` is; null for any other. */
-export const flowOf = (id: string): Flow | null => FLOWS.get(id) ?? null;
+export const PAID = { series: "cost.import.rate", label: m.detail_paid };
+export const EARNED = { series: "cost.export.rate", label: m.detail_earned };
 
 /** What a flow sheet read of its range. */
 export interface FlowRead {
@@ -45,45 +35,31 @@ export interface FlowRead {
   readonly zone: string;
 }
 
-/** Euros to the cent below 100, whole above, as the range's money reads. */
-const euros = (label: string, value: number | null): Fact => ({
-  label,
-  value,
-  unit: "€",
-  digits: value !== null && Math.abs(value) >= 100 ? 0 : 2,
-});
-
-function peakOf(read: Readonly<FlowRead> | null): Fact {
-  const top = read === null ? null : highest(read.peak, -Infinity, Infinity);
-  const fact: Fact = { label: m.detail_peak(), value: top?.max ?? null, unit: "W", digits: 0 };
-
-  return top === null || read === null
-    ? fact
-    : { ...fact, note: whenOf(top.start, read.hours, read.zone) };
-}
-
-/** The euros of the rollups read; null without any. */
-function sumOf(rolled: readonly Rolled[] | null): number | null {
-  const read = rolled?.filter((r) => r.covered > 0) ?? [];
-
-  return read.length === 0 ? null : read.reduce((a, r) => a + r.integral, 0);
-}
+/** The flow's peak with its time; unknown while the range is read. */
+const peakOf = (read: Readonly<FlowRead> | null): Fact =>
+  read === null
+    ? { label: m.detail_peak(), value: null, unit: "W", digits: 0 }
+    : peakFact(m.detail_peak(), peakIn(read.peak), "W", read);
 
 /** The share of the house load PV covered directly, in %; null without load. */
 function coveredOf(flows: Rollups | null): Fact {
   const share =
     flows === null ? null : (coverOf(rollupSum(flows, -Infinity, Infinity))?.[0] ?? null);
 
-  return { label: m.detail_pv_covered(), value: share, unit: "%", digits: 0 };
+  return pvCoveredFact(share);
 }
 
 /** What the flow was paid or earned; without a tariff in force, that none is (ADR 12). */
-function moneyOf(money: Flow["money"], read: Readonly<FlowRead> | null, priced: boolean): Fact[] {
+function moneyOf(
+  money: SheetFlow["money"],
+  read: Readonly<FlowRead> | null,
+  priced: boolean,
+): Fact[] {
   if (money === null) return [];
 
   if (!priced) return [{ label: money.label(), text: m.detail_no_tariff_short() }];
 
-  return [euros(money.label(), sumOf(read?.money ?? null))];
+  return [euros(money.label(), coveredSum(read?.money ?? []))];
 }
 
 /**
@@ -91,7 +67,7 @@ function moneyOf(money: Flow["money"], read: Readonly<FlowRead> | null, priced: 
  * @param priced a tariff is in force
  */
 export function flowFacts(
-  flow: Readonly<Flow>,
+  flow: Readonly<SheetFlow>,
   read: Readonly<FlowRead> | null,
   priced: boolean,
 ): Fact[] {

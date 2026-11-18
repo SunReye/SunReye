@@ -1,6 +1,7 @@
 // The savings sheet (ADR 21 "Sheet content", ADR 12): what the plant has earned over the range,
 // its parts, the total since installation against the investment, and the way to the tariff.
 import { afterEach, beforeEach, expect, test } from "vitest";
+import { userEvent } from "vitest/browser";
 import "../../app.css";
 import {
   fetched,
@@ -57,6 +58,15 @@ test("the head states the euros saved over the range against the range before", 
   expect(head.element().textContent).toContain("€");
 });
 
+test("the head writes euros as the range's money does: whole from 100 €", async () => {
+  served.rolled = saved({ "2026-11-12": 123.4 });
+
+  const { head } = await sheetOf();
+
+  await expect.element(head.getByText("123", { exact: true })).toBeVisible();
+  expect(head.element().textContent).not.toContain("123,40");
+});
+
 test("the head's figure is the range's alone: today's euros are not repeated beside it", async () => {
   // The dashboard's day reads 2,10 € saved.
   served.rolled = saved({ "2026-11-12": 1.5 });
@@ -106,6 +116,63 @@ test("the range's chart shows the euros saved per day, split into avoided purcha
   await expect.element(chart.getByText("Einspeisevergütung")).toBeVisible();
   await expect.element(chart.getByText("1,00 €")).toBeVisible();
   expect(chart.element().textContent).not.toContain("0,60");
+});
+
+/** The tariff's rates today, in EUR by the UTC hour: 1,50 € saved at 10:00, a third of it feed-in pay. */
+const HOURS = new Map([
+  ["cost.savings.rate", { 10: 1.5, 12: 0.5 }],
+  ["cost.export.rate", { 10: 0.5 }],
+  ["cost.import.rate", { 12: 0.2 }],
+]);
+
+/** The tariff's rates by the hour, whatever period is asked for. */
+function hourly(a: Asked): Response | undefined {
+  const rates = HOURS.get(a.series);
+
+  if (a.device !== TARIFF || rates === undefined) return undefined;
+
+  const points = Object.entries(rates).map((e: readonly [string, number]) =>
+    rollup(Date.parse(`2026-11-12T${e[0].padStart(2, "0")}:00:00Z`), e[1]),
+  );
+
+  return Response.json({ points, period: "hour" });
+}
+
+test("a day's chart reads its savings by the hour, from the tariff's rates", async () => {
+  served.rolled = hourly;
+
+  const { sheet } = await sheetOf();
+  const chart = sheet.getByRole("region", { name: "Verlauf" });
+  const plot = chart.element().querySelector<HTMLElement>("[data-scrub]")!;
+
+  await expect.element(chart.getByText("vermiedener Bezug")).toBeVisible();
+
+  const box = plot.getBoundingClientRect();
+
+  await userEvent.hover(plot, { position: { x: (box.width * 10.5) / 24, y: box.height / 2 } });
+
+  await expect.element(chart.getByText("10:00–11:00 Uhr")).toBeVisible();
+  // Avoided purchase is what was saved but for the feed-in pay.
+  await expect.element(chart.getByText("1,00 €")).toBeVisible();
+  await expect.element(chart.getByText("0,50 €")).toBeVisible();
+});
+
+test("a range of hours, such as a brush on the day leaves, reads by the hour too", async () => {
+  served.rolled = hourly;
+
+  const { sheet } = await sheetOf("range=custom&from=2026-11-12T08&to=2026-11-12T12");
+  const chart = sheet.getByRole("region", { name: "Verlauf" });
+  const plot = chart.element().querySelector<HTMLElement>("[data-scrub]")!;
+
+  await expect.element(chart.getByText("vermiedener Bezug")).toBeVisible();
+
+  const box = plot.getBoundingClientRect();
+
+  // 10:00 is the third of its four hours.
+  await userEvent.hover(plot, { position: { x: (box.width * 2.5) / 4, y: box.height / 2 } });
+
+  await expect.element(chart.getByText("10:00–11:00 Uhr")).toBeVisible();
+  await expect.element(chart.getByText("1,00 €")).toBeVisible();
 });
 
 test("without a tariff the sheet says nothing can be saved yet, and the admin is shown where to set one", async () => {

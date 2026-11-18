@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { figureView, tabsOf, viewOf } from "./view.ts";
+import { tabsOf, viewOf } from "./view.ts";
 
 const p = (q: string) => new URLSearchParams(q);
 
@@ -19,13 +19,4 @@ test("a tab the figure lacks falls back to its first; no battery, no battery tab
   expect(viewOf(p("metric=plant&tab=battery"), false).tab).toBe("strings");
   expect(tabsOf("plant", false)).toEqual(["strings", "data"]);
   expect(tabsOf("energy", true)).toEqual(["time", "years", "pattern", "forecast"]);
-});
-
-test("a detail sheet's figure opens its own view", () => {
-  expect(figureView("saved")).toEqual({ metric: "money", tab: null, sid: null });
-  expect(figureView("autarky")).toEqual({ metric: "autarky", tab: null, sid: null });
-  expect(figureView("forecast")).toEqual({ metric: null, tab: "forecast", sid: null });
-  expect(figureView("battery")).toEqual({ metric: "plant", tab: "battery", sid: null });
-  expect(figureView("string-4")).toEqual({ metric: "plant", tab: "strings", sid: "4" });
-  expect(figureView("production")).toEqual({ metric: null, tab: null, sid: null });
 });

@@ -7,20 +7,29 @@
   import { Skeleton } from "#lib/components/ui/skeleton/index.js";
   import { m } from "../paraglide/messages.js";
   import type { AnalyticsInput } from "./Analytics.svelte";
-  import { factsOf } from "./autarky.ts";
-  import { AutarkyRange } from "./autarky-range.svelte.ts";
+  import { autarkyFacts } from "./autarky.ts";
+  import { AUTARKY_RANGE, monthAutarky } from "./autarky-range.ts";
   import DetailStats from "./DetailStats.svelte";
-  import { FAILED } from "./head.svelte.ts";
   import RangeState from "./RangeState.svelte";
+  import { SheetRange } from "./sheet-range.svelte.ts";
   import ShareBar from "./ShareBar.svelte";
   import ShareChart from "./ShareChart.svelte";
 
   let { input }: { input: AnalyticsInput } = $props();
 
-  const range = new AutarkyRange(() => input);
+  const range = new SheetRange(
+    () => ({ core: input.core, route: input.route, key: "plant" }),
+    AUTARKY_RANGE,
+  );
+
+  // Read once per plant day, not per range, nor as the sheet's layout or readings land.
+  const core = $derived(input.core);
+  const zone = $derived(input.route.place.zone);
+  const today = $derived(input.route.place.cal.today);
+  const month = $derived(monthAutarky(core, zone, today));
 </script>
 
-<RangeState head={range.failed ? FAILED : null} onretry={range.retry}>
+<RangeState failed={range.failed} onretry={range.retry}>
   {#if range.view}
     {@const v = range.view}
     <ShareChart bands={v.bands} grain={v.grain} selfUse={v.all.selfUse} />
@@ -28,14 +37,11 @@
       <ShareBar title={m.detail_covered()} total={v.all.consumption} parts={v.covered} />
       <ShareBar title={m.detail_went()} total={v.all.production} parts={v.went} />
     </div>
-    <!-- The facts row spans the sheet, as every sheet's does. -->
-    <div class="-mx-5 -mb-4 pt-2 sm:-mx-6">
-      {#await range.month}
-        <DetailStats stats={factsOf(v.best, v.worst, null)} />
-      {:then mean}
-        <DetailStats stats={factsOf(v.best, v.worst, mean)} />
-      {/await}
-    </div>
+    {#await month}
+      <DetailStats panel stats={autarkyFacts(v.best, v.worst, null)} />
+    {:then mean}
+      <DetailStats panel stats={autarkyFacts(v.best, v.worst, mean)} />
+    {/await}
   {:else}
     <Skeleton class="h-52" role="status" aria-label={m.loading()} />
   {/if}

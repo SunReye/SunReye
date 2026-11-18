@@ -18,8 +18,11 @@ const band = (key: string, up: number): Band => ({
   drillable: true,
 });
 
-/** Two bands, each opened through `ondrill`. */
-async function mount(ondrill: (i: number) => void = () => {}) {
+/** Two bands, each opened through `ondrill`; `onread` is told the band read. */
+async function mount(
+  ondrill: (i: number) => void = () => {},
+  onread: (i: number | null) => void = () => {},
+) {
   const screen = await render(BandChart, {
     bands: [band("b0", 2), band("b1", 4)],
     up: [{ label: "PV", colour: "var(--e-solar)" }],
@@ -28,6 +31,7 @@ async function mount(ondrill: (i: number) => void = () => {}) {
     unit: "kWh",
     label: "Produktion",
     ondrill,
+    onread,
   });
 
   await expect.element(screen.getByText("Summe")).toBeVisible();
@@ -120,4 +124,24 @@ test("on a full screen, a tap opens its band", async () => {
   await tick();
 
   expect(drilled).toEqual([1]);
+});
+
+test("a chart that reads along is told each band read, and none once the pointer leaves", async () => {
+  const read: (number | null)[] = [];
+
+  await mount(undefined, (i) => {
+    read.push(i);
+  });
+
+  const plot = document.querySelector<HTMLElement>("[data-scrub]")!;
+  const box = plot.getBoundingClientRect();
+
+  await userEvent.hover(plot, { position: { x: box.width * 0.75, y: box.height / 2 } });
+  await expect.poll(() => read.at(-1)).toBe(1);
+
+  await userEvent.hover(plot, { position: { x: box.width * 0.25, y: box.height / 2 } });
+  await expect.poll(() => read.at(-1)).toBe(0);
+
+  await userEvent.unhover(plot);
+  await expect.poll(() => read.at(-1)).toBeNull();
 });

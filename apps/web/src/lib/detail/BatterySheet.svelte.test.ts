@@ -40,6 +40,18 @@ test("the head states what the battery discharged over the range, against the da
   await expect.element(head.getByText("+50 % vs gestern")).toBeVisible();
 });
 
+test("at rest the power's legend splits the range into what was charged and discharged", async () => {
+  served.rolled = plant({
+    "battery.power": { ...hours(TODAY, [10], 3000), ...hours(TODAY, [8], -2000) },
+  });
+
+  const { sheet } = await sheetOf();
+  const keys = sheet.getByRole("tabpanel", { name: "Übersicht" }).getByRole("definition");
+
+  await expect.element(keys.filter({ hasText: "3,0 kWh" })).toBeVisible();
+  await expect.element(keys.filter({ hasText: "2,0 kWh" })).toBeVisible();
+});
+
 test("the heat tab shows when in the day the battery discharges", async () => {
   served.rolled = plant(GAVE);
 
@@ -88,7 +100,6 @@ test("the state of charge runs as a line under the power, and reads where the po
   const soc = sheet.getByRole("group", { name: "Ladezustand" });
 
   await expect.element(soc).toBeVisible();
-  // The power's plot, read by the pointer.
   const power = sheet.element().querySelector("[data-scrub]")!;
 
   await userEvent.hover(power, { position: over(power, 7) });
@@ -103,6 +114,16 @@ test("the state of charge runs as a line under the power, and reads where the po
   // An hour without a reading is a break in the line, never 0 %.
   await userEvent.hover(line, { position: over(line, 9) });
   await expect.element(soc.getByText("–", { exact: true })).toBeVisible();
+});
+
+test("at rest the state of charge is titled by its mean over the range", async () => {
+  served.rolled = plant(DAY);
+
+  const { sheet } = await sheetOf();
+  const soc = sheet.getByRole("group", { name: "Ladezustand" });
+
+  await expect.element(soc.getByText("Ø Ladezustand · Heute")).toBeVisible();
+  await expect.element(soc.getByText("50 %")).toBeVisible();
 });
 
 test("a range whose battery fails to read says so under the power, with a retry", async () => {
@@ -120,6 +141,24 @@ test("a range whose battery fails to read says so under the power, with a retry"
 
   await expect.element(sheet.getByRole("group", { name: "Ladezustand" })).toBeVisible();
   await expect.element(sheet.getByRole("alert")).not.toBeInTheDocument();
+});
+
+test("a range that fails after one that read shows none of the last one's charge or facts", async () => {
+  served.rolled = plant(DAY);
+
+  const { sheet } = await sheetOf();
+
+  await expect.element(sheet.getByRole("term").filter({ hasText: "Wirkungsgrad" })).toBeVisible();
+  served.rolled = (a) =>
+    a.series === "battery.soc"
+      ? Response.json({ status: 500, code: "store.failed" }, { status: 500 })
+      : plant(DAY)(a);
+  await sheet.getByRole("button", { name: "Früher" }).click();
+
+  await expect.element(sheet.getByRole("alert")).toBeVisible();
+  expect(sheet.getByRole("alert").elements()).toHaveLength(1);
+  expect(sheet.getByRole("term").filter({ hasText: "Wirkungsgrad" }).elements()).toHaveLength(0);
+  expect(sheet.getByRole("group", { name: "Ladezustand" }).elements()).toHaveLength(0);
 });
 
 test("the facts state the round-trip efficiency and the range's full cycles", async () => {

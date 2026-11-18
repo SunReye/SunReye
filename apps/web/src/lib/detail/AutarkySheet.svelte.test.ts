@@ -3,8 +3,8 @@
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 import "../../app.css";
-import { prepare, restore, served, show } from "./detail.harness.ts";
-import { hours, plant, type Flows } from "./flows.harness.ts";
+import { asked, prepare, restore, served, show } from "./detail.harness.ts";
+import { hours, plant, settled, type Flows } from "./flows.harness.ts";
 
 beforeEach(prepare);
 
@@ -122,6 +122,27 @@ test("the facts name the best and the worst hour and the 30-day average", async 
     .toHaveTextContent("0 % 9:00–10:00 Uhr");
   await expect.element(sheet.getByText("Ø 30 Tage")).toBeVisible();
   await expect.element(facts.filter({ hasText: "25 %" })).toBeVisible();
+});
+
+/** The reads of the 30 whole days before today. */
+const month = () =>
+  asked.filter((a) => a.from === "2026-10-13T00:00:00.000Z" && a.period === "day");
+
+test("the 30 days are read once, not again as the sheet's layout and readings land", async () => {
+  served.rolled = plant(FULL);
+
+  const { sheet } = await sheetOf();
+
+  await expect.element(sheet.getByText("Ø 30 Tage")).toBeVisible();
+  await expect.element(sheet.getByRole("definition").filter({ hasText: "25 %" })).toBeVisible();
+  // The layout and the estimated series land after the sheet opens.
+  await settled();
+
+  expect(
+    month()
+      .map((a) => a.series)
+      .toSorted(),
+  ).toEqual(["load.power", "self.supply.power"]);
 });
 
 test("a refused read says so in place of the range, never 0 %", async () => {

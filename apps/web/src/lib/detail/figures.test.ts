@@ -1,6 +1,11 @@
 import { expect, test } from "bun:test";
 import type { Day } from "../dashboard/day.ts";
-import { facts, figure, formatFigure, parseFigure } from "./figures.ts";
+import { formatFigure, parseFigure } from "./figures.ts";
+import { figure, sheetOf } from "./sheet-of.ts";
+
+/** What sheet `id` leads with and states of the day, as the sheet reads them. */
+const facts = (id: string, day?: Day, spot?: number) =>
+  sheetOf(id, [])?.facts?.(day, spot) ?? { lead: null, stats: [] };
 
 const at = (time: string) => `2026-11-12T${time}:00Z`;
 
@@ -79,8 +84,8 @@ test("the forecast's energy stands in its day tabs, not in the sheet's head", ()
   expect(figure("forecast")?.chart).toBe("forecast");
 });
 
-test("the savings and flow sheets read their range instead of today", () => {
-  for (const id of ["saved", "consumption", "feedIn", "purchase"])
+test("the savings, flow and production sheets read their range instead of today", () => {
+  for (const id of ["saved", "consumption", "feedIn", "purchase", "production"])
     expect(facts(id, DAY)).toEqual({ lead: null, stats: [] });
 });
 
@@ -111,12 +116,6 @@ test("a figure id reads back as the figure it names", () => {
 test("an id naming no figure parses to none", () => {
   for (const id of ["nonsense", "string-", "string-x", "ev-1.5", "string-4-1"])
     expect(parseFigure(id)).toBeNull();
-});
-
-test("the day's peak is a power in watts, written by the shared power format", () => {
-  const peak = facts("production", DAY).stats.find((f) => f.label === "Spitze");
-
-  expect(peak).toMatchObject({ value: 8600, unit: "W" });
 });
 
 test("the weather leads with now's temperature; its facts stand in its day tabs", () => {

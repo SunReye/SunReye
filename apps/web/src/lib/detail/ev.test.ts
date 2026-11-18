@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Rolled } from "../history/history.ts";
-import { pvShareOf, sessionsOf, whenOf } from "./ev.ts";
+import { pvShareOf, sessionsOf, sessionTimes } from "./ev.ts";
 
 const H = 3_600_000;
 const DAY = Date.parse("2026-11-12T00:00:00Z");
@@ -79,6 +79,6 @@ test("an hour the plant read nothing in is left out; without such a charge there
 test("a session reads its clock times; past a day, its day first", () => {
   const s = { start: DAY + 22 * H, end: DAY + 26 * H + 15 * 60_000, kwh: 9 };
 
-  expect(whenOf(s, false, "UTC")).toBe("22:00–2:15 Uhr");
-  expect(whenOf(s, true, "Europe/Berlin")).toBe("12. Nov., 23:00–3:15 Uhr");
+  expect(sessionTimes(s, false, "UTC")).toBe("22:00–2:15 Uhr");
+  expect(sessionTimes(s, true, "Europe/Berlin")).toBe("12. Nov., 23:00–3:15 Uhr");
 });

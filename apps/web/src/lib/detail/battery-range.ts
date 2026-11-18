@@ -1,5 +1,6 @@
 // The battery sheet's range (ADR 21 "Sheet content"): the plant's state of charge laid on its
 // bands, and what went in and out, from the plant's battery split (ADR 14).
+import { PLANT } from "../api/core.ts";
 import {
   bandFigure,
   periodOf,
@@ -8,17 +9,9 @@ import {
   type RollupPeriod,
 } from "../history/history.ts";
 import { bandsOf } from "../range/fill.ts";
-import { RangeData } from "../range/range-data.svelte.ts";
-import type { RangeRoute } from "../range/route.svelte.ts";
-import { PLANT } from "../api/core.ts";
 import { cyclesOf, roundTrip } from "./battery.ts";
-import { strict, type MeasureCore } from "./measure.ts";
-
-/** What the range reads through, and where it stands. */
-export interface BatteryInput {
-  readonly core: MeasureCore;
-  readonly route: RangeRoute;
-}
+import { strict } from "./measure.ts";
+import type { RangeInput, RangeReader } from "./sheet-range.svelte.ts";
 
 /** The plant's battery over the range: what charged it, what it gave, its charge and capacity. */
 interface Read {
@@ -72,48 +65,30 @@ async function endsAt(
   return endsOf(head, tail);
 }
 
-export class BatteryRange {
-  readonly #data: RangeData<Read>;
+/** The state of charge by band and its mean, the round-trip efficiency and the cycles; null unread. */
+export const BATTERY_RANGE = {
+  load: async (input, from, to, now) => {
+    const { core, route } = input();
+    const period = periodOf(route.range);
+    const [a, b] = [from, new Date(Math.min(to.getTime(), now))];
 
-  constructor(input: () => BatteryInput) {
-    this.#data = new RangeData(
-      () => input().route,
-      async (from, to, now) => {
-        const { core, route } = input();
-        const period = periodOf(route.range);
-        const [a, b] = [from, new Date(Math.min(to.getTime(), now))];
+    if (a.getTime() >= b.getTime()) return NONE;
 
-        if (a.getTime() >= b.getTime()) return NONE;
+    const sure = strict(core);
+    const any: Reader = (series, p, x, y) => rollups(sure, PLANT, series, p, x, y);
+    const read = (series: string) => any(series, period, a, b);
 
-        const sure = strict(core);
-        const any: Reader = (series, p, x, y) => rollups(sure, PLANT, series, p, x, y);
-        const read = (series: string) => any(series, period, a, b);
+    const [charge, discharge, soc, capacity] = await Promise.all([
+      read("battery.charge.power"),
+      read("battery.discharge.power"),
+      read("battery.soc"),
+      read("battery.capacity"),
+    ]);
 
-        const [charge, discharge, soc, capacity] = await Promise.all([
-          read("battery.charge.power"),
-          read("battery.discharge.power"),
-          read("battery.soc"),
-          read("battery.capacity"),
-        ]);
-
-        return { charge, discharge, soc, capacity, ends: await endsAt(any, soc, period, a, b) };
-      },
-    );
-  }
-
-  get failed(): boolean {
-    return this.#data.failed;
-  }
-
-  retry = (): void => {
-    this.#data.retry();
-  };
-
-  /** The state of charge by band, the round-trip efficiency and the cycles; null unread. */
-  readonly view = $derived.by(() => {
-    const got = this.#data.current;
-
-    if (got === undefined) return null;
+    return { charge, discharge, soc, capacity, ends: await endsAt(any, soc, period, a, b) };
+  },
+  view: (got) => {
+    if (got === null) return null;
 
     const { charge, discharge, soc } = got.data;
 
@@ -135,8 +110,9 @@ export class BatteryRange {
 
     return {
       bands,
+      mean: meanOf("battery.soc", soc),
       efficiency: roundTrip({ charged, discharged, soc: got.data.ends, capacity }),
       cycles: cyclesOf(discharged, capacity),
     };
-  });
-}
+  },
+} satisfies RangeReader<RangeInput, Read, unknown>;

@@ -101,7 +101,6 @@
       {m.detail_no_prices()}
     </p>
   {:else}
-    <!-- The legend: what is read, then its price; at rest the chart's name. -->
     <div class="flex items-baseline justify-between gap-3 text-xs" aria-live="polite">
       {#if shown}
         {@const hour = Number(hourOf.format(shown.at))}

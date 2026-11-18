@@ -16,7 +16,7 @@ import {
 import type { RangeRoute } from "./route.svelte.ts";
 
 /** One load: its range and how the chart got there, its bands and their instants, and the figures. */
-interface Loaded<T> {
+export interface Loaded<T> {
   readonly range: Range;
   readonly via: Via;
   readonly cal: Calendar;

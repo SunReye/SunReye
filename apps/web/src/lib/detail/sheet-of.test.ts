@@ -1,5 +1,16 @@
 import { expect, test } from "bun:test";
-import { analyticsOf } from "./sources.ts";
+import { sheetOf } from "./sheet-of.ts";
+
+/** What sheet `id` charts over its range. */
+const analyticsOf = (id: string, strings: Parameters<typeof sheetOf>[1]) =>
+  sheetOf(id, strings)?.analytics ?? null;
+
+/** What sheet `id`'s head sums over its range: its series, or none. */
+const energyOf = (id: string) => {
+  const head = sheetOf(id, STRINGS)?.head;
+
+  return head?.kind === "energy" ? head.series : null;
+};
 
 const PLANT = 4_294_967_294;
 
@@ -32,7 +43,7 @@ test("the battery heats and heads with what it discharged, as the plant splits i
   const battery = analyticsOf("battery", STRINGS)!;
 
   expect([battery.device, battery.series]).toEqual([PLANT, "battery.power"]);
-  expect([battery.heat, battery.energy]).toEqual([
+  expect([battery.heat, energyOf("battery")]).toEqual([
     "battery.discharge.power",
     "battery.discharge.power",
   ]);
@@ -56,23 +67,39 @@ test("PV figures expect what their inverters forecast; others expect nothing", (
   expect(analyticsOf("string-6", [...STRINGS, other])!.forecast).toEqual([7]);
 });
 
-test("a one-way figure heads with its energy; a two-way one with none", () => {
-  expect(analyticsOf("feedIn", STRINGS)!.energy).toBe("grid.export.power");
-  expect(analyticsOf("production", STRINGS)!.energy).toBe("pv.power");
-  expect(analyticsOf("string-4", STRINGS)!.energy).toBe("pv.string.power[4]");
-  expect(analyticsOf("grid", STRINGS)!.energy).toBeNull();
+test("a figure heads with its energy; the grid with what was bought", () => {
+  expect(energyOf("feedIn")).toBe("grid.export.power");
+  expect(energyOf("production")).toBe("pv.power");
+  expect(energyOf("string-4")).toBe("pv.string.power[4]");
+  expect(energyOf("grid")).toBe("grid.import.power");
 });
 
 test("the EV charts the plant's charging power, a loadpoint its own device's", () => {
   const ev = analyticsOf("ev", STRINGS)!;
   const loadpoint = analyticsOf("ev-8", STRINGS)!;
 
-  expect([ev.device, ev.series, ev.energy]).toEqual([PLANT, "ev.charge.power", "ev.charge.power"]);
-  expect([loadpoint.device, loadpoint.series, loadpoint.heat, loadpoint.energy]).toEqual([
+  expect([ev.device, ev.series, energyOf("ev")]).toEqual([
+    PLANT,
+    "ev.charge.power",
+    "ev.charge.power",
+  ]);
+  expect([loadpoint.device, loadpoint.series, loadpoint.heat, energyOf("ev-8")]).toEqual([
     8,
     "ev.charge.power",
     "ev.charge.power",
     "ev.charge.power",
   ]);
   expect([loadpoint.compare, loadpoint.forecast, loadpoint.way]).toEqual([false, [], null]);
+});
+
+/** Where History opens from sheet `id`. */
+const onward = (id: string) => sheetOf(id, STRINGS)?.history;
+
+test("a detail sheet's figure opens its own view", () => {
+  expect(onward("saved")).toEqual({ metric: "money", tab: null, sid: null });
+  expect(onward("autarky")).toEqual({ metric: "autarky", tab: null, sid: null });
+  expect(onward("forecast")).toEqual({ metric: null, tab: "forecast", sid: null });
+  expect(onward("battery")).toEqual({ metric: "plant", tab: "battery", sid: null });
+  expect(onward("string-4")).toEqual({ metric: "plant", tab: "strings", sid: "4" });
+  expect(onward("production")).toEqual({ metric: null, tab: null, sid: null });
 });

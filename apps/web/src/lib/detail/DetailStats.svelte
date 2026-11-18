@@ -5,7 +5,15 @@
   import FactValue from "./FactValue.svelte";
   import type { Fact } from "./figures.ts";
 
-  let { stats }: { stats: readonly Fact[] } = $props();
+  let {
+    stats,
+    panel = false,
+  }: {
+    stats: readonly Fact[];
+    /** It closes a range panel: it spans the sheet out of the panel's padding, as every sheet's
+     * facts row spans it. */
+    panel?: boolean;
+  } = $props();
 
   const four = $derived(stats.length > 3);
 </script>
@@ -13,6 +21,7 @@
 <dl
   class={[
     "grid divide-x divide-border/60 border-t border-border/60",
+    panel && "-mx-5 -mb-4 mt-2 sm:-mx-6",
     four ? "grid-cols-[repeat(4,auto)]" : "grid-cols-3",
   ]}
 >

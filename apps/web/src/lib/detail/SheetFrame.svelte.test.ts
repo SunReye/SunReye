@@ -2,6 +2,7 @@
 // range before, and its empty, loading, partial and error states.
 import { afterEach, beforeEach, expect, test } from "vitest";
 import "../../app.css";
+import { settled } from "./flows.harness.ts";
 import {
   asked,
   PLANT,
@@ -29,24 +30,6 @@ const pv =
 
     return Response.json({ points, period: "hour" });
   };
-
-/** Until no read has been asked for over one poll. */
-async function settled(): Promise<void> {
-  let seen = -1;
-
-  await expect
-    .poll(
-      () => {
-        const still = seen === asked.length;
-
-        seen = asked.length;
-
-        return still;
-      },
-      { interval: 100 },
-    )
-    .toBe(true);
-}
 
 /** The sheet named `name` and its head. */
 async function sheetOf(id: string, name: string, route = "") {
@@ -86,6 +69,23 @@ test("without readings in the range before, the head states no change", async ()
 
   await expect.element(head.getByText("4,0 kWh")).toBeVisible();
   expect(head.element().textContent).not.toContain("vs");
+});
+
+test("a chart of one series states no number at rest: the head states it", async () => {
+  served.rolled = pv({ "2026-11-12": 4000 });
+
+  const { sheet, head } = await sheetOf("production", "Produktion");
+  const legend = sheet.getByRole("tabpanel", { name: "Übersicht" }).getByRole("definition");
+
+  await expect.element(head.getByText("4,0 kWh")).toBeVisible();
+  await expect.element(legend.filter({ hasText: "8,0 kWh" })).toBeVisible();
+  expect(legend.filter({ hasText: "4,0 kWh" }).elements()).toHaveLength(0);
+
+  // Titled by its range alone: no sum stands under it.
+  const overview = sheet.getByRole("tabpanel", { name: "Übersicht" });
+
+  await expect.element(overview.getByText("Heute", { exact: true })).toBeVisible();
+  expect(overview.getByText(/Summe/u).elements()).toHaveLength(0);
 });
 
 test("a range before the first reading says so once, and reads nothing", async () => {

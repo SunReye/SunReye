@@ -1,33 +1,28 @@
 <!-- One analytics tab's content; each reads the sheet's range. -->
 <script lang="ts">
-  import type { Analytics } from "../analytics/sources.ts";
   import PatternPanel from "../analytics/PatternPanel.svelte";
   import StringsPanel from "../analytics/StringsPanel.svelte";
   import HistoryChart from "../history/HistoryChart.svelte";
   import type { AnalyticsInput } from "./Analytics.svelte";
-  import { parseFigure } from "./figures.ts";
+  import type { Analytics } from "./sheets.ts";
 
   let {
     tab,
-    id,
     title,
     colour,
     analytics,
     input,
   }: {
     tab: "overview" | "heat" | "compare";
-    id: string;
     title: string;
     colour: string;
     analytics: Analytics;
     input: AnalyticsInput;
   } = $props();
 
-  const sid = $derived.by(() => {
-    const ref = parseFigure(id);
-
-    return ref?.kind === "string" ? ref.id : null;
-  });
+  const estimated = $derived(
+    (input.estimated[String(analytics.device)] ?? []).includes(analytics.series),
+  );
 </script>
 
 {#if tab === "overview"}
@@ -37,6 +32,7 @@
     series={analytics.series}
     route={input.route}
     forecast={analytics.forecast}
+    {estimated}
   />
 {:else if tab === "heat" && analytics.heat}
   <PatternPanel
@@ -45,12 +41,13 @@
     source={{ device: analytics.device, series: analytics.heat }}
     name={analytics.way ?? title}
     {colour}
+    {estimated}
   />
 {:else if tab === "compare"}
   <StringsPanel
     core={input.core}
     route={input.route}
     strings={input.strings}
-    {sid}
+    sid={analytics.string}
   />
 {/if}

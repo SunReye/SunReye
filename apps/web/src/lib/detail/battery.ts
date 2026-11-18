@@ -36,7 +36,7 @@ export const cyclesOf = (discharged: number, capacity: number | null): number | 
   capacity === null || capacity <= 0 ? null : discharged / capacity;
 
 /** The facts row: the round-trip efficiency and the cycles. */
-export const factsOf = (efficiency: number | null, cycles: number | null): Fact[] => [
+export const batteryFacts = (efficiency: number | null, cycles: number | null): Fact[] => [
   { label: m.detail_round_trip(), value: efficiency, unit: "%", digits: 0 },
   { label: m.detail_cycles(), value: cycles, unit: "", digits: 1 },
 ];

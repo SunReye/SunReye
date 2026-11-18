@@ -35,18 +35,26 @@ const FLOWS: readonly (readonly [PlantFlow, () => string, Flow])[] = [
   ["exported", m.stats_feed_in, "export"],
 ];
 
-/** The rollup with the highest reading among those starting in [from, to). */
-export function highest(rolled: readonly Rolled[], from: number, to: number): Rolled | null {
+/** The rollup with the highest reading among those starting in [from, to); null where none has one. */
+export function highest(rolled: readonly Rolled[], from = -Infinity, to = Infinity): Rolled | null {
   let best: Rolled | null = null;
 
   for (const r of rolled)
-    if (r.start >= from && r.start < to && (r.max ?? 0) > (best?.max ?? 0)) best = r;
+    if (r.start >= from && r.start < to && r.max !== null && (best?.max ?? -Infinity) < r.max)
+      best = r;
 
   return best;
 }
 
+/** The rollup a flow peaked in among those starting in [from, to); null for one that never ran. */
+export function peakIn(rolled: readonly Rolled[], from = -Infinity, to = Infinity): Rolled | null {
+  const top = highest(rolled, from, to);
+
+  return (top?.max ?? 0) > 0 ? top : null;
+}
+
 /** When a rollup starting at `start` fell: its hour among hourly rollups, else its day. */
-export function whenOf(start: number, hours: boolean, zone: string): string {
+export function rollupWhen(start: number, hours: boolean, zone: string): string {
   const { day, hour } = plantNow(zone, new Date(start));
 
   return hours ? m.stats_peak_hour({ from: hour, to: hour + 1 }) : fmt("dayShort", day);
@@ -57,7 +65,7 @@ export function peaksOf(plant: Plant, at: PeakInput): Peak[] {
   const rollups = at.hours ? plant.hours : plant.days;
 
   return FLOWS.flatMap(([flow, label, colour]) => {
-    const top = highest(rollups[flow], at.from, at.to);
+    const top = peakIn(rollups[flow], at.from, at.to);
 
     if (top === null) return [];
 
@@ -65,7 +73,7 @@ export function peaksOf(plant: Plant, at: PeakInput): Peak[] {
       {
         label: label(),
         value: top.max ?? 0,
-        when: whenOf(top.start, at.hours, at.zone),
+        when: rollupWhen(top.start, at.hours, at.zone),
         colour: flowColour(colour),
         range: at.hours ? null : rangeFor("day", plantNow(at.zone, new Date(top.start)).day),
       },

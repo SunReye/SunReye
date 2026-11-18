@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import de from "../../messages/de.json";
 import en from "../../messages/en.json";
-import { indexName, isSigned, roleLabel, seriesName, sidesOf, stateName } from "./roles.ts";
+import { indexName, isSignedFlow, roleLabel, seriesName, sidesOf, stateName } from "./roles.ts";
 
 test("a signed series' sides are named by its sign: the grid imports above, exports below", () => {
   expect(sidesOf("grid.power")).toEqual([
@@ -17,11 +17,17 @@ test("a battery charges above and discharges below, both in its own flow's colou
   ]);
 });
 
-test("only ADR 4's signed roles have sides; an indexed one by its role", () => {
-  expect(isSigned("battery.power")).toBe(true);
-  expect(isSigned("grid.phase.power[2]")).toBe(true);
-  expect(isSigned("battery.temperature")).toBe(false);
+test("only ADR 4's signed flows have sides; an indexed one by its role", () => {
+  expect(isSignedFlow("battery.power")).toBe(true);
+  expect(isSignedFlow("grid.phase.power[2]")).toBe(true);
+  expect(isSignedFlow("inverter.power")).toBe(true);
+  expect(isSignedFlow("battery.temperature")).toBe(false);
   expect(sidesOf("grid.phase.power[2]")[0].label).toBe("Bezogen");
+});
+
+test("a price or a cost, signed but no flow, has no sides", () => {
+  for (const series of ["price.import", "price.export", "price.spot", "cost.savings.rate"])
+    expect(isSignedFlow(series)).toBe(false);
 });
 
 test("a signed series of no named sides is above and below zero", () => {
