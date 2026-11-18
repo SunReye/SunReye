@@ -559,6 +559,44 @@ async fn weather_forecasts_keep_their_latest_issue_on_upgrade() {
     );
 }
 
+/// The weather forecasts stored for hours archive weather answers (ADR 17) go on upgrade: the
+/// archive's last block, its closing gap, is where it ends. Another device's forecasts stay.
+#[tokio::test]
+async fn weather_forecasts_of_archived_hours_go_on_upgrade() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("core.sqlite");
+    let old = rusqlite::Connection::open(&path).unwrap();
+    for sql in &super::thread::MIGRATIONS[..36] {
+        old.execute_batch(sql).unwrap();
+    }
+    old.pragma_update(None, "user_version", 36).unwrap();
+    // Archive weather to hour 3, the clear-sky index measured to hour 9.
+    old.execute_batch(
+        "INSERT INTO series (name, id) VALUES ('weather.ghi', 1), ('weather.clearness', 2);
+         INSERT INTO step (device, series, step, kind, cadence) VALUES
+           (4294967295, 1, 0.1, 'measurement', 3600), (4294967295, 2, 0.001, 'measurement', 300);
+         INSERT INTO block (device, series, hour, data) VALUES
+           (4294967295, 1, 1, X'00'), (4294967295, 1, 3, X'00'), (4294967295, 2, 9, X'00');
+         INSERT INTO forecast (device, series, target, issued, value) VALUES
+           (4294967295, 1, 107999, 1, 1), (4294967295, 1, 108000, 1, 2),
+           (4294967295, 3, 9000, 1, 3), (7, 1, 9000, 1, 4);",
+    )
+    .unwrap();
+    drop(old);
+
+    drop(Storage::open(&path, epoch(), "UTC", &Bus::default()).unwrap());
+
+    let rows: Vec<(u32, i64, i64)> = rusqlite::Connection::open(&path)
+        .unwrap()
+        .prepare("SELECT device, series, target FROM forecast")
+        .unwrap()
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(rows, [(7, 1, 9000), (4_294_967_295, 1, 108_000)]);
+}
+
 #[tokio::test]
 async fn a_database_with_a_newer_schema_is_refused() {
     let dir = tempfile::tempdir().unwrap();

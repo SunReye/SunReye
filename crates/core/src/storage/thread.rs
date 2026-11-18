@@ -72,6 +72,7 @@ pub(super) const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0034.sql"),
     include_str!("migrations/0035.sql"),
     include_str!("migrations/0036.sql"),
+    include_str!("migrations/0037.sql"),
 ];
 
 /// The schema version this build writes: the number of migrations.
@@ -173,6 +174,11 @@ pub enum Forecasting {
         from: SystemTime,
         to: SystemTime,
         reply: oneshot::Sender<Result<Vec<Forecast>, Error>>,
+    },
+    Delete {
+        device: DeviceId,
+        targets: Range<SystemTime>,
+        reply: oneshot::Sender<Result<(), Error>>,
     },
 }
 
@@ -795,6 +801,16 @@ impl Store {
                 reply,
             } => {
                 reply.send(self.forecasts(device, &name, from, to)).ok();
+            }
+            Forecasting::Delete {
+                device,
+                targets,
+                reply,
+            } => {
+                let from = tick(targets.start).unwrap_or(0);
+                let to = tick(targets.end).unwrap_or(0);
+                let deleted = forecast::delete(&self.db, device.0, from..to);
+                reply.send(deleted.map_err(Error::from)).ok();
             }
         }
     }

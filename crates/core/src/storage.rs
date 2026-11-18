@@ -494,6 +494,26 @@ impl Storage {
         .await?
     }
 
+    /// Deletes every forecast of `device`, of any series, with a target within `targets`: once
+    /// history answers for a time, its forecasts are no longer kept (ADR 17).
+    ///
+    /// # Errors
+    /// The file cannot be written.
+    pub async fn delete_forecasts(
+        &self,
+        device: DeviceId,
+        targets: Range<SystemTime>,
+    ) -> Result<(), Error> {
+        self.request(|reply| {
+            Request::Forecasting(Forecasting::Delete {
+                device,
+                targets,
+                reply,
+            })
+        })
+        .await?
+    }
+
     /// Every stored forecast of `series` with a target from `from` to before `to`, by target,
     /// then issue.
     ///

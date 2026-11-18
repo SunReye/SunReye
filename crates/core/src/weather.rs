@@ -421,7 +421,8 @@ impl<A: Archive> Past<A> {
     }
 
     /// Fetches the UTC days `from` to `to` for the plant at `location` and stores them hourly,
-    /// replacing what was stored for those hours; an hour the archive lacks is a gap.
+    /// replacing what was stored for those hours, whose forecasts it deletes; an hour the archive
+    /// lacks is a gap.
     ///
     /// # Errors
     /// The archive or storage failed.
@@ -452,6 +453,10 @@ impl<A: Archive> Past<A> {
             self.replace(storage, (quantity, series), range, points)
                 .await?;
         }
+        // The archive answers for these hours now (ADR 17).
+        storage
+            .delete_forecasts(self.device, first.target..end)
+            .await?;
         Ok(())
     }
 

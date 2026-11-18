@@ -1,5 +1,7 @@
 //! The forecast table (ADR 15): one row per device, series, target and issue.
 
+use std::ops::Range;
+
 use rusqlite::{Connection, Transaction, params};
 
 use super::Keep;
@@ -78,6 +80,13 @@ fn latest(
             insert.execute(row)?;
         }
     }
+    Ok(())
+}
+
+/// Deletes every forecast of `device` with a target within `targets`.
+pub fn delete(db: &Connection, device: u32, targets: Range<Tick>) -> rusqlite::Result<()> {
+    db.prepare_cached("DELETE FROM forecast WHERE device = ?1 AND target >= ?2 AND target < ?3")?
+        .execute(params![device, targets.start, targets.end])?;
     Ok(())
 }
 
