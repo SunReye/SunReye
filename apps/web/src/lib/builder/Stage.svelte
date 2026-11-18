@@ -19,6 +19,7 @@
   import SceneCanvas, { type Editing, type Painting } from "./SceneCanvas.svelte";
   import type { Hit, Panel } from "./scene.ts";
   import ViewMenu from "./ViewMenu.svelte";
+  import WeatherMenu, { type Sample } from "./WeatherMenu.svelte";
 
   let {
     core,
@@ -33,6 +34,7 @@
     painting,
     onto,
     aspect = 1,
+    sample = $bindable(null),
   }: {
     core: Core;
     geometry: Geometry;
@@ -54,6 +56,8 @@
     onto?: RoofFace | undefined;
     /** The canvas's width over its height: preset views fit the scene across it. */
     aspect?: number;
+    /** The sample weather the weather button picks; null for the stored (ADR 23 "Builder"). */
+    sample?: Sample | null;
   } = $props();
 
   /** Where each browser keeps its last view (ADR 20). */
@@ -92,10 +96,11 @@
   {editing}
   {painting}
 />
-<div class="absolute top-3 right-3">
+<div class="absolute top-3 right-3 flex flex-col gap-2">
   <ViewMenu
     onpick={(preset) => {
       keep(presetView(preset, geometry, aspect));
     }}
   />
+  <WeatherMenu bind:sample />
 </div>
