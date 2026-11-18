@@ -168,8 +168,7 @@ async fn it_fetches_the_span_weather_history_covers_in_30_day_chunks_newest_firs
 }
 
 #[tokio::test]
-async fn with_no_day_fetched_since_the_upgrade_the_new_quantities_end_where_weather_history_does()
-{
+async fn with_no_day_fetched_since_the_upgrade_the_new_quantities_end_where_weather_history_does() {
     let plant = Plant::irradiance_only().await;
     let (archive, _calls) = FakeArchive::new(settled());
     let (_location, berlin) = watch::channel(Some(BERLIN));
