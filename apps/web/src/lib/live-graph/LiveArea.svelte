@@ -88,6 +88,18 @@
 
   let read = $state<number | null>(null);
 
+  /** Now while reading, ticking, so the age read runs on when the stream stalls. */
+  let now = $state(Date.now());
+
+  $effect(() => {
+    if (read === null) return;
+
+    now = Date.now();
+    const timer = setInterval(() => (now = Date.now()), 1000);
+
+    return () => clearInterval(timer);
+  });
+
   // Only read while reading, so the cursor's frames reach nothing else.
   const reading = $derived(
     read === null
@@ -98,6 +110,7 @@
           interval,
           cursor: cursor.current,
           glide,
+          now,
         }),
   );
 

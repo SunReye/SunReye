@@ -71,6 +71,8 @@ function finger(type: string, ago: number): void {
 const rule = () => plot().querySelector("[data-read]");
 
 test("the pointer on the live graph reads the sample under it in the header; leaving restores it", async () => {
+  vi.useFakeTimers({ toFake: ["Date"], now: T0 });
+
   const { live } = await mount();
 
   await userEvent.hover(plot(), { position: before(30) });
@@ -86,6 +88,20 @@ test("the pointer on the live graph reads the sample under it in the header; lea
 
   await expect.element(live.getByText("Live · letzte 2 Minuten")).toBeVisible();
   expect(rule()).toBeNull();
+  vi.useRealTimers();
+});
+
+test("a stalled stream's sample ages from now, ticking, not from the newest sample", async () => {
+  vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"], now: T0 + 20_000 });
+
+  const { live } = await mount();
+
+  await userEvent.hover(plot(), { position: before(30) });
+  await expect.element(live.getByText("vor 50 s")).toBeVisible();
+
+  vi.advanceTimersByTime(5000);
+  await expect.element(live.getByText("vor 55 s")).toBeVisible();
+  vi.useRealTimers();
 });
 
 test("a finger held on the live graph reads it; lifted, the graph rests", async () => {

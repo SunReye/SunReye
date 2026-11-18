@@ -138,7 +138,7 @@ export function glideTransform(
   return `translate(${offset + 0},0)`;
 }
 
-/** The sample under the pointer: how long before the newest it was, in s, and its watts. */
+/** The sample under the pointer: how long ago it was, in s, and its watts. */
 export interface LiveReading {
   readonly ago: number;
   /** Null where no sample is near. */
@@ -158,6 +158,8 @@ export function sampleUnder(
     readonly interval: number;
     readonly cursor: number;
     readonly glide: boolean;
+    /** Now, in ms since the epoch: a stalled stream's samples age. */
+    readonly now: number;
   },
 ): LiveReading | null {
   const newest = points.at(-1)?.t;
@@ -169,5 +171,5 @@ export function sampleUnder(
   const near = points.reduce((best, p) => (Math.abs(p.t - t) < Math.abs(best.t - t) ? p : best));
   const hit = Math.abs(near.t - t) <= at.interval ? near : null;
 
-  return { ago: Math.round((newest - (hit?.t ?? t)) / 1000), watts: hit?.v ?? null };
+  return { ago: Math.round((at.now - (hit?.t ?? t)) / 1000), watts: hit?.v ?? null };
 }
