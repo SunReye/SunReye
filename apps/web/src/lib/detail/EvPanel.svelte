@@ -11,6 +11,7 @@
   import DetailStats from "./DetailStats.svelte";
   import { whenOf } from "./ev.ts";
   import { EV_RANGE } from "./ev-range.ts";
+  import { pvCoveredFact } from "./facts.ts";
   import Quantity from "./Quantity.svelte";
   import RangeState from "./RangeState.svelte";
   import { SheetRange } from "./sheet-range.svelte.ts";
@@ -29,7 +30,7 @@
   const zone = $derived(input.route.place.zone);
 
   const facts = $derived([
-    { label: m.detail_pv_covered(), value: view?.share ?? null, unit: "%", digits: 0 },
+    pvCoveredFact(view?.share ?? null),
     { label: m.detail_sessions(), value: view?.sessions.length ?? null, unit: "", digits: 0 },
   ]);
 </script>

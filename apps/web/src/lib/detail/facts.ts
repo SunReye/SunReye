@@ -1,6 +1,8 @@
 // The facts more than one sheet states of its range (ADR 21 "Sheet content"). Pure.
 import { whenOf } from "../history/peaks.ts";
 import type { Rolled } from "../history/history.ts";
+import { m } from "../paraglide/messages.js";
+import { euroDigits } from "../range/format.ts";
 import type { Fact } from "./figures.ts";
 
 /** Where the range stands: its bands are hours, and the plant's timezone. */
@@ -24,3 +26,19 @@ export function peakFact(
     ...(top && { note: whenOf(top.start, at.hours, at.zone) }),
   };
 }
+
+/** Euros, as the range's money reads them. */
+export const euros = (label: string, value: number | null): Fact => ({
+  label,
+  value,
+  unit: "€",
+  digits: euroDigits(value ?? 0),
+});
+
+/** The share of a load PV met directly, the battery's part not PV's, in %; null without one. */
+export const pvCoveredFact = (share: number | null): Fact => ({
+  label: m.detail_pv_covered(),
+  value: share,
+  unit: "%",
+  digits: 0,
+});

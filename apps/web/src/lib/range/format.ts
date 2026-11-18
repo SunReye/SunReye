@@ -10,4 +10,7 @@ export function kwh(v: number): string {
   return `${num(v, Math.abs(v) < 100 ? 1 : 0)} kWh`;
 }
 
-export const money = (eur: number): string => `${num(eur, Math.abs(eur) < 100 ? 2 : 0)} €`;
+/** Euros to the cent below 100, whole from 100. */
+export const euroDigits = (eur: number): number => (Math.abs(eur) < 100 ? 2 : 0);
+
+export const money = (eur: number): string => `${num(eur, euroDigits(eur))} €`;

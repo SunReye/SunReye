@@ -6,7 +6,7 @@ import { peakIn } from "../history/peaks.ts";
 import { coveredSum, type Rolled } from "../history/history.ts";
 import { m } from "../paraglide/messages.js";
 import { coverOf } from "./autarky.ts";
-import { peakFact } from "./facts.ts";
+import { euros, peakFact, pvCoveredFact } from "./facts.ts";
 import type { Fact } from "./figures.ts";
 
 /** A flow sheet: the `plant` power it peaks in, and the tariff's rate that prices it (ADR 12). */
@@ -35,14 +35,6 @@ export interface FlowRead {
   readonly zone: string;
 }
 
-/** Euros to the cent below 100, whole above, as the range's money reads. */
-const euros = (label: string, value: number | null): Fact => ({
-  label,
-  value,
-  unit: "€",
-  digits: value !== null && Math.abs(value) >= 100 ? 0 : 2,
-});
-
 /** The flow's peak with its time; unknown while the range is read. */
 const peakOf = (read: Readonly<FlowRead> | null): Fact =>
   read === null
@@ -54,7 +46,7 @@ function coveredOf(flows: Rollups | null): Fact {
   const share =
     flows === null ? null : (coverOf(rollupSum(flows, -Infinity, Infinity))?.[0] ?? null);
 
-  return { label: m.detail_pv_covered(), value: share, unit: "%", digits: 0 };
+  return pvCoveredFact(share);
 }
 
 /** What the flow was paid or earned; without a tariff in force, that none is (ADR 12). */

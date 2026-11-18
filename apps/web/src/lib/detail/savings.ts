@@ -3,15 +3,8 @@
 import type { Payback } from "../api/tariff.ts";
 import { paybackShare, reachedYear } from "../history/payback.ts";
 import { m } from "../paraglide/messages.js";
+import { euros } from "./facts.ts";
 import type { Fact } from "./figures.ts";
-
-/** Euros to the cent below 100, whole above, as the range's money reads. */
-const euros = (label: string, value: number): Fact => ({
-  label,
-  value,
-  unit: "€",
-  digits: Math.abs(value) < 100 ? 2 : 0,
-});
 
 /** The savings since installation, the share of the investment they pay and the year they reach it. */
 export function paybackFacts(p: Payback): Fact[] {
