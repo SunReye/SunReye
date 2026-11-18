@@ -511,10 +511,23 @@ impl<A: Archive> Past<A> {
             .iter()
             .zip(&self.series)
             .filter(|(q, _)| q.archived && !q.model);
+        let catalog = storage.reader().catalog().await?;
         for (quantity, &series) in detail {
-            // No gap at `until`: newer history may start there.
-            let points = hourly(quantity, &slots, from..until);
-            self.replace(storage, (quantity, series), from..until, points)
+            let mut points = hourly(quantity, &slots, from..until);
+            // Newer history may start at `until`; where none does, nothing is known past it.
+            let newer = catalog
+                .iter()
+                .any(|c| c.device == self.device && c.series == quantity.role && c.last >= until);
+            let range = if newer {
+                from..until
+            } else {
+                points.push(ChangePoint {
+                    time: until,
+                    value: None,
+                });
+                from..until + Duration::from_secs(1)
+            };
+            self.replace(storage, (quantity, series), range, points)
                 .await?;
         }
         let until = seconds(from);
