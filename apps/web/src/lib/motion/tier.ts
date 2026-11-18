@@ -1,4 +1,4 @@
-// Ported from v3 (dev 780b4e2, lib/motion/tier.ts) without the motion setting (ADR 21).
+// Ported from v3 (dev 780b4e2, lib/motion/tier.ts); the motion setting offers no still (ADR 21).
 /**
  * How much motion this DEVICE can afford — the decision, as plain TS.
  *
@@ -11,11 +11,12 @@
  * writes ~365 text nodes a second. A machine that can absorb that shows a rich
  * diagram; one that cannot shows a lagging one, then stops answering touches.
  *
- * So motion is a TIER, resolved from two inputs that never collapse into one:
+ * So motion is a TIER, resolved from inputs that never collapse into one:
  *
  *   - the OS's `prefers-reduced-motion`, which is an accessibility instruction
  *     and outranks everything;
- *   - what the device has actually been observed to manage.
+ *   - what the device has actually been observed to manage, unless the
+ *     browser's motion setting chose a tier.
  *
  * The second is the one that matters for the tablet, because no static signal
  * identifies it: a Fire HD 10 reports eight cores, and `navigator.deviceMemory`
@@ -39,6 +40,20 @@ export type MotionTier =
   /** No motion at all — reduced motion or the low-power switch: still overlays, snapping readouts. */
   | "still";
 
+/** Where each browser keeps its motion setting (ADR 21): unset for Automatisch. */
+export const MOTION_SETTING = "sunreye.motion";
+
+/** What the motion setting offers: Automatisch, where the frame watch decides, or a tier that holds.
+ * Still is the off switches' alone. */
+export const MOTION_SETTINGS = ["auto", "full", "lite"] as const;
+
+export type MotionSetting = (typeof MOTION_SETTINGS)[number];
+
+/** A kept setting; anything unreadable is Automatisch. */
+export function parseMotionSetting(raw: string | null): MotionSetting {
+  return MOTION_SETTINGS.find((setting) => setting === raw) ?? "auto";
+}
+
 /** How many strikes a device can take before it is at the bottom of what strain can reach. */
 export const MAX_STRAIN = 1;
 
@@ -48,9 +63,15 @@ export const MAX_STRAIN = 1;
  */
 const TIERS: readonly MotionTier[] = ["full", "lite"];
 
-/** The tier to render: `reduceMotion` wins over whatever the device manages. */
-export function resolveTier(reduceMotion: boolean, strain: number): MotionTier {
+/** The tier to render: `reduceMotion` wins over a chosen tier, which wins over the strain. */
+export function resolveTier(
+  reduceMotion: boolean,
+  strain: number,
+  setting: MotionSetting = "auto",
+): MotionTier {
   if (reduceMotion) return "still";
+
+  if (setting !== "auto") return setting;
 
   return TIERS[clampStrain(strain)]!;
 }

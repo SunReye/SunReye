@@ -1,7 +1,7 @@
 /**
  * The motion tier as reactive state: the rune shell over `./tier`.
- * Ported from v3 (dev 780b4e2, lib/motion/tier.svelte.ts) with ADR 21's two changes:
- * there is no motion setting (the frame watch decides), and the low-power switch forces `still`.
+ * Ported from v3 (dev 780b4e2, lib/motion/tier.svelte.ts) with ADR 21's changes: the motion
+ * setting offers no still, and the low-power switch forces `still`.
  * The measured strain is kept per device, so a slow wall tablet starts lean the next day.
  */
 import { read, write } from "../kept.ts";
@@ -13,7 +13,10 @@ import {
   LOOP_JANK_FRAME_MS,
   LOW_POWER,
   MAX_STRAIN,
+  MOTION_SETTING,
+  type MotionSetting,
   type MotionTier,
+  parseMotionSetting,
   parseStrain,
   resolveTier,
 } from "./tier.ts";
@@ -34,6 +37,7 @@ export class MotionStore {
   #reduce = new MediaQuery("(prefers-reduced-motion: reduce)");
   /** The low-power switch (ADR 21): all of it is instant and nothing moves. */
   #lowPower = $state(read(LOW_POWER) === "on");
+  #setting = $state(parseMotionSetting(read(MOTION_SETTING)));
 
   #frames = new FrameStrain();
   /** The frames of a loop that draws on its own, judged by its own rate. */
@@ -53,7 +57,12 @@ export class MotionStore {
   get tier(): MotionTier {
     if (this.#lowPower) return "still";
 
-    return resolveTier(this.#reduce.current, this.#strain);
+    return resolveTier(this.#reduce.current, this.#strain, this.#setting);
+  }
+
+  /** The tier the frame watch has measured for this device, whatever is rendered. */
+  get measured(): MotionTier {
+    return resolveTier(false, this.#strain);
   }
 
   get still(): boolean {
@@ -68,6 +77,24 @@ export class MotionStore {
   set lowPower(on: boolean) {
     this.#lowPower = on;
     write(LOW_POWER, on ? "on" : "off");
+    this.#sync();
+  }
+
+  get setting(): MotionSetting {
+    return this.#setting;
+  }
+
+  /** Kept per browser. A chosen tier holds: strain no longer lowers it. */
+  set setting(next: MotionSetting) {
+    this.#setting = next;
+    write(MOTION_SETTING, next);
+    this.#sync();
+  }
+
+  /** Neu messen: forgets the measured strain, so the device is on full and the watch starts over. */
+  remeasure(): void {
+    this.#strain = 0;
+    write(STRAIN_KEY, "0");
     this.#sync();
   }
 
@@ -104,9 +131,11 @@ export class MotionStore {
     else this.#stop();
   }
 
-  /** Whether a strain could still lower anything: the tier, or the scene's drawing. */
+  /** Whether a strain could still lower anything: the tier on Automatisch, or the scene's drawing. */
   #gives(): boolean {
-    return this.#strain < MAX_STRAIN || this.#quality.relieves(this.tier);
+    const tierGives = this.#setting === "auto" && this.#strain < MAX_STRAIN;
+
+    return tierGives || this.#quality.relieves(this.tier);
   }
 
   #start(): void {
