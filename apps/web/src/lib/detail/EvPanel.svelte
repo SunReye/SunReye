@@ -1,9 +1,11 @@
 <!--
   The EV and loadpoint sheets' range below their tabs (ADR 21 "Sheet content"): the sessions, newest
-  first, each its clock times and what it charged; a range no car charged in says so once. Then one
+  first, each its clock times and what it charged, a skeleton in their place while they read; a
+  range no car charged in says so once. Then one
   row of facts: the share PV met directly and the count of sessions.
 -->
 <script lang="ts">
+  import { Skeleton } from "#lib/components/ui/skeleton/index.js";
   import { m } from "../paraglide/messages.js";
   import type { AnalyticsInput } from "./Analytics.svelte";
   import DetailStats from "./DetailStats.svelte";
@@ -55,6 +57,8 @@
         {m.detail_sessions_more({ count: view.sessions.length - SHOWN })}
       </p>
     {/if}
+  {:else}
+    <Skeleton class="h-20" role="status" aria-label={m.loading()} />
   {/if}
   <DetailStats panel stats={facts} />
 </RangeState>
