@@ -333,8 +333,12 @@ The most power the plant has moved recently, remembered with a six-hour half-lif
 _Avoid_: Ceiling, max power
 
 **Motion tier**:
-How much a device animates: full, lite or still. A measured frame strain lowers it; the low-power switch and reduced motion force still.
+How much a device animates: full, lite or still. On Automatisch a measured frame strain lowers it; the low-power switch and reduced motion force still.
 _Avoid_: Animation level, performance mode
+
+**Motion setting**:
+A browser's choice of motion tier, *Bewegung*: Automatisch, where measured strain decides, or Voll or Reduziert, which hold. It never chooses still.
+_Avoid_: Motion mode, animation setting
 
 **Template**:
 A ready-made starting scene the builder offers when the scene is empty.
