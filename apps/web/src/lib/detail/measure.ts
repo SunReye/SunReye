@@ -2,6 +2,7 @@
 // stop. A refused read fails like a lost one: the sheet says so instead of showing an empty range.
 import { PLANT, type Core } from "../api/core.ts";
 import { share } from "../dashboard/today.ts";
+import { euroDigits } from "../range/format.ts";
 import { coveredSum, rollups, type Rolled, type RollupPeriod } from "../history/history.ts";
 
 export interface Measured {
@@ -17,7 +18,8 @@ export interface Measure {
   readonly device: number;
   readonly series: string;
   readonly unit: string;
-  readonly digits: number;
+  /** The digits a value is written with. */
+  readonly digits: (value: number) => number;
   /** A share, whose change is in percentage points. */
   readonly points?: boolean;
   /** What it is, where the sheet's title does not say it: a battery's "Entladen". */
@@ -52,13 +54,13 @@ function stopOf(rolled: readonly Rolled[], end: number): number | null {
 }
 
 /** How a series' rollups sum to a figure: its unit and digits, and what one unit integrates to. */
-type Sum = Readonly<{ unit: string; digits: number; per: number }>;
+type Sum = Readonly<{ unit: string; digits: (value: number) => number; per: number }>;
 
 /** A power series' energy in kWh. */
-const KWH: Sum = { unit: "kWh", digits: 1, per: 1000 };
+const KWH: Sum = { unit: "kWh", digits: () => 1, per: 1000 };
 
 /** A rate in EUR/h integrates to EUR (ADR 12). */
-const EUR: Sum = { unit: "€", digits: 2, per: 1 };
+const EUR: Sum = { unit: "€", digits: euroDigits, per: 1 };
 
 /** A series' integral over the span, in `sum`'s unit. */
 function integral(core: MeasureCore, device: number, series: string, sum: Sum): Measure {
@@ -95,7 +97,7 @@ function shareOf(core: MeasureCore, part: string, whole: string): Measure {
     // The record's edges and stops follow what the share is of.
     series: whole,
     unit: "%",
-    digits: 0,
+    digits: () => 0,
     points: true,
     read: async (from, to, period) => {
       const read = (series: string) =>

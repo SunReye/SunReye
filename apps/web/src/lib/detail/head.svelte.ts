@@ -71,13 +71,14 @@ const recorded = (at: At, first: number) =>
 const beforeOf = (at: At, first: number | null) =>
   first === null || recorded(at, first) ? null : beforeText(at.place.zone, first);
 
-/** The head of a range read; a share's change is in points. */
-const ready = (none: Omit<HeadView, "state">, got: Read, points: boolean): HeadView => ({
+/** The head of a range read, written with its value's digits; a share's change is in points. */
+const ready = (none: Omit<HeadView, "state">, got: Read, measure: Readonly<Measure>): HeadView => ({
   ...none,
   state: "ready",
   label: got.label,
   value: got.got.value,
-  versus: versus(got.cal, got.base, got.got.value, got.was.value, points),
+  digits: measure.digits(got.got.value ?? 0),
+  versus: versus(got.cal, got.base, got.got.value, got.was.value, measure.points === true),
   notes: notesOf({ ...got, stops: got.got.stops }),
 });
 
@@ -113,7 +114,7 @@ export class RangeHead {
       name: measure.name,
       label: input.route.label,
       unit: measure.unit,
-      digits: measure.digits,
+      digits: measure.digits(0),
       value: null,
       versus: "",
       notes: [],
@@ -128,9 +129,7 @@ export class RangeHead {
 
     const data = this.#data.current?.data;
 
-    return data?.key === key
-      ? ready(none, data, measure.points === true)
-      : { ...none, state: "loading" };
+    return data?.key === key ? ready(none, data, measure) : { ...none, state: "loading" };
   }
 
   retry = (): void => {

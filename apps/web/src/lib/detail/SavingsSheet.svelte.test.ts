@@ -58,6 +58,15 @@ test("the head states the euros saved over the range against the range before", 
   expect(head.element().textContent).toContain("€");
 });
 
+test("the head writes euros as the range's money does: whole from 100 €", async () => {
+  served.rolled = saved({ "2026-11-12": 123.4 });
+
+  const { head } = await sheetOf();
+
+  await expect.element(head.getByText("123", { exact: true })).toBeVisible();
+  expect(head.element().textContent).not.toContain("123,40");
+});
+
 test("the head's figure is the range's alone: today's euros are not repeated beside it", async () => {
   // The dashboard's day reads 2,10 € saved.
   served.rolled = saved({ "2026-11-12": 1.5 });
