@@ -1,8 +1,9 @@
-<!-- Settings › Display (ADR 21): this browser's theme, language, 3D quality (ADR 20), weather effects (ADR 23), low-power and haptics switches. -->
+<!-- Settings › Display (ADR 21): this browser's theme, language, 3D quality (ADR 20), weather effects (ADR 23), motion, low-power and haptics switches. -->
 <script lang="ts">
   import * as Item from "#lib/components/ui/item/index.js";
   import HapticsRow from "./HapticsRow.svelte";
   import LanguageRow from "./LanguageRow.svelte";
+  import MotionRow from "./MotionRow.svelte";
   import QualityRow from "./QualityRow.svelte";
   import ThemeRow from "./ThemeRow.svelte";
   import ToggleRow from "./ToggleRow.svelte";
@@ -17,6 +18,7 @@
     <LanguageRow />
     <QualityRow />
     <WeatherEffectsRow />
+    <MotionRow />
     <ToggleRow
       label={m.display_low_power()}
       hint={m.display_low_power_hint()}

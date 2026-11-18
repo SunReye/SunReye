@@ -1,5 +1,6 @@
 <!-- A settings row that picks one of a few: its name, a line of status, and a segmented control. -->
 <script lang="ts">
+  import type { Snippet } from "svelte";
   import * as Item from "#lib/components/ui/item/index.js";
   import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
 
@@ -9,6 +10,7 @@
     options,
     hint,
     onchange,
+    children,
   }: {
     label: string;
     value: string;
@@ -18,13 +20,17 @@
     hint?: string | undefined;
     /** The segment pressed; empty when it is the chosen one again. */
     onchange: (next: string) => void;
+    /** Under the hint: an action the status calls for. */
+    children?: Snippet;
   } = $props();
 </script>
 
 <Item.Root class="rounded-none border-0">
-  <Item.Content>
+  <!-- Too narrow for its status beside the segments, the row puts them on a line of their own. -->
+  <Item.Content class="min-w-48">
     <Item.Title class="text-[15px] font-normal">{label}</Item.Title>
     {#if hint}<Item.Description>{hint}</Item.Description>{/if}
+    {@render children?.()}
   </Item.Content>
   <Item.Actions>
     <ToggleGroup.Root
