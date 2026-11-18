@@ -4,6 +4,7 @@ import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { MOTION_SETTING } from "../motion/tier.ts";
 import { motion } from "../motion/tier.svelte.ts";
+import { quality } from "../scene/quality.svelte.ts";
 import DisplaySettings from "./DisplaySettings.svelte";
 
 // Settings › Display's Bewegung row (ADR 21 "Motion setting").
@@ -67,6 +68,24 @@ test("once the watch has stepped down, Neu messen brings the device back to full
   expect(motion.tier).toBe("full");
   expect(localStorage.getItem("sunreye.motion-strain")).toBeNull();
   await expect.element(screen.getByText("Auf diesem Gerät gemessen: Voll.")).toBeVisible();
+  await expect.element(screen.getByRole("button", { name: "Neu messen" })).not.toBeInTheDocument();
+});
+
+test("Neu messen is offered when strain stepped only Auto's 3D quality down", async () => {
+  const screen = await render(DisplaySettings);
+
+  quality.see("ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)");
+  const hide = quality.show();
+  let now = 3_600_000;
+
+  // One strained window: it takes Hoch to Mittel and leaves the tier.
+  for (let frame = 0; frame <= 120; frame++) motion.frame((now += 50));
+  hide();
+
+  await expect.element(screen.getByText("Auf diesem Gerät gemessen: Voll.")).toBeVisible();
+  await userEvent.click(screen.getByRole("button", { name: "Neu messen" }));
+
+  expect(localStorage.getItem("sunreye.3d-strain")).toBeNull();
   await expect.element(screen.getByRole("button", { name: "Neu messen" })).not.toBeInTheDocument();
 });
 

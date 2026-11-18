@@ -91,10 +91,17 @@ export class MotionStore {
     this.#sync();
   }
 
-  /** Neu messen: forgets the measured strain, so the device is on full and the watch starts over. */
+  /** Whether strain has stepped anything down: the tier, or Auto's 3D quality. */
+  get stepped(): boolean {
+    return this.#strain > 0 || this.#quality.stepped;
+  }
+
+  /** Neu messen: forgets both strains, so the device is on full, Auto draws from its start and
+   * the watch starts over. */
   remeasure(): void {
     this.#strain = 0;
     forget(STRAIN_KEY);
+    this.#quality.remeasure();
     this.#sync();
   }
 

@@ -2,7 +2,7 @@
  * The 3D quality as reactive state: the rune shell over `./quality`. The choice, the GPU last
  * seen and the levels strain has taken off Auto are kept per browser (ADR 20 Look).
  */
-import { read, write } from "../kept.ts";
+import { forget, read, write } from "../kept.ts";
 import type { MotionTier } from "../motion/tier.ts";
 import {
   capable,
@@ -68,6 +68,17 @@ export class QualityStore {
   /** Whether a strain measured on `tier` would take a level off the drawing. */
   relieves(tier: MotionTier): boolean {
     return this.#shown > 0 && relief(this.#choice, this.#device(tier));
+  }
+
+  /** Whether strain has taken a level off Auto. */
+  get stepped(): boolean {
+    return this.#steps > 0;
+  }
+
+  /** Neu messen (ADR 21): forgets the levels strain took off Auto. */
+  remeasure(): void {
+    this.#steps = 0;
+    forget(STEPS);
   }
 
   /** Takes a level off Auto for a strain measured on `tier`; false when the tier must give. */

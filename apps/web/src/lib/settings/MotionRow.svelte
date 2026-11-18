@@ -46,7 +46,7 @@
   hint={moving}
   onchange={choose}
 >
-  {#if measuring && motion.measured !== "full"}
+  {#if measuring && motion.stepped}
     <Button variant="link" size="xs" class="self-start px-0" onclick={() => motion.remeasure()}>
       {m.display_motion_remeasure()}
     </Button>

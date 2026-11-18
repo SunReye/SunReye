@@ -264,3 +264,32 @@ test("reduced motion and the low-power switch force still over a chosen tier", a
 
   expect(new MotionStore().tier).toBe("still");
 });
+
+test("Neu messen also forgets the levels strain took off Auto's 3D quality", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  jank();
+  const quality = new QualityStore();
+
+  quality.see("ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)");
+  const hide = quality.show();
+  const motion = new MotionStore(quality);
+  const release = motion.watch();
+
+  expect(motion.stepped).toBe(false);
+  vi.advanceTimersByTime(4000);
+  await vi.waitFor(() => {
+    expect(quality.look(motion.tier).level).toBe("medium");
+  });
+  release();
+  hide();
+
+  // The tier was left alone: only the drawing stepped down.
+  expect(motion.measured).toBe("full");
+  expect(motion.stepped).toBe(true);
+
+  motion.remeasure();
+
+  expect(quality.look(motion.tier).level).toBe("high");
+  expect(localStorage.getItem("sunreye.3d-strain")).toBeNull();
+  expect(motion.stepped).toBe(false);
+});
