@@ -9,7 +9,7 @@ use sunreye_profile::{RoleKind, Unit};
 use super::devices::{delete, gateway};
 use super::{Core, get, json, with_cookie};
 use crate::bus::{DeviceId, Reading};
-use crate::storage::{Backfill, Held, Issue, Policy};
+use crate::storage::{Backfill, Held, Issue, Keep, Policy};
 use crate::{plant, spot, tariff, weather};
 
 /// 2026-08-26 12:00 UTC, on an hour.
@@ -132,6 +132,7 @@ async fn a_device_without_stored_history_is_not_listed() {
         issued: at(0),
         step: 1.0,
         values: vec![(at(3600), 500.0)],
+        keep: Keep::Every,
     };
     core.storage
         .forecast(weather::DEVICE, forecast, issue)

@@ -154,6 +154,41 @@ async fn a_refresh_stores_the_weather_in_its_steps_and_hourly_quantities_at_whol
     }
 }
 
+/// No one asks how a weather forecast changed (ADR 15): a target keeps its latest issue alone.
+#[tokio::test]
+async fn a_refresh_replaces_the_earlier_forecast_of_each_target() {
+    let dir = tempfile::tempdir().unwrap();
+    let bus = Bus::default();
+    let storage =
+        Storage::open(&dir.path().join("history.sqlite"), UNIX_EPOCH, "UTC", &bus).unwrap();
+    let (fake, _calls) = Fake::new(vec![slot(NOON, 200.8), slot(NOON + 900, 210.0)], &[]);
+    Weather::new(fake, DEVICE, &bus)
+        .refresh(&storage, BERLIN, at(NOON))
+        .await
+        .unwrap();
+    let (fake, _calls) = Fake::new(vec![slot(NOON, 200.8), slot(NOON + 900, 230.0)], &[]);
+
+    Weather::new(fake, DEVICE, &bus)
+        .refresh(&storage, BERLIN, at(NOON + 60))
+        .await
+        .unwrap();
+
+    let ghi = storage
+        .forecasts(
+            DEVICE,
+            bus.intern("weather.ghi", None),
+            at(NOON),
+            at(NOON + 3600),
+        )
+        .await
+        .unwrap();
+    let issues: Vec<_> = ghi.iter().map(|f| (f.target, f.issued)).collect();
+    assert_eq!(
+        issues,
+        [(at(NOON), at(NOON)), (at(NOON + 900), at(NOON + 60))]
+    );
+}
+
 /// The forecast of `role` over the hour from noon, by target in seconds, rounded to 1e-6.
 async fn forecast(storage: &Storage, bus: &Bus, role: &str) -> Vec<(u64, f64)> {
     let series = bus.intern(role, None);

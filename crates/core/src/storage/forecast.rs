@@ -2,26 +2,42 @@
 
 use rusqlite::{Connection, Transaction, params};
 
+use super::Keep;
 use super::encode::Tick;
 
 /// An hour in ticks.
 const HOUR: Tick = 36_000;
 
 /// Writes one issue's points as `(target, value)` from the start of the issue's hour, so its
-/// hour is whole, then keeps only the latest issue of each target hour that has passed.
+/// hour is whole, keeping the issues `keep` asks for.
 pub fn write(
     tx: &Transaction<'_>,
-    device: u32,
-    series: i64,
+    (device, series): (u32, i64),
     issued: Tick,
+    points: impl Iterator<Item = (Tick, i64)>,
+    keep: Keep,
+) -> rusqlite::Result<()> {
+    let hour = issued - issued.rem_euclid(HOUR);
+    let points = points.filter(|(target, _)| *target >= hour);
+    match keep {
+        Keep::Every => every(tx, (device, series), (issued, hour), points),
+        Keep::Latest => latest(tx, (device, series), issued, points),
+    }
+}
+
+/// Adds the issue beside the earlier ones, then keeps only the latest issue of each target hour
+/// that has passed.
+fn every(
+    tx: &Transaction<'_>,
+    (device, series): (u32, i64),
+    (issued, hour): (Tick, Tick),
     points: impl Iterator<Item = (Tick, i64)>,
 ) -> rusqlite::Result<()> {
     let mut insert = tx.prepare_cached(
         "INSERT INTO forecast (device, series, target, issued, value) VALUES (?1, ?2, ?3, ?4, ?5)
          ON CONFLICT DO UPDATE SET value = excluded.value",
     )?;
-    let hour = issued - issued.rem_euclid(HOUR);
-    for (target, value) in points.filter(|(target, _)| *target >= hour) {
+    for (target, value) in points {
         insert.execute(params![device, series, target, issued, value])?;
     }
     tx.execute(
@@ -35,6 +51,33 @@ pub fn write(
          )",
         params![device, series, hour, HOUR],
     )?;
+    Ok(())
+}
+
+/// Makes each point its target's only row. A changed value is updated in place and an unchanged
+/// one is left alone, so a forecast that holds writes no page.
+fn latest(
+    tx: &Transaction<'_>,
+    (device, series): (u32, i64),
+    issued: Tick,
+    points: impl Iterator<Item = (Tick, i64)>,
+) -> rusqlite::Result<()> {
+    let mut update = tx.prepare_cached(
+        "UPDATE OR REPLACE forecast SET issued = ?4, value = ?5
+         WHERE device = ?1 AND series = ?2 AND target = ?3 AND value <> ?5",
+    )?;
+    let mut insert = tx.prepare_cached(
+        "INSERT INTO forecast (device, series, target, issued, value)
+         SELECT ?1, ?2, ?3, ?4, ?5 WHERE NOT EXISTS (
+           SELECT 1 FROM forecast WHERE device = ?1 AND series = ?2 AND target = ?3
+         )",
+    )?;
+    for (target, value) in points {
+        let row = params![device, series, target, issued, value];
+        if update.execute(row)? == 0 {
+            insert.execute(row)?;
+        }
+    }
     Ok(())
 }
 

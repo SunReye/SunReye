@@ -19,7 +19,7 @@ use tokio::time::Instant;
 
 use crate::bus::{Bus, DeviceId, Series, SeriesId};
 use crate::location::Location;
-use crate::storage::{self, ChangePoint, Issue, Policy, Storage};
+use crate::storage::{self, ChangePoint, Issue, Keep, Policy, Storage};
 use crate::utc_day;
 
 #[cfg(test)]
@@ -395,6 +395,7 @@ impl<P: Provider> Weather<P> {
                 issued,
                 step: quantity.step,
                 values,
+                keep: Keep::Latest,
             };
             storage.forecast(self.device, series, issue).await?;
         }

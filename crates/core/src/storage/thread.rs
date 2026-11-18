@@ -71,6 +71,7 @@ pub(super) const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0033.sql"),
     include_str!("migrations/0034.sql"),
     include_str!("migrations/0035.sql"),
+    include_str!("migrations/0036.sql"),
 ];
 
 /// The schema version this build writes: the number of migrations.
@@ -807,7 +808,7 @@ impl Store {
             .iter()
             .filter_map(|&(target, value)| Some((tick(target)?, quantise(value, issue.step)?)));
         let tx = self.db.transaction()?;
-        forecast::write(&tx, device.0, series, issued, points)?;
+        forecast::write(&tx, (device.0, series), issued, points, issue.keep)?;
         tx.commit()?;
         Ok(())
     }

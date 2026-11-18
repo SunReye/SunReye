@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 
 use super::{Core, get, json, problem, with_cookie};
 use crate::bus::DeviceId;
-use crate::storage::Issue;
+use crate::storage::{Issue, Keep};
 
 /// 2026-11-09 11:00 UTC, on an hour.
 const T0: u64 = 1_794_222_000;
@@ -29,6 +29,7 @@ impl Core {
             issued: at(issued),
             step: 1.0,
             values: values.iter().map(|&(t, v)| (at(t), v)).collect(),
+            keep: Keep::Every,
         };
         self.storage.forecast(DEVICE, series, issue).await.unwrap();
     }
