@@ -65,7 +65,7 @@ async function endsAt(
   return endsOf(head, tail);
 }
 
-/** The state of charge by band, the round-trip efficiency and the cycles; null unread. */
+/** The state of charge by band and its mean, the round-trip efficiency and the cycles; null unread. */
 export const BATTERY_RANGE = {
   load: async (input, from, to, now) => {
     const { core, route } = input();
@@ -110,6 +110,7 @@ export const BATTERY_RANGE = {
 
     return {
       bands,
+      mean: meanOf("battery.soc", soc),
       efficiency: roundTrip({ charged, discharged, soc: got.data.ends, capacity }),
       cycles: cyclesOf(discharged, capacity),
     };

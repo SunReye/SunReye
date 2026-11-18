@@ -21,7 +21,7 @@
     range: Readonly<{
       failed: boolean;
       retry: () => void;
-      view: Readonly<{ bands: readonly Band[] }> | null;
+      view: Readonly<{ bands: readonly Band[]; mean: number | null }> | null;
     }>;
     analytics: Analytics;
     input: AnalyticsInput;
@@ -41,7 +41,12 @@
   />
   <RangeState failed={range.failed} onretry={range.retry}>
     {#if range.view}
-      <SocLine bands={range.view.bands} bind:read />
+      <SocLine
+        bands={range.view.bands}
+        mean={range.view.mean}
+        label={input.route.label}
+        bind:read
+      />
     {:else}
       <Skeleton class="h-20" role="status" aria-label={m.loading()} />
     {/if}

@@ -117,6 +117,16 @@ test("the state of charge runs as a line under the power, and reads where the po
   await expect.element(soc.getByText("–", { exact: true })).toBeVisible();
 });
 
+test("at rest the state of charge is titled by its mean over the range", async () => {
+  served.rolled = plant(DAY);
+
+  const { sheet } = await sheetOf();
+  const soc = sheet.getByRole("group", { name: "Ladezustand" });
+
+  await expect.element(soc.getByText("Ø Ladezustand · Heute")).toBeVisible();
+  await expect.element(soc.getByText("50 %")).toBeVisible();
+});
+
 test("a range whose battery fails to read says so under the power, with a retry", async () => {
   served.rolled = (a) =>
     a.series === "battery.soc"
