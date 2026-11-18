@@ -3,7 +3,7 @@
   "id": "evcc",
   "name": "Loadpoint",
   "manufacturer": "EVCC",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "requires": [
     "mqtt",
     "u16",
@@ -52,7 +52,7 @@
     {
       "key": "limitSoc",
       "role": "ev.limit.soc",
-      "topic": "loadpoints/{address}/limitSoc"
+      "topic": "loadpoints/{address}/effectiveLimitSoc"
     },
     {
       "key": "batteryBoost",
