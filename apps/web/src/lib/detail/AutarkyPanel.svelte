@@ -22,10 +22,11 @@
     AUTARKY_RANGE,
   );
 
-  // Read once per plant day, not per range.
-  const month = $derived(
-    monthAutarky(input.core, input.route.place.zone, input.route.place.cal.today),
-  );
+  // Read once per plant day, not per range, nor as the sheet's layout or readings land.
+  const core = $derived(input.core);
+  const zone = $derived(input.route.place.zone);
+  const today = $derived(input.route.place.cal.today);
+  const month = $derived(monthAutarky(core, zone, today));
 </script>
 
 <RangeState failed={range.failed} onretry={range.retry}>

@@ -2,6 +2,7 @@
 // range before, and its empty, loading, partial and error states.
 import { afterEach, beforeEach, expect, test } from "vitest";
 import "../../app.css";
+import { settled } from "./flows.harness.ts";
 import {
   asked,
   PLANT,
@@ -29,24 +30,6 @@ const pv =
 
     return Response.json({ points, period: "hour" });
   };
-
-/** Until no read has been asked for over one poll. */
-async function settled(): Promise<void> {
-  let seen = -1;
-
-  await expect
-    .poll(
-      () => {
-        const still = seen === asked.length;
-
-        seen = asked.length;
-
-        return still;
-      },
-      { interval: 100 },
-    )
-    .toBe(true);
-}
 
 /** The sheet named `name` and its head. */
 async function sheetOf(id: string, name: string, route = "") {
