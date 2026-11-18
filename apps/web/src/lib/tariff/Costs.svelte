@@ -12,7 +12,7 @@
   import { money } from "../range/format.ts";
   import { RangeData } from "../range/range-data.svelte.ts";
   import type { RangeRoute } from "../range/route.svelte.ts";
-  import { costHours } from "./cost-hours.ts";
+  import { costsOver } from "./cost-hours.ts";
   import { COST_CHARTS, costBands } from "./costs.ts";
 
   let {
@@ -27,11 +27,11 @@
 
   const laid = $derived(COST_CHARTS[chart]());
 
-  // Costs come by the day, so a day is one band; the savings sheet's day reads the tariff's hours.
+  // Costs come by the day, so a day is one band; the savings sheet reads a range of hours, as a day
+  // or a brush on one, by the tariff's hours.
   const data = new RangeData(
     () => route,
-    (from, to) =>
-      laid.hourly && route.range.kind === "day" ? costHours(core, from, to) : core.costs(from, to),
+    (from, to) => costsOver(core, laid.hourly, route.range, [from, to]),
     // A chart keeps its kind for its life.
     untrack(() => COST_CHARTS[chart]().hourly) ? "hour" : "day",
   );

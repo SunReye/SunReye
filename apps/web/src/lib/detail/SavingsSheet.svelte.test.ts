@@ -157,6 +157,24 @@ test("a day's chart reads its savings by the hour, from the tariff's rates", asy
   await expect.element(chart.getByText("0,50 €")).toBeVisible();
 });
 
+test("a range of hours, such as a brush on the day leaves, reads by the hour too", async () => {
+  served.rolled = hourly;
+
+  const { sheet } = await sheetOf("range=custom&from=2026-11-12T08&to=2026-11-12T12");
+  const chart = sheet.getByRole("region", { name: "Verlauf" });
+  const plot = chart.element().querySelector<HTMLElement>("[data-scrub]")!;
+
+  await expect.element(chart.getByText("vermiedener Bezug")).toBeVisible();
+
+  const box = plot.getBoundingClientRect();
+
+  // 10:00 is the third of its four hours.
+  await userEvent.hover(plot, { position: { x: (box.width * 2.5) / 4, y: box.height / 2 } });
+
+  await expect.element(chart.getByText("10:00–11:00 Uhr")).toBeVisible();
+  await expect.element(chart.getByText("1,00 €")).toBeVisible();
+});
+
 test("without a tariff the sheet says nothing can be saved yet, and the admin is shown where to set one", async () => {
   served.live = LIVE;
 

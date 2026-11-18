@@ -4,7 +4,8 @@
 import { TARIFF } from "../api/computed-devices.ts";
 import type { Core } from "../api/core.ts";
 import type { CostDays } from "../api/tariff.ts";
-import { rollups, type Rolled } from "../history/history.ts";
+import { periodOf, rollups, type Rolled } from "../history/history.ts";
+import type { Range } from "../range/range.ts";
 
 const H = 3_600_000;
 
@@ -13,7 +14,7 @@ const eurosAt = (rolled: readonly Rolled[], start: number) =>
   rolled.find((r) => r.start === start)?.integral ?? 0;
 
 /** What was paid, earned and saved in each hour from `from` to before `to` that has a rollup. */
-export async function costHours(
+async function costHours(
   core: Readonly<Pick<Core, "statistics">>,
   from: Readonly<Date>,
   to: Readonly<Date>,
@@ -46,4 +47,19 @@ export async function costHours(
     days,
     total: { paid: sum("paid"), earned: sum("earned"), saved: sum("saved"), standing: 0 },
   };
+}
+
+/**
+ * A chart's costs over `range`, from `from` to before `to`: by the tariff's hours for a chart that
+ * reads hours on a range read by the hour, as a day or a brush on one; else the core's days.
+ */
+export function costsOver(
+  core: Readonly<Pick<Core, "costs" | "statistics">>,
+  hourly: boolean,
+  range: Readonly<Range>,
+  span: readonly [Readonly<Date>, Readonly<Date>],
+): ReturnType<Core["costs"]> {
+  const [from, to] = span;
+
+  return hourly && periodOf(range) === "hour" ? costHours(core, from, to) : core.costs(from, to);
 }
