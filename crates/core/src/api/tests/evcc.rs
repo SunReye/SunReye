@@ -19,6 +19,7 @@ use crate::mqtt::fake::{self, Fake, Published};
 
 const MODE: &str = "evcc/loadpoints/1/mode";
 const LIMIT: &str = "evcc/loadpoints/1/limitSoc";
+const EFFECTIVE: &str = "evcc/loadpoints/1/effectiveLimitSoc";
 const BOOST: &str = "evcc/loadpoints/1/batteryBoost";
 
 /// How EVCC answers a write: the keys it applies and republishes as retained state.
@@ -29,8 +30,9 @@ enum Evcc {
     IgnoresLimit,
 }
 
-/// A core signed in, a broker holding EVCC's retained state for loadpoint 1, and the loadpoint
-/// with its writes on and every setting enabled.
+/// A core signed in, a broker holding EVCC's retained state for loadpoint 1, whose own limit is
+/// unset so the vehicle's 80 % applies, and the loadpoint with its writes on and every setting
+/// enabled.
 struct Loadpoint {
     core: Core,
     set_cookie: String,
@@ -45,7 +47,12 @@ impl Loadpoint {
         let dir = tempfile::tempdir().unwrap();
         let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
         let mut broker = fake::serve(0).await;
-        for (topic, payload) in [(MODE, mode), (LIMIT, "80"), (BOOST, "false")] {
+        for (topic, payload) in [
+            (MODE, mode),
+            (LIMIT, "0"),
+            (EFFECTIVE, "80"),
+            (BOOST, "false"),
+        ] {
             broker.retain(topic, payload);
         }
         let (relay, published) = mpsc::unbounded_channel();
@@ -136,6 +143,10 @@ async fn answer(
         };
         if applies {
             broker.retain(state, &request.payload);
+        }
+        // A limit set on the loadpoint is the one EVCC charges to.
+        if applies && state == LIMIT {
+            broker.retain(EFFECTIVE, &request.payload);
         }
         relay.send(request).ok();
     }

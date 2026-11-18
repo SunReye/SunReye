@@ -25,7 +25,7 @@ export default defineProfile({
     { key: "connected", role: "ev.connected", topic: "loadpoints/{address}/connected" },
     { key: "charging", role: "ev.charging", topic: "loadpoints/{address}/charging" },
     { key: "mode", role: "ev.mode", topic: "loadpoints/{address}/mode", enum: MODES },
-    { key: "limitSoc", role: "ev.limit.soc", topic: "loadpoints/{address}/limitSoc" },
+    { key: "limitSoc", role: "ev.limit.soc", topic: "loadpoints/{address}/effectiveLimitSoc" },
     {
       key: "batteryBoost",
       role: "ev.battery.boost",
