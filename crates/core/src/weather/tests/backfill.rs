@@ -65,6 +65,27 @@ impl Plant {
     /// Weather history as stored before the upgrade: irradiance only, from 2026-01-01 to before
     /// 2026-03-10; then the learner's first day after it, 2026-03-10, with the new quantities.
     async fn upgraded() -> Self {
+        let plant = Self::irradiance_only().await;
+        let to = midnight(date(2026, 3, 10));
+        let learner = Slot {
+            target: to,
+            ghi: 60.0,
+            detail: Detail {
+                code: Some(61.0),
+                ..Detail::default()
+            },
+            ..settled()[0]
+        };
+        let day = date(2026, 3, 10);
+        Past::new(FakeArchive::new(vec![learner]).0, DEVICE, &plant.bus)
+            .fetch(&plant.storage, BERLIN, day, day)
+            .await
+            .unwrap();
+        plant
+    }
+
+    /// Weather history as stored before the upgrade, with no day fetched since.
+    async fn irradiance_only() -> Self {
         let plant = Self::open(tempfile::tempdir().unwrap());
         let (from, to) = (midnight(date(2026, 1, 1)), midnight(date(2026, 3, 10)));
         let ghi = plant.bus.intern("weather.ghi", None);
@@ -84,20 +105,6 @@ impl Plant {
         plant
             .storage
             .replace(DEVICE, ghi, from..to + HOUR, points)
-            .await
-            .unwrap();
-        let learner = Slot {
-            target: to,
-            ghi: 60.0,
-            detail: Detail {
-                code: Some(61.0),
-                ..Detail::default()
-            },
-            ..settled()[0]
-        };
-        let day = date(2026, 3, 10);
-        Past::new(FakeArchive::new(vec![learner]).0, DEVICE, &plant.bus)
-            .fetch(&plant.storage, BERLIN, day, day)
             .await
             .unwrap();
         plant
@@ -158,6 +165,24 @@ async fn it_fetches_the_span_weather_history_covers_in_30_day_chunks_newest_firs
     assert_eq!(plant.at("weather.ghi", upgrade - HOUR).await, Some(50.0));
     assert_eq!(plant.at("weather.code", upgrade).await, Some(61.0));
     assert_eq!(plant.at("weather.ghi", upgrade).await, Some(60.0));
+}
+
+#[tokio::test]
+async fn with_no_day_fetched_since_the_upgrade_the_new_quantities_end_where_weather_history_does()
+{
+    let plant = Plant::irradiance_only().await;
+    let (archive, _calls) = FakeArchive::new(settled());
+    let (_location, berlin) = watch::channel(Some(BERLIN));
+
+    Past::new(archive, DEVICE, &plant.bus)
+        .backfill(&plant.storage, berlin)
+        .await;
+
+    let end = midnight(date(2026, 3, 10));
+    assert_eq!(plant.at("weather.code", end - HOUR).await, Some(3.0));
+    assert_eq!(plant.at("weather.humidity", end - HOUR).await, Some(80.0));
+    assert_eq!(plant.at("weather.code", end).await, None);
+    assert_eq!(plant.at("weather.humidity", end + 24 * HOUR).await, None);
 }
 
 #[tokio::test]
