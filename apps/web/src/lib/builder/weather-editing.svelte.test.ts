@@ -65,3 +65,39 @@ test("the builder shows the instant's fog until a block is picked to edit, and l
 
   lighted.mockRestore();
 });
+
+test("a trial weather from the weather button stands in for the stored one until the stored is picked again", async () => {
+  const lighted = vi.spyOn(Studio.prototype, "light");
+  const weather = () => lighted.mock.lastCall?.[3];
+
+  await render(Builder, {
+    pv,
+    core: connect(snowedIn),
+    start: house(),
+    moduleTypes: [MODULE],
+    devices: DEVICES,
+  });
+
+  await expect.poll(weather, { timeout: 15_000 }).toMatchObject({ fog: 1, snow: true });
+
+  await page.getByRole("button", { name: "Wetter" }).click();
+  await page.getByRole("menuitemradio", { name: "Gewitter" }).click();
+  // The pick closes the menu.
+  await expect.element(page.getByRole("menu")).not.toBeInTheDocument();
+
+  await expect.poll(weather, { timeout: 15_000 }).toMatchObject({
+    fog: 0,
+    wet: 1,
+    snow: false,
+    thunder: true,
+    falling: { kind: "rain" },
+  });
+
+  await page.getByRole("button", { name: "Wetter" }).click();
+  await expect.element(page.getByRole("menuitemradio", { name: "Gewitter" })).toBeChecked();
+  await page.getByRole("menuitemradio", { name: "Gespeichert" }).click();
+
+  await expect.poll(weather, { timeout: 15_000 }).toMatchObject({ fog: 1, snow: true });
+
+  lighted.mockRestore();
+});

@@ -5,6 +5,7 @@ import { load, shareAt, spanOf, wattsAt, type Day, type Reading } from "./moment
 import { sunAt, type Point } from "./pv.ts";
 import { exact, sceneWeather, type SceneWeather } from "../scene/weather.ts";
 import { readWeather, weatherAt, type Weather, type WeatherRead } from "../weather/weather.ts";
+import { TRIAL_WEATHER, type Trial } from "./trials.ts";
 
 const MINUTE = 60_000;
 
@@ -15,6 +16,9 @@ export class Moment {
 
   /** The day's production once read, by string position. */
   production = $state.raw<Day>();
+
+  /** A trial weather in place of the stored one (ADR 23 "Builder"); null for the stored. */
+  trial = $state<Trial | null>(null);
 
   /** The day's stored weather once read, and when: the scene's sky. */
   #weather = $state.raw<readonly [WeatherRead, number]>();
@@ -71,8 +75,10 @@ export class Moment {
     });
   }
 
-  /** The weather at the instant; nothing of it without weather for it. */
+  /** The trial, or the weather at the instant; nothing of it without weather for it. */
   get weather(): Weather {
+    if (this.trial !== null) return TRIAL_WEATHER[this.trial];
+
     const [read, asOf] = this.#weather ?? [];
 
     return weatherAt(read, this.at, asOf);
