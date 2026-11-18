@@ -16,3 +16,12 @@ export function write(key: string, value: string): void {
     // Kept for this session only.
   }
 }
+
+/** Unset: the key reads as never kept. */
+export function forget(key: string): void {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Forgotten for this session only.
+  }
+}

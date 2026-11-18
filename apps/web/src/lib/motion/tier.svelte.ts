@@ -4,7 +4,7 @@
  * setting offers no still, and the low-power switch forces `still`.
  * The measured strain is kept per device, so a slow wall tablet starts lean the next day.
  */
-import { read, write } from "../kept.ts";
+import { forget, read, write } from "../kept.ts";
 import { MediaQuery } from "svelte/reactivity";
 import { quality as sceneQuality, type QualityStore } from "../scene/quality.svelte.ts";
 import {
@@ -94,7 +94,7 @@ export class MotionStore {
   /** Neu messen: forgets the measured strain, so the device is on full and the watch starts over. */
   remeasure(): void {
     this.#strain = 0;
-    write(STRAIN_KEY, "0");
+    forget(STRAIN_KEY);
     this.#sync();
   }
 

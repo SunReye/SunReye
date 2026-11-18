@@ -65,7 +65,7 @@ test("once the watch has stepped down, Neu messen brings the device back to full
   await userEvent.click(screen.getByRole("button", { name: "Neu messen" }));
 
   expect(motion.tier).toBe("full");
-  expect(localStorage.getItem("sunreye.motion-strain")).toBe("0");
+  expect(localStorage.getItem("sunreye.motion-strain")).toBeNull();
   await expect.element(screen.getByText("Auf diesem Gerät gemessen: Voll.")).toBeVisible();
   await expect.element(screen.getByRole("button", { name: "Neu messen" })).not.toBeInTheDocument();
 });

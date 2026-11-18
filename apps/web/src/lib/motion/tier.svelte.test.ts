@@ -241,6 +241,7 @@ test("Neu messen forgets the strain: the tier is full again and the watch measur
 
   expect(motion.tier).toBe("full");
   expect(motion.measured).toBe("full");
+  expect(localStorage.getItem("sunreye.motion-strain")).toBeNull();
   expect(new MotionStore().tier).toBe("full");
 
   vi.advanceTimersByTime(4000);
