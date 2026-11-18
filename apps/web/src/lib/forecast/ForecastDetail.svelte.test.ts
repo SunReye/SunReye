@@ -145,7 +145,18 @@ test("the pointer over the chart reads the quarter hour under it", async () => {
   // 11:15, the 46th quarter of 96.
   await userEvent.hover(slots, { position: { x: (box.width * 45.5) / 96, y: box.height / 2 } });
 
-  await expect.poll(() => read()?.replaceAll(/\s+/gu, " ").trim()).toBe("1,2 kW 2,0 kW 11:15");
+  await expect.poll(() => read()?.replaceAll(/\s+/gu, " ").trim()).toBe("1,2 kW 11:15");
+
+  // The forecast reads on a line of its own, under the measured power's.
+  const header = [...slots.querySelectorAll<HTMLElement>("[data-row-line]")];
+
+  expect(header.map((line) => line.innerText.replaceAll(/\s+/gu, " ").trim())).toEqual([
+    "Leistung 1,2 kW 11:15",
+    "Prognose 2,0 kW",
+  ]);
+  expect(header[1]!.getBoundingClientRect().top).toBeGreaterThanOrEqual(
+    header[0]!.getBoundingClientRect().bottom,
+  );
   // One rule, at the quarter hour's middle.
   expect(
     Number(document.querySelector<HTMLElement>("[data-read]")?.style.left.replace("%", "")),
