@@ -1,6 +1,11 @@
 import { expect, test } from "bun:test";
 import type { Day } from "../dashboard/day.ts";
-import { facts, figure, formatFigure, parseFigure } from "./figures.ts";
+import { formatFigure, parseFigure } from "./figures.ts";
+import { figure, sheetOf } from "./sheet-of.ts";
+
+/** What sheet `id` leads with and states of the day, as the sheet reads them. */
+const facts = (id: string, day?: Day, spot?: number) =>
+  sheetOf(id, [])?.facts?.(day, spot) ?? { lead: null, stats: [] };
 
 const at = (time: string) => `2026-11-12T${time}:00Z`;
 
@@ -43,9 +48,9 @@ const DAY: Day = {
   money: { paid: 0.19, earned: 1.39, saved: 5.93, standing: 0 },
 };
 
-test("a day figure's sheet leads with today's energy and shows the plant's live power", () => {
-  expect(figure("production")).toMatchObject({ today: "production", node: "pv", chart: "pv" });
-  expect(figure("purchase")).toMatchObject({ today: "purchase", node: "grid" });
+test("a day figure's sheet shows the plant's live power", () => {
+  expect(figure("production")).toMatchObject({ node: "pv", chart: "pv" });
+  expect(figure("purchase")).toMatchObject({ node: "grid" });
 });
 
 test("a node's sheet is that node's, signed figures diverging", () => {
@@ -79,14 +84,13 @@ test("the forecast's energy stands in its day tabs, not in the sheet's head", ()
   expect(figure("forecast")?.chart).toBe("forecast");
 });
 
-test("money figures read in euros", () => {
-  expect(facts("saved", DAY).lead).toMatchObject({ value: 5.93, unit: "€" });
-  expect(facts("feedIn", DAY).stats[0]).toMatchObject({ value: 1.39, unit: "€" });
+test("the savings, flow and production sheets read their range instead of today", () => {
+  for (const id of ["saved", "consumption", "feedIn", "purchase", "production"])
+    expect(facts(id, DAY)).toEqual({ lead: null, stats: [] });
 });
 
 test("before the day is read every figure is unknown, not zero", () => {
   expect(facts("price").lead).toMatchObject({ value: null });
-  expect(facts("autarky").lead).toMatchObject({ value: null });
 });
 
 test("grid figures diverge around zero: import above, export below", () => {
@@ -114,8 +118,9 @@ test("an id naming no figure parses to none", () => {
     expect(parseFigure(id)).toBeNull();
 });
 
-test("the day's peak is a power in watts, written by the shared power format", () => {
-  const peak = facts("production", DAY).stats.find((f) => f.label === "Spitze");
-
-  expect(peak).toMatchObject({ value: 8600, unit: "W" });
+test("the weather leads with now's temperature; its facts stand in its day tabs", () => {
+  expect(facts("weather", DAY)).toEqual({
+    lead: { label: "jetzt", value: 21, unit: "°C", digits: 0 },
+    stats: [],
+  });
 });

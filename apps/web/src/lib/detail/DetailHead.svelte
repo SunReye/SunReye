@@ -1,11 +1,12 @@
-<!-- A detail sheet's header: the figure's name, today's energy, its live power or its lead fact. -->
+<!-- A detail sheet's header: the figure's name, its figure over the range, then on the right a
+  second figure over the range, its live power or its lead fact. -->
 <script lang="ts">
-  import type { Day } from "../dashboard/day.ts";
-  import { m } from "../paraglide/messages.js";
+  import BesideFigure from "./BesideFigure.svelte";
   import DetailPower from "./DetailPower.svelte";
   import FactValue from "./FactValue.svelte";
   import type { Fact, Figure } from "./figures.ts";
-  import Quantity from "./Quantity.svelte";
+  import type { HeadView } from "./head.svelte.ts";
+  import HeadFigure from "./HeadFigure.svelte";
   import type { NodeReadings } from "./readings.ts";
 
   let {
@@ -13,14 +14,18 @@
     spec,
     node,
     status,
-    day,
+    head,
+    beside,
     lead,
   }: {
     title: string;
     spec: Figure;
     node: NodeReadings | null;
     status: "loading" | "live" | "stopped";
-    day: Day | undefined;
+    /** The figure over the sheet's range; null for a sheet that reads none. */
+    head: HeadView | null;
+    /** A second figure over the range, in place of the live power; null for none. */
+    beside: HeadView | null;
     lead: Fact | null;
   } = $props();
 
@@ -38,22 +43,15 @@
     <span class="line-clamp-2 min-w-0 break-words">{title}</span>
   </h2>
   <!-- A sheet whose days head with their own figures has its name alone. -->
-  {#if spec.today || spec.node !== null || lead}
+  {#if head || spec.node !== null || lead}
     <div class="flex items-end justify-between gap-4">
-      {#if spec.today}
-        <p class="flex flex-col">
-          <span class="text-4xl leading-none font-semibold tracking-tight"
-            ><Quantity
-              value={day?.today[spec.today] ?? null}
-              unit="kWh"
-              unitClass="text-lg font-medium text-muted-foreground"
-            /></span
-          >
-          <span class="mt-1 text-xs text-muted-foreground">{m.detail_today()}</span>
-        </p>
+      {#if head}
+        <HeadFigure view={head} estimated={node?.leadEstimated ?? false} />
       {/if}
-      {#if spec.node !== null}
-        <DetailPower {spec} {node} loading={status === "loading"} />
+      {#if beside}
+        <BesideFigure view={beside} />
+      {:else if spec.node !== null}
+        <DetailPower {spec} {node} loading={status === "loading"} second={head !== null} />
       {:else if lead}
         <p class="flex flex-col">
           <FactValue fact={lead} big />

@@ -8,7 +8,7 @@
   import { planned, plannedEnergy, type Planned } from "../forecast/forecast.ts";
   import { m } from "../paraglide/messages.js";
   import BandChart from "../range/BandChart.svelte";
-  import { isSigned, keyOf, sidesOf } from "../roles.ts";
+  import { describe, isSignedFlow, keyOf, sidesOf } from "../roles.ts";
   import { bandsOf } from "../range/fill.ts";
   import { kwh, num } from "../range/format.ts";
   import { RangeData } from "../range/range-data.svelte.ts";
@@ -21,6 +21,8 @@
     series,
     route,
     forecast = [],
+    estimated = false,
+    onread,
   }: {
     core: Readonly<Pick<Core, "statistics" | "forecasts">>;
     device: number;
@@ -28,6 +30,10 @@
     route: RangeRoute;
     /** The devices whose `series` forecasts add up to what this series expects. */
     forecast?: readonly number[];
+    /** The series is computed, not measured, so its values carry ≈ (ADR 17). */
+    estimated?: boolean;
+    /** Told the band being read, for a chart that reads along. */
+    onread?: (index: number | null) => void;
   } = $props();
 
   const data = new RangeData(
@@ -48,13 +54,23 @@
     },
   );
 
+  /** How a series' figures are written, and what one of its units is worth in them. */
+  function readsOf(s: string) {
+    if (isPower(s)) return { fmt: kwh, unit: "kWh", per: 1 };
+
+    if (s.startsWith("price."))
+      return { fmt: (v: number) => `${num(v, 2)} ct/kWh`, unit: "ct/kWh", per: 100 };
+
+    return { fmt: (v: number) => num(v, 1), unit: "", per: 1 };
+  }
+
   const LOADING = {
     loading: true,
     via: undefined,
     bands: [],
     up: null,
     down: [],
-    sum: { up: [0], down: [] },
+    sum: { up: [0], down: [], bare: false },
     expected: null,
   };
 
@@ -78,9 +94,17 @@
     if (!got) return LOADING;
 
     const { series: s, points, plans } = got.data;
+    const { per } = readsOf(s);
+
+    /** The band's figure in the unit it is written in. */
+    const figure = (a: number, b: number) => {
+      const f = bandFigure(s, points, a, b);
+
+      return { ...f, value: f.value * per };
+    };
 
     const figures = got.spans.map(([a, b]) => ({
-      ...bandFigure(s, points, a, b),
+      ...figure(a, b),
       planned: expected(plans ?? [], a, b),
       elapsed: Math.max(0, Math.min(b, got.now) - a),
     }));
@@ -98,13 +122,18 @@
         return { ...f, ...split(f.value), line: plans ? f.planned : null };
       }),
       expected: plans && figures.reduce((a, f) => a + f.planned, 0),
-      // A signed role's sides are named for its sign, as charged and discharged, even on a day
+      // A signed flow's sides are named for its sign, as charged and discharged, even on a day
       // that ran one way only.
-      up: signed || isSigned(s) ? [sidesOf(s)[0]] : null,
+      up: signed || isSignedFlow(s) ? [sidesOf(s)[0]] : null,
       down: signed ? [sidesOf(s)[1]] : [],
       sum: isPower(s)
-        ? { up: [total(figures, 1)], down: signed ? [total(figures, -1)] : [] }
-        : split(bandFigure(s, points, ...whole(got.spans)).value),
+        ? {
+            up: [total(figures, 1)],
+            down: signed ? [total(figures, -1)] : [],
+            // One series' sum is the sheet's head; several split it.
+            bare: !signed && !isSignedFlow(s),
+          }
+        : { ...split(figure(...whole(got.spans)).value), bare: false },
     };
   });
 
@@ -115,10 +144,17 @@
 
   const meta = $derived([keyOf(series)]);
 
-  // A power reads as energy; anything else as its mean, in its own unit.
-  const reads = $derived(
-    isPower(series) ? { fmt: kwh, unit: "kWh" } : { fmt: (v: number) => num(v, 1), unit: "" },
+  // A sum the head states stands under no title of its own: the range's name alone.
+  const sumTitle = $derived(view.sum.bare ? route.label : data.title);
+
+  // A power's bands sum to the range's; any other series' bands to its mean, which names it.
+  const title = $derived(
+    isPower(series)
+      ? sumTitle
+      : m.range_mean({ series: describe(series).label, range: route.label }),
   );
+
+  const reads = $derived(readsOf(series));
 </script>
 
 <BandChart
@@ -127,11 +163,13 @@
   down={view.down}
   via={view.via}
   lineLabel={view.expected === null ? "" : m.range_forecast()}
-  summary={{ title: data.title, ...view.sum, line: view.expected }}
+  summary={{ title, ...view.sum, line: view.expected }}
   fmt={reads.fmt}
   unit={reads.unit}
   loading={view.loading}
+  {estimated}
   label={m.history_chart({ series: meta[0]!.label })}
   ondrill={data.drill}
   onbrush={data.brush}
+  {onread}
 />

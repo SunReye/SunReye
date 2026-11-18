@@ -192,11 +192,11 @@ export function nodeReadings(id: string, source: Source): NodeReadings | null {
 
 /** Explore on a series at `range` when `stored`, each a `device/series`, holds it (ADR 22). */
 export function exploreLinks(
-  stored: readonly string[],
+  stored: Readonly<Pick<ReadonlySet<string>, "has">>,
   range: Readonly<Record<string, string | null>>,
 ): Source["link"] {
   return (device, series) =>
-    stored.includes(`${device}/${series}`) ? exploreHash({ device, series }, range) : null;
+    stored.has(`${device}/${series}`) ? exploreHash({ device, series }, range) : null;
 }
 
 /** "vor 42 s", "vor 4 min", "vor 3 h": how old a reading is. */

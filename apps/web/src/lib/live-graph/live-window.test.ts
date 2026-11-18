@@ -21,7 +21,13 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { bufferStart, glideTransform, pixelQuantum, sampleInterval } from "./live-window.ts";
+import {
+  bufferStart,
+  glideTransform,
+  pixelQuantum,
+  sampleInterval,
+  sampleUnder,
+} from "./live-window.ts";
 
 /**
  * The snapped offset the module would write, read back out of the only thing it
@@ -249,5 +255,41 @@ describe("sampleInterval", () => {
 describe("bufferStart", () => {
   test("subtracts exactly six intervals past the window's left edge", () => {
     expect(bufferStart(100_000, 120_000, 1000)).toBe(100_000 - 120_000 - 6000);
+  });
+});
+
+describe("sampleUnder", () => {
+  const T0 = 1_700_000_000_000;
+  /** A sample a second for a minute up to T0, 100 W above the one before. */
+  const points = Array.from({ length: 60 }, (_, i) => ({ t: T0 - (59 - i) * 1000, v: i * 100 }));
+
+  const at = (share: number, cursor = T0, glide = false, now = T0) =>
+    sampleUnder(points, { share, window: 120_000, interval: 1000, cursor, glide, now });
+
+  test("standing still, a place on the plot is its time in the window", () => {
+    expect(at(0.75)).toEqual({ ago: 30, watts: 2900 });
+    expect(at(1)).toEqual({ ago: 0, watts: 5900 });
+  });
+
+  test("gliding, the sample under the pointer is the one drawn there, not the one due there", () => {
+    // Settled, the newest sample stands one interval past the right edge.
+    expect(at(1, T0, true)).toEqual({ ago: 1, watts: 5800 });
+    // 300 ms short of T0 in its glide, everything stands 1,3 s later than its time.
+    expect(at(0.75, T0 - 300, true)).toEqual({ ago: 31, watts: 2800 });
+  });
+
+  test("where no sample is near, the place reads its age and no watts", () => {
+    expect(at(0.25)).toEqual({ ago: 90, watts: null });
+  });
+
+  test("a sample's age counts from now, so a stalled stream's grows", () => {
+    expect(at(1, T0, false, T0 + 60_000)).toEqual({ ago: 60, watts: 5900 });
+    expect(at(0.75, T0, false, T0 + 60_000)).toEqual({ ago: 90, watts: 2900 });
+  });
+
+  test("without samples nothing is read", () => {
+    const none = { share: 0.5, window: 120_000, interval: 1000, cursor: 0, glide: false, now: 0 };
+
+    expect(sampleUnder([], none)).toBeNull();
   });
 });

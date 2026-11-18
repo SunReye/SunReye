@@ -1,7 +1,5 @@
 <!--
-  A figure's range analytics (ADR 21): the sheet's range control, then tabs that all read it: the
-  overview chart, the hour-of-day heat grid and the string comparison, each where the figure has
-  it. A figure without a series in history shows `fallback` instead.
+  A sheet's range (ADR 21): its range control, then what reads the range.
 -->
 <script lang="ts" module>
   import type { Core, PvString } from "../api/core.ts";
@@ -9,93 +7,42 @@
 
   /** What the analytics read: the core, the sheet's range and the layout's strings. The weather
    * detail, which stands in their place, reads `history` (ADR 23); the PV forecast's days read
-   * the `layout` (ADR 21). */
+   * the `layout` (ADR 21); the savings read `costs` and `payback` (ADR 12); the inverter's facts
+   * read which profiles map a temperature from `capabilities`. By device, `estimated` holds the
+   * series computed rather than measured (ADR 17). */
   export interface AnalyticsInput {
     readonly core: Readonly<
-      Pick<Core, "statistics" | "forecasts" | "moduleTypes" | "corrections" | "history" | "layout">
+      Pick<
+        Core,
+        | "statistics"
+        | "forecasts"
+        | "capabilities"
+        | "moduleTypes"
+        | "corrections"
+        | "history"
+        | "layout"
+        | "costs"
+        | "payback"
+      >
     >;
     readonly route: RangeRoute;
     readonly strings: readonly PvString[];
+    readonly estimated: Readonly<Record<string, readonly string[]>>;
   }
 </script>
 
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import * as Tabs from "#lib/components/ui/tabs/index.js";
-  import { analyticsOf } from "../analytics/sources.ts";
-  import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
   import RangeControl from "../range/RangeControl.svelte";
-  import AnalyticsPane from "./AnalyticsPane.svelte";
 
-  let {
-    id,
-    title,
-    colour,
-    input,
-    fallback,
-  }: {
-    id: string;
-    title: string;
-    /** The figure's energy token. */
-    colour: string;
-    input: AnalyticsInput;
-    fallback: Snippet;
-  } = $props();
-
-  const analytics = $derived(analyticsOf(id, input.strings));
-
-  const TABS = [
-    ["overview", m.detail_tab_overview],
-    ["heat", m.detail_tab_heat],
-    ["compare", m.detail_tab_compare],
-  ] as const;
-
-  type Tab = (typeof TABS)[number][0];
-
-  const tabs = $derived(
-    TABS.filter(
-      ([t]) =>
-        t === "overview" ||
-        (t === "heat" && analytics?.heat) ||
-        (t === "compare" && analytics?.compare),
-    ),
-  );
-
-  let chosen = $state<Tab>("overview");
-  const tab = $derived(tabs.some(([t]) => t === chosen) ? chosen : "overview");
-
-  function choose(v: string): void {
-    const next = tabs.find(([t]) => t === v)?.[0];
-
-    if (next === undefined || next === tab) return;
-
-    haptics.selection();
-    chosen = next;
-  }
+  let { route, children }: { route: RangeRoute; children: Snippet } = $props();
 </script>
 
-{#if analytics}
-  <section
-    class="flex flex-col gap-3 border-t border-border/60 px-5 pt-4 pb-4 sm:px-6"
-    aria-label={m.detail_analytics()}
-  >
-    <RangeControl model={input.route} />
-    <Tabs.Root bind:value={() => tab, choose}>
-      {#if tabs.length > 1}
-        <Tabs.List variant="line">
-          {#each tabs as [t, text] (t)}
-            <Tabs.Trigger value={t}>{text()}</Tabs.Trigger>
-          {/each}
-        </Tabs.List>
-      {/if}
-      {#each tabs as [t] (t)}
-        <Tabs.Content value={t} class="pt-2">
-          <AnalyticsPane tab={t} {id} {title} {colour} {analytics} {input} />
-        </Tabs.Content>
-      {/each}
-    </Tabs.Root>
-  </section>
-{:else}
-  {@render fallback()}
-{/if}
+<section
+  class="flex flex-col gap-3 border-t border-border/60 px-5 pt-4 pb-4 sm:px-6"
+  aria-label={m.detail_analytics()}
+>
+  <RangeControl model={route} />
+  {@render children()}
+</section>

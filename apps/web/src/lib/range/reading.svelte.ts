@@ -1,7 +1,12 @@
 // Reading the band chart (ADR 21): the legend shows the band under the pointer, never a tooltip.
-// Mouse: hover reads, a click opens the band, a drag narrows the range. Touch: a drag reads and a
-// tap opens the band; there is no brushing. Keys: arrows move, Shift and arrows select, Enter
-// opens, Escape clears.
+// Mouse: hover reads, a click opens the band, a drag narrows the range. Touch, on a full screen: a
+// finger reads at once and leads, lifted it leaves its band read to open, and a tap opens the band.
+// Touch, in a sheet: a finger held on the chart reads and leads, lifted it restores the sum, and a
+// tap opens the band (ADR 21 "Sheet content"). There is no brushing by touch. Keys: arrows move,
+// Shift and arrows select, Enter opens, Escape clears.
+import { inSheet } from "../detail/in-sheet.ts";
+import { PointerReading } from "../detail/pointer-reading.ts";
+import { AtOnce, type Finger } from "./at-once.ts";
 import { haptics } from "../haptics.ts";
 import type { Band } from "./bands.ts";
 
@@ -11,12 +16,14 @@ export interface Target {
   readonly plot: Element | null;
   readonly ondrill?: ((index: number) => void) | undefined;
   readonly onbrush?: ((from: number, to: number) => void) | undefined;
+  /** Told the band being read, as it changes, for a chart that reads along. */
+  readonly onread?: ((index: number | null) => void) | undefined;
 }
 
 /** What a handler reads of a pointer event. */
 type Pointer = Readonly<
-  Pick<PointerEvent, "button" | "buttons" | "clientX" | "pointerId" | "pointerType" | "pressure">
->;
+  Pick<PointerEvent, "button" | "clientX" | "clientY" | "pointerId" | "pointerType">
+> & { readonly currentTarget: Element };
 
 /** What a handler reads of a key event. */
 type Key = Readonly<Pick<KeyboardEvent, "key" | "preventDefault" | "shiftKey">>;
@@ -24,7 +31,7 @@ type Key = Readonly<Pick<KeyboardEvent, "key" | "preventDefault" | "shiftKey">>;
 const clamp = (v: number, last: number) => Math.min(last, Math.max(0, v));
 
 export class Reading {
-  active = $state<number | null>(null);
+  #active = $state<number | null>(null);
   pinned = $state(false);
   brush = $state<[number, number] | null>(null);
   /** The span being selected, in order. */
@@ -35,11 +42,40 @@ export class Reading {
   readonly #target: () => Target;
   #dragFrom: number | null = null;
   #dragged = false;
-  /** A finger that stays on its band is a tap. */
-  #tapFrom: number | null = null;
 
-  constructor(target: () => Target) {
+  readonly #finger: Finger<Pointer>;
+
+  /** The band being read; null with none. */
+  get active(): number | null {
+    return this.#active;
+  }
+
+  set active(i: number | null) {
+    this.#active = i;
+    this.#target().onread?.(i);
+  }
+
+  /** @param hold whether a finger reads only once held: inside a sheet, read at setup */
+  constructor(target: () => Target, hold = inSheet()) {
     this.#target = target;
+
+    const write = (at: number | null) => {
+      this.pinned = at !== null;
+      this.#set(at);
+    };
+
+    const tap = (at: number) => {
+      this.#drill(at);
+    };
+
+    this.#finger = hold
+      ? new PointerReading(
+          () => this.#target().bands.length,
+          () => this.active,
+          write,
+          tap,
+        )
+      : new AtOnce((e) => this.#at(e), write, tap);
   }
 
   #at(e: Pointer): number {
@@ -80,36 +116,28 @@ export class Reading {
   }
 
   down = (e: Pointer): void => {
-    const i = this.#at(e);
-
     this.#dragged = false;
 
     if (e.pointerType !== "mouse") {
-      this.pinned = true;
-      this.#tapFrom = i;
-      this.#set(i);
+      this.#finger.down(e);
 
       return;
     }
 
     if (e.button !== 0) return;
 
-    this.#dragFrom = i;
+    this.#dragFrom = this.#at(e);
     this.#target().plot?.setPointerCapture(e.pointerId);
   };
 
   move = (e: Pointer): void => {
-    const i = this.#at(e);
-
     if (e.pointerType !== "mouse") {
-      if (e.buttons === 0 && e.pressure <= 0) return;
-
-      if (i !== this.#tapFrom) this.#tapFrom = null;
-
-      this.#set(i);
+      this.#finger.move(e);
 
       return;
     }
+
+    const i = this.#at(e);
 
     this.#set(i);
 
@@ -123,10 +151,7 @@ export class Reading {
 
   up = (e: Pointer): void => {
     if (e.pointerType !== "mouse") {
-      const tapped = this.#tapFrom;
-
-      this.#tapFrom = null;
-      this.#drill(tapped);
+      this.#finger.up(e);
 
       return;
     }
@@ -143,8 +168,14 @@ export class Reading {
     this.#drill(from);
   };
 
+  /** A mouse leaving takes only what hovering read: a band a finger or a key left to open stays. */
   leave = (e: Pointer): void => {
-    if (e.pointerType === "mouse" && this.#dragFrom === null) this.#set(null);
+    if (e.pointerType === "mouse" && this.#dragFrom === null && !this.pinned) this.#set(null);
+  };
+
+  /** The browser took the finger, to scroll. */
+  cancel = (): void => {
+    this.#finger.end();
   };
 
   blur = (): void => {

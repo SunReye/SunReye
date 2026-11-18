@@ -1,10 +1,10 @@
 <!--
   The gliding marks of the live graph. Ported from v3 (dev 780b4e2: the `clippedMarks` snippet of
   live-area.svelte with power-area.svelte and diverging-area.svelte). One `transform` on the group
-  scrolls the marks between samples; the data, scales and tooltip index change only when a sample lands.
+  scrolls the marks between samples; the data and scales change only when a sample lands.
 -->
 <script lang="ts">
-  import { Area, ChartClipPath, Highlight, getChartContext } from "layerchart";
+  import { Area, ChartClipPath, getChartContext } from "layerchart";
   import { curveMonotoneX } from "d3-shape";
   import { glideTransform } from "./live-window.ts";
 
@@ -102,7 +102,5 @@
         line={{ stroke: accent, "stroke-width": 1.75 } as never}
       />
     {/if}
-    <!-- Inside the translated group, so the hover point tracks the visible line. -->
-    <Highlight points lines />
   </g>
 </ChartClipPath>

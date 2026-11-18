@@ -6,14 +6,25 @@ import { connect, type Transport } from "../api/core.ts";
 import { merge } from "../api/frames.ts";
 import Dashboard from "../dashboard/Dashboard.svelte";
 import { feed } from "../live/stream.harness.ts";
+import {
+  capabilities,
+  CORRECTIONS,
+  INVERTER,
+  INVERTER_PLAN,
+  NO_COSTS,
+  SPOT_PRICES,
+  TOPOLOGY,
+} from "./detail.fixtures.ts";
+
+export { INVERTER };
 
 export const PLANT = "4294967294";
 const SPOT = "4294967292";
-export const INVERTER = "1";
+export const TARIFF = "4294967293";
 export const BATTERY = "2";
 
 /** Midday: the plant's totals, an inverter with two inputs and a battery. */
-const LIVE = {
+export const LIVE = {
   [PLANT]: {
     "pv.power": 4200,
     "load.power": 900,
@@ -45,14 +56,28 @@ const STRINGS = [
 
 /** What the core streams: the live values, and each stale value's age in seconds. */
 export interface Served {
-  live: typeof LIVE;
+  live: Readonly<Record<string, Readonly<Record<string, number>>>>;
   stale: Readonly<Record<string, Readonly<Record<string, number>>>> | undefined;
   /** A second frame, a second after the snapshot: the plant importing. */
   tick: boolean;
   /** The stream breaks after its snapshot and the core is not heard from again. */
   breaks: boolean;
+  /** The core refuses the stream outright. */
+  refuses: boolean;
   /** Per device, the series with stored history (ADR 22). */
   stored: Readonly<Record<string, readonly string[]>>;
+  /** When every stored series stored its last point. */
+  last: string;
+  /** Answers a statistics read before the defaults do; undefined passes it on. */
+  rolled: ((read: Asked) => Response | Promise<Response> | undefined) | null;
+  /** Answers a costs read from `from` to before `to`, RFC 3339; null for none. */
+  costs: ((from: string, to: string) => Response | Promise<Response>) | null;
+  /** The payback the admin reads (ADR 12); null for a refusal. */
+  payback: object | null;
+  /** The series the inverter's profile publishes. */
+  publishes: readonly string[];
+  /** Answers the inverter's forecasts in place of its plan; null for the plan. */
+  forecasts: (() => Response | Promise<Response>) | null;
 }
 
 export const served: Served = {
@@ -60,7 +85,14 @@ export const served: Served = {
   stale: undefined,
   tick: false,
   breaks: false,
+  refuses: false,
   stored: {},
+  last: "2026-11-12T12:00:00Z",
+  rolled: null,
+  costs: null,
+  payback: null,
+  publishes: [],
+  forecasts: null,
 };
 
 /** The series catalog: each stored series a measurement since the month began. */
@@ -73,7 +105,7 @@ function catalog(): Response {
       series,
       kind: "measurement",
       first: "2026-11-01T00:00:00Z",
-      last: "2026-11-12T12:00:00Z",
+      last: served.last,
     })),
   }));
 
@@ -82,11 +114,17 @@ function catalog(): Response {
 
 const IMPORTING = { [PLANT]: { "grid.power": 800 } };
 
-/** Each statistics request: device, series and its window. */
-export const asked: Readonly<{ device: string; series: string; from: string; to: string }>[] = [];
+/** One statistics request: device, series, its window and the period it is cut in. */
+export type Asked = Readonly<Record<"device" | "series" | "from" | "to" | "period", string>>;
+
+/** Each statistics request. */
+export const asked: Asked[] = [];
+
+/** Each other request, as `/api/v1/devices/4294967295/history weather.code 2026-11-12T00:00:00.000Z`. */
+export const fetched: string[] = [];
 
 /** One hourly rollup of `watts` from `at`, in ms since the epoch. */
-function rollup(at: number, watts: number) {
+export function rollup(at: number, watts: number) {
   const [start, end] = [new Date(at).toISOString(), new Date(at + 3_600_000).toISOString()];
 
   return { date: start.slice(0, 10), start, end, mean: watts, integral: watts, hours: 1 };
@@ -109,15 +147,19 @@ function statistics(device: string, series: string | null, from: string): Respon
   if (device !== INVERTER || watts === undefined)
     return Response.json({ points: [], period: "hour" });
 
-  const [start, end] = [new Date(at).toISOString(), new Date(at + 3_600_000).toISOString()];
-  const point = { date: from.slice(0, 10), start, end, mean: watts, integral: watts, hours: 1 };
-
-  return Response.json({ points: [point], period: "hour" });
+  return Response.json({ points: [rollup(at, watts)], period: "hour" });
 }
 
 /** Feeds the stream the served frame, folded as the core's stream folds it (ADR 9). */
 function streamed(): void {
   const send = feed();
+
+  if (served.refuses) {
+    send({ problem: "auth.forbidden" });
+
+    return;
+  }
+
   const frame = { devices: served.live, ...(served.stale && { stale: served.stale }) };
   const first = merge(undefined, frame, Date.now());
 
@@ -138,51 +180,10 @@ function streamed(): void {
   }
 }
 
-const slot = (hour: number, value: number, minute = 0) => ({
-  issued: "2026-11-11T13:00:00Z",
-  target: `2026-11-12T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00Z`,
-  value,
-});
+const plan = () => Response.json(INVERTER_PLAN);
 
-/** Input 1 runs 15 % under its model lately. */
-const CORRECTIONS = {
-  inputs: [
-    {
-      device: 1,
-      input: 1,
-      factors: [{ month: 11, hour: 10, factor: 0.85 }],
-      recent: { measured: 85, modelled: 100 },
-    },
-  ],
-};
-
-/** Both strings share input 1, so both are estimated. */
-const CAPABILITIES = {
-  capabilities: [],
-  schema: {},
-  transports: [],
-  version: "5",
-  devices: {
-    [INVERTER]: {
-      series: [],
-      settings: [],
-      writes: false,
-      estimated: ["pv.string.power[1]", "pv.string.power[2]"],
-    },
-  },
-};
-
-/** The grid connection and a heat pump below it, which a viewer reads too (ADR 9). */
-const TOPOLOGY = {
-  appliesFrom: "2026-11-01T00:00:00Z",
-  points: [
-    { id: 1, name: "Netz", parent: null, contested: false, claims: [] },
-    { id: 2, name: "Wärmepumpe", parent: 1, contested: false, claims: [] },
-  ],
-};
-
-/** Each path but statistics', and what the fake core answers there. */
-const ROUTES = new Map<string, () => Response>([
+/** Each path but statistics', and what the fake core answers there to query `q`. */
+const ROUTES = new Map<string, (q: Readonly<URLSearchParams>) => Response | Promise<Response>>([
   ["/api/v1/topology", () => Response.json(TOPOLOGY)],
   ["/api/v1/series", catalog],
   ["/api/v1/timezone", () => Response.json({ name: "UTC" })],
@@ -190,19 +191,9 @@ const ROUTES = new Map<string, () => Response>([
     "/api/v1/layout",
     () => Response.json({ appliesFrom: "2026-11-01T00:00:00Z", strings: STRINGS, warnings: [] }),
   ],
-  ["/api/v1/capabilities", () => Response.json(CAPABILITIES)],
-  [
-    `/api/v1/devices/${SPOT}/forecasts`,
-    () =>
-      Response.json({
-        points: [slot(0, 0.12), slot(12, 0.125), slot(12, 0.0625, 30), slot(13, -0.01)],
-      }),
-  ],
-  // The inverter expects 2 kW from 10:00 to 14:00: 8 kWh, half of it still to come.
-  [
-    `/api/v1/devices/${INVERTER}/forecasts`,
-    () => Response.json({ points: [10, 11, 12, 13].map((h) => slot(h, 2000)) }),
-  ],
+  ["/api/v1/capabilities", () => Response.json(capabilities(served.publishes))],
+  [`/api/v1/devices/${SPOT}/forecasts`, () => Response.json(SPOT_PRICES)],
+  [`/api/v1/devices/${INVERTER}/forecasts`, () => served.forecasts?.() ?? plan()],
   [
     "/api/v1/devices",
     () => Response.json({ status: 403, code: "auth.forbidden" }, { status: 403 }),
@@ -211,23 +202,46 @@ const ROUTES = new Map<string, () => Response>([
   ["/api/v1/corrections", () => Response.json(CORRECTIONS)],
   [
     "/api/v1/costs",
-    () => Response.json({ days: [], total: { paid: 0.32, earned: 0.33, saved: 2.1 } }),
+    (q) => served.costs?.(q.get("from") ?? "", q.get("to") ?? "") ?? Response.json(NO_COSTS),
+  ],
+  [
+    "/api/v1/payback",
+    () =>
+      served.payback === null
+        ? Response.json({ status: 403, code: "auth.forbidden" }, { status: 403 })
+        : Response.json(served.payback),
   ],
 ]);
 
-function answer(href: string): Response {
+/** A statistics request's device, series, window and period, read from its URL. */
+function askedOf(device: string, q: Readonly<URLSearchParams>): Asked {
+  const field = (name: string) => q.get(name) ?? "";
+
+  return {
+    device,
+    series: field("series"),
+    from: field("from"),
+    to: field("to"),
+    period: field("period"),
+  };
+}
+
+function answer(href: string): Response | Promise<Response> {
   const { pathname, searchParams: q } = new URL(href);
+
   const read = /^\/api\/v1\/devices\/(\d+)\/statistics$/u.exec(pathname);
 
   if (read) {
-    const [device, series] = [read[1]!, q.get("series") ?? ""];
+    const one = askedOf(read[1]!, q);
 
-    asked.push({ device, series, from: q.get("from") ?? "", to: q.get("to") ?? "" });
+    asked.push(one);
 
-    return statistics(device, series, q.get("from") ?? "");
+    return served.rolled?.(one) ?? statistics(one.device, one.series, one.from);
   }
 
-  return (ROUTES.get(pathname) ?? (() => Response.json({ points: [] })))();
+  fetched.push(`${pathname} ${q.get("series") ?? ""} ${q.get("from") ?? ""}`);
+
+  return (ROUTES.get(pathname) ?? (() => Response.json({ points: [] })))(q);
 }
 
 const transport: Transport = {
@@ -240,9 +254,17 @@ export async function prepare(): Promise<void> {
   served.live = LIVE;
   served.stale = undefined;
   asked.length = 0;
+  fetched.length = 0;
   served.tick = false;
   served.breaks = false;
+  served.refuses = false;
   served.stored = {};
+  served.rolled = null;
+  served.costs = null;
+  served.payback = null;
+  served.publishes = [];
+  served.forecasts = null;
+  served.last = "2026-11-12T12:00:00Z";
   vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-12T12:20:00Z") });
   await cdp().send("Emulation.setEmulatedMedia", {
     features: [{ name: "prefers-reduced-motion", value: "reduce" }],
@@ -256,8 +278,8 @@ export async function restore(): Promise<void> {
   await cdp().send("Emulation.setEmulatedMedia", { features: [] });
 }
 
-/** The dashboard with sheet `detail` open, its hash route's query `route`. */
-export async function show(detail: string | null = null, route = "") {
+/** The dashboard with sheet `detail` open, its hash route's query `route`, to a viewer or the admin. */
+export async function show(detail: string | null = null, route = "", admin = false) {
   const onopen = vi.fn<(id: string) => void>();
   const onclose = vi.fn<() => void>();
 
@@ -266,7 +288,7 @@ export async function show(detail: string | null = null, route = "") {
   const screen = await render(Dashboard, {
     core: connect(transport),
     layout: null,
-    admin: false,
+    admin,
     detail,
     onopen,
     onclose,

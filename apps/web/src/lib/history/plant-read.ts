@@ -27,8 +27,8 @@ async function loadHistory(core: PlantCore, from: number, to: number) {
 }
 
 /** Every flow's rollups of `period`. */
-async function each(
-  core: PlantCore,
+export async function readFlows(
+  core: Readonly<Pick<Core, "statistics">>,
   period: RollupPeriod,
   from: number,
   to: number,
@@ -64,8 +64,8 @@ export async function readPlant(
   hours = false,
 ): Promise<Plant> {
   const [days, hourly, load] = await Promise.all([
-    each(core, "day", from, to),
-    hours ? each(core, "hour", from, to) : NO_PLANT.hours,
+    readFlows(core, "day", from, to),
+    hours ? readFlows(core, "hour", from, to) : NO_PLANT.hours,
     loadHistory(core, from, to),
   ]);
 

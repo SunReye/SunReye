@@ -56,10 +56,12 @@
     max,
     height = 240,
     loading = false,
+    estimated = false,
     drillLabel = m.range_open(),
     label,
     ondrill,
     onbrush,
+    onread,
   }: {
     bands: Band[];
     up: SeriesMeta[];
@@ -83,10 +85,14 @@
     max?: number | undefined;
     height?: number;
     loading?: boolean;
+    /** The series are computed, not measured: their values carry ≈. */
+    estimated?: boolean;
     drillLabel?: string;
     label: string;
     ondrill?: ((index: number) => void) | undefined;
     onbrush?: ((from: number, to: number) => void) | undefined;
+    /** Told the band being read, for a chart that reads along. */
+    onread?: ((index: number | null) => void) | undefined;
   } = $props();
 
   const scale = $derived(scaleOf(bands, down.length > 0, max));
@@ -178,7 +184,7 @@
 
   const linePath = $derived(loading ? null : lineOf(bands, scale, plotW, plotHeight));
 
-  const reading = new Reading(() => ({ bands, plot, ondrill, onbrush }));
+  const reading = new Reading(() => ({ bands, plot, ondrill, onbrush, onread }));
   const active = $derived(reading.active);
   const sel = $derived(reading.sel);
   const shown = $derived(active !== null && active < bands.length ? bands[active]! : null);
@@ -268,6 +274,8 @@
         : null,
     gap: !loading && bands.some((b) => b.state === "gap") ? gapLabel : null,
     blank: loading || shown?.state === "gap" || shown?.state === "before",
+    bare: readout.bare === true,
+    approx: estimated,
     // A band still to come has its forecast, but nothing measured yet.
     unmeasured: shown?.state === "future",
     duration: shown ? 0 : 320,
@@ -335,6 +343,7 @@
       onpointermove={reading.move}
       onpointerup={reading.up}
       onpointerleave={reading.leave}
+      onpointercancel={reading.cancel}
       onkeydown={reading.key}
       onblur={reading.blur}
     >

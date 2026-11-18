@@ -1,7 +1,6 @@
 import "../../app.css";
 import { afterEach, expect, test, vi } from "vitest";
 import { tick } from "svelte";
-import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import LiveArea from "./LiveArea.svelte";
 import type { LivePoint } from "./series.ts";
@@ -139,11 +138,21 @@ test("a diverging fill splits at zero: import above, export below", async () => 
 
 test("pointing at the plot floats no tooltip: the legend is the readout (ADR 21)", async () => {
   const graph = await mount({});
-  const plot = graph.screen.container.querySelector<HTMLElement>(".lc-tooltip-context")!;
+  const plot = graph.screen.container.querySelector<HTMLElement>("[data-plot]")!;
+  const box = plot.getBoundingClientRect();
 
-  await userEvent.hover(plot);
+  // Dispatched: the injected frame clock never lets the page settle for a real hover.
+  plot.dispatchEvent(
+    new PointerEvent("pointermove", {
+      pointerType: "mouse",
+      clientX: box.left + box.width / 2,
+      clientY: box.top + box.height / 2,
+      bubbles: true,
+    }),
+  );
   await frames(64);
 
+  expect(plot.querySelector("[data-read]")).not.toBeNull();
   expect(document.querySelector(".lc-tooltip-root")).toBeNull();
 });
 

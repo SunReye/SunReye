@@ -6,7 +6,7 @@ type Answer = Awaited<ReturnType<Core["series"]>>;
 
 const reads = (answer: () => Promise<Answer>) => storedSeries({ series: answer });
 
-test("each stored series is named by its device", async () => {
+test("each stored series is named by its device, with its first and last stored instant", async () => {
   const catalog: Answer = [
     {
       id: 2,
@@ -25,10 +25,17 @@ test("each stored series is named by its device", async () => {
     },
   ];
 
-  expect(await reads(() => Promise.resolve(catalog))).toEqual(["2/battery.soc"]);
+  expect(await reads(() => Promise.resolve(catalog))).toEqual(
+    new Map([
+      [
+        "2/battery.soc",
+        { first: Date.parse("2026-11-01T00:00:00Z"), last: Date.parse("2026-11-12T12:00:00Z") },
+      ],
+    ]),
+  );
 });
 
 test("a catalog that cannot be read leaves every reading unlinked", async () => {
-  expect(await reads(() => Promise.resolve({ problem: "auth.required" }))).toEqual([]);
-  expect(await reads(() => Promise.reject(new TypeError("network")))).toEqual([]);
+  expect(await reads(() => Promise.resolve({ problem: "auth.required" }))).toEqual(new Map());
+  expect(await reads(() => Promise.reject(new TypeError("network")))).toEqual(new Map());
 });

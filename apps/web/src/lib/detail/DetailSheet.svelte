@@ -2,17 +2,26 @@
   A figure's detail as a glass side sheet (desktop, tablet) or a draggable bottom sheet (phone),
   ADR 21. Its hash route is the caller's: `id` opens it, `onclose` asks to leave it.
 -->
+<script lang="ts" module>
+  import type { Day } from "../dashboard/day.ts";
+</script>
+
 <script lang="ts">
   import * as Sheet from "#lib/components/ui/sheet/index.js";
-  import { SPOT, type Core, type Live, type PvString } from "../api/core.ts";
+  import { SPOT, TARIFF, type Core, type Live, type PvString } from "../api/core.ts";
   import DrawerSheet from "../components/drawer-sheet.svelte";
-  import { estimatedSeries, layoutStrings, storedSeries } from "../live/plant-facts.ts";
-  import type { Day } from "../dashboard/day.ts";
+  import {
+    estimatedSeries,
+    layoutStrings,
+    storedSeries,
+    type Stored,
+  } from "../live/plant-facts.ts";
   import { RangeRoute, type Go } from "../range/route.svelte.ts";
   import { input } from "../shell/input.svelte.ts";
   import DetailBody from "./DetailBody.svelte";
-  import { figure, titleOf } from "./figures.ts";
+  import { markSheet } from "./in-sheet.ts";
   import { exploreLinks, nodeReadings, type Source } from "./readings.ts";
+  import { figure, titleOf } from "./sheet-of.ts";
 
   let {
     id,
@@ -21,6 +30,7 @@
     series,
     day,
     names,
+    admin,
     params,
     go,
     onopen,
@@ -40,6 +50,8 @@
       | "topology"
       | "series"
       | "history"
+      | "costs"
+      | "payback"
     >;
     live: Live | undefined;
     /** The live stream's last two minutes, for a sheet's live graph. */
@@ -47,6 +59,7 @@
     day: Day | undefined;
     /** Device names, which only the admin may list (ADR 9). */
     names: ReadonlyMap<number, string>;
+    admin: boolean;
     /** The hash route's query: the sheet's range sits beside its figure. */
     params: URLSearchParams;
     go: Go;
@@ -64,6 +77,8 @@
 
     return own;
   });
+
+  markSheet();
 
   const route = new RangeRoute(() => ({ params: sheetParams, go, core }));
 
@@ -89,8 +104,8 @@
   /** The topology's points, which viewers read too (ADR 9, 14). */
   let points = $state.raw<Source["points"]>([]);
 
-  /** The series with stored history, each `device/series` (ADR 22); none until the catalog is read. */
-  let stored = $state.raw<readonly string[]>([]);
+  /** The series with stored history by `device/series` (ADR 22); null until the catalog is read. */
+  let stored = $state.raw<ReadonlyMap<string, Stored> | null>(null);
 
   let now = $state(Date.now());
 
@@ -134,6 +149,12 @@
 
   const values = $derived(live !== undefined && "devices" in live ? live.devices : {});
 
+  // The tariff publishes its prices while one is in force (ADR 12). Only a stream that answered
+  // with its devices says none is: one not yet read or refused says nothing.
+  const priced = $derived(
+    live === undefined || !("devices" in live) || values[TARIFF]?.["price.import"] !== undefined,
+  );
+
   const source = $derived<Source>({
     strings,
     values,
@@ -144,7 +165,7 @@
     now,
     status,
     series,
-    link: exploreLinks(stored, route.rangeParams),
+    link: exploreLinks(stored ?? new Set(), route.rangeParams),
   });
 
   const node = $derived(spec.node === null ? null : nodeReadings(spec.node, source));
@@ -163,7 +184,10 @@
     {status}
     {day}
     spot={values[SPOT]}
-    input={{ core, route, strings }}
+    input={{ core, route, strings, estimated }}
+    record={stored}
+    {priced}
+    {admin}
     {onopen}
   />
 {/snippet}

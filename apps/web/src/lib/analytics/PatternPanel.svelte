@@ -17,6 +17,7 @@
     source,
     name,
     colour,
+    estimated = false,
   }: {
     core: Readonly<Pick<Core, "statistics">>;
     route: RangeRoute;
@@ -24,6 +25,8 @@
     name: string;
     /** The energy token the cells are tinted with. */
     colour: string;
+    /** The series is computed, not measured, so each cell's energy carries ≈ (ADR 17). */
+    estimated?: boolean;
   } = $props();
 
   let heat = $state.raw<Heat | undefined>();
@@ -33,11 +36,15 @@
     const [range, place, from] = [r.range, r.place, source];
     let live = true;
 
-    void readHeat(core, from, place, range).then((next) => {
-      if (live) heat = next;
+    // A failed read keeps the last grid: the sheet says once that its range could not be read.
+    void readHeat(core, from, place, range).then(
+      (next) => {
+        if (live) heat = next;
 
-      return next;
-    });
+        return next;
+      },
+      () => null,
+    );
 
     return () => {
       live = false;
@@ -56,7 +63,9 @@
 
     if (Number.isNaN(v)) return m.heat_not_yet();
 
-    return (monthly ? m.heat_kwh_mean : m.heat_kwh)({ value: num(v, 2) });
+    const kwh = (monthly ? m.heat_kwh_mean : m.heat_kwh)({ value: num(v, 2) });
+
+    return estimated ? `≈ ${kwh}` : kwh;
   };
 
   const idle = $derived(

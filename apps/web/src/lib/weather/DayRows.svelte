@@ -6,7 +6,7 @@
 -->
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import { PointerReading } from "../detail/pointer-reading.ts";
+  import ChartReading from "../detail/ChartReading.svelte";
   import { getLocale } from "../paraglide/runtime.js";
   import HourMarks from "./HourMarks.svelte";
   import type { Hour } from "./hourly.ts";
@@ -38,12 +38,6 @@
     new Intl.DateTimeFormat(getLocale(), { hour: "2-digit", minute: "2-digit", timeZone: zone }),
   );
 
-  const reading = new PointerReading(
-    () => slots,
-    () => read,
-    (at) => (read = at),
-  );
-
   /** The hour the slot being read is in, which the marks follow. */
   const readHour = $derived(
     read === null ? null : Math.floor((read * hours.length) / slots),
@@ -55,19 +49,7 @@
   );
 </script>
 
-<!-- A held finger leads across the day; up and down stays the sheet's scroll, and while it reads
-  the drawer leaves the finger alone. -->
-<div
-  class="relative flex touch-pan-y flex-col gap-4 select-none"
-  role="presentation"
-  data-hours
-  data-vaul-no-drag={read === null ? undefined : ""}
-  onpointerdown={reading.down}
-  onpointermove={reading.move}
-  onpointerup={reading.up}
-  onpointercancel={reading.end}
-  onpointerleave={reading.end}
->
+<ChartReading {slots} bind:read class="flex flex-col gap-4" data-hours>
   <HourMarks {hours} {span} read={readHour} class="h-10">
     {#snippet mark(hour, marks)}
       {#if hour.sky}
@@ -93,13 +75,4 @@
       data-now
     ></span>
   {/if}
-
-  {#if read !== null}
-    <!-- At the slot's middle, where an hour's line points and its bar stand. -->
-    <span
-      class="pointer-events-none absolute inset-y-0 w-px bg-foreground/60"
-      style:left="{((read + 0.5) / slots) * 100}%"
-      data-read
-    ></span>
-  {/if}
-</div>
+</ChartReading>

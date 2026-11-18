@@ -1,26 +1,39 @@
 <!--
   Savings and costs over the route's range, a band per day, week or month, from the core's
-  plant-local days (ADR 12): savings above the baseline, the import bill below it.
+  plant-local days (ADR 12): savings above the baseline, the import bill below it. The savings
+  sheet's chart leaves the standing charge out, and reads a day by its hours (ADR 21).
 -->
 <script lang="ts">
+  import { untrack } from "svelte";
   import ProblemAlert from "../components/problem-alert.svelte";
-  import { flowColour } from "../energy-colours.ts";
   import type { Core } from "../api/core";
-  import { m } from "../paraglide/messages.js";
   import BandChart from "../range/BandChart.svelte";
   import { bandsOf } from "../range/fill.ts";
   import { money } from "../range/format.ts";
   import { RangeData } from "../range/range-data.svelte.ts";
   import type { RangeRoute } from "../range/route.svelte.ts";
-  import { costBands, split } from "./costs.ts";
+  import { costsOver } from "./cost-hours.ts";
+  import { COST_CHARTS, costBands } from "./costs.ts";
 
-  let { core, route }: { core: Core; route: RangeRoute } = $props();
+  let {
+    core,
+    route,
+    chart = "costs",
+  }: {
+    core: Readonly<Pick<Core, "costs" | "statistics">>;
+    route: RangeRoute;
+    chart?: keyof typeof COST_CHARTS;
+  } = $props();
 
-  // Costs come by the day: a day is one band.
+  const laid = $derived(COST_CHARTS[chart]());
+
+  // Costs come by the day, so a day is one band; the savings sheet reads a range of hours, as a day
+  // or a brush on one, by the tariff's hours.
   const data = new RangeData(
     () => route,
-    (from, to) => core.costs(from, to),
-    "day",
+    (from, to) => costsOver(core, laid.hourly, route.range, [from, to]),
+    // A chart keeps its kind for its life.
+    untrack(() => COST_CHARTS[chart]().hourly) ? "hour" : "day",
   );
 
   const view = $derived.by(() => {
@@ -28,12 +41,13 @@
 
     if (!got) return null;
 
-    if ("problem" in got.data) return { problem: got.data.problem, bands: [], total: split() };
+    if ("problem" in got.data)
+      return { problem: got.data.problem, bands: [], total: laid.sides() };
 
     return {
       problem: null,
-      bands: bandsOf(got.list, costBands(got.data.days, got.spans, got.now)),
-      total: split(got.data.total),
+      bands: bandsOf(got.list, costBands(got.data.days, got.spans, got.now, laid.sides)),
+      total: laid.sides(got.data.total),
     };
   });
 </script>
@@ -43,21 +57,15 @@
 {:else}
   <BandChart
     bands={view?.bands ?? []}
-    up={[
-      { label: m.tariff_avoided(), colour: flowColour("solar") },
-      { label: m.tariff_feed_in_pay(), colour: flowColour("export") },
-    ]}
-    down={[
-      { label: m.tariff_import_cost(), colour: flowColour("import") },
-      { label: m.tariff_standing(), colour: flowColour("house") },
-    ]}
-    groups={[m.tariff_saving_group(), m.tariff_cost_group()]}
+    up={laid.up}
+    down={laid.down}
+    groups={laid.groups}
     via={data.current?.via}
-    summary={{ title: data.title, ...(view?.total ?? split()) }}
+    summary={{ title: data.title, ...(view?.total ?? laid.sides()) }}
     fmt={money}
     unit="€"
     loading={!view}
-    label={m.tariff_chart()}
+    label={laid.label}
     ondrill={data.drill}
     onbrush={data.brush}
   />

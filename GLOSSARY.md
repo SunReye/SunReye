@@ -141,16 +141,32 @@ A named Explore view the admin keeps for the whole plant, shown to everyone who 
 _Avoid_: Favourite, preset, dashboard
 
 **Self-consumption**:
-The share of the PV energy used on site rather than fed in, over a day or longer.
+The share of the PV energy used on site rather than fed in, over an hour or longer.
 _Avoid_: Self-use, own consumption (a measurement point's own consumption is something else)
 
 **Autarky**:
-The share of the house load not bought from the grid, over a day or longer.
+The share of the house load not bought from the grid, over an hour or longer.
 _Avoid_: Self-sufficiency, independence
 
 **Usable capacity**:
 The energy a full battery gives today, inferred from its state of charge over whole discharges, not read from the device.
 _Avoid_: State of health, SOH, nameplate
+
+**Round-trip efficiency**:
+The share of the energy that went through the battery that it gave back over a range: what it gave, over what it took less what it holds more at the range's end than at its start.
+_Avoid_: Battery efficiency, inverter efficiency (the inverter's own, of the moment)
+
+**Full cycles**:
+What the battery gave over a range, counted in its capacities.
+_Avoid_: Cycles (the vendor's own count is something else)
+
+**Charging session**:
+A run of hours in which a loadpoint charged, with its start, end and energy.
+_Avoid_: Session (a sign-in), EVCC's session (plug-in to unplug)
+
+**PV share of the charge**:
+The share of what the cars charged over a range that PV met directly: each hour's charge counts at the share of the house load PV met directly in that hour.
+_Avoid_: Solar charging share, PV-to-EV flow (none is measured)
 
 **Deadband**:
 The smallest change in a role's unit that is stored. The stored series is never wrong by more than this.

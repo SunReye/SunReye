@@ -137,3 +137,39 @@ export function glideTransform(
   // `+ 0` normalizes -0, which would otherwise reach the DOM as "-0".
   return `translate(${offset + 0},0)`;
 }
+
+/** The sample under the pointer: how long ago it was, in s, and its watts. */
+export interface LiveReading {
+  readonly ago: number;
+  /** Null where no sample is near. */
+  readonly watts: number | null;
+}
+
+/**
+ * The sample drawn at `share` of the plot's width (0 its left edge, 1 its right), where the
+ * window's marks stand as {@link glideTransform} places them: while gliding, every sample later
+ * than its time by `newest - cursor + interval`. Null without samples.
+ */
+export function sampleUnder(
+  points: readonly { readonly t: number; readonly v: number }[],
+  at: {
+    readonly share: number;
+    readonly window: number;
+    readonly interval: number;
+    readonly cursor: number;
+    readonly glide: boolean;
+    /** Now, in ms since the epoch: a stalled stream's samples age. */
+    readonly now: number;
+  },
+): LiveReading | null {
+  const newest = points.at(-1)?.t;
+
+  if (newest === undefined) return null;
+
+  const shift = at.glide ? newest - at.cursor + at.interval : 0;
+  const t = newest - at.window * (1 - at.share) - shift;
+  const near = points.reduce((best, p) => (Math.abs(p.t - t) < Math.abs(best.t - t) ? p : best));
+  const hit = Math.abs(near.t - t) <= at.interval ? near : null;
+
+  return { ago: Math.round((at.now - (hit?.t ?? t)) / 1000), watts: hit?.v ?? null };
+}

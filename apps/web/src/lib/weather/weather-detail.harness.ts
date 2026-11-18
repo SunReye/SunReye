@@ -63,7 +63,27 @@ function fake(stored: Stored) {
   return { core, devices };
 }
 
-const DAY = { zone: "UTC", start: new Date(START), now: new Date(START + 12.5 * HOUR) };
+/** The dashboard's read: a fair sky now. */
+const DAY = {
+  zone: "UTC",
+  start: new Date(START),
+  now: new Date(START + 12.5 * HOUR),
+  weather: {
+    cloud: 0.5,
+    code: 1,
+    precipitation: 0,
+    snowfall: 0,
+    snowDepth: 0,
+    visibility: 24_000,
+    wind: 3,
+    windDirection: 270,
+    celsius: 7,
+    humidity: 80,
+    ghi: 250,
+    clearSkyIndex: null,
+    dry: null,
+  },
+};
 
 /** A mild November day and the two after: overcast mornings, some sun, a westerly. */
 export const DRY = {

@@ -1,6 +1,7 @@
 <!--
-  The weather detail's days (ADR 23 "Dashboard"): a tab each, today first, then the day's sunshine,
-  its snow depth while snow lies and its visibility on fog.
+  The weather detail's days (ADR 23 "Dashboard"): a tab each, today first, then one row of facts
+  (ADR 21 "Sheet content"): today the sky's word now, then the day's sunshine, its snow depth while
+  snow lies and its visibility on fog.
 -->
 <script lang="ts">
   import DayTabs from "../detail/DayTabs.svelte";
@@ -14,12 +15,15 @@
     days,
     zone,
     now,
+    sky,
     class: className,
   }: {
     days: readonly WeatherDay[];
     zone: string;
     /** ms since 1970. */
     now: number;
+    /** The sky's word now, which leads today's facts; null where nothing tells. */
+    sky: Fact | null;
     class: string;
   } = $props();
 
@@ -36,7 +40,9 @@
     ];
 
     // A row that does not matter is absent, not empty.
-    return all.filter((f) => f.value !== null);
+    const known = all.filter((f) => f.value !== null);
+
+    return of === days[0] && sky !== null ? [sky, ...known] : known;
   }
 </script>
 

@@ -1,5 +1,5 @@
 <!--
-  A node's live power in the sheet's header: the lead figure, or second to today's energy. Its
+  A node's live power in the sheet's header: the lead figure, or second to the range's figure. Its
   label says the direction in words; the sign itself never reaches the reader.
 -->
 <script lang="ts">
@@ -12,11 +12,17 @@
     spec,
     node,
     loading,
-  }: { spec: Figure; node: NodeReadings | null; loading: boolean } = $props();
+    second,
+  }: {
+    spec: Figure;
+    node: NodeReadings | null;
+    loading: boolean;
+    /** It stands beside the range's figure, smaller. */
+    second: boolean;
+  } = $props();
 
   const watts = $derived(node?.lead ?? null);
   const silent = $derived(node?.silent ?? null);
-  const second = $derived(Boolean(spec.today));
 
   const direction = $derived.by(() => {
     if (spec.direction === undefined || watts === null || Math.abs(watts) < 50) return "";

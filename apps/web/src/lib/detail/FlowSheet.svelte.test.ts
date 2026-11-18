@@ -1,0 +1,246 @@
+// The consumption, house, feed-in, purchase and generator sheets (ADR 21 "Sheet content"): the
+// range's peak with its time, the share PV covered the house, what was paid or earned, and the
+// price bought by hour.
+import { afterEach, beforeEach, expect, test } from "vitest";
+import { userEvent } from "vitest/browser";
+import "../../app.css";
+import {
+  LIVE,
+  PLANT,
+  prepare,
+  restore,
+  rollup,
+  served,
+  show,
+  TARIFF,
+  type Asked,
+} from "./detail.harness.ts";
+
+beforeEach(prepare);
+
+afterEach(restore);
+
+/** A rollup's mean and highest reading. */
+type Read = readonly [mean: number, max: number];
+
+/** Per device and series, each hourly rollup by the UTC instant it starts. */
+type Served = Readonly<Record<string, Readonly<Record<string, Readonly<Record<string, Read>>>>>>;
+
+/** The rollups served, whatever period is asked for. */
+const rolled =
+  (all: Served) =>
+  (a: Asked): Response => {
+    const [from, to] = [Date.parse(a.from), Date.parse(a.to)];
+
+    const points = Object.entries(all[a.device]?.[a.series] ?? {})
+      .map((e: readonly [string, Read]) => [Date.parse(e[0]), e[1]] as const)
+      .filter(([at]) => at >= from && at < to)
+      .map(([at, [mean, max]]) => Object.assign(rollup(at, mean), { max }));
+
+    return Response.json({ points, period: "hour" });
+  };
+
+const TODAY = "2026-11-12";
+
+/** Today at `hour` UTC, the plant's zone. */
+const at = (hour: number) => `${TODAY}T${String(hour).padStart(2, "0")}:00:00Z`;
+
+/** Bought at 08:00 and 09:00, the higher peak at 09:00, for 0,45 € in all. */
+const BOUGHT = {
+  [PLANT]: { "grid.import.power": { [at(8)]: [1000, 2400], [at(9)]: [500, 3100] } },
+  [TARIFF]: { "cost.import.rate": { [at(8)]: [0.3, 0.3], [at(9)]: [0.15, 0.15] } },
+} satisfies Served;
+
+/** A tariff is in force. */
+function priced(): void {
+  served.live = { ...LIVE, [TARIFF]: { "price.import": 0.3, "price.export": 0.08 } };
+}
+
+async function sheetOf(id: string, name: string, route = "") {
+  const { screen } = await show(id, route);
+  const sheet = screen.getByRole("dialog", { name });
+
+  await expect.element(sheet).toBeVisible();
+
+  return sheet;
+}
+
+test("the purchase sheet's facts: the range's peak with its hour, and what was paid", async () => {
+  priced();
+  served.rolled = rolled(BOUGHT);
+
+  const sheet = await sheetOf("purchase", "Bezug");
+  const facts = sheet.getByRole("definition");
+
+  await expect.element(sheet.getByText("Spitze")).toBeVisible();
+  await expect
+    .element(facts.filter({ hasText: "9:00–10:00 Uhr" }))
+    .toHaveTextContent("3,1 kW 9:00–10:00 Uhr");
+  await expect.element(sheet.getByText("Kosten")).toBeVisible();
+  await expect.element(facts.filter({ hasText: "€" })).toHaveTextContent("0,45 €");
+});
+
+/** The house drew 1 kW from 08:00 to 12:00: the battery covered 08:00, the grid 09:00. */
+const DREW = {
+  [PLANT]: {
+    "load.power": {
+      [at(8)]: [1000, 1800],
+      [at(9)]: [1000, 1200],
+      [at(10)]: [1000, 4600],
+      [at(11)]: [1000, 1100],
+    },
+    "grid.import.power": { [at(9)]: [1000, 1200] },
+    "battery.discharge.power": { [at(8)]: [1000, 1800] },
+  },
+} satisfies Served;
+
+test("the consumption sheet's facts: the peak with its hour, and the share PV covered directly", async () => {
+  served.rolled = rolled(DREW);
+
+  const sheet = await sheetOf("consumption", "Verbrauch");
+  const facts = sheet.getByRole("definition");
+
+  await expect
+    .element(facts.filter({ hasText: "10:00–11:00 Uhr" }))
+    .toHaveTextContent("4,6 kW 10:00–11:00 Uhr");
+  // Of 4 kWh, the battery covered one and the grid one: the battery's charge is not counted as PV's.
+  await expect.element(sheet.getByText("Direkt aus PV")).toBeVisible();
+  await expect.element(facts.filter({ hasText: "%" })).toHaveTextContent("50 %");
+  expect(sheet.getByText("Kosten").elements()).toHaveLength(0);
+});
+
+test("without a tariff in force the purchase sheet says so in place of its euros", async () => {
+  served.rolled = rolled(BOUGHT);
+
+  const sheet = await sheetOf("purchase", "Bezug");
+  const facts = sheet.getByRole("definition");
+
+  await expect.element(facts.filter({ hasText: "9:00–10:00 Uhr" })).toBeVisible();
+  await expect.element(sheet.getByText("Kosten")).toBeVisible();
+  // Short enough for a third of the sheet.
+  const none = facts.filter({ hasText: "Kein Tarif" });
+
+  await expect.element(none).toBeVisible();
+  expect(none.element().textContent?.trim()).toBe("Kein Tarif");
+});
+
+test("the purchase sheet charts the price bought at by hour, in cents", async () => {
+  priced();
+  served.rolled = rolled({
+    ...BOUGHT,
+    [TARIFF]: {
+      ...BOUGHT[TARIFF],
+      "price.import": { [at(8)]: [0.3, 0.3], [at(9)]: [0.2, 0.2] },
+    },
+  });
+
+  const sheet = await sheetOf("purchase", "Bezug");
+
+  await expect
+    .element(sheet.getByRole("group", { name: /Bezugspreis über die Zeit/u }))
+    .toBeVisible();
+  // At rest the legend reads the range's mean price, and names it.
+  await expect.element(sheet.getByText("Ø Bezugspreis · Heute")).toBeVisible();
+  await expect.element(sheet.getByText("25,00 ct/kWh")).toBeVisible();
+  // A price is no flow: its key is its name, not a side of zero it never crossed.
+  await expect.element(sheet.getByRole("term").filter({ hasText: "Bezugspreis" })).toBeVisible();
+  expect(sheet.getByText("Über null").elements()).toHaveLength(0);
+
+  // Each hour reads in cents too: 0,30 €/kWh bought at 08:00.
+  const plot = sheet.getByRole("group", { name: /Bezugspreis über die Zeit/u });
+  const box = plot.element().getBoundingClientRect();
+
+  await userEvent.hover(plot, { position: { x: (box.width * 8.5) / 24, y: box.height / 2 } });
+  await expect.element(sheet.getByText("8:00–9:00 Uhr")).toBeVisible();
+  await expect.element(sheet.getByText("30,00 ct/kWh")).toBeVisible();
+});
+
+test("the consumption sheet charts no price", async () => {
+  priced();
+  served.rolled = rolled(DREW);
+
+  const sheet = await sheetOf("consumption", "Verbrauch");
+
+  const charts = sheet.getByRole("group", { name: /über die Zeit/u });
+
+  await expect.element(charts).toBeVisible();
+  expect(charts.elements()).toHaveLength(1);
+});
+
+test("a range whose facts fail to read says so in their place, with a retry", async () => {
+  priced();
+  served.rolled = (a) =>
+    a.series === "cost.import.rate"
+      ? Response.json({ status: 500, code: "store.failed" }, { status: 500 })
+      : rolled(BOUGHT)(a);
+
+  const sheet = await sheetOf("purchase", "Bezug");
+  const alert = sheet.getByRole("alert");
+
+  await expect.element(alert).toBeVisible();
+  expect(sheet.getByText("Spitze").elements()).toHaveLength(0);
+  // The price chart stands with the facts: a failed read shows neither.
+  expect(sheet.getByRole("group", { name: /Bezugspreis über die Zeit/u }).elements()).toHaveLength(
+    0,
+  );
+  served.rolled = rolled(BOUGHT);
+  await alert.getByRole("button", { name: "Erneut laden" }).click();
+
+  await expect
+    .element(sheet.getByRole("definition").filter({ hasText: "€" }))
+    .toHaveTextContent("0,45 €");
+  await expect.element(alert).not.toBeInTheDocument();
+});
+
+test("the feed-in sheet's facts: the peak, and what feed-in earned", async () => {
+  priced();
+  served.rolled = rolled({
+    [PLANT]: { "grid.export.power": { [at(10)]: [2000, 2600], [at(11)]: [1500, 1900] } },
+    [TARIFF]: { "cost.export.rate": { [at(10)]: [0.16, 0.16], [at(11)]: [0.12, 0.12] } },
+  });
+
+  const sheet = await sheetOf("feedIn", "Einspeisung");
+  const facts = sheet.getByRole("definition");
+
+  await expect
+    .element(facts.filter({ hasText: "10:00–11:00 Uhr" }))
+    .toHaveTextContent("2,6 kW 10:00–11:00 Uhr");
+  await expect.element(sheet.getByText("Vergütung")).toBeVisible();
+  await expect.element(facts.filter({ hasText: "€" })).toHaveTextContent("0,28 €");
+});
+
+test("past a day the peak names its day", async () => {
+  served.rolled = rolled({
+    [PLANT]: {
+      "generator.power": {
+        "2026-11-10T09:00:00Z": [1200, 5400],
+        [at(9)]: [800, 2100],
+      },
+    },
+  });
+
+  const sheet = await sheetOf("generator", "Generator", "range=week&at=2026-11-09");
+  const facts = sheet.getByRole("definition");
+
+  await expect.element(facts.filter({ hasText: "Nov" })).toHaveTextContent("5,4 kW 10. Nov.");
+});
+
+test("the grid sheet heads with what was bought, and states what was fed in on its right", async () => {
+  served.stored = { [PLANT]: ["grid.import.power", "grid.export.power"] };
+  served.rolled = rolled({
+    [PLANT]: {
+      "grid.import.power": { [at(8)]: [1200, 2000] },
+      "grid.export.power": { [at(11)]: [3300, 4000] },
+    },
+  });
+
+  const sheet = await sheetOf("grid", "Netz");
+  const head = sheet.getByRole("banner");
+
+  await expect.element(head.getByText("1,2 kWh")).toBeVisible();
+  await expect.element(head.getByText("Bezogen")).toBeVisible();
+  await expect.element(head.getByText("3,3 kWh")).toBeVisible();
+  await expect.element(head.getByText("Eingespeist")).toBeVisible();
+  // The live power is the live graph's and the readings', not the head's.
+  expect(head.getByText(/jetzt/u).elements()).toHaveLength(0);
+});
