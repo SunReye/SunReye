@@ -184,7 +184,7 @@
     {status}
     {day}
     spot={values[SPOT]}
-    input={{ core, route, strings }}
+    input={{ core, route, strings, estimated }}
     record={stored}
     {priced}
     {admin}

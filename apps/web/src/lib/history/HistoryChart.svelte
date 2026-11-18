@@ -21,6 +21,7 @@
     series,
     route,
     forecast = [],
+    estimated = false,
     onread,
   }: {
     core: Readonly<Pick<Core, "statistics" | "forecasts">>;
@@ -29,6 +30,8 @@
     route: RangeRoute;
     /** The devices whose `series` forecasts add up to what this series expects. */
     forecast?: readonly number[];
+    /** The series is computed, not measured, so its values carry ≈ (ADR 17). */
+    estimated?: boolean;
     /** Told the band being read, for a chart that reads along. */
     onread?: (index: number | null) => void;
   } = $props();
@@ -162,6 +165,7 @@
   fmt={reads.fmt}
   unit={reads.unit}
   loading={view.loading}
+  {estimated}
   label={m.history_chart({ series: meta[0]!.label })}
   ondrill={data.drill}
   onbrush={data.brush}

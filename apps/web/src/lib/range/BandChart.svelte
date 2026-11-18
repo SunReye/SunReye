@@ -56,6 +56,7 @@
     max,
     height = 240,
     loading = false,
+    estimated = false,
     drillLabel = m.range_open(),
     label,
     ondrill,
@@ -84,6 +85,8 @@
     max?: number | undefined;
     height?: number;
     loading?: boolean;
+    /** The series are computed, not measured: their values carry ≈. */
+    estimated?: boolean;
     drillLabel?: string;
     label: string;
     ondrill?: ((index: number) => void) | undefined;
@@ -272,6 +275,7 @@
     gap: !loading && bands.some((b) => b.state === "gap") ? gapLabel : null,
     blank: loading || shown?.state === "gap" || shown?.state === "before",
     bare: readout.bare === true,
+    approx: estimated,
     // A band still to come has its forecast, but nothing measured yet.
     unmeasured: shown?.state === "future",
     duration: shown ? 0 : 320,

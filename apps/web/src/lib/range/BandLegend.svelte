@@ -32,6 +32,8 @@
     blank: boolean;
     /** The series' keys state no value. */
     bare: boolean;
+    /** The series' values are estimated: each carries ≈. */
+    approx: boolean;
     /** The series' figures show a dash: a band still to come, read for its forecast only. */
     unmeasured: boolean;
     /** Reading a band is instant; a new range rolls. */
@@ -62,6 +64,8 @@
 
   const KEY = "flex min-w-0 items-baseline gap-1.5";
 
+  const approx = (v: number) => `≈ ${fmt(v)}`;
+
   /** At the row's right edge on a phone, beside its key from 520 px. */
   const VALUE = "ml-auto pl-3 font-semibold whitespace-nowrap tabular-nums @[520px]:ml-0 @[520px]:pl-0";
 
@@ -80,7 +84,7 @@
 {#snippet figure(v: number | null | undefined, series = false)}
   <AnimatedNumber
     value={legend.blank || (series && legend.unmeasured) ? null : (v ?? 0)}
-    format={fmt}
+    format={series && legend.approx ? approx : fmt}
     placeholder="–"
     duration={legend.duration}
     appear={false}

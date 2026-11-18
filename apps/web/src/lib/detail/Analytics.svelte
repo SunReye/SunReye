@@ -8,7 +8,8 @@
   /** What the analytics read: the core, the sheet's range and the layout's strings. The weather
    * detail, which stands in their place, reads `history` (ADR 23); the PV forecast's days read
    * the `layout` (ADR 21); the savings read `costs` and `payback` (ADR 12); the inverter's facts
-   * read which profiles map a temperature from `capabilities`. */
+   * read which profiles map a temperature from `capabilities`. By device, `estimated` holds the
+   * series computed rather than measured (ADR 17). */
   export interface AnalyticsInput {
     readonly core: Readonly<
       Pick<
@@ -26,6 +27,7 @@
     >;
     readonly route: RangeRoute;
     readonly strings: readonly PvString[];
+    readonly estimated: Readonly<Record<string, readonly string[]>>;
   }
 </script>
 

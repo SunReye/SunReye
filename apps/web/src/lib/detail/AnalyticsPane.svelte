@@ -28,6 +28,7 @@
     series={analytics.series}
     route={input.route}
     forecast={analytics.forecast}
+    estimated={(input.estimated[String(analytics.device)] ?? []).includes(analytics.series)}
   />
 {:else if tab === "heat" && analytics.heat}
   <PatternPanel

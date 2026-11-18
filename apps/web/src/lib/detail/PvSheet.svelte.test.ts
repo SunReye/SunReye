@@ -1,7 +1,7 @@
 // The PV, inverter and string sheets (ADR 21 "Sheet content"): the range's energy and its peak
 // with time, actual against forecast, and the inverter's temperature where its profile maps one.
 import { afterEach, beforeEach, expect, test } from "vitest";
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import "../../app.css";
 import {
   asked,
@@ -154,6 +154,18 @@ test("an estimated string's energy and peak carry ≈; its forecast does not", a
   expect(head.getByLabelText("geschätzt").elements()).toHaveLength(2);
   await expect.element(sheet.getByRole("term").filter({ hasText: "Spitze ≈" })).toBeVisible();
   expect(sheet.getByRole("term").filter({ hasText: "Prognose ≈" }).elements()).toHaveLength(0);
+});
+
+test("under the pointer an estimated string's chart value carries ≈; its forecast does not", async () => {
+  const sheet = await sheetOf("string-1", "Süd");
+  const overview = sheet.getByRole("tabpanel", { name: "Übersicht" });
+  const plot = overview.element().querySelector<HTMLElement>("[data-scrub]")!;
+  const box = plot.getBoundingClientRect();
+
+  await userEvent.hover(plot, { position: { x: (box.width * 10.5) / 24, y: box.height / 2 } });
+
+  await expect.element(overview.getByText("≈ 12,0 kWh")).toBeVisible();
+  await expect.element(overview.getByText("2,0 kWh", { exact: true })).toBeVisible();
 });
 
 test("the plant's PV, measured whole, carries no ≈", async () => {
