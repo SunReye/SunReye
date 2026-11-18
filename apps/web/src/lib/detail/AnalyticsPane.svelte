@@ -19,6 +19,10 @@
     analytics: Analytics;
     input: AnalyticsInput;
   } = $props();
+
+  const estimated = $derived(
+    (input.estimated[String(analytics.device)] ?? []).includes(analytics.series),
+  );
 </script>
 
 {#if tab === "overview"}
@@ -28,7 +32,7 @@
     series={analytics.series}
     route={input.route}
     forecast={analytics.forecast}
-    estimated={(input.estimated[String(analytics.device)] ?? []).includes(analytics.series)}
+    {estimated}
   />
 {:else if tab === "heat" && analytics.heat}
   <PatternPanel
@@ -37,6 +41,7 @@
     source={{ device: analytics.device, series: analytics.heat }}
     name={analytics.way ?? title}
     {colour}
+    {estimated}
   />
 {:else if tab === "compare"}
   <StringsPanel

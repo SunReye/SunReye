@@ -168,6 +168,23 @@ test("under the pointer an estimated string's chart value carries ≈; its forec
   await expect.element(overview.getByText("2,0 kWh", { exact: true })).toBeVisible();
 });
 
+test("an estimated string's heat cells carry ≈ too", async () => {
+  served.rolled = inverter({ "pv.string.power[1]": SOUTH });
+
+  const sheet = await sheetOf("string-1", "Süd");
+
+  await sheet.getByRole("tab", { name: "Heatmap" }).click();
+
+  const grid = sheet.getByRole("group", { name: /nach Tageszeit/u });
+
+  await expect.element(grid).toBeVisible();
+  grid.element().focus();
+  // The first arrow reads Sunday at noon; Thursday the 12th at 10:00 is three days and two hours back.
+  await userEvent.keyboard("{ArrowUp}{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowUp}{ArrowUp}");
+
+  await expect.element(sheet.getByText("· ≈ 2,00 kWh")).toBeVisible();
+});
+
 test("the plant's PV, measured whole, carries no ≈", async () => {
   const sheet = await sheetOf("pv", "PV gesamt");
 
