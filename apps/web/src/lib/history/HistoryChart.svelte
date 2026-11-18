@@ -70,7 +70,7 @@
     bands: [],
     up: null,
     down: [],
-    sum: { up: [0], down: [] },
+    sum: { up: [0], down: [], bare: false },
     expected: null,
   };
 
@@ -133,7 +133,7 @@
             // One series' sum is the sheet's head; several split it.
             bare: !signed && !isSignedFlow(s),
           }
-        : split(figure(...whole(got.spans)).value),
+        : { ...split(figure(...whole(got.spans)).value), bare: false },
     };
   });
 
@@ -144,10 +144,13 @@
 
   const meta = $derived([keyOf(series)]);
 
+  // A sum the head states stands under no title of its own: the range's name alone.
+  const sumTitle = $derived(view.sum.bare ? route.label : data.title);
+
   // A power's bands sum to the range's; any other series' bands to its mean, which names it.
   const title = $derived(
     isPower(series)
-      ? data.title
+      ? sumTitle
       : m.range_mean({ series: describe(series).label, range: route.label }),
   );
 

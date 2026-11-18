@@ -80,6 +80,12 @@ test("a chart of one series states no number at rest: the head states it", async
   await expect.element(head.getByText("4,0 kWh")).toBeVisible();
   await expect.element(legend.filter({ hasText: "8,0 kWh" })).toBeVisible();
   expect(legend.filter({ hasText: "4,0 kWh" }).elements()).toHaveLength(0);
+
+  // Titled by its range alone: no sum stands under it.
+  const overview = sheet.getByRole("tabpanel", { name: "Übersicht" });
+
+  await expect.element(overview.getByText("Heute", { exact: true })).toBeVisible();
+  expect(overview.getByText(/Summe/u).elements()).toHaveLength(0);
 });
 
 test("a range before the first reading says so once, and reads nothing", async () => {
