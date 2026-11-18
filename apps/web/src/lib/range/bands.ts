@@ -38,6 +38,8 @@ export interface Readout {
   /** What is still expected, where bands have not happened yet. */
   readonly ghost?: number | null | undefined;
   readonly line?: number | null | undefined;
+  /** The keys state no value: one series, whose sum the sheet's head already states. */
+  readonly bare?: boolean | undefined;
 }
 
 const COARSE = [1, 1.5, 2, 3, 4, 5, 6, 8, 10];

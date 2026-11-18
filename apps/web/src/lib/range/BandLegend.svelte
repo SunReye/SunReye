@@ -30,6 +30,8 @@
     gap: string | null;
     /** Figures show a dash: still loading, or a band without readings. */
     blank: boolean;
+    /** The series' keys state no value. */
+    bare: boolean;
     /** The series' figures show a dash: a band still to come, read for its forecast only. */
     unmeasured: boolean;
     /** Reading a band is instant; a new range rolls. */
@@ -147,7 +149,9 @@
         <span class="size-2 shrink-0 translate-y-[-1px] rounded-[1px]" style:background={s.colour}
         ></span>
         <dt class="truncate text-muted-foreground">{s.label}</dt>
-        <dd class={VALUE}>{@render figure(r.values[i], true)}</dd>
+        {#if !legend.bare}
+          <dd class={VALUE}>{@render figure(r.values[i], true)}</dd>
+        {/if}
       </div>
     {/each}
     {#if r.expected}{@render expected(r.expected)}{/if}

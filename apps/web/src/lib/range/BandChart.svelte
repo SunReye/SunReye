@@ -271,6 +271,7 @@
         : null,
     gap: !loading && bands.some((b) => b.state === "gap") ? gapLabel : null,
     blank: loading || shown?.state === "gap" || shown?.state === "before",
+    bare: readout.bare === true,
     // A band still to come has its forecast, but nothing measured yet.
     unmeasured: shown?.state === "future",
     duration: shown ? 0 : 320,

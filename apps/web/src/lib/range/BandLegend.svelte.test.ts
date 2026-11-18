@@ -41,6 +41,7 @@ const legendOf = (reference: boolean, ghost: Key | null) => ({
   line: null,
   gap: null,
   blank: false,
+  bare: false,
   unmeasured: false,
   duration: 0,
 });

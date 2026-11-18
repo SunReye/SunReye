@@ -124,7 +124,12 @@
       up: signed || isSignedFlow(s) ? [sidesOf(s)[0]] : null,
       down: signed ? [sidesOf(s)[1]] : [],
       sum: isPower(s)
-        ? { up: [total(figures, 1)], down: signed ? [total(figures, -1)] : [] }
+        ? {
+            up: [total(figures, 1)],
+            down: signed ? [total(figures, -1)] : [],
+            // One series' sum is the sheet's head; several split it.
+            bare: !signed && !isSignedFlow(s),
+          }
         : split(figure(...whole(got.spans)).value),
     };
   });

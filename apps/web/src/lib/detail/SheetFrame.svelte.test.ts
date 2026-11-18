@@ -88,6 +88,17 @@ test("without readings in the range before, the head states no change", async ()
   expect(head.element().textContent).not.toContain("vs");
 });
 
+test("a chart of one series states no number at rest: the head states it", async () => {
+  served.rolled = pv({ "2026-11-12": 4000 });
+
+  const { sheet, head } = await sheetOf("production", "Produktion");
+  const legend = sheet.getByRole("tabpanel", { name: "Übersicht" }).getByRole("definition");
+
+  await expect.element(head.getByText("4,0 kWh")).toBeVisible();
+  await expect.element(legend.filter({ hasText: "8,0 kWh" })).toBeVisible();
+  expect(legend.filter({ hasText: "4,0 kWh" }).elements()).toHaveLength(0);
+});
+
 test("a range before the first reading says so once, and reads nothing", async () => {
   served.stored = { [PLANT]: ["pv.power"] };
 

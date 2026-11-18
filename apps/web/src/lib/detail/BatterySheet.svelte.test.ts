@@ -40,6 +40,18 @@ test("the head states what the battery discharged over the range, against the da
   await expect.element(head.getByText("+50 % vs gestern")).toBeVisible();
 });
 
+test("at rest the power's legend splits the range into what was charged and discharged", async () => {
+  served.rolled = plant({
+    "battery.power": { ...hours(TODAY, [10], 3000), ...hours(TODAY, [8], -2000) },
+  });
+
+  const { sheet } = await sheetOf();
+  const keys = sheet.getByRole("tabpanel", { name: "Übersicht" }).getByRole("definition");
+
+  await expect.element(keys.filter({ hasText: "3,0 kWh" })).toBeVisible();
+  await expect.element(keys.filter({ hasText: "2,0 kWh" })).toBeVisible();
+});
+
 test("the heat tab shows when in the day the battery discharges", async () => {
   served.rolled = plant(GAVE);
 
