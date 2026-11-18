@@ -56,8 +56,5 @@
       </p>
     {/if}
   {/if}
-  <!-- The facts row spans the sheet, as every sheet's does. -->
-  <div class="-mx-5 -mb-4 pt-2 sm:-mx-6">
-    <DetailStats stats={facts} />
-  </div>
+  <DetailStats panel stats={facts} />
 </RangeState>

@@ -31,8 +31,5 @@
 </script>
 
 {#if stats}
-  <!-- The facts row spans the sheet, as every sheet's does. -->
-  <div class="-mx-5 -mb-4 pt-2 sm:-mx-6">
-    <DetailStats {stats} />
-  </div>
+  <DetailStats panel {stats} />
 {/if}

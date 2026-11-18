@@ -36,14 +36,11 @@
       <ShareBar title={m.detail_covered()} total={v.all.consumption} parts={v.covered} />
       <ShareBar title={m.detail_went()} total={v.all.production} parts={v.went} />
     </div>
-    <!-- The facts row spans the sheet, as every sheet's does. -->
-    <div class="-mx-5 -mb-4 pt-2 sm:-mx-6">
-      {#await month}
-        <DetailStats stats={factsOf(v.best, v.worst, null)} />
-      {:then mean}
-        <DetailStats stats={factsOf(v.best, v.worst, mean)} />
-      {/await}
-    </div>
+    {#await month}
+      <DetailStats panel stats={factsOf(v.best, v.worst, null)} />
+    {:then mean}
+      <DetailStats panel stats={factsOf(v.best, v.worst, mean)} />
+    {/await}
   {:else}
     <Skeleton class="h-52" role="status" aria-label={m.loading()} />
   {/if}

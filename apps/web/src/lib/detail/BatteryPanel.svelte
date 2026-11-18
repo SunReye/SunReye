@@ -39,8 +39,5 @@
   {/snippet}
 </AnalyticsTabs>
 <RangeState failed={range.failed} onretry={range.retry}>
-  <!-- The facts row spans the sheet, as every sheet's does. -->
-  <div class="-mx-5 -mb-4 pt-2 sm:-mx-6">
-    <DetailStats stats={factsOf(range.view?.efficiency ?? null, range.view?.cycles ?? null)} />
-  </div>
+  <DetailStats panel stats={factsOf(range.view?.efficiency ?? null, range.view?.cycles ?? null)} />
 </RangeState>
