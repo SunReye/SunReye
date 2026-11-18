@@ -1,14 +1,11 @@
 <!-- Settings › Display: this browser's motion setting (ADR 21), and what moves here and now. -->
 <script lang="ts">
-  import { MediaQuery } from "svelte/reactivity";
   import { Button } from "#lib/components/ui/button/index.js";
   import SegmentRow from "./SegmentRow.svelte";
   import { haptics } from "../haptics.ts";
   import { motion } from "../motion/tier.svelte.ts";
   import { MOTION_SETTINGS, parseMotionSetting, type MotionSetting } from "../motion/tier.ts";
   import { m } from "../paraglide/messages.js";
-
-  const reduce = new MediaQuery("(prefers-reduced-motion: reduce)");
 
   const CHOICES: Readonly<Record<MotionSetting, () => string>> = {
     auto: m.display_motion_auto,
@@ -17,13 +14,13 @@
   };
 
   /** Shown only on Automatisch with nothing holding the device still: what the watch measured. */
-  const measuring = $derived(motion.setting === "auto" && !motion.lowPower && !reduce.current);
+  const measuring = $derived(motion.setting === "auto" && motion.held === null);
 
   /** What moves here and now: still under an off switch, else the watch's tier or the choice. */
   const moving = $derived.by(() => {
-    if (motion.lowPower) return m.display_motion_low_power();
+    if (motion.held === "low-power") return m.display_motion_low_power();
 
-    if (reduce.current) return m.display_motion_reduced();
+    if (motion.held === "reduced") return m.display_motion_reduced();
 
     return measuring
       ? m.display_motion_measured({ tier: CHOICES[motion.measured === "lite" ? "lite" : "full"]() })

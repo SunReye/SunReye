@@ -65,6 +65,13 @@ export class MotionStore {
     return resolveTier(false, this.#strain);
   }
 
+  /** What forces still whatever the setting, if anything: the low-power switch, then reduced motion. */
+  get held(): "low-power" | "reduced" | null {
+    if (this.#lowPower) return "low-power";
+
+    return this.#reduce.current ? "reduced" : null;
+  }
+
   get still(): boolean {
     return this.tier === "still";
   }

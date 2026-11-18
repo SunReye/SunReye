@@ -293,3 +293,17 @@ test("Neu messen also forgets the levels strain took off Auto's 3D quality", asy
   expect(localStorage.getItem("sunreye.3d-strain")).toBeNull();
   expect(motion.stepped).toBe(false);
 });
+
+test("what holds everything still is named: the low-power switch first, then reduced motion", async () => {
+  const motion = new MotionStore();
+
+  expect(motion.held).toBeNull();
+
+  await cdp().send("Emulation.setEmulatedMedia", {
+    features: [{ name: "prefers-reduced-motion", value: "reduce" }],
+  });
+  await expect.poll(() => motion.held).toBe("reduced");
+
+  motion.lowPower = true;
+  expect(motion.held).toBe("low-power");
+});

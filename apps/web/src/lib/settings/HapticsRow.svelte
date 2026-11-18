@@ -7,7 +7,6 @@
   import { m } from "../paraglide/messages.js";
 
   const touch = new MediaQuery("(pointer: coarse)");
-  const reduce = new MediaQuery("(prefers-reduced-motion: reduce)");
 
   let stored = $state(localStorage.getItem(HAPTICS));
 
@@ -15,16 +14,16 @@
     hapticsOn({
       stored,
       touch: touch.current,
-      lowPower: motion.lowPower,
-      reducedMotion: reduce.current,
+      lowPower: motion.held === "low-power",
+      reducedMotion: motion.held === "reduced",
     }),
   );
 
   /** Why haptics are held off, if they are. */
   const held = $derived.by(() => {
-    if (motion.lowPower) return m.display_haptics_low_power();
+    if (motion.held === "low-power") return m.display_haptics_low_power();
 
-    return reduce.current ? m.display_haptics_reduced() : undefined;
+    return motion.held === "reduced" ? m.display_haptics_reduced() : undefined;
   });
 
   function feelOn(on: boolean): void {
