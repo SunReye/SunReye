@@ -1,5 +1,5 @@
 // The facts more than one sheet states of its range (ADR 21 "Sheet content"). Pure.
-import { whenOf } from "../history/peaks.ts";
+import { rollupWhen } from "../history/peaks.ts";
 import type { Rolled } from "../history/history.ts";
 import { m } from "../paraglide/messages.js";
 import { euroDigits } from "../range/format.ts";
@@ -23,7 +23,7 @@ export function peakFact(
     value: top?.max ?? null,
     unit,
     digits: 0,
-    ...(top && { note: whenOf(top.start, at.hours, at.zone) }),
+    ...(top && { note: rollupWhen(top.start, at.hours, at.zone) }),
   };
 }
 

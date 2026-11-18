@@ -62,7 +62,7 @@ const clockOf = (at: number, zone: string) =>
   }).format(at);
 
 /** When a session charged: its clock times, and past a day the day it began first. */
-export function whenOf(s: Readonly<Session>, days: boolean, zone: string): string {
+export function sessionTimes(s: Readonly<Session>, days: boolean, zone: string): string {
   const hours = m.detail_session_hours({
     from: clockOf(s.start, zone),
     to: clockOf(s.end, zone),

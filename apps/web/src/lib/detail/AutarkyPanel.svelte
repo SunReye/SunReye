@@ -7,7 +7,7 @@
   import { Skeleton } from "#lib/components/ui/skeleton/index.js";
   import { m } from "../paraglide/messages.js";
   import type { AnalyticsInput } from "./Analytics.svelte";
-  import { factsOf } from "./autarky.ts";
+  import { autarkyFacts } from "./autarky.ts";
   import { AUTARKY_RANGE, monthAutarky } from "./autarky-range.ts";
   import DetailStats from "./DetailStats.svelte";
   import RangeState from "./RangeState.svelte";
@@ -37,9 +37,9 @@
       <ShareBar title={m.detail_went()} total={v.all.production} parts={v.went} />
     </div>
     {#await month}
-      <DetailStats panel stats={factsOf(v.best, v.worst, null)} />
+      <DetailStats panel stats={autarkyFacts(v.best, v.worst, null)} />
     {:then mean}
-      <DetailStats panel stats={factsOf(v.best, v.worst, mean)} />
+      <DetailStats panel stats={autarkyFacts(v.best, v.worst, mean)} />
     {/await}
   {:else}
     <Skeleton class="h-52" role="status" aria-label={m.loading()} />

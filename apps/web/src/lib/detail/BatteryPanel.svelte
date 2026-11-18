@@ -7,7 +7,7 @@
 <script lang="ts">
   import type { AnalyticsInput } from "./Analytics.svelte";
   import AnalyticsTabs from "./AnalyticsTabs.svelte";
-  import { factsOf } from "./battery.ts";
+  import { batteryFacts } from "./battery.ts";
   import { BATTERY_RANGE } from "./battery-range.ts";
   import BatteryOverview from "./BatteryOverview.svelte";
   import DetailStats from "./DetailStats.svelte";
@@ -39,5 +39,5 @@
   {/snippet}
 </AnalyticsTabs>
 <RangeState failed={range.failed} onretry={range.retry}>
-  <DetailStats panel stats={factsOf(range.view?.efficiency ?? null, range.view?.cycles ?? null)} />
+  <DetailStats panel stats={batteryFacts(range.view?.efficiency ?? null, range.view?.cycles ?? null)} />
 </RangeState>

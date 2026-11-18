@@ -54,7 +54,7 @@ export function peakIn(rolled: readonly Rolled[], from = -Infinity, to = Infinit
 }
 
 /** When a rollup starting at `start` fell: its hour among hourly rollups, else its day. */
-export function whenOf(start: number, hours: boolean, zone: string): string {
+export function rollupWhen(start: number, hours: boolean, zone: string): string {
   const { day, hour } = plantNow(zone, new Date(start));
 
   return hours ? m.stats_peak_hour({ from: hour, to: hour + 1 }) : fmt("dayShort", day);
@@ -73,7 +73,7 @@ export function peaksOf(plant: Plant, at: PeakInput): Peak[] {
       {
         label: label(),
         value: top.max ?? 0,
-        when: whenOf(top.start, at.hours, at.zone),
+        when: rollupWhen(top.start, at.hours, at.zone),
         colour: flowColour(colour),
         range: at.hours ? null : rangeFor("day", plantNow(at.zone, new Date(top.start)).day),
       },

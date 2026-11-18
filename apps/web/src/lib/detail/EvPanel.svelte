@@ -9,7 +9,7 @@
   import { m } from "../paraglide/messages.js";
   import type { AnalyticsInput } from "./Analytics.svelte";
   import DetailStats from "./DetailStats.svelte";
-  import { whenOf } from "./ev.ts";
+  import { sessionTimes } from "./ev.ts";
   import { EV_RANGE } from "./ev-range.ts";
   import { pvCoveredFact } from "./facts.ts";
   import Quantity from "./Quantity.svelte";
@@ -42,7 +42,7 @@
     <ul class="flex flex-col divide-y divide-border/60" aria-label={m.detail_sessions()}>
       {#each view.sessions.slice(0, SHOWN) as s (s.start)}
         <li class="flex items-baseline justify-between gap-4 py-2 text-sm">
-          <span class="min-w-0 text-pretty">{whenOf(s, view.days, zone)}</span>
+          <span class="min-w-0 text-pretty">{sessionTimes(s, view.days, zone)}</span>
           <span class="shrink-0 font-semibold tabular-nums"
             ><Quantity
               value={s.kwh}

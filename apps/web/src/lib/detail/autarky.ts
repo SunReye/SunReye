@@ -112,7 +112,7 @@ function at(label: string, b: Readonly<Band> | null): Fact {
 }
 
 /** The facts row: the best and the worst band, and the last 30 whole days' autarky. */
-export const factsOf = (
+export const autarkyFacts = (
   best: Readonly<Band> | null,
   worst: Readonly<Band> | null,
   mean: number | null,
