@@ -1,10 +1,10 @@
-// The builder's sample weathers (ADR 23 "Builder"): whole instants to see the plant in, each
+// The builder's trial weathers (ADR 23 "Builder"): whole instants to see the plant in, each
 // stated as the core would read it so the scene draws it as it would the real one.
 import type { Weather } from "../weather/weather.ts";
 
-export const SAMPLES = ["clear", "cloudy", "rain", "thunder", "snow", "fog"] as const;
+export const TRIALS = ["clear", "cloudy", "rain", "thunder", "snow", "fog"] as const;
 
-export type Sample = (typeof SAMPLES)[number];
+export type Trial = (typeof TRIALS)[number];
 
 const CALM: Weather = {
   cloud: 0,
@@ -22,8 +22,8 @@ const CALM: Weather = {
   dry: null,
 };
 
-/** Each sample as an instant's weather; the light follows its `cloud`. */
-export const SAMPLE_WEATHER: Readonly<Record<Sample, Weather>> = {
+/** Each trial as an instant's weather; the light follows its `cloud`. */
+export const TRIAL_WEATHER: Readonly<Record<Trial, Weather>> = {
   clear: CALM,
   cloudy: { ...CALM, cloud: 0.9, code: 3 },
   rain: {

@@ -85,7 +85,7 @@
       {painting}
       onto={facing && laying(roofs, facing)}
       aspect={width / height}
-      bind:sample={moment.sample}
+      bind:trial={moment.trial}
     />
   {/if}
 

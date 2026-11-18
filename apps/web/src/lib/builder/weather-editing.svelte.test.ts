@@ -66,7 +66,7 @@ test("the builder shows the instant's fog until a block is picked to edit, and l
   lighted.mockRestore();
 });
 
-test("a sample weather from the weather button stands in for the stored one until the stored is picked again", async () => {
+test("a trial weather from the weather button stands in for the stored one until the stored is picked again", async () => {
   const lighted = vi.spyOn(Studio.prototype, "light");
   const weather = () => lighted.mock.lastCall?.[3];
 
