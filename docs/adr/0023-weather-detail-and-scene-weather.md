@@ -46,7 +46,7 @@ One Open-Meteo request asks for `minutely_15` and `hourly` together. Sunshine is
 
 **Motion.** Amending ADR 20's "no continuous loop": while moving particles or glass are shown, on the full tier, the scene renders in a loop capped at 30 fps. The loop pauses while the tab is hidden or the canvas is off screen, and stops when the weather turns dry. The frame watch (ADR 21) counts its frames, so a device that struggles drops to lite, where nothing loops.
 
-**Builder.** While the admin edits, the builder leaves out glass, particles, fog and wet ground, so faces and edges stay exact. The light and lying snow follow the instant shown. Outside editing, its time slider shows the weather as the dashboard does.
+**Builder.** While the admin edits, the builder leaves out glass, particles, fog and wet ground, so faces and edges stay exact. The light and lying snow follow the instant shown. Outside editing, its time slider shows the weather as the dashboard does. A *Wetter* button under the views' button sets a sample weather in place of the stored one, to see how the plant looks in it: *Gespeichert* (the default), *Klar*, *Bewölkt*, *Regen*, *Gewitter*, *Schnee* or *Nebel*. A sample is a whole instant's weather, light included; the page holds it, nothing saves it, and the editing rule above still applies.
 
 **Off switch.** A per-browser *Wettereffekte* switch under Settings › Display, on by default, removes particles, glass, fog, wet ground and lying snow. The weather light stays: it is how the scene is lit. Reduced motion and the low-power switch still force the still tier. The 2D flow draws no weather.
 
