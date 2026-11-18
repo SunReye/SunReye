@@ -15,7 +15,7 @@ use crate::bus::{Bus, DeviceId};
 use crate::correction::{Grid, Grids, plant_hour};
 use crate::layout::{Inverters, Layouts, PvString, Version, in_force};
 use crate::location::Location;
-use crate::storage::{self, Issue, Storage};
+use crate::storage::{self, Issue, Keep, Storage};
 
 const HOUR: Duration = Duration::from_hours(1);
 /// Today and two more days, as the weather device fetches (ADR 17).
@@ -140,6 +140,7 @@ impl SolarForecast {
                 issued,
                 step: STEP,
                 values,
+                keep: Keep::Every,
             };
             storage
                 .forecast(device, self.bus.intern(role, index), issue)

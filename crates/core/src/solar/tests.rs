@@ -14,7 +14,7 @@ use crate::correction::{Cell as Learned, Grid};
 use crate::layout::{Datasheet, Inverters, Layouts, StringDraft, Wiring};
 use crate::location::Location;
 use crate::profiles::{Catalogue, Chosen};
-use crate::storage::{Issue, Storage};
+use crate::storage::{Issue, Keep, Storage};
 
 const INVERTER: DeviceId = DeviceId(1);
 const WEATHER: DeviceId = DeviceId(3);
@@ -52,6 +52,7 @@ async fn store_weather(storage: &Storage, bus: &Bus, targets: &[u64]) {
             issued: at(NOON - HOUR),
             step: 0.01,
             values: targets.iter().map(|t| (at(*t), value)).collect(),
+            keep: Keep::Every,
         };
         storage
             .forecast(WEATHER, bus.intern(role, None), issue)

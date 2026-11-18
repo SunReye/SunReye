@@ -70,6 +70,9 @@ pub(super) const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0032.sql"),
     include_str!("migrations/0033.sql"),
     include_str!("migrations/0034.sql"),
+    include_str!("migrations/0035.sql"),
+    include_str!("migrations/0036.sql"),
+    include_str!("migrations/0037.sql"),
 ];
 
 /// The schema version this build writes: the number of migrations.
@@ -171,6 +174,11 @@ pub enum Forecasting {
         from: SystemTime,
         to: SystemTime,
         reply: oneshot::Sender<Result<Vec<Forecast>, Error>>,
+    },
+    Delete {
+        device: DeviceId,
+        targets: Range<SystemTime>,
+        reply: oneshot::Sender<Result<(), Error>>,
     },
 }
 
@@ -340,7 +348,27 @@ struct Stored {
     /// Its id in the `series` table.
     id: i64,
     kind: RoleKind,
+    /// Whether it stores hourly rollups: one at an hourly cadence reads its hours from its
+    /// change points (ADR 3).
+    rolls_hours: bool,
     track: Track,
+}
+
+impl Stored {
+    const fn roll(&self, device: DeviceId) -> rollups::Roll {
+        rollups::Roll {
+            device: device.0,
+            series: self.id,
+            kind: self.kind,
+            rolls_hours: self.rolls_hours,
+        }
+    }
+}
+
+/// Whether a series polled every `cadence` stores hourly rollups: at an hourly cadence its change
+/// points already are hourly (ADR 3).
+fn stores_hours(cadence: Duration) -> bool {
+    cadence < Duration::from_hours(1)
 }
 
 struct Store {
@@ -669,18 +697,30 @@ impl Store {
             let last = self.last(device.0, id)?;
             Track::resume(policy, last, self.restart)
         };
-        let kind = policy.kind;
-        self.tracks
-            .insert((device, series), Stored { id, kind, track });
+        let stored = Stored {
+            id,
+            kind: policy.kind,
+            rolls_hours: stores_hours(policy.cadence),
+            track,
+        };
+        self.tracks.insert((device, series), stored);
         Ok(())
     }
 
-    /// Records the step, kind and unit `series` of `device` is stored in, refusing another step.
+    /// Records the step, kind, unit and cadence `series` of `device` is stored in, refusing
+    /// another step.
     fn describe(&self, device: DeviceId, series: i64, policy: &Policy) -> Result<(), Error> {
         self.step(device, series, policy.step)?;
+        let cadence = i64::try_from(policy.cadence.as_secs()).unwrap_or(i64::MAX);
         self.db.execute(
-            "UPDATE step SET kind = ?3, unit = ?4 WHERE device = ?1 AND series = ?2",
-            params![device.0, series, kind_name(policy.kind), policy.unit],
+            "UPDATE step SET kind = ?3, unit = ?4, cadence = ?5 WHERE device = ?1 AND series = ?2",
+            params![
+                device.0,
+                series,
+                kind_name(policy.kind),
+                policy.unit,
+                cadence
+            ],
         )?;
         Ok(())
     }
@@ -762,6 +802,16 @@ impl Store {
             } => {
                 reply.send(self.forecasts(device, &name, from, to)).ok();
             }
+            Forecasting::Delete {
+                device,
+                targets,
+                reply,
+            } => {
+                let from = tick(targets.start).unwrap_or(0);
+                let to = tick(targets.end).unwrap_or(0);
+                let deleted = forecast::delete(&self.db, device.0, from..to);
+                reply.send(deleted.map_err(Error::from)).ok();
+            }
         }
     }
 
@@ -774,7 +824,7 @@ impl Store {
             .iter()
             .filter_map(|&(target, value)| Some((tick(target)?, quantise(value, issue.step)?)));
         let tx = self.db.transaction()?;
-        forecast::write(&tx, device.0, series, issued, points)?;
+        forecast::write(&tx, (device.0, series), issued, points, issue.keep)?;
         tx.commit()?;
         Ok(())
     }

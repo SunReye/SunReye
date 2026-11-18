@@ -50,7 +50,7 @@ fn named_kind(series: &str) -> Option<RoleKind> {
     (!role.starts_with("extra.")).then(|| sunreye_profile::role_kind(role))
 }
 
-fn kind_of(name: &str) -> Option<RoleKind> {
+pub(super) fn kind_of(name: &str) -> Option<RoleKind> {
     match name {
         "measurement" => Some(RoleKind::Measurement),
         "counter" => Some(RoleKind::Counter),

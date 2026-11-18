@@ -154,6 +154,41 @@ async fn a_refresh_stores_the_weather_in_its_steps_and_hourly_quantities_at_whol
     }
 }
 
+/// No one asks how a weather forecast changed (ADR 15): a target keeps its latest issue alone.
+#[tokio::test]
+async fn a_refresh_replaces_the_earlier_forecast_of_each_target() {
+    let dir = tempfile::tempdir().unwrap();
+    let bus = Bus::default();
+    let storage =
+        Storage::open(&dir.path().join("history.sqlite"), UNIX_EPOCH, "UTC", &bus).unwrap();
+    let (fake, _calls) = Fake::new(vec![slot(NOON, 200.8), slot(NOON + 900, 210.0)], &[]);
+    Weather::new(fake, DEVICE, &bus)
+        .refresh(&storage, BERLIN, at(NOON))
+        .await
+        .unwrap();
+    let (fake, _calls) = Fake::new(vec![slot(NOON, 200.8), slot(NOON + 900, 230.0)], &[]);
+
+    Weather::new(fake, DEVICE, &bus)
+        .refresh(&storage, BERLIN, at(NOON + 60))
+        .await
+        .unwrap();
+
+    let ghi = storage
+        .forecasts(
+            DEVICE,
+            bus.intern("weather.ghi", None),
+            at(NOON),
+            at(NOON + 3600),
+        )
+        .await
+        .unwrap();
+    let issues: Vec<_> = ghi.iter().map(|f| (f.target, f.issued)).collect();
+    assert_eq!(
+        issues,
+        [(at(NOON), at(NOON)), (at(NOON + 900), at(NOON + 60))]
+    );
+}
+
 /// The forecast of `role` over the hour from noon, by target in seconds, rounded to 1e-6.
 async fn forecast(storage: &Storage, bus: &Bus, role: &str) -> Vec<(u64, f64)> {
     let series = bus.intern(role, None);
@@ -596,6 +631,55 @@ async fn archive_weather_is_stored_as_history_and_read_back_hourly() {
     .await
     .unwrap();
     assert_eq!(read, slots);
+}
+
+/// The archive answers for the hours it stored (ADR 17): their forecasts go, of every quantity,
+/// visibility too; the hours it lacks keep theirs.
+#[tokio::test]
+async fn archive_weather_deletes_the_forecasts_of_the_hours_it_stores() {
+    let dir = tempfile::tempdir().unwrap();
+    let bus = Bus::default();
+    let storage =
+        Storage::open(&dir.path().join("history.sqlite"), UNIX_EPOCH, "UTC", &bus).unwrap();
+    let forecast: Vec<Slot> = [11, 12, 13, 14]
+        .map(|hour| Slot {
+            detail: drizzle(),
+            ..past(hour, 300.0)
+        })
+        .to_vec();
+    let (fake, _calls) = Fake::new(forecast, &[]);
+    Weather::new(fake, DEVICE, &bus)
+        .refresh(&storage, BERLIN, past(11, 0.0).target)
+        .await
+        .unwrap();
+    // 13:00 has not settled.
+    let (archive, _calls) = FakeArchive::new(vec![past(11, 495.1), past(12, 674.1)]);
+    let day = jiff::civil::date(2026, 6, 21);
+
+    Past::new(archive, DEVICE, &bus)
+        .fetch(&storage, BERLIN, day, day)
+        .await
+        .unwrap();
+
+    for role in ["weather.ghi", "weather.visibility"] {
+        let targets: Vec<_> = storage
+            .forecasts(
+                DEVICE,
+                bus.intern(role, None),
+                past(0, 0.0).target,
+                past(24, 0.0).target,
+            )
+            .await
+            .unwrap()
+            .iter()
+            .map(|f| f.target)
+            .collect();
+        assert_eq!(
+            targets,
+            [past(13, 0.0).target, past(14, 0.0).target],
+            "{role}"
+        );
+    }
 }
 
 /// In ADR 23's units; the code is a status, so rollups never average it, and the archive has no

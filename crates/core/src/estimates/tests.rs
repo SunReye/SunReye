@@ -11,7 +11,7 @@ use tokio::sync::broadcast;
 use super::StringEstimates;
 use crate::bus::{Bus, DeviceId, Reading};
 use crate::layout::{Datasheet, Inverters, Layouts, StringDraft, Wiring};
-use crate::storage::{Issue, Storage};
+use crate::storage::{Issue, Keep, Storage};
 
 const INVERTER: DeviceId = DeviceId(1);
 /// 2026-06-21 11:00 UTC.
@@ -103,6 +103,7 @@ impl Plant {
             issued: at(NOON - 3600),
             step: 1.0,
             values: vec![(at(NOON), watts)],
+            keep: Keep::Every,
         };
         self.storage
             .forecast(

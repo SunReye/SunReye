@@ -19,7 +19,7 @@ use tokio::time::Instant;
 
 use crate::bus::{Bus, DeviceId, Series, SeriesId};
 use crate::location::Location;
-use crate::storage::{self, ChangePoint, Issue, Policy, Storage};
+use crate::storage::{self, ChangePoint, Issue, Keep, Policy, Storage};
 use crate::utc_day;
 
 #[cfg(test)]
@@ -395,6 +395,7 @@ impl<P: Provider> Weather<P> {
                 issued,
                 step: quantity.step,
                 values,
+                keep: Keep::Latest,
             };
             storage.forecast(self.device, series, issue).await?;
         }
@@ -420,7 +421,8 @@ impl<A: Archive> Past<A> {
     }
 
     /// Fetches the UTC days `from` to `to` for the plant at `location` and stores them hourly,
-    /// replacing what was stored for those hours; an hour the archive lacks is a gap.
+    /// replacing what was stored for those hours, whose forecasts it deletes; an hour the archive
+    /// lacks is a gap.
     ///
     /// # Errors
     /// The archive or storage failed.
@@ -451,6 +453,10 @@ impl<A: Archive> Past<A> {
             self.replace(storage, (quantity, series), range, points)
                 .await?;
         }
+        // The archive answers for these hours now (ADR 17).
+        storage
+            .delete_forecasts(self.device, first.target..end)
+            .await?;
         Ok(())
     }
 

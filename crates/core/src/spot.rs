@@ -17,7 +17,7 @@ use tokio::sync::watch;
 use utoipa::ToSchema;
 
 use crate::bus::{Bus, DeviceId, Reading, SeriesId};
-use crate::storage::{self, Issue, Policy, Storage};
+use crate::storage::{self, Issue, Keep, Policy, Storage};
 
 pub use energy_charts::EnergyCharts;
 pub use zone::SpotZone;
@@ -188,6 +188,7 @@ impl<P: Provider> SpotPrices<P> {
             issued,
             step: STEP,
             values: slots.iter().map(|s| (s.start, s.price)).collect(),
+            keep: Keep::Every,
         };
         storage.forecast(DEVICE, self.series, issue).await?;
         Ok(())

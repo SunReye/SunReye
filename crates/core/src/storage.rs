@@ -148,6 +148,19 @@ pub struct Issue {
     pub issued: SystemTime,
     pub step: f64,
     pub values: Vec<(SystemTime, f64)>,
+    pub keep: Keep,
+}
+
+/// Which issues of a target the forecast store keeps (ADR 15).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Keep {
+    /// Every issue until the target's hour passes, then the latest, so forecast accuracy can be
+    /// compared.
+    Every,
+    /// The latest alone: an issue replaces the earlier ones of the targets it covers. A value it
+    /// leaves unchanged keeps its row and earlier issue time, so an unchanged forecast writes
+    /// nothing.
+    Latest,
 }
 
 /// History of one series from an older release (ADR 18), each list in time order.
@@ -475,6 +488,26 @@ impl Storage {
                 device,
                 name,
                 issue,
+                reply,
+            })
+        })
+        .await?
+    }
+
+    /// Deletes every forecast of `device`, of any series, with a target within `targets`: once
+    /// history answers for a time, its forecasts are no longer kept (ADR 17).
+    ///
+    /// # Errors
+    /// The file cannot be written.
+    pub async fn delete_forecasts(
+        &self,
+        device: DeviceId,
+        targets: Range<SystemTime>,
+    ) -> Result<(), Error> {
+        self.request(|reply| {
+            Request::Forecasting(Forecasting::Delete {
+                device,
+                targets,
                 reply,
             })
         })

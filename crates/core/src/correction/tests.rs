@@ -16,7 +16,7 @@ use crate::bus::{Bus, DeviceId};
 use crate::layout::{Datasheet, Inverters, Layouts, StringDraft, Wiring};
 use crate::location::Location;
 use crate::solar::SolarForecast;
-use crate::storage::{ChangePoint, Issue, Policy, Storage};
+use crate::storage::{ChangePoint, Issue, Keep, Policy, Storage};
 use crate::weather::fake::FakeArchive;
 use crate::weather::{self, Past, Slot};
 
@@ -143,6 +143,7 @@ impl Plant {
                 issued: at(FIRST - DAY),
                 step: 0.1,
                 values: slots.iter().map(|s| (s.target, value(s))).collect(),
+                keep: Keep::Every,
             };
             let series = self.bus.intern(name, None);
             self.storage.forecast(WEATHER, series, issue).await.unwrap();
@@ -151,6 +152,7 @@ impl Plant {
             issued: at(FIRST - DAY),
             step: 0.01,
             values: slots.iter().map(|s| (s.target, s.wind.unwrap())).collect(),
+            keep: Keep::Every,
         };
         let wind = self.bus.intern("weather.wind", None);
         self.storage.forecast(WEATHER, wind, issue).await.unwrap();

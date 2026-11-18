@@ -5,7 +5,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use sunreye_profile::RoleKind;
 
-use super::{ChangePoint, Issue, Policy, Problem, Storage};
+use super::{ChangePoint, Issue, Keep, Policy, Problem, Storage};
 use crate::bus::{Bus, DeviceId, Reading, SeriesId};
 
 mod import;
@@ -402,10 +402,15 @@ async fn forecasts(storage: &Storage, series: SeriesId) -> Vec<Issued> {
 }
 
 async fn issue(storage: &Storage, series: SeriesId, issued: f64, values: &[(f64, f64)]) {
+    kept(storage, series, Keep::Every, issued, values).await;
+}
+
+async fn kept(storage: &Storage, series: SeriesId, keep: Keep, issued: f64, values: &[(f64, f64)]) {
     let issue = Issue {
         issued: at(issued),
         step: 0.1,
         values: values.iter().map(|&(t, v)| (at(t), v)).collect(),
+        keep,
     };
     storage.forecast(DEVICE, series, issue).await.unwrap();
 }
@@ -474,6 +479,122 @@ async fn a_passed_target_hour_keeps_only_its_latest_issue() {
             (7200.0, 7260.0, 4.0),
         ]
     );
+}
+
+/// A value an issue leaves unchanged keeps its row and earlier issue time (ADR 15), also once its
+/// hour has passed beside a value issued later.
+#[tokio::test]
+async fn an_issue_kept_alone_replaces_the_earlier_issues_of_its_targets() {
+    let dir = tempfile::tempdir().unwrap();
+    let plant = Plant::new();
+    let storage = plant
+        .open(&dir.path().join("history.sqlite"), epoch())
+        .await;
+    let ghi = plant.bus.intern("weather.ghi", None);
+    let quarters = [(0.0, 1.0), (900.0, 1.0), (1800.0, 1.0), (3600.0, 1.0)];
+    kept(&storage, ghi, Keep::Latest, 0.0, &quarters).await;
+    let quarters = [(0.0, 1.0), (900.0, 2.0), (1800.0, 1.0), (3600.0, 2.0)];
+    kept(&storage, ghi, Keep::Latest, 60.0, &quarters).await;
+    let later = [(3600.0, 2.0), (4500.0, 3.0)];
+    kept(&storage, ghi, Keep::Latest, 3660.0, &later).await;
+    assert_eq!(
+        forecasts(&storage, ghi).await,
+        [
+            (0.0, 0.0, 1.0),
+            (900.0, 60.0, 2.0),
+            (1800.0, 0.0, 1.0),
+            (3600.0, 60.0, 2.0),
+            (4500.0, 3660.0, 3.0),
+        ]
+    );
+}
+
+/// The weather forecasts stored before a weather target kept its latest issue alone (ADR 15) keep
+/// only that issue on upgrade; another device's issues stay.
+#[tokio::test]
+async fn weather_forecasts_keep_their_latest_issue_on_upgrade() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("core.sqlite");
+    let old = rusqlite::Connection::open(&path).unwrap();
+    for sql in &super::thread::MIGRATIONS[..35] {
+        old.execute_batch(sql).unwrap();
+    }
+    old.pragma_update(None, "user_version", 35).unwrap();
+    old.execute_batch(
+        "INSERT INTO forecast (device, series, target, issued, value) VALUES
+           (4294967295, 1, 100, 10, 1), (4294967295, 1, 100, 20, 2), (4294967295, 1, 200, 10, 3),
+           (4294967295, 2, 100, 30, 4), (4294967295, 2, 100, 20, 5),
+           (7, 1, 100, 10, 6), (7, 1, 100, 20, 7);",
+    )
+    .unwrap();
+    drop(old);
+
+    drop(Storage::open(&path, epoch(), "UTC", &Bus::default()).unwrap());
+
+    let rows: Vec<(u32, i64, i64, i64, i64)> = rusqlite::Connection::open(&path)
+        .unwrap()
+        .prepare("SELECT device, series, target, issued, value FROM forecast")
+        .unwrap()
+        .query_map([], |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+            ))
+        })
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(
+        rows,
+        [
+            (7, 1, 100, 10, 6),
+            (7, 1, 100, 20, 7),
+            (4_294_967_295, 1, 100, 20, 2),
+            (4_294_967_295, 1, 200, 10, 3),
+            (4_294_967_295, 2, 100, 30, 4),
+        ]
+    );
+}
+
+/// The weather forecasts stored for hours archive weather answers (ADR 17) go on upgrade: the
+/// archive's last block, its closing gap, is where it ends. Another device's forecasts stay.
+#[tokio::test]
+async fn weather_forecasts_of_archived_hours_go_on_upgrade() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("core.sqlite");
+    let old = rusqlite::Connection::open(&path).unwrap();
+    for sql in &super::thread::MIGRATIONS[..36] {
+        old.execute_batch(sql).unwrap();
+    }
+    old.pragma_update(None, "user_version", 36).unwrap();
+    // Archive weather to hour 3, the clear-sky index measured to hour 9.
+    old.execute_batch(
+        "INSERT INTO series (name, id) VALUES ('weather.ghi', 1), ('weather.clearness', 2);
+         INSERT INTO step (device, series, step, kind, cadence) VALUES
+           (4294967295, 1, 0.1, 'measurement', 3600), (4294967295, 2, 0.001, 'measurement', 300);
+         INSERT INTO block (device, series, hour, data) VALUES
+           (4294967295, 1, 1, X'00'), (4294967295, 1, 3, X'00'), (4294967295, 2, 9, X'00');
+         INSERT INTO forecast (device, series, target, issued, value) VALUES
+           (4294967295, 1, 107999, 1, 1), (4294967295, 1, 108000, 1, 2),
+           (4294967295, 3, 9000, 1, 3), (7, 1, 9000, 1, 4);",
+    )
+    .unwrap();
+    drop(old);
+
+    drop(Storage::open(&path, epoch(), "UTC", &Bus::default()).unwrap());
+
+    let rows: Vec<(u32, i64, i64)> = rusqlite::Connection::open(&path)
+        .unwrap()
+        .prepare("SELECT device, series, target FROM forecast")
+        .unwrap()
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(rows, [(7, 1, 9000), (4_294_967_295, 1, 108_000)]);
 }
 
 #[tokio::test]

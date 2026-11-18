@@ -6,8 +6,8 @@ use std::time::{Duration, SystemTime};
 use jiff::tz::TimeZone;
 use rusqlite::{Connection, OptionalExtension, params};
 
-use super::rollups::{ceil, columns, floor};
-use super::{HOUR, Store, tick, write_block};
+use super::rollups::{Roll, ceil, columns, floor};
+use super::{HOUR, Store, stores_hours, tick, write_block};
 use crate::bus::DeviceId;
 use crate::storage::encode::{Point, Tick, Track, quantise, ticks};
 use crate::storage::rollup::{self, Sums};
@@ -47,7 +47,12 @@ impl Store {
                 _ => last.time + 1,
             };
             let limit = *rolled.get_or_insert_with(|| ceil(end) * HOUR);
-            let series = (device.0, id, policy.kind);
+            let series = Roll {
+                device: device.0,
+                series: id,
+                kind: policy.kind,
+                rolls_hours: stores_hours(policy.cadence),
+            };
             self.recompute(&tx, series, floor(first.time)..end.min(limit), limit)?;
         }
         let (hours, days) = buckets(&tx, (device.0, id), policy, backfill, cutoff)?;

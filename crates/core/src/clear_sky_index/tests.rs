@@ -15,7 +15,7 @@ use crate::correction::{Cell, Grid};
 use crate::layout::{Datasheet, Inverters, Layouts, StringDraft, Wiring};
 use crate::location::Location;
 use crate::solar::SolarForecast;
-use crate::storage::{ChangePoint, Issue, Policy, Storage};
+use crate::storage::{ChangePoint, Issue, Keep, Policy, Storage};
 
 const FIRST_INVERTER: DeviceId = DeviceId(1);
 const SECOND_INVERTER: DeviceId = DeviceId(2);
@@ -157,6 +157,7 @@ async fn clear_sky() -> BTreeMap<u64, f64> {
             issued: at(FIRST - DAY),
             step: 0.001,
             values: skies.iter().map(|(t, w)| (at(*t), value(w))).collect(),
+            keep: Keep::Every,
         };
         let series = plant.bus.intern(name, None);
         plant
@@ -486,6 +487,7 @@ async fn forecast_snow_depth_stands_in_until_the_archive_has_it() {
         issued: at(FIRST - DAY),
         step: 0.001,
         values: (0..24).map(|h| (at(FIRST + h * HOUR), 0.2)).collect(),
+        keep: Keep::Every,
     };
     let series = plant.bus.intern("weather.snow_depth", None);
     plant

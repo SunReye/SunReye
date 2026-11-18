@@ -7,6 +7,7 @@ use std::time::{Duration, SystemTime};
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use sunreye_profile::RoleKind;
 
+use super::catalog::kind_of;
 use super::{HOUR, Store, blocks, lookup, points, tick, time, write_block};
 use crate::bus::{DeviceId, SeriesId};
 use crate::storage::encode::{Point, Tick, quantise};
@@ -15,6 +16,16 @@ use crate::storage::{Aggregate, ChangePoint, Error, Rollup, Tier};
 
 /// Stored columns: duration, sum, min, max, first, last, delta.
 type Columns = [Option<i64>; 7];
+
+/// One series whose rollups are rewritten.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct Roll {
+    pub device: u32,
+    pub series: i64,
+    pub kind: RoleKind,
+    /// False for a series at an hourly cadence, which stores no hourly rollups (ADR 3).
+    pub rolls_hours: bool,
+}
 
 impl Store {
     /// Rolls up every hour closed before `now`, and again each rolled window `pending` wrote a
@@ -42,8 +53,7 @@ impl Store {
             let from = late
                 .get(&(device.0, stored.id))
                 .map_or(rolled, |&time| floor(time));
-            let series = (device.0, stored.id, stored.kind);
-            self.recompute(db, series, from..frontier, frontier)?;
+            self.recompute(db, stored.roll(*device), from..frontier, frontier)?;
         }
         db.execute(
             "INSERT INTO meta (key, value) VALUES ('rolled', ?1)
@@ -53,11 +63,17 @@ impl Store {
         Ok(Some(frontier))
     }
 
-    /// Rewrites the hours from `from` to `to` and the days they touch, each cut off at `limit`.
+    /// Rewrites the hours from `from` to `to`, where the series stores them, and the days they
+    /// touch, each cut off at `limit`.
     pub(super) fn recompute(
         &self,
         db: &Connection,
-        (device, series, kind): (u32, i64, RoleKind),
+        Roll {
+            device,
+            series,
+            kind,
+            rolls_hours,
+        }: Roll,
         Range {
             start: from,
             end: to,
@@ -76,16 +92,20 @@ impl Store {
                 .then(|| rollup::roll(kind, window(&points, start, end), start, end))
                 .flatten()
         };
-        let hours = from.div_euclid(HOUR)..ceil(to);
-        let hourly: Vec<_> = hours
-            .clone()
-            .filter_map(|index| roll(index * HOUR, (index + 1) * HOUR).map(|sums| (index, sums)))
-            .collect();
+        if rolls_hours {
+            let hours = from.div_euclid(HOUR)..ceil(to);
+            let hourly: Vec<_> = hours
+                .clone()
+                .filter_map(|index| {
+                    roll(index * HOUR, (index + 1) * HOUR).map(|sums| (index, sums))
+                })
+                .collect();
+            write_hours(db, (device, series), hours, &hourly)?;
+        }
         let daily: Vec<_> = days
             .iter()
             .filter_map(|day| roll(day.start, day.end).map(|sums| (*day, sums)))
             .collect();
-        write_hours(db, (device, series), hours, &hourly)?;
         write_days(db, (device, series), &self.zone.0, &days, &daily)?;
         Ok(())
     }
@@ -109,7 +129,7 @@ impl Store {
         let from = floor(tick(from).unwrap_or(0)).max(self.rebuildable());
         let to = tick(to).unwrap_or(0).min(limit);
         let tx = self.db.unchecked_transaction()?;
-        self.recompute(&tx, (device.0, stored.id, stored.kind), from..to, limit)?;
+        self.recompute(&tx, stored.roll(device), from..to, limit)?;
         tx.commit()?;
         Ok(())
     }
@@ -130,7 +150,7 @@ impl Store {
             .tracks
             .get(&(device, series))
             .ok_or(Error::UnknownSeries)?;
-        let (id, kind) = (stored.id, stored.kind);
+        let (id, roll) = (stored.id, stored.roll(device));
         let (from, to) = (tick(from).unwrap_or(0), tick(to).unwrap_or(0));
         let step: f64 = self.db.query_row(
             "SELECT step FROM step WHERE device = ?1 AND series = ?2",
@@ -149,7 +169,7 @@ impl Store {
         let tx = self.db.unchecked_transaction()?;
         rewrite(&tx, (device.0, id), from..to, &new)?;
         if let Some(limit) = self.rolled {
-            self.recompute(&tx, (device.0, id, kind), floor(from)..to.min(limit), limit)?;
+            self.recompute(&tx, roll, floor(from)..to.min(limit), limit)?;
         }
         tx.commit()?;
         // The deadband compares against the value now last stored.
@@ -183,10 +203,42 @@ impl Store {
             return Ok(Vec::new());
         };
         let range = tick(from).unwrap_or(0)..tick(to).unwrap_or(0);
-        let (from, to) = (range.start, range.end);
         if self.carries(device, series)? {
             return self.carried(device.0, (series, step), tier, range);
         }
+        let mut rows = if tier == Tier::Hour && self.hourly(device, series)? {
+            self.hours(device.0, series, range.clone())?
+        } else {
+            self.stored(device.0, series, tier, range.clone())?
+        };
+        for (window, sums) in self.open(device, series, tier, range)? {
+            rows.retain(|&(start, ..)| start != window.start);
+            rows.push((window.start, window.end, columns(sums)));
+        }
+        rows.sort_by_key(|&(start, ..)| start);
+        Ok(rows
+            .into_iter()
+            .filter_map(|(start, end, columns)| {
+                Some(Rollup {
+                    start: time(start),
+                    end: time(end),
+                    aggregate: aggregate(step, columns)?,
+                })
+            })
+            .collect())
+    }
+
+    /// The stored rollups of `tier` starting within `range`, as start, end and columns.
+    fn stored(
+        &self,
+        device: u32,
+        series: i64,
+        tier: Tier,
+        Range {
+            start: from,
+            end: to,
+        }: Range<Tick>,
+    ) -> Result<Vec<(Tick, Tick, Columns)>, Error> {
         let (sql, from, to) = match tier {
             Tier::Hour => (
                 "SELECT hour * 36000, hour * 36000 + 36000,
@@ -205,29 +257,69 @@ impl Store {
             ),
         };
         let mut statement = self.db.prepare_cached(sql)?;
-        let rows = statement.query_map(params![device.0, series, from, to], |row| {
+        let rows = statement.query_map(params![device, series, from, to], |row| {
             let mut columns: Columns = [None; 7];
             for (index, column) in (2..).zip(&mut columns) {
                 *column = row.get(index)?;
             }
             Ok((row.get::<_, Tick>(0)?, row.get::<_, Tick>(1)?, columns))
         })?;
-        let mut rows = rows.collect::<Result<Vec<_>, _>>()?;
-        for (window, sums) in self.open(device, series, tier, range)? {
-            rows.retain(|&(start, ..)| start != window.start);
-            rows.push((window.start, window.end, columns(sums)));
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    /// The closed hours starting within `range` of a series at an hourly cadence, rolled up from
+    /// its change points as they would have been stored (ADR 3).
+    fn hours(
+        &self,
+        device: u32,
+        series: i64,
+        range: Range<Tick>,
+    ) -> Result<Vec<(Tick, Tick, Columns)>, Error> {
+        let (Some(kind), Some(rolled)) = (self.stored_kind(device, series)?, self.rolled) else {
+            return Ok(Vec::new());
+        };
+        let hours = ceil(range.start)..ceil(range.end).min(rolled.div_euclid(HOUR));
+        if hours.is_empty() {
+            return Ok(Vec::new());
         }
-        rows.sort_by_key(|&(start, ..)| start);
-        Ok(rows
-            .into_iter()
-            .filter_map(|(start, end, columns)| {
-                Some(Rollup {
-                    start: time(start),
-                    end: time(end),
-                    aggregate: aggregate(step, columns)?,
-                })
+        let points = points(
+            &self.db,
+            device,
+            series,
+            hours.start * HOUR,
+            hours.end * HOUR,
+        )?;
+        Ok(hours
+            .filter_map(|hour| {
+                let (start, end) = (hour * HOUR, (hour + 1) * HOUR);
+                let sums = rollup::roll(kind, window(&points, start, end), start, end)?;
+                Some((start, end, columns(sums)))
             })
             .collect())
+    }
+
+    /// Whether `series` was declared at an hourly cadence, so it stores no hourly rollups.
+    fn hourly(&self, device: DeviceId, series: i64) -> Result<bool, Error> {
+        let cadence: Option<i64> = self
+            .db
+            .prepare_cached("SELECT cadence FROM step WHERE device = ?1 AND series = ?2")?
+            .query_row(params![device.0, series], |row| row.get(0))
+            .optional()?
+            .flatten();
+        Ok(cadence.is_some_and(|seconds| {
+            !super::stores_hours(Duration::from_secs(u64::try_from(seconds).unwrap_or(0)))
+        }))
+    }
+
+    /// The kind stored for a series, as storage last saw it declared.
+    fn stored_kind(&self, device: u32, series: i64) -> Result<Option<RoleKind>, Error> {
+        let kind: Option<String> = self
+            .db
+            .prepare_cached("SELECT kind FROM step WHERE device = ?1 AND series = ?2")?
+            .query_row(params![device, series], |row| row.get(0))
+            .optional()?
+            .flatten();
+        Ok(kind.as_deref().and_then(kind_of))
     }
 
     /// Whether `device`'s series `name` is a status or a held value; false without history.
@@ -241,13 +333,10 @@ impl Store {
     /// Whether `series` is a status or a held value. Read from storage, so it holds for a
     /// device that is removed or whose profile is gone (ADR 3).
     fn carries(&self, device: DeviceId, series: i64) -> Result<bool, Error> {
-        let kind: Option<String> = self
-            .db
-            .prepare_cached("SELECT kind FROM step WHERE device = ?1 AND series = ?2")?
-            .query_row(params![device.0, series], |row| row.get(0))
-            .optional()?
-            .flatten();
-        Ok(matches!(kind.as_deref(), Some("status" | "held")))
+        Ok(matches!(
+            self.stored_kind(device.0, series)?,
+            Some(RoleKind::Status | RoleKind::Held)
+        ))
     }
 
     /// The kind of `device`'s declared `series`.
