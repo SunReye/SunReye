@@ -70,6 +70,7 @@ pub(super) const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0032.sql"),
     include_str!("migrations/0033.sql"),
     include_str!("migrations/0034.sql"),
+    include_str!("migrations/0035.sql"),
 ];
 
 /// The schema version this build writes: the number of migrations.
@@ -340,7 +341,27 @@ struct Stored {
     /// Its id in the `series` table.
     id: i64,
     kind: RoleKind,
+    /// Whether it stores hourly rollups: one at an hourly cadence reads its hours from its
+    /// change points (ADR 3).
+    hours: bool,
     track: Track,
+}
+
+impl Stored {
+    const fn roll(&self, device: DeviceId) -> rollups::Roll {
+        rollups::Roll {
+            device: device.0,
+            series: self.id,
+            kind: self.kind,
+            hours: self.hours,
+        }
+    }
+}
+
+/// Whether a series polled every `cadence` stores hourly rollups: at an hourly cadence its change
+/// points already are hourly (ADR 3).
+fn stores_hours(cadence: Duration) -> bool {
+    cadence < Duration::from_hours(1)
 }
 
 struct Store {
@@ -669,18 +690,30 @@ impl Store {
             let last = self.last(device.0, id)?;
             Track::resume(policy, last, self.restart)
         };
-        let kind = policy.kind;
-        self.tracks
-            .insert((device, series), Stored { id, kind, track });
+        let stored = Stored {
+            id,
+            kind: policy.kind,
+            hours: stores_hours(policy.cadence),
+            track,
+        };
+        self.tracks.insert((device, series), stored);
         Ok(())
     }
 
-    /// Records the step, kind and unit `series` of `device` is stored in, refusing another step.
+    /// Records the step, kind, unit and cadence `series` of `device` is stored in, refusing
+    /// another step.
     fn describe(&self, device: DeviceId, series: i64, policy: &Policy) -> Result<(), Error> {
         self.step(device, series, policy.step)?;
+        let cadence = i64::try_from(policy.cadence.as_secs()).unwrap_or(i64::MAX);
         self.db.execute(
-            "UPDATE step SET kind = ?3, unit = ?4 WHERE device = ?1 AND series = ?2",
-            params![device.0, series, kind_name(policy.kind), policy.unit],
+            "UPDATE step SET kind = ?3, unit = ?4, cadence = ?5 WHERE device = ?1 AND series = ?2",
+            params![
+                device.0,
+                series,
+                kind_name(policy.kind),
+                policy.unit,
+                cadence
+            ],
         )?;
         Ok(())
     }

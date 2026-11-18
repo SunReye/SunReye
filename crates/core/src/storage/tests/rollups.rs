@@ -6,7 +6,7 @@ use std::time::{Duration, SystemTime};
 use sunreye_profile::RoleKind;
 
 use super::{DEVICE, Plant, at, epoch, policy};
-use crate::bus::{Reading, SeriesId};
+use crate::bus::{DeviceId, Reading, SeriesId};
 use crate::storage::{Aggregate, ChangePoint, Policy, Rollup, Storage, Tier};
 
 /// A measurement rollup as hours from `T0`, hours covered, mean, min, max and integral.
@@ -512,4 +512,111 @@ async fn a_zone_the_admin_sets_cuts_the_days_after_it_and_outlives_a_restart() {
         days,
         [(first / 3600.0, 24.0, 1000.0, 1000.0, 1000.0, 24_000.0)]
     );
+}
+
+/// 100 from hour 0 and 200 from hour 1 until a gap at hour 2, as hourly rollups read them.
+const TWO_HOURS: [Measured; 2] = [
+    (0.0, 1.0, 100.0, 100.0, 100.0, 100.0),
+    (1.0, 1.0, 200.0, 200.0, 200.0, 200.0),
+];
+
+/// Declares `series` of `device` under `policy` and stores [`TWO_HOURS`] as its history.
+async fn two_hours(storage: &Storage, device: DeviceId, series: SeriesId, policy: Policy) {
+    storage.declare(device, series, policy).await.unwrap();
+    let points = [(0.0, Some(100.0)), (3600.0, Some(200.0)), (7200.0, None)]
+        .map(|(s, value)| ChangePoint { time: at(s), value });
+    storage
+        .replace(device, series, at(0.0)..at(7201.0), points.to_vec())
+        .await
+        .unwrap();
+}
+
+fn hourly() -> Policy {
+    Policy {
+        cadence: Duration::from_secs(3600),
+        ..policy()
+    }
+}
+
+/// The hourly rollups stored for the series `name`.
+fn stored_hours(path: &Path, name: &str) -> i64 {
+    rusqlite::Connection::open(path)
+        .unwrap()
+        .query_row(
+            "SELECT count(*) FROM rollup_hour JOIN series ON series.id = rollup_hour.series
+             WHERE series.name = ?1",
+            [name],
+            |row| row.get(0),
+        )
+        .unwrap()
+}
+
+/// Its change points already are hourly (ADR 3): hours read from them, days are stored.
+#[tokio::test]
+async fn a_series_at_an_hourly_cadence_stores_no_hourly_rollups_and_reads_hours_from_its_points() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("w.sqlite");
+    let plant = Plant::new();
+    let storage = plant.open(&path, epoch()).await;
+    let ghi = plant.bus.intern("weather.ghi", None);
+    two_hours(&storage, DEVICE, ghi, hourly()).await;
+    storage.tick(at(86_400.0)).await.unwrap();
+
+    assert_eq!(
+        measured(&rollups(&storage, ghi, Tier::Hour, 0.0, 86_400.0).await),
+        TWO_HOURS
+    );
+    assert_eq!(
+        measured(&rollups(&storage, ghi, Tier::Day, -86_400.0, 86_400.0).await),
+        [(-12.0, 2.0, 150.0, 100.0, 200.0, 300.0)]
+    );
+    storage.shutdown().await.unwrap();
+    assert_eq!(stored_hours(&path, "weather.ghi"), 0);
+    // Undeclared after a restart, it still reads hourly.
+    let storage = Storage::open(&path, epoch(), "UTC", &plant.bus).unwrap();
+    assert_eq!(
+        measured(&rollups(&storage, ghi, Tier::Hour, 0.0, 86_400.0).await),
+        TWO_HOURS
+    );
+}
+
+/// Archive weather stored before hourly series read their hours from change points (ADR 3) drops
+/// its hourly rollups on upgrade and still reads hourly, undeclared; the clear-sky index, cut in
+/// quarters, keeps its own.
+#[tokio::test]
+async fn archive_weather_drops_its_stored_hours_on_upgrade_and_still_reads_hourly() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("u.sqlite");
+    let plant = Plant::new();
+    let storage = plant.open(&path, epoch()).await;
+    let weather = crate::weather::DEVICE;
+    let ghi = plant.bus.intern("weather.ghi", None);
+    let clearness = plant.bus.intern("weather.clearness", None);
+    two_hours(&storage, weather, ghi, hourly()).await;
+    two_hours(&storage, weather, clearness, policy()).await;
+    storage.tick(at(86_400.0)).await.unwrap();
+    storage.shutdown().await.unwrap();
+    // As the release before stored it: no cadence, and an hourly rollup of every weather hour.
+    rusqlite::Connection::open(&path)
+        .unwrap()
+        .execute_batch(
+            "ALTER TABLE step DROP COLUMN cadence;
+             INSERT INTO rollup_hour (device, series, hour, duration, sum, min, max)
+             SELECT 4294967295, id, 496596, 36000, 360000, 1, 1 FROM series
+             WHERE name = 'weather.ghi';
+             PRAGMA user_version = 34;",
+        )
+        .unwrap();
+
+    let storage = Storage::open(&path, epoch(), "UTC", &plant.bus).unwrap();
+    for series in [ghi, clearness] {
+        let rollups = storage
+            .rollups(weather, series, Tier::Hour, at(0.0)..at(86_400.0))
+            .await
+            .unwrap();
+        assert_eq!(measured(&rollups), TWO_HOURS);
+    }
+    storage.shutdown().await.unwrap();
+    assert_eq!(stored_hours(&path, "weather.ghi"), 0);
+    assert_eq!(stored_hours(&path, "weather.clearness"), 2);
 }
