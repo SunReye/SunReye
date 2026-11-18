@@ -2,6 +2,7 @@
 // range's peak with its time, the share PV covered the house, what was paid or earned, and the
 // price bought by hour.
 import { afterEach, beforeEach, expect, test } from "vitest";
+import { userEvent } from "vitest/browser";
 import "../../app.css";
 import {
   LIVE,
@@ -144,6 +145,14 @@ test("the purchase sheet charts the price bought at by hour, in cents", async ()
   // A price is no flow: its key is its name, not a side of zero it never crossed.
   await expect.element(sheet.getByRole("term").filter({ hasText: "Bezugspreis" })).toBeVisible();
   expect(sheet.getByText("Über null").elements()).toHaveLength(0);
+
+  // Each hour reads in cents too: 0,30 €/kWh bought at 08:00.
+  const plot = sheet.getByRole("group", { name: /Bezugspreis über die Zeit/u });
+  const box = plot.element().getBoundingClientRect();
+
+  await userEvent.hover(plot, { position: { x: (box.width * 8.5) / 24, y: box.height / 2 } });
+  await expect.element(sheet.getByText("8:00–9:00 Uhr")).toBeVisible();
+  await expect.element(sheet.getByText("30,00 ct/kWh")).toBeVisible();
 });
 
 test("the consumption sheet charts no price", async () => {
