@@ -40,7 +40,7 @@ export type MotionTier =
   /** No motion at all — reduced motion or the low-power switch: still overlays, snapping readouts. */
   | "still";
 
-/** Where each browser keeps its motion setting (ADR 21): unset for Automatisch. */
+/** Where each browser keeps its motion setting (ADR 21): "auto", "full" or "lite"; unset reads as "auto". */
 export const MOTION_SETTING = "sunreye.motion";
 
 /** What the motion setting offers: Automatisch, where the frame watch decides, or a tier that holds.
