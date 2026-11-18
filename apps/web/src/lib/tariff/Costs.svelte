@@ -1,9 +1,10 @@
 <!--
   Savings and costs over the route's range, a band per day, week or month, from the core's
   plant-local days (ADR 12): savings above the baseline, the import bill below it. The savings
-  sheet's chart leaves the standing charge out (ADR 21).
+  sheet's chart leaves the standing charge out, and reads a day by its hours (ADR 21).
 -->
 <script lang="ts">
+  import { untrack } from "svelte";
   import ProblemAlert from "../components/problem-alert.svelte";
   import type { Core } from "../api/core";
   import BandChart from "../range/BandChart.svelte";
@@ -11,6 +12,7 @@
   import { money } from "../range/format.ts";
   import { RangeData } from "../range/range-data.svelte.ts";
   import type { RangeRoute } from "../range/route.svelte.ts";
+  import { costHours } from "./cost-hours.ts";
   import { COST_CHARTS, costBands } from "./costs.ts";
 
   let {
@@ -18,18 +20,20 @@
     route,
     chart = "costs",
   }: {
-    core: Readonly<Pick<Core, "costs">>;
+    core: Readonly<Pick<Core, "costs" | "statistics">>;
     route: RangeRoute;
     chart?: keyof typeof COST_CHARTS;
   } = $props();
 
   const laid = $derived(COST_CHARTS[chart]());
 
-  // Costs come by the day: a day is one band.
+  // Costs come by the day, so a day is one band; the savings sheet's day reads the tariff's hours.
   const data = new RangeData(
     () => route,
-    (from, to) => core.costs(from, to),
-    "day",
+    (from, to) =>
+      laid.hourly && route.range.kind === "day" ? costHours(core, from, to) : core.costs(from, to),
+    // A chart keeps its kind for its life.
+    untrack(() => COST_CHARTS[chart]().hourly) ? "hour" : "day",
   );
 
   const view = $derived.by(() => {

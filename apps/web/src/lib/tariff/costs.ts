@@ -32,6 +32,8 @@ interface CostChart {
   readonly down: SeriesMeta[];
   readonly groups: [string, string];
   readonly label: string;
+  /** A day reads by the hour. */
+  readonly hourly: boolean;
 }
 
 const up = () => [
@@ -50,6 +52,7 @@ export const COST_CHARTS = {
     ],
     groups: [m.tariff_saving_group(), m.tariff_cost_group()],
     label: m.tariff_chart(),
+    hourly: false,
   }),
   savings: (): CostChart => ({
     sides: savingsSplit,
@@ -57,6 +60,7 @@ export const COST_CHARTS = {
     down: [{ label: m.detail_unavoided(), colour: flowColour("import") }],
     groups: [m.tariff_saving_group(), m.detail_paid()],
     label: m.detail_savings_chart(),
+    hourly: true,
   }),
 };
 
