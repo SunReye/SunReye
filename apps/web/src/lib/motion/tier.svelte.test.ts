@@ -1,7 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { cdp } from "vitest/browser";
+import { jank, settled } from "./frames.harness.ts";
 import { LOW_POWER } from "./tier.ts";
-import { JANK_FRAME_MS } from "./tier.ts";
 import { MotionStore } from "./tier.svelte.ts";
 import { QualityStore } from "../scene/quality.svelte.ts";
 
@@ -46,22 +46,6 @@ test("reduced motion forces still", async () => {
   expect(new MotionStore().tier).toBe("still");
 });
 
-/** Every frame janky, delivered as fast as the test can run them; returns the frames' clock. */
-function jank(): () => number {
-  let now = 0;
-
-  vi.stubGlobal("requestAnimationFrame", (frame: FrameRequestCallback) => {
-    now += JANK_FRAME_MS + 8;
-    queueMicrotask(() => {
-      frame(now);
-    });
-
-    return now;
-  });
-
-  return () => now;
-}
-
 test("a strain the frame watch records survives a reload and starts the device on lite", async () => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   const now = jank();
@@ -105,19 +89,6 @@ test("a strain over a scene drawn on Auto's Hoch lowers the drawing first, then 
 
   expect(levels).toEqual(["full high", "full medium", "lite medium", "lite low"]);
 });
-
-/** A store whose own watch has settled and gets no frame of its own. */
-function settled(): MotionStore {
-  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-  vi.stubGlobal("requestAnimationFrame", () => 1);
-
-  const motion = new MotionStore();
-
-  motion.watch();
-  vi.advanceTimersByTime(4000);
-
-  return motion;
-}
 
 test("a loop's frames are judged for as long as it runs: held ones leave the tier, dropped ones lower it", () => {
   const motion = settled();

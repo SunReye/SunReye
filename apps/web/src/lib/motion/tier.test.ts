@@ -15,6 +15,7 @@ import {
   GAP_CEILING_MS,
   JANK_FRAME_MS,
   MAX_STRAIN,
+  parseMotionSetting,
   parseStrain,
   resolveTier,
   STRAIN_RATIO,
@@ -45,6 +46,28 @@ describe("resolveTier", () => {
   test("a negative or unreadable strain count is no strain, not a crash", () => {
     for (const strain of [-1, -1000, Number.NaN]) {
       expect(resolveTier(false, strain)).toBe("full");
+    }
+  });
+
+  test("a chosen tier holds whatever the strain; Automatisch goes by it", () => {
+    expect(resolveTier(false, 1, "full")).toBe("full");
+    expect(resolveTier(false, 0, "lite")).toBe("lite");
+    expect(resolveTier(false, 1, "auto")).toBe("lite");
+  });
+
+  test("reduced motion outranks a chosen tier too", () => {
+    expect(resolveTier(true, 0, "full")).toBe("still");
+    expect(resolveTier(true, 0, "lite")).toBe("still");
+  });
+});
+
+describe("parseMotionSetting", () => {
+  test("a kept choice reads back; anything else is Automatisch", () => {
+    expect(parseMotionSetting("full")).toBe("full");
+    expect(parseMotionSetting("lite")).toBe("lite");
+
+    for (const raw of [null, "", "still", "Full"]) {
+      expect(parseMotionSetting(raw)).toBe("auto");
     }
   });
 });
