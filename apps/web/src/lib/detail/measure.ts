@@ -2,7 +2,7 @@
 // stop. A refused read fails like a lost one: the sheet says so instead of showing an empty range.
 import { PLANT, type Core } from "../api/core.ts";
 import { share } from "../dashboard/today.ts";
-import { rollups, type Rolled, type RollupPeriod } from "../history/history.ts";
+import { coveredSum, rollups, type Rolled, type RollupPeriod } from "../history/history.ts";
 
 export interface Measured {
   /** Null where nothing was read. */
@@ -71,10 +71,10 @@ function integral(core: MeasureCore, device: number, series: string, sum: Sum): 
     digits: sum.digits,
     read: async (from, to, period) => {
       const rolled = await rollups(sure, device, series, period, new Date(from), new Date(to));
-      const read = rolled.filter((r) => r.covered > 0);
+      const total = coveredSum(rolled);
 
       return {
-        value: read.length === 0 ? null : read.reduce((a, r) => a + r.integral, 0) / sum.per,
+        value: total === null ? null : total / sum.per,
         stops: stopOf(rolled, to),
       };
     },

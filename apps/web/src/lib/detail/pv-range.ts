@@ -3,7 +3,13 @@
 // the inverter's highest temperature where its profile maps one.
 import type { Core } from "../api/core.ts";
 import { planned, plannedEnergy, type Planned } from "../forecast/forecast.ts";
-import { periodOf, rollups, type Rolled, type RollupPeriod } from "../history/history.ts";
+import {
+  coveredSum,
+  periodOf,
+  rollups,
+  type Rolled,
+  type RollupPeriod,
+} from "../history/history.ts";
 import { highest, peakIn } from "../history/peaks.ts";
 import { m } from "../paraglide/messages.js";
 import { grainOf } from "../range/range.ts";
@@ -114,8 +120,8 @@ async function readPv(core: PvCore, a: PvSource, span: Readonly<PvSpan>): Promis
 
   const estimated = support[String(a.device)]?.estimated.includes(a.series) === true;
 
-  const read = rolled.filter((r) => r.covered > 0);
-  const measured = read.length === 0 ? null : read.reduce((s, r) => s + r.integral, 0) / 1000;
+  const wh = coveredSum(rolled);
+  const measured = wh === null ? null : wh / 1000;
   // A string that never ran has no peak.
   const peak = peakIn(rolled);
 

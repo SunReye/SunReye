@@ -3,7 +3,7 @@
 // feed-in and purchase their euros. Pure.
 import { rollupSum, type Rollups } from "../history/flows.ts";
 import { peakIn } from "../history/peaks.ts";
-import type { Rolled } from "../history/history.ts";
+import { coveredSum, type Rolled } from "../history/history.ts";
 import { m } from "../paraglide/messages.js";
 import { coverOf } from "./autarky.ts";
 import { peakFact } from "./facts.ts";
@@ -49,13 +49,6 @@ const peakOf = (read: Readonly<FlowRead> | null): Fact =>
     ? { label: m.detail_peak(), value: null, unit: "W", digits: 0 }
     : peakFact(m.detail_peak(), peakIn(read.peak), "W", read);
 
-/** The euros of the rollups read; null without any. */
-function sumOf(rolled: readonly Rolled[] | null): number | null {
-  const read = rolled?.filter((r) => r.covered > 0) ?? [];
-
-  return read.length === 0 ? null : read.reduce((a, r) => a + r.integral, 0);
-}
-
 /** The share of the house load PV covered directly, in %; null without load. */
 function coveredOf(flows: Rollups | null): Fact {
   const share =
@@ -74,7 +67,7 @@ function moneyOf(
 
   if (!priced) return [{ label: money.label(), text: m.detail_no_tariff_short() }];
 
-  return [euros(money.label(), sumOf(read?.money ?? null))];
+  return [euros(money.label(), coveredSum(read?.money ?? []))];
 }
 
 /**
