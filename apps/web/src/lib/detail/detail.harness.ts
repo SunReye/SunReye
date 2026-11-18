@@ -76,6 +76,8 @@ export interface Served {
   payback: object | null;
   /** The series the inverter's profile publishes. */
   publishes: readonly string[];
+  /** Answers the inverter's forecasts in place of its plan; null for the plan. */
+  forecasts: (() => Response | Promise<Response>) | null;
 }
 
 export const served: Served = {
@@ -90,6 +92,7 @@ export const served: Served = {
   costs: null,
   payback: null,
   publishes: [],
+  forecasts: null,
 };
 
 /** The series catalog: each stored series a measurement since the month began. */
@@ -177,6 +180,8 @@ function streamed(): void {
   }
 }
 
+const plan = () => Response.json(INVERTER_PLAN);
+
 /** Each path but statistics', and what the fake core answers there to query `q`. */
 const ROUTES = new Map<string, (q: Readonly<URLSearchParams>) => Response | Promise<Response>>([
   ["/api/v1/topology", () => Response.json(TOPOLOGY)],
@@ -188,7 +193,7 @@ const ROUTES = new Map<string, (q: Readonly<URLSearchParams>) => Response | Prom
   ],
   ["/api/v1/capabilities", () => Response.json(capabilities(served.publishes))],
   [`/api/v1/devices/${SPOT}/forecasts`, () => Response.json(SPOT_PRICES)],
-  [`/api/v1/devices/${INVERTER}/forecasts`, () => Response.json(INVERTER_PLAN)],
+  [`/api/v1/devices/${INVERTER}/forecasts`, () => served.forecasts?.() ?? plan()],
   [
     "/api/v1/devices",
     () => Response.json({ status: 403, code: "auth.forbidden" }, { status: 403 }),
@@ -258,6 +263,7 @@ export async function prepare(): Promise<void> {
   served.costs = null;
   served.payback = null;
   served.publishes = [];
+  served.forecasts = null;
   served.last = "2026-11-12T12:00:00Z";
   vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-12T12:20:00Z") });
   await cdp().send("Emulation.setEmulatedMedia", {

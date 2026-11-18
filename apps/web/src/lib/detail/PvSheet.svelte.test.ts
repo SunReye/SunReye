@@ -195,6 +195,33 @@ test("a failed temperature read leaves the peak and forecast standing", async ()
     .toHaveTextContent("0–– °C");
 });
 
+test("while the facts read, a skeleton holds their place", async () => {
+  served.publishes = ["inverter.temperature"];
+  served.rolled = (a) =>
+    a.series === "inverter.temperature" ? new Promise<Response>(() => {}) : undefined;
+
+  const sheet = await sheetOf("inverter", "Wechselrichter");
+
+  await expect
+    .element(sheet.getByRole("region", { name: "Verlauf" }).getByRole("status"))
+    .toBeVisible();
+  expect(sheet.getByRole("term").filter({ hasText: "Spitze" }).elements()).toHaveLength(0);
+});
+
+test("facts that fail to read say so in their place, with a retry", async () => {
+  served.forecasts = () => Promise.reject(new Error("the core is lost"));
+
+  const sheet = await sheetOf("string-1", "Süd");
+  const alert = sheet.getByRole("alert");
+
+  await expect.element(alert).toBeVisible();
+  served.forecasts = null;
+  await alert.getByRole("button", { name: "Erneut laden" }).click();
+
+  await expect.element(sheet.getByRole("term").filter({ hasText: "Spitze" })).toBeVisible();
+  await expect.element(alert).not.toBeInTheDocument();
+});
+
 test("another string's sheet never shows the last one's facts while it reads", async () => {
   const south = inverter({ "pv.string.power[1]": SOUTH });
 
