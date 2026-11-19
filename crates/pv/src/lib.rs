@@ -18,6 +18,7 @@ mod perez;
 mod roof_window;
 mod scene;
 mod shade;
+mod sizing;
 mod string;
 mod sun;
 mod surroundings;
@@ -36,6 +37,7 @@ pub use parking::{CarPlace, Stand};
 pub use perez::plane_irradiance;
 pub use roof_window::RoofWindow;
 pub use scene::{Block, Crown, Face, Obstacle, Overhang, Roof, Scene, Surface};
+pub use sizing::{HOT, Sizing, Wired, longest_string, window_warnings};
 pub use sun::sun_position;
 pub use surroundings::{
     Fence, FenceFinish, FencePoint, Fencing, Ground, GroundFinish, GroundSurface,

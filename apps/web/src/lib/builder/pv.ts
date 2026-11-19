@@ -3,6 +3,7 @@ import type { ModuleType, StringDraft } from "../api/core.ts";
 import type { Fence, Fencing, Ground, GroundSurface, Obstacle } from "./obstacles.ts";
 import { roofCalls } from "./roof-calls.ts";
 import type { Chimney, Overhang, RoofWindow } from "./roofing.ts";
+import { sizingCalls, type Sizer } from "./sizing.ts";
 import type { Equipment, Fitted, Opening, OpeningKind, Unfit } from "./walls.ts";
 
 export type { Equipment, Fitted, Opening, OpeningKind, Unfit, Wall, WallFrame } from "./walls.ts";
@@ -168,7 +169,7 @@ export interface ClearRun {
   readonly times: readonly number[];
 }
 
-export interface Pv {
+export interface Pv extends Sizer {
   /** The scene's faces and solids; throws the crate's reason for a scene it cannot read. */
   readonly geometry: (scene: Scene) => Geometry;
   /** The scene's module grids laid out, with module sizes by module type id. */
@@ -271,6 +272,7 @@ export async function loadPv(bytes: Uint8Array<ArrayBuffer>): Promise<Pv> {
     chimneyAt: (scene, point) =>
       unwrap(call("chimney_at", JSON.stringify({ scene, point })), isIndex),
     ...roofCalls(call),
+    ...sizingCalls(call),
   };
 }
 
