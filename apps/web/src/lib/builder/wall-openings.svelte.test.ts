@@ -1,7 +1,7 @@
 import "../../app.css";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { cdp } from "vitest/browser";
+import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect } from "../api/core.ts";
 import Builder from "./Builder.svelte";
@@ -142,4 +142,42 @@ test("a window is set dark at night and duplicated: the copy stands picked, as d
   await expect
     .element(inspector().getByRole("button", { name: "Duplizieren" }))
     .not.toBeInTheDocument();
+});
+
+const heading = (number: number) =>
+  inspector().getByRole("heading", { name: `Fenster ${String(number)}` });
+
+test("Ctrl+C copies the picked window and Ctrl+V adds a copy beside it, picked; in a text field the keys are the field's", async () => {
+  const start = house();
+  const count = start.scene.openings?.length ?? 0;
+
+  await render(Builder, {
+    pv,
+    core: connect(testCore()),
+    start,
+    moduleTypes: [MODULE],
+    devices: DEVICES,
+  });
+
+  await drill("Gebäude", "Fenster hinzufügen");
+  await expect.element(heading(count + 1)).toBeVisible();
+
+  await userEvent.keyboard("{Control>}c{/Control}{Control>}v{/Control}");
+  await expect.element(heading(count + 2)).toBeVisible();
+
+  // Typing a width: a paste there is the field's, and adds no window.
+  await inspector()
+    .getByRole("button", { name: starts("Breite") })
+    .click();
+  await page.getByRole("button", { name: /tippen zum Eingeben/u }).click();
+  await page.getByRole("textbox", { name: "Breite (m) eingeben" }).click();
+  await userEvent.keyboard("{Control>}v{/Control}");
+  await userEvent.keyboard("{Enter}{Escape}");
+
+  await expect.element(heading(count + 2)).toBeVisible();
+  await expect.element(heading(count + 3)).not.toBeInTheDocument();
+
+  // Out of the field, the copy is pasted again.
+  await userEvent.keyboard("{Control>}v{/Control}");
+  await expect.element(heading(count + 3)).toBeVisible();
 });

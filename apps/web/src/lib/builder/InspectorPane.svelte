@@ -1,4 +1,5 @@
-<!-- The inspector beside the canvas, or pulled up over it as a sheet (ADR 20). -->
+<!-- The inspector beside the canvas, or pulled up over it as a sheet (ADR 20); it takes the
+  builder's editing keys. -->
 <script lang="ts" module>
   export { PEEK } from "./InspectorSheet.svelte";
 </script>
@@ -10,6 +11,7 @@
   import Inspector from "./Inspector.svelte";
   import InspectorSheet from "./InspectorSheet.svelte";
   import ModelCheck from "./ModelCheck.svelte";
+  import { OpeningClipboard } from "./opening-clipboard.ts";
   import type { Session } from "./session.svelte.ts";
 
   let {
@@ -29,7 +31,16 @@
   } = $props();
 
   const local = $derived(new Date(at));
+
+  /** The editing keys, taken wherever the focus is: the inspector is always there. */
+  const clipboard = new OpeningClipboard();
 </script>
+
+<svelte:window
+  onkeydown={(event) => {
+    clipboard.key(event, session);
+  }}
+/>
 
 {#if sheet}
   <InspectorSheet bind:expanded={session.expanded}>

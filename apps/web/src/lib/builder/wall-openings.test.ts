@@ -3,6 +3,7 @@ import { expect, test } from "bun:test";
 import { loadPv, type Opening, type Scene } from "./pv.ts";
 import {
   duplicate,
+  pasted,
   fresh,
   refit,
   slide as slideOn,
@@ -185,4 +186,13 @@ test("without room to its right a duplicate takes the wall's first free place, o
   const whole = { ...window, along: 0, width: 10 };
 
   expect(duplicate(pv, glazed(whole), 0)).toBeNull();
+});
+
+test("a copied opening is pasted beside where it stood, whatever became of it since", () => {
+  // The original has moved off: its copy still stands beside where it was copied.
+  const moved = { ...window, along: 0 };
+
+  expect(pasted(pv, glazed(moved), window)?.openings).toEqual([moved, { ...window, along: 3.4 }]);
+  // Its block is gone: nothing is pasted.
+  expect(pasted(pv, glazed(window), { ...window, block: 7 })).toBeNull();
 });
