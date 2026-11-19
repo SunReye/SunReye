@@ -39,7 +39,7 @@ flowchart LR
 ```
 
 1. **Sun position** (`sun.rs`). Meeus's low-precision coordinates give zenith and azimuth from the time and the location: geometric, unrefracted. Everything below needs the sun's direction.
-2. **Irradiance on the plane** (`perez.rs`), per module. Perez 1990 splits GHI, DNI and DHI into beam, sky diffuse and ground diffuse (albedo 0.25) on the module's plane. Weather sources deliver plain irradiance, so any source fits (ADR 17).
+2. **Transposition: irradiance on the plane** (`perez.rs`), per module. Perez 1990 splits GHI, DNI and DHI into beam, sky diffuse and ground diffuse (albedo 0.25) on the module's plane. Weather sources deliver plain irradiance, so any source fits (ADR 17).
 3. **Incidence loss** (`string.rs`). Martin and Ruiz on the beam; a constant 0.95 on diffuse. Glass reflects more at flat angles.
 4. **Cell temperature** (`temperature.rs`). Faiman with wind, the NOCT rise without, from the unshaded irradiance on the plane. Heat lowers voltage.
 5. **Shade** (`shade.rs`), per placed module with beam on its front. See below.
@@ -76,7 +76,7 @@ Per sun, `Casters` prepares each occluder once: a triangle's ray-dependent terms
 | `input.csv` | Shade, optimizers, parallel strings and MPPT limits on one input | 1e-6 |
 | `estimate.csv` | The whole chain for the owner's wiring through a day | 0.1 % or 0.5 W |
 
-pvlib knows no scene. Geometry is checked by hand-worked cases (`tests/shade.rs`, `roofing.rs`, `surroundings.rs`, `grid.rs`), and `tests/profile.rs` pins a whole scene's shaded substrings and input powers at nine instants.
+pvlib knows no scene. Geometry is checked by hand-worked cases (`tests/shade.rs`, `roofing.rs`, `surroundings.rs`, `grid.rs`), and `tests/profile.rs` pins a whole scene's shaded substrings and input powers at nine instants, three more with optimizers and a binding current limit, and checks the bounds that rule casters out against testing every caster.
 
 ## Callers
 
@@ -84,47 +84,34 @@ pvlib knows no scene. Geometry is checked by hand-worked cases (`tests/shade.rs`
 
 ## Cost
 
-Measured by `tests/profile.rs` on a plant like the owner's: 46 modules in three strings on two MPPT inputs, a saved scene with 39 occluders, a clear day at 15 minute targets, release profile (`opt-level = "s"`, fat LTO). Run it with:
+Measured by `tests/profile.rs` on a plant like the owner's: 46 modules in three strings on two MPPT inputs, a saved scene with 39 occluders, a clear day at 15 minute instants, release profile (`opt-level = "s"`, fat LTO). Run it with:
 
 ```sh
 cargo test -p sunreye-pv --release cost_by_stage -- --ignored --nocapture
 ```
 
-Add `--target x86_64-unknown-linux-musl` for the image's libc. Milliseconds per target, June day, 66 of 96 targets lit; a dark target costs nothing.
+Add `--target x86_64-unknown-linux-musl` for the amd64 image's libc. Milliseconds per instant on the June day, 66 of 96 instants lit, by the names the profile prints; a dark instant costs nothing.
 
-| Stage | glibc before | glibc now | musl now |
+| Stage | Stages above | glibc | musl |
 | --- | --- | --- | --- |
-| Sun position | 0.0003 | 0.0003 | 0.0006 |
-| Irradiance on the plane | 0.003 | 0.003 | 0.008 |
-| Shade | 3.65 | 0.05 | 0.17 |
-| Datasheet fit | 0.009 | 0.009 | 0.024 |
-| Circuits and curve samples | 0.007 | 0.05 | 0.06 |
-| Operating point | 2.80 | 0.35 | 0.41 |
-| `estimate` | 6.46 | 0.46 | 0.66 |
+| sun position | 1 | 0.0003 | 0.0006 |
+| transposition | 2 | 0.004 | 0.008 |
+| shade | 5 | 0.05 | 0.19 |
+| datasheet fit | 6 | 0.010 | 0.025 |
+| rest of the curves | 3, 4, 7, 8, 9 | 0.05 | 0.06 |
+| operating point | 10, 11, 12 | 0.35 | 0.40 |
+| estimate | all | 0.46 | 0.68 |
 
-musl before: 17.4 ms.
+What the cost is made of:
 
-What the measurements showed:
+- **The operating point is diode solves.** Each power tried at a voltage inverts every string's curve, each inversion solves every group's diode a few times, and each solve is a few Newton steps with one exponential.
+- **Allocation is negligible:** under 100 per instant, on either libc.
+- **`mul_add` is a libm call where the target's baseline has no FMA:** x86-64 and WASM. glibc dispatches to the instruction at run time; musl computes it in software. arm64 has FMA in its baseline. A diode's voltage, the innermost loop, therefore uses plain arithmetic. The vector helpers shade uses still call `mul_add`, which is musl's remaining gap.
+- **Shade is cheap only because of the bounds** above: without them it is 46 modules × 81 samples × 39 occluders.
 
-- **Not the allocator.** 71 allocations and 23 KB per target, on either libc.
-- **musl's 2.7× was software FMA.** x86-64's baseline has no FMA instruction, so `mul_add` calls libm. glibc dispatches to the instruction at run time; musl computes it in software. Built with `-C target-feature=+fma`, musl ran the unchanged model in 3.4 ms, glibc in 3.3. arm64 has FMA in its baseline. WASM has none.
-- **Shade tested everything against everything.** 46 modules × 81 samples × 39 occluders, each test recomputing what only depends on the sun.
-- **The operating point re-solved the curve from scratch.** Per lit target: 842 inversions of a string's curve, each 12 Illinois steps over the whole curve, 15 500 diode solves, 60 000 Newton steps with two exponentials each.
+Not done, each needing a decision:
 
-What changed, with outputs within the fixtures' tolerances (over a year of hourly estimates: power within 1e-13 of the unchanged model, voltage and current within 2e-8, a string's share within 5e-8):
-
-| Change | glibc | musl |
-| --- | --- | --- |
-| Per sun, not per sample: a triangle's ray terms | 6.46 → 3.96 | 17.4 → 9.9 |
-| Per module: only casters that could shade it | 3.96 → 2.87 | 9.9 → 5.9 |
-| A curve keeps its samples; an inversion starts between two | 2.87 → 0.93 | 5.9 → 1.89 |
-| One exponential per Newton step | 0.93 → 0.51 | 1.89 → 1.29 |
-| Plain arithmetic for `mul_add` in a diode's voltage | 0.51 → 0.46 | 1.29 → 0.69 |
-
-Not changed, each needing a decision:
-
-- **FMA in the amd64 image.** Closes the rest of the musl gap (shade's vector helpers still call `fma`: 0.17 against 0.05 ms). The image would then die on a CPU without FMA: anything before Haswell, and the Atom-class Celerons. ADR 2.
+- **FMA in the amd64 image.** Closes the rest of the musl gap. The image would then die on a CPU without FMA: anything before Haswell, and the Atom-class Celerons. ADR 2.
 - **Plain arithmetic in the vector helpers.** `dot`, `cross` and `offset` also place the scene's geometry, where a changed last digit can reach tests that compare coordinates exactly.
 - **A coarser peak.** Golden section refines voltage to 1e-13, about 60 steps per peak and a third of the operating point, though the flat peak fixes voltage only to about 1e-8. So do the 128 samples per curve. Both trade accuracy against pvlib.
 - **One model per layout version in the core.** `solar::estimates` rebuilds the layout from the scene per target: 7 µs of 296 µs on the tests' walled house.
-- **A cached corrections report.** At 0.5 ms a target it no longer needs one.
