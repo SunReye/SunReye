@@ -1,5 +1,14 @@
 // What a studio has on show (ADR 20): one built group at a time, and its lamps.
-import { Box3, BufferGeometry, Material, Mesh, Sphere, type Group, type Object3D } from "three";
+import {
+  Box3,
+  BufferGeometry,
+  InstancedMesh,
+  Material,
+  Mesh,
+  Sphere,
+  type Group,
+  type Object3D,
+} from "three";
 import type { Studio } from "./studio.ts";
 import { lamps } from "./wall-openings.ts";
 import { DRY, type SceneWeather } from "./weather.ts";
@@ -15,6 +24,9 @@ function free(part: Object3D): void {
 
     if (part.material instanceof Material) part.material.dispose();
   }
+
+  // Its instances' own buffers, which three.js frees for the mesh and not for its geometry.
+  if (part instanceof InstancedMesh) part.dispose();
 
   for (const child of part.children) free(child);
 }
