@@ -23,6 +23,10 @@ export function frameInterval(limit: FrameLimit): number {
  * would else fall to 20 under a limit of 30. */
 const EARLY = 4;
 
+/** A frame this near its due time is the display's own beat, and the count follows it: a display
+ * a hair faster than the limit would else run ahead of it and lose a frame every few seconds. */
+const ON_BEAT = 0.5;
+
 /** Holds what draws to a frame limit: asked with each frame the display gives. */
 export class Pace {
   readonly #interval: () => number;
@@ -43,7 +47,9 @@ export class Pace {
     if (interval > 0 && due !== undefined && now < due - EARLY) return false;
 
     // After a rest the count starts at this frame, not where it left off.
-    this.#due = (due === undefined || now - due > interval ? now : due) + interval;
+    const anew = due === undefined || now - due > interval || Math.abs(now - due) <= ON_BEAT;
+
+    this.#due = (anew ? now : due) + interval;
 
     return true;
   }

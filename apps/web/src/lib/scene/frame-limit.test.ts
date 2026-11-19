@@ -60,6 +60,32 @@ test("a frame that comes a little early is taken: 60 Hz with jitter still gives 
   expect(frames).toBe(30);
 });
 
+test("a display a hair faster than the limit keeps every frame: the pace follows its beat", () => {
+  // 60.05 Hz, as displays called 60 Hz run, for twenty seconds.
+  const ms = 1000 / 60.05;
+  const sixty = new Pace(() => frameInterval("60"));
+  const thirty = new Pace(() => frameInterval("30"));
+  const gaps = new Set<number>();
+  let [frames, last] = [0, 0];
+
+  for (let i = 0; i < 1201; i++) {
+    if (sixty.take(1000 + i * ms)) frames += 1;
+
+    if (thirty.take(1000 + i * ms)) {
+      gaps.add(i - last);
+      last = i;
+    }
+  }
+
+  expect(frames).toBe(1201);
+  // Under 30 every other frame, never a third skipped.
+  expect([...gaps].toSorted((a, b) => a - b)).toEqual([0, 2]);
+});
+
+test("a display well faster than the limit is not followed: 63 Hz under 60 gives 60", () => {
+  expect(taken("60", 1000 / 63)).toBeLessThanOrEqual(60);
+});
+
 test("the first frame after a rest is taken at once, and a change of limit holds from the next", () => {
   let limit: FrameLimit = "30";
   const pace = new Pace(() => frameInterval(limit));
