@@ -269,7 +269,7 @@ fn cost_by_stage() {
             .collect();
         let lit = weather.iter().filter(|w| w.ghi > 0.0).count();
 
-        println!("{day}: {lit} of 96 slots lit; ms per slot");
+        println!("{day}: {lit} of 96 instants lit; ms per instant");
         for (stage, milliseconds) in stages(&layout, &weather) {
             println!("  {stage:<18} {:.4}", milliseconds / 96.0);
         }
