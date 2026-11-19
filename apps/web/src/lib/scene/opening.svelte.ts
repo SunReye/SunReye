@@ -8,15 +8,10 @@ import { Flight } from "./flight.ts";
 import { frameLimit } from "./frame-limit.svelte.ts";
 import { Loop, pauseUnseen } from "./loop.ts";
 import { ahead, gpuIdle, nextFrame, pause, prepare } from "./prepare.ts";
+import type { Ghost } from "./stage.svelte.ts";
 import type { Studio } from "./studio.ts";
 import { idle } from "./warm.ts";
 import { weatherMoves, type Moving } from "./weather-moves.svelte.ts";
-
-/** The picture held over the canvas while what arrives fades in beneath it (stage.svelte.ts). */
-interface Held {
-  canvas: HTMLCanvasElement | undefined;
-  phase: "off" | "hold" | "fade";
-}
 
 export class Opening {
   readonly #studio: Studio;
@@ -178,7 +173,7 @@ export class Opening {
   /** Runs `park`, its programs compiled first; on screen, the change fades in. */
   /* oxlint-disable typescript/prefer-readonly-parameter-types -- the canvas is drawn on. */
   // fallow-ignore-next-line unused-class-member -- SceneCanvas calls it through `Lit["opening"]`.
-  async arrive(canvas: HTMLCanvasElement, ghost: Held, park: () => void): Promise<void> {
+  async arrive(canvas: HTMLCanvasElement, ghost: Ghost, park: () => void): Promise<void> {
     const fade = !motion.still && !this.flight.flying && ghost.canvas !== undefined;
 
     this.#hold(true);

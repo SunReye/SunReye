@@ -85,6 +85,7 @@ export class Studio {
   }
 
   /** What it draws now. */
+  // fallow-ignore-next-line unused-class-member -- the readout reads it through the perf store.
   get look(): Look {
     return this.#look;
   }

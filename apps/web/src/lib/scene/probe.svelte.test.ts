@@ -1,12 +1,12 @@
 import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
 import { afterEach, expect, test, vi } from "vitest";
-import { look, measured, PHONE, screen, shut, told } from "./probe.harness.ts";
+import { look, measured, PHONE, screen, unmeasure, told } from "./probe.harness.ts";
 
 // What a frame of the scene draws, counted (ADR 21 "Measuring"): this host has no GPU, so a
 // frame's cost is told by its passes, their sizes and its draws, never by its time.
 
 afterEach(async () => {
-  shut();
+  unmeasure();
   await screen();
 });
 

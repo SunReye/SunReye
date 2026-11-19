@@ -4,14 +4,12 @@ import { asked } from "./perf-lines.ts";
 import type { Look } from "./quality.ts";
 import type { Studio } from "./studio.ts";
 
-/** What the readout's switches set in place of the look's own. */
-export type Trial = Partial<Pick<Look, "occlusion" | "contact" | "pixelRatio" | "shadowMap">>;
-
 class Perf {
   #on = $state(asked(location.hash));
   #studio = $state.raw<Studio>();
-  /** What the switches try; empty, the look is drawn as it is. */
-  trial = $state.raw<Trial>({});
+  /** What the readout's switches set in place of the look's own; empty, the look is drawn as it
+   * is. */
+  trial = $state.raw<Partial<Pick<Look, "occlusion" | "contact" | "pixelRatio" | "shadowMap">>>({});
 
   /** Whether the readout shows: asked for once, it stays for the page's life. */
   get on(): boolean {

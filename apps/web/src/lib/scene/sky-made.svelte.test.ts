@@ -1,7 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { Color, PMREMGenerator } from "three";
 import { daylight, theme } from "./light.ts";
-import { measured, shut } from "./probe.harness.ts";
+import { measured, unmeasure } from "./probe.harness.ts";
 
 // The sky that lights the scene is made again only once the sun has moved far enough to show
 // (ADR 20 Rendering): each making filters a cube map, where a minute moves the sun a quarter
@@ -9,7 +9,7 @@ import { measured, shut } from "./probe.harness.ts";
 
 afterEach(() => {
   vi.restoreAllMocks();
-  shut();
+  unmeasure();
 });
 
 const PAGE = new Color(0.95, 0.95, 0.96);

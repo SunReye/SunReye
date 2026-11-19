@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "vitest";
 import { BoxGeometry, Color, Mesh, MeshStandardMaterial, Vector3 } from "three";
 import { daylight, theme } from "./light.ts";
-import { look, measured, shut } from "./probe.harness.ts";
+import { look, measured, unmeasure } from "./probe.harness.ts";
 import { draws, open, shut as close } from "./stage.harness.svelte.ts";
 
 // The sun's shadow map is drawn only when what it shows changed (ADR 20 Rendering): the sun
@@ -9,7 +9,7 @@ import { draws, open, shut as close } from "./stage.harness.svelte.ts";
 // fixed cost.
 
 afterEach(() => {
-  shut();
+  unmeasure();
   close();
 });
 

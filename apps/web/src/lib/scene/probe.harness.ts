@@ -36,7 +36,7 @@ export function measured(
   const canvas = document.createElement("canvas");
 
   document.body.append(canvas);
-  shut();
+  unmeasure();
   studio = new Studio(canvas, new PerspectiveCamera(40, width / height, 0.1, 5000), () =>
     look(level),
   );
@@ -69,7 +69,7 @@ export function measured(
 }
 
 /** Frees the studio opened: after each test. */
-export function shut(): void {
+export function unmeasure(): void {
   studio?.dispose();
   studio?.renderer.domElement.remove();
   studio = undefined;

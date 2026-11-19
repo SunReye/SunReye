@@ -1,11 +1,11 @@
 import { afterEach, expect, test } from "vitest";
 import { buildScene, tint, type Panel } from "./scene.ts";
 import type { Geometry } from "./pv.ts";
-import { measured, shut } from "../scene/probe.harness.ts";
+import { measured, unmeasure } from "../scene/probe.harness.ts";
 
 // The modules as drawn (ADR 20 Rendering): one instanced draw, each with its own glow.
 
-afterEach(shut);
+afterEach(unmeasure);
 
 /** A level roof at 3 m. */
 const house: Geometry = {
