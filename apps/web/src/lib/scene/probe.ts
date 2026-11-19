@@ -41,7 +41,8 @@ export class Probe {
   readonly #restore: () => void;
   /** When each frame of the last second was drawn. */
   #drawn: number[] = [];
-  #passes: Pass[] = [];
+  /** The passes of the frame being counted; none between frames, where Ultra's burst draws. */
+  #passes: Pass[] | undefined;
   /** What is bound, and the renderer's draw calls when it was. */
   #bound: { readonly target: Target | null; readonly from: number } | undefined;
   #last: Frame | undefined;
@@ -100,21 +101,23 @@ export class Probe {
     const now = this.#clock();
     const start = performance.now();
 
+    const passes: Pass[] = [];
+
     info.reset();
-    this.#passes = [];
+    this.#passes = passes;
     this.#bound = undefined;
     this.#gpu.begin();
     draw();
     this.#gpu.end();
     this.#bind(null);
-    this.#bound = undefined;
+    this.#passes = undefined;
     this.#drawn = [...this.#drawn.filter((at) => at > now - 1000), now];
     this.#last = {
       calls: info.render.calls,
       triangles: info.render.triangles,
       programs: info.programs?.length ?? 0,
-      shadows: this.#passes.filter(({ target }) => target === "shadow").length,
-      passes: this.#passes,
+      shadows: passes.filter(({ target }) => target === "shadow").length,
+      passes,
       script: performance.now() - start,
     };
   }
@@ -129,9 +132,12 @@ export class Probe {
   #bind(target: Target | null): void {
     const { calls } = this.#renderer.info.render;
     const bound = this.#bound;
+    const passes = this.#passes;
+
+    if (passes === undefined) return;
 
     if (bound !== undefined && calls > bound.from) {
-      this.#passes.push({ ...this.#told(bound.target), calls: calls - bound.from });
+      passes.push({ ...this.#told(bound.target), calls: calls - bound.from });
     }
 
     this.#bound = { target, from: calls };

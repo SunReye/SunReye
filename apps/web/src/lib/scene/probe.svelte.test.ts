@@ -37,6 +37,15 @@ test("a frame's passes are told with the size of what each drew into", async () 
   expect(told(frame())).toEqual(["shadow 1024×1024", "target 390×600 ×4", "canvas 390×600"]);
 });
 
+test("what Ultra's burst draws after a frame is no part of that frame", () => {
+  const { studio, probe, frame } = measured("ultra");
+  const passes = told(frame());
+
+  while (studio.refine());
+
+  expect(told(probe.last ?? frame())).toEqual(passes);
+});
+
 test("the frames drawn in the last second are the rate", () => {
   let now = 10_000;
   const { studio, probe } = measured("low", [64, 64], () => now);
