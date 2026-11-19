@@ -466,17 +466,40 @@ async fn a_passed_target_hour_keeps_only_its_latest_issue() {
     let hours = [(0.0, 2.0), (1800.0, 2.0), (3600.0, 2.0), (7200.0, 2.0)];
     issue(&storage, ghi, 60.0, &hours).await;
     issue(&storage, ghi, 3660.0, &[(3600.0, 3.0), (7200.0, 3.0)]).await;
-    issue(&storage, ghi, 7260.0, &[(7200.0, 4.0)]).await;
+    issue(&storage, ghi, 7260.0, &[(7200.0, 4.0), (8100.0, 4.0)]).await;
+    // An issue within a target's hour forecasts it only where nothing did before (ADR 15).
     assert_eq!(
         forecasts(&storage, ghi).await,
         [
-            (0.0, 60.0, 2.0),
-            (1800.0, 60.0, 2.0),
-            (3600.0, 3660.0, 3.0),
+            (0.0, 0.0, 1.0),
+            (1800.0, 0.0, 1.0),
+            (3600.0, 60.0, 2.0),
             (7200.0, 0.0, 1.0),
             (7200.0, 60.0, 2.0),
             (7200.0, 3660.0, 3.0),
-            (7200.0, 7260.0, 4.0),
+            (8100.0, 7260.0, 4.0),
+        ]
+    );
+}
+
+/// A passed target keeps its own latest issue, though a later issue of its hour lacks it.
+#[tokio::test]
+async fn a_passed_target_keeps_its_latest_issue_though_a_later_one_lacks_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let plant = Plant::new();
+    let storage = plant
+        .open(&dir.path().join("history.sqlite"), epoch())
+        .await;
+    let ghi = plant.bus.intern("weather.ghi", None);
+    issue(&storage, ghi, 0.0, &[(3600.0, 1.0), (4500.0, 1.0)]).await;
+    issue(&storage, ghi, 60.0, &[(4500.0, 2.0)]).await;
+    issue(&storage, ghi, 7260.0, &[(7200.0, 3.0)]).await;
+    assert_eq!(
+        forecasts(&storage, ghi).await,
+        [
+            (3600.0, 0.0, 1.0),
+            (4500.0, 60.0, 2.0),
+            (7200.0, 7260.0, 3.0)
         ]
     );
 }

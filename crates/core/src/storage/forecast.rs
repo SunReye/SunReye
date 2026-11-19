@@ -27,8 +27,8 @@ pub fn write(
     }
 }
 
-/// Adds the issue beside the earlier ones, then keeps only the latest issue of each target hour
-/// that has passed.
+/// Adds the issue beside the earlier ones, a target of its own hour only where none forecast it,
+/// then keeps only each passed target's latest issue (ADR 15).
 fn every(
     tx: &Transaction<'_>,
     (device, series): (u32, i64),
@@ -36,22 +36,24 @@ fn every(
     points: impl Iterator<Item = (Tick, i64)>,
 ) -> rusqlite::Result<()> {
     let mut insert = tx.prepare_cached(
-        "INSERT INTO forecast (device, series, target, issued, value) VALUES (?1, ?2, ?3, ?4, ?5)
+        "INSERT INTO forecast (device, series, target, issued, value)
+         SELECT ?1, ?2, ?3, ?4, ?5 WHERE ?3 >= ?6 OR NOT EXISTS (
+           SELECT 1 FROM forecast WHERE device = ?1 AND series = ?2 AND target = ?3
+         )
          ON CONFLICT DO UPDATE SET value = excluded.value",
     )?;
+    let next = hour + HOUR;
     for (target, value) in points {
-        insert.execute(params![device, series, target, issued, value])?;
+        insert.execute(params![device, series, target, issued, value, next])?;
     }
     tx.execute(
         "DELETE FROM forecast AS old
          WHERE device = ?1 AND series = ?2 AND target < ?3
          AND issued < (
            SELECT max(issued) FROM forecast
-           WHERE device = old.device AND series = old.series
-           AND target >= old.target - old.target % ?4
-           AND target < old.target - old.target % ?4 + ?4
+           WHERE device = old.device AND series = old.series AND target = old.target
          )",
-        params![device, series, hour, HOUR],
+        params![device, series, hour],
     )?;
     Ok(())
 }
