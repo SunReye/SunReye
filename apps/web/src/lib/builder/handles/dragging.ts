@@ -6,17 +6,18 @@ import { bodyOf, on, ridge, type Body, type Rect, type Round, type Target } from
 import {
   clamp,
   inScene,
-  level,
   meet,
   snap,
   tidy,
   toDegrees,
   turn,
+  world,
   type Ray,
   type Triple,
 } from "./frame.ts";
 import type { Grip } from "./grips.ts";
 import { onRoof } from "./on-roof.ts";
+import { onLevel } from "./shallow.ts";
 import { along, edges, pull, snapTurn } from "./snapping.ts";
 
 /** Where a drag began: its grip, its ray, and the height of the plane it slides in. */
@@ -26,6 +27,8 @@ export interface Grab {
   readonly point?: number | undefined;
   readonly ray: Ray;
   readonly height: number;
+  /** The point grabbed, in three.js's frame: what a shallow view's drag moves. */
+  readonly at?: Triple | undefined;
 }
 
 export interface Dragged {
@@ -225,9 +228,12 @@ export function drag(
     return target.kind === "block" ? tilt(scene, target.index, start, end) : null;
   }
 
-  const [from, to] = [level(start, grab.height), level(end, grab.height)];
+  const held = grab.at && world(-scene.north, grab.at);
+  const ends = onLevel([start, end], grab.height, held);
 
-  if (from === null || to === null) return null;
+  if (ends === null) return null;
+
+  const [from, to] = ends;
 
   return levelled({ scene, target, from, to }, grab);
 }
