@@ -1,6 +1,7 @@
 // The weather loop (ADR 23 "Motion"): the one loop the scene draws in, and only while something
-// that moves is kept on show. At most 30 frames a second, none while paused, and every frame the
-// display gives is counted for the frame watch (ADR 21). The frames are handed in.
+// that moves is kept on show. It draws at the display's rate, held to the frame limit, never
+// while paused, and every frame the display gives is counted for the frame watch (ADR 21). The
+// frames are handed in.
 
 /** The display's frames, as `requestAnimationFrame` gives them. */
 export interface Frames {
@@ -10,8 +11,10 @@ export interface Frames {
 
 export interface Looped {
   readonly frames: Frames;
-  /** Draws the scene at the frame's `now`; true to draw the next frame too, whatever the cap. */
-  readonly draw: (now: number) => boolean;
+  /** Whether the frame at `now` may be drawn in: the frame limit's say (ADR 21). */
+  readonly due: (now: number) => boolean;
+  /** Draws the scene at the frame's `now`. */
+  readonly draw: (now: number) => void;
   /** Told of every frame the display gives while the loop runs, drawn in or not. */
   readonly count: (now: number) => void;
   /** The loop draws from here on, until `stopped`. */
@@ -23,13 +26,6 @@ export interface Looped {
 /** What moves in the loop: told the seconds the loop has run, before each frame it draws. */
 export type Step = (seconds: number) => void;
 
-/** Milliseconds between two drawn frames: 30 a second. */
-const INTERVAL = 1000 / 30;
-
-/** A frame this much early is drawn in: a display's frames are never evenly apart, and 60 Hz
- * would else fall to 20. */
-const EARLY = 4;
-
 /** The most the loop's clock moves in one frame: a stall is not a leap. */
 const LONGEST = 100;
 
@@ -38,12 +34,10 @@ export class Loop {
   readonly #steps = new Set<Step>();
   readonly #pauses = new Set<string>();
   #frame: number | undefined;
-  /** When the last frame was drawn and when the last was given; undefined once stopped. */
-  #drawn: number | undefined;
+  /** When the last frame was given; undefined once stopped. */
   #given: number | undefined;
   /** Milliseconds run. */
   #clock = 0;
-  #due = false;
   /** Whether it ran when last looked at: a stop is told once. */
   #ran = false;
 
@@ -81,11 +75,6 @@ export class Loop {
     this.#sync();
   }
 
-  /** Draws in the next frame, whatever the cap: the picture changed besides. */
-  ask(): void {
-    this.#due = true;
-  }
-
   #sync(): void {
     const { running } = this;
 
@@ -104,9 +93,7 @@ export class Loop {
     if (this.#frame !== undefined) this.#on.frames.cancel(this.#frame);
 
     this.#frame = undefined;
-    this.#drawn = undefined;
     this.#given = undefined;
-    this.#due = false;
     this.#on.stopped();
   }
 
@@ -117,12 +104,10 @@ export class Loop {
       this.#clock += Math.min(now - (this.#given ?? now), LONGEST);
       this.#given = now;
 
-      if (this.#due || this.#drawn === undefined || now - this.#drawn >= INTERVAL - EARLY) {
-        this.#drawn = now;
-
+      if (this.#on.due(now)) {
         for (const step of this.#steps) step(this.#clock / 1000);
 
-        this.#due = this.#on.draw(now);
+        this.#on.draw(now);
       }
 
       // A step or the draw may have ended it.

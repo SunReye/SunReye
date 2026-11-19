@@ -184,7 +184,7 @@ export function lit(
     flight,
     glow,
     ease: (group, shares) => {
-      easeGlow(group, shares, glow, render);
+      easeGlow(group, shares, glow, opened);
     },
     opening: opened,
     show: shown.show,

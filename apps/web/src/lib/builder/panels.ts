@@ -49,6 +49,14 @@ const FAINT = 0.2;
  * faint glow while it makes anything. */
 const lit = (share: number): number => (share > 0 ? Math.max(share * share, FAINT) : 0);
 
+/** The furthest any module's glow moves from the shares `from` to `to`, of its whole range. */
+export function glowShift(
+  from: readonly (number | null)[],
+  to: readonly (number | null)[],
+): number {
+  return Math.max(0, ...to.map((share, i) => Math.abs(lit(share ?? 0) - lit(from[i] ?? 0))));
+}
+
 /** Lights the group's modules by their strings' shares of peak, in `buildScene`'s order. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js recolours in place.
 export function tint(group: Group, shares: readonly (number | null)[], glow: Glow): void {

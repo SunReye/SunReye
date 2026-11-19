@@ -1,15 +1,14 @@
-<!-- Settings › Display (ADR 21): this browser's theme, language, 3D quality (ADR 20), weather effects (ADR 23), motion, low-power and haptics switches. -->
+<!-- Settings › Display (ADR 21): this browser's theme, language, 3D quality (ADR 20), frame limit, weather effects (ADR 23), motion, low-power and haptics switches. -->
 <script lang="ts">
   import * as Item from "#lib/components/ui/item/index.js";
+  import FrameLimitRow from "./FrameLimitRow.svelte";
   import HapticsRow from "./HapticsRow.svelte";
   import LanguageRow from "./LanguageRow.svelte";
+  import LowPowerRow from "./LowPowerRow.svelte";
   import MotionRow from "./MotionRow.svelte";
   import QualityRow from "./QualityRow.svelte";
   import ThemeRow from "./ThemeRow.svelte";
-  import ToggleRow from "./ToggleRow.svelte";
   import WeatherEffectsRow from "./WeatherEffectsRow.svelte";
-  import { motion } from "../motion/tier.svelte.ts";
-  import { m } from "../paraglide/messages.js";
 </script>
 
 <div class="drill-card">
@@ -17,16 +16,10 @@
     <ThemeRow />
     <LanguageRow />
     <QualityRow />
+    <FrameLimitRow />
     <WeatherEffectsRow />
     <MotionRow />
-    <ToggleRow
-      label={m.display_low_power()}
-      hint={m.display_low_power_hint()}
-      checked={motion.lowPower}
-      onchange={(on) => {
-        motion.lowPower = on;
-      }}
-    />
+    <LowPowerRow />
     <HapticsRow />
   </Item.Group>
 </div>

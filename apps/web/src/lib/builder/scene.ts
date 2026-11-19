@@ -251,6 +251,7 @@ export async function buildSliced(
 export { strike, type Hit } from "./strike.ts";
 
 export {
+  glowShift,
   stringColour,
   stringCss,
   tint,

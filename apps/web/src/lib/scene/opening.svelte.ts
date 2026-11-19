@@ -1,9 +1,11 @@
-// When a studio draws (ADR 20): once per frame on a change and while the camera flies, in a loop
-// only while the weather's moves (ADR 23 "Motion"), and nothing before it is prepared, so the
-// first frame never waits on a compile. Ported from the prototype's background load.
+// When a studio draws (ADR 20): once per frame on a change and while the camera flies or a tint
+// glides, in a loop only while the weather's moves (ADR 23 "Motion"), every frame held to the
+// frame limit (ADR 21), and nothing before it is prepared, so the first frame never waits on a
+// compile. Ported from the prototype's background load.
 import { motion } from "../motion/tier.svelte.ts";
 import { Burst } from "./burst.ts";
 import { Flight } from "./flight.ts";
+import { frameLimit } from "./frame-limit.svelte.ts";
 import { Loop, pauseUnseen } from "./loop.ts";
 import { ahead, gpuIdle, nextFrame, pause, prepare } from "./prepare.ts";
 import type { Studio } from "./studio.ts";
@@ -29,6 +31,10 @@ export class Opening {
   #later: ReturnType<typeof setTimeout> | undefined;
   /** A change waits for the loop's next frame: the picture is not the last one moved on. */
   #changed = false;
+  /** Holds every frame drawn here to this browser's frame limit (ADR 21). */
+  readonly #pace = frameLimit.pace();
+  /** What moves besides the flight, each stepped in a drawn frame until it says it rests. */
+  readonly #moving = new Set<(now: number) => boolean>();
   readonly #unwatch: () => void;
   /** Lets the loop go of what moved with the weather. */
   #unmove: (() => void) | undefined;
@@ -40,8 +46,8 @@ export class Opening {
   /**
    * The weather loop (ADR 23 "Motion"): the one loop this studio is drawn in. What moves keeps
    * it running with `keep`, and it draws while anything is kept, the picture is prepared, the
-   * tier is full, the tab is shown and the canvas is on screen. Every change asked for with
-   * `render` is drawn in its frames while it runs.
+   * tier is full, the tab is shown and the canvas is on screen, in every frame the frame limit
+   * allows. Every change asked for with `render` is drawn in its frames while it runs.
    */
   readonly loop: Loop = new Loop({
     frames: {
@@ -50,7 +56,10 @@ export class Opening {
         cancelAnimationFrame(id);
       },
     },
-    draw: (now) => this.#paint(now),
+    due: (now) => this.#pace.take(now),
+    draw: (now) => {
+      this.#paint(now);
+    },
     count: (now) => {
       motion.frame(now);
     },
@@ -83,21 +92,40 @@ export class Opening {
     // The picture is about to change: what refined the last one is void.
     this.#burst.rest();
 
-    // One frame, one draw: the loop's own is the next, whatever its cap.
+    // One frame, one draw: the loop's own is the next.
     if (this.loop.running) {
       this.#changed = true;
-      this.loop.ask();
 
       return;
     }
 
     this.#frame ||= requestAnimationFrame((now) => {
       this.#frame = 0;
+
+      // Not in this frame, by the limit: the next one allowed draws what changed.
+      if (!this.#pace.take(now)) {
+        this.render();
+
+        return;
+      }
+
       this.#changed = true;
 
       if (this.#paint(now)) this.render();
     });
   };
+
+  /** Steps `step` in each frame drawn, the loop's or its own, until it returns false: a tint's
+   * glide (ADR 20 Motion). The release ends it early. */
+  // fallow-ignore-next-line unused-class-member -- the live glow calls it through `Lit`.
+  animate(step: (now: number) => boolean): () => void {
+    this.#moving.add(step);
+    this.render();
+
+    return () => {
+      this.#moving.delete(step);
+    };
+  }
 
   /** What casts a shadow changed, as when a car parks: draws in the next frame, the sun's shadow
    * map with it (ADR 20 Rendering). */
@@ -196,15 +224,20 @@ export class Opening {
 
   readonly #isGone = (): boolean => this.#gone;
 
-  /** A frame at `now`: where the flight moved the camera is drawn in it, not the next. True
-   * while the flight goes on. */
+  /** A frame at `now`: where the flight moved the camera, and what else moves, is drawn in it,
+   * not the next. True while anything goes on. */
   #paint(now: number): boolean {
-    const flying = this.flight.step(now);
+    let moving = this.flight.step(now);
 
-    this.#changed ||= flying;
+    for (const step of this.#moving) {
+      if (step(now)) moving = true;
+      else this.#moving.delete(step);
+    }
+
+    this.#changed ||= moving;
     this.#draw();
 
-    return flying;
+    return moving;
   }
 
   /** Draws; `drawn` hears of a changed picture alone, and not of rain that fell on. */
@@ -218,7 +251,7 @@ export class Opening {
 
     this.#burst.rest();
 
-    // A picture that moves on in a 30th of a second is never settled.
+    // A picture that moves on with the next frame is never settled.
     if (!this.loop.running) this.#burst.start();
   }
 
