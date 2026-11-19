@@ -3,7 +3,6 @@
 <script lang="ts">
   import { haptics } from "../haptics.ts";
   import BlockFieldset from "./BlockFieldset.svelte";
-  import { withoutBlock } from "./modules.ts";
   import OpeningFieldset from "./OpeningFieldset.svelte";
   import type { Pv, RoofFace, Scene, Unfit } from "./pv.ts";
   import { chimneySizes, windowSizes } from "./roof-fields.ts";
@@ -30,8 +29,8 @@
     onchange: (scene: Scene) => void;
     /** The scene with one opening more, the last, which is picked. */
     onadd: (scene: Scene) => void;
-    /** The scene without the object. */
-    onremove: (scene: Scene) => void;
+    /** Takes the object out of the scene. */
+    onremove: () => void;
   } = $props();
 
   const block = $derived(kind === "block" ? scene.blocks[index] : undefined);
@@ -45,14 +44,6 @@
   /** Why the last change to the opening was not made, until one is. */
   let unfit = $state<Unfit>();
 
-  // A scene keeps at least one block.
-  const removeBlock = $derived(
-    scene.blocks.length > 1
-      ? () => {
-          onremove(withoutBlock(scene, index));
-        }
-      : undefined,
-  );
 </script>
 
 {#if block !== undefined}
@@ -61,7 +52,7 @@
     onchange={(next) => {
       onchange({ ...scene, blocks: scene.blocks.with(index, next) });
     }}
-    onremove={removeBlock}
+    onremove={scene.blocks.length > 1 ? onremove : undefined}
   />
 {:else if chimney !== undefined}
   <RoofFieldset
@@ -71,9 +62,7 @@
     onchange={(next) => {
       onchange({ ...scene, chimneys: chimneys.with(index, next) });
     }}
-    onremove={() => {
-      onremove({ ...scene, chimneys: chimneys.toSpliced(index, 1) });
-    }}
+    {onremove}
   />
 {:else if window !== undefined}
   <RoofFieldset
@@ -83,9 +72,7 @@
     onchange={(next) => {
       onchange({ ...scene, roofWindows: windows.with(index, next) });
     }}
-    onremove={() => {
-      onremove({ ...scene, roofWindows: windows.toSpliced(index, 1) });
-    }}
+    {onremove}
   />
 {:else if opening !== undefined}
   <OpeningFieldset
@@ -111,8 +98,6 @@
 
       unfit = copied === null ? "room" : undefined;
     }}
-    onremove={() => {
-      onremove({ ...scene, openings: openings.toSpliced(index, 1) });
-    }}
+    {onremove}
   />
 {/if}

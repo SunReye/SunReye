@@ -6,7 +6,7 @@
   import { choices } from "./fields.ts";
   import type { GridModule, Scene } from "./pv.ts";
   import { addString, paint, type Draft } from "./modules.ts";
-  import { move, removeModule } from "./placing.ts";
+  import { move } from "./placing.ts";
   import RemoveButton from "./RemoveButton.svelte";
   import SwitchRow from "./SwitchRow.svelte";
   import ValueRow from "./ValueRow.svelte";
@@ -26,7 +26,7 @@
     module: number;
     laid: GridModule;
     onchange: (draft: Draft) => void;
-    onremove: (draft: Draft) => void;
+    onremove: () => void;
   } = $props();
 
   const string = $derived(laid.string ?? undefined);
@@ -105,8 +105,4 @@
     }}
   />
 </Item.Group>
-<RemoveButton
-  onremove={() => {
-    onremove(edited(removeModule(draft.scene, grid, module)));
-  }}
-/>
+<RemoveButton {onremove} />

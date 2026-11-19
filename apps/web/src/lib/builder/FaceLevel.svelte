@@ -31,8 +31,8 @@
     /** Adds module types to the core, and its catalogue to add them from. */
     types: TypeSource;
     onchange: (draft: Draft) => void;
-    /** The draft without the module, back at the face. */
-    onremove: (draft: Draft) => void;
+    /** Takes the tapped module off the face. */
+    onremove: () => void;
   } = $props();
 
   const draft = $derived(plan.draft);
