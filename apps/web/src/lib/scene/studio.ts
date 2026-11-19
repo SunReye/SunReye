@@ -193,6 +193,7 @@ export class Studio {
   }
 
   /** Counts no more, and draws as before `measure`. */
+  // fallow-ignore-next-line unused-class-member -- the readout calls it through the perf store.
   unmeasure(): void {
     this.#passes.unmeasure();
   }
