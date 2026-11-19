@@ -366,6 +366,10 @@
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
   --glass-destructive-base: var(--destructive);
+  /* On a sheet's own ambient glass, whose colour is as important and may be written later. */
+  &.glass-ambient {
+    background-color: color-mix(in oklab, var(--card) var(--chip-opacity), transparent) !important;
+  }
   & > * {
     --destructive: color-mix(
       in oklab,

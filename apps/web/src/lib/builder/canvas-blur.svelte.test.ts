@@ -121,7 +121,16 @@ test("the sheet of what a phone can add has no backdrop blur over the canvas, no
     await expect.element(adds).toHaveAttribute("data-slot", "drawer-content");
     await expect.element(adds.getByRole("button", { name: "String hinzufügen" })).toBeVisible();
     expect(blurred()).toEqual([]);
-    expect(least(adds.element(), adds.element())).toBeGreaterThanOrEqual(4.5);
+
+    // Its quietest text, a group's heading, on the sheet's own colour.
+    const heading = adds.getByRole("heading", { name: "Strings" }).element();
+
+    document.head.append(still);
+
+    for (const theme of ["light", "dark"]) {
+      document.documentElement.classList.toggle("dark", theme === "dark");
+      expect([theme, least(heading, adds.element()) >= 4.5]).toEqual([theme, true]);
+    }
   } finally {
     await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: false });
   }
