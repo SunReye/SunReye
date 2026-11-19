@@ -2,6 +2,7 @@
 // only while the weather's moves (ADR 23 "Motion"), and nothing before it is prepared, so the
 // first frame never waits on a compile. Ported from the prototype's background load.
 import { motion } from "../motion/tier.svelte.ts";
+import { Burst } from "./burst.ts";
 import { Flight } from "./flight.ts";
 import { Fade } from "./lens.ts";
 import { Loop, pauseUnseen } from "./loop.ts";
@@ -11,19 +12,14 @@ import type { Studio } from "./studio.ts";
 import type { Falling, Glass } from "./weather.ts";
 import { idle } from "./warm.ts";
 
-/** A burst frame slower than this ends the burst: three frames at 60 Hz. */
-const BURST_FRAME_MS = 50;
-
 export class Opening {
   readonly #studio: Studio;
   /** The camera's flight to a new view; it lands at once on the still tier. */
   readonly flight = new Flight(() => motion.still);
   readonly #drawn: () => void;
   #frame = 0;
-  /** The pending frame of a settled picture's refining burst (ADR 20 Rendering quality). */
-  #refining = 0;
-  /** Counts the bursts begun and ended, so a frame can tell its own is still the current one. */
-  #burst = 0;
+  /** A settled picture's refining burst (ADR 20 Rendering quality). */
+  readonly #burst: Burst;
   #held = true;
   #gone = false;
   #later: ReturnType<typeof setTimeout> | undefined;
@@ -62,6 +58,7 @@ export class Opening {
   constructor(studio: Studio, drawn: () => void) {
     this.#studio = studio;
     this.#drawn = drawn;
+    this.#burst = new Burst(studio, () => this.#held || this.#gone);
     this.loop.pause("held", true);
     this.#unwatch = pauseUnseen(this.loop, studio.renderer.domElement);
   }
@@ -71,7 +68,7 @@ export class Opening {
     if (this.#held || this.#gone) return;
 
     // The picture is about to change: what refined the last one is void.
-    this.#rest();
+    this.#burst.rest();
 
     // One frame, one draw: the loop's own is the next, whatever its cap.
     if (this.loop.running) {
@@ -193,7 +190,7 @@ export class Opening {
     this.#unglaze();
     clearTimeout(this.#later);
     cancelAnimationFrame(this.#frame);
-    this.#rest();
+    this.#burst.rest();
   }
 
   readonly #isGone = (): boolean => this.#gone;
@@ -249,40 +246,10 @@ export class Opening {
 
     if (changed) this.#drawn();
 
-    this.#rest();
+    this.#burst.rest();
 
     // A picture that moves on in a 30th of a second is never settled.
-    if (!this.loop.running) this.#refine();
-  }
-
-  /** A frame of the burst in each of the next frames, until the studio has had its fill, the
-   * picture changes, or the GPU takes long over one: a device that cannot hold the burst keeps
-   * the picture it has. Where the look has no burst, none is asked for. */
-  #refine(): void {
-    const burst = (this.#burst += 1);
-
-    this.#refining = requestAnimationFrame((start) => {
-      this.#refining = 0;
-
-      if (this.#held || this.#gone || !this.#studio.refine()) return;
-
-      void this.#next(burst, start);
-    });
-  }
-
-  /** The burst's next frame, once the GPU has drawn the one begun at `start`, and in time. */
-  async #next(burst: number, start: number): Promise<void> {
-    // Not before the GPU has drawn it: frames queued faster than they are drawn pile up.
-    await gpuIdle(this.#studio.renderer);
-
-    if (performance.now() - start < BURST_FRAME_MS && burst === this.#burst) this.#refine();
-  }
-
-  /** Ends the burst: a frame of it still on the GPU starts no other. */
-  #rest(): void {
-    this.#burst += 1;
-    cancelAnimationFrame(this.#refining);
-    this.#refining = 0;
+    if (!this.loop.running) this.#burst.start();
   }
 
   #hold(on: boolean): void {
