@@ -19,14 +19,14 @@ import {
 /** Where each browser keeps its 3D quality. */
 export const QUALITY = "sunreye.3d-quality";
 
-const STEPS = "sunreye.3d-strain";
+/** Where each browser keeps the levels strain has taken off Auto. */
+export const STEPS = "sunreye.3d-strain";
 const GPU = "sunreye.gpu";
 
 /** A touch device, a phone or a tablet: its primary pointer is coarse (ADR 20). */
 const touch = new MediaQuery("(pointer: coarse)");
 
 export class QualityStore {
-  readonly #now: () => number;
   #choice = $state(parseQuality(read(QUALITY)));
   #steps = $state(0);
   #gpu = $state(read(GPU));
@@ -34,10 +34,9 @@ export class QualityStore {
    * Asked when a strain is measured, never rendered: plain, so a studio's set-up tracks nothing. */
   #shown = 0;
 
-  /** `now` dates a strain: it lasts seven days (ADR 21). */
+  /** The levels kept count while their strain lasts: seven days from its date, which the frame
+   * watch keeps (ADR 21). `now` tells the time at load. */
   constructor(now: () => number = () => Date.now()) {
-    this.#now = now;
-
     if (strainLeft(read(STRAINED_AT), now()) > 0) this.#steps = parseSteps(read(STEPS));
     // Forgotten for good: a later strain's date must not bring these steps back.
     else forget(STEPS);
@@ -101,7 +100,6 @@ export class QualityStore {
 
     this.#steps = Math.min(MAX_STEPS, this.#steps + 1);
     write(STEPS, String(this.#steps));
-    write(STRAINED_AT, String(this.#now()));
 
     return true;
   }

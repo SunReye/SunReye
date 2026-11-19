@@ -14,16 +14,16 @@ import {
   LOW_POWER,
   MAX_STRAIN,
   MOTION_SETTING,
+  MOTION_STRAIN,
   type MotionSetting,
   type MotionTier,
   parseMotionSetting,
   parseStrain,
   resolveTier,
+  STRAIN_LASTS_MS,
   STRAINED_AT,
   strainLeft,
 } from "./tier.ts";
-
-const STRAIN_KEY = "sunreye.motion-strain";
 
 /** Boot is the least representative moment a page has; the watch starts once it has settled. */
 const SETTLE_MS = 4000;
@@ -69,11 +69,11 @@ export class MotionStore {
     const left = strainLeft(read(STRAINED_AT), now());
 
     if (left > 0) {
-      this.#strain = parseStrain(read(STRAIN_KEY));
+      this.#strain = parseStrain(read(MOTION_STRAIN));
       this.#lasts(left);
     } else {
       // Forgotten for good: a later strain's date must not bring this one back.
-      forget(STRAIN_KEY);
+      forget(MOTION_STRAIN);
     }
   }
 
@@ -134,7 +134,7 @@ export class MotionStore {
 
     this.#fresh = null;
     this.#strain = 0;
-    forget(STRAIN_KEY);
+    forget(MOTION_STRAIN);
     forget(STRAINED_AT);
     this.#quality.remeasure();
     this.#sync();
@@ -263,12 +263,12 @@ export class MotionStore {
   #downgrade(): void {
     if (!this.#quality.relieve(this.tier)) {
       this.#strain = clampStrain(this.#strain + 1);
-      write(STRAIN_KEY, String(this.#strain));
+      write(MOTION_STRAIN, String(this.#strain));
     }
 
     // Dated by this strain, whichever it lowered: both last seven days from the last one.
     write(STRAINED_AT, String(this.#now()));
-    this.#lasts(strainLeft(String(this.#now()), this.#now()));
+    this.#lasts(STRAIN_LASTS_MS);
 
     // Through the settle delay again: the tier change rebuilds part of the hero, which is not evidence.
     this.#sync();

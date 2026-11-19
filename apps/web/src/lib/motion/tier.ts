@@ -98,8 +98,11 @@ export function parseStrain(raw: string | null | undefined): number {
   return clampStrain(Number(raw));
 }
 
+/** Where each browser keeps the strain its motion tier was measured at. */
+export const MOTION_STRAIN = "sunreye.motion-strain";
+
 /** Where each browser keeps when its last strain was measured, the tier's or the 3D quality's:
- * milliseconds since the epoch. */
+ * milliseconds since the epoch. The motion store alone writes it. */
 export const STRAINED_AT = "sunreye.strained-at";
 
 /** A strain lasts seven days (ADR 21): one slow stretch must not hold a device down for good. */

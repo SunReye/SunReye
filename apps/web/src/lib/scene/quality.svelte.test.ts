@@ -48,6 +48,8 @@ test("a strain over a drawn scene takes a level off Auto, remembered per browser
   expect(quality.relieve("full")).toBe(false);
   hide();
 
+  // The frame watch, whose strain it was, dates it.
+  localStorage.setItem("sunreye.strained-at", String(Date.now()));
   expect(new QualityStore().look("full").level).toBe("medium");
 });
 
@@ -77,6 +79,7 @@ test("a level strain took off Auto comes back after seven days", () => {
   quality.see(RTX);
   quality.show();
   quality.relieve("full");
+  localStorage.setItem("sunreye.strained-at", "1000");
 
   expect(new QualityStore(() => 1000 + 7 * day - 1).look("full").level).toBe("medium");
   expect(new QualityStore(() => 1000 + 7 * day).look("full").level).toBe("high");

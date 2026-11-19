@@ -8,6 +8,7 @@ import { QualityStore } from "../scene/quality.svelte.ts";
 afterEach(async () => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   localStorage.clear();
   await cdp().send("Emulation.setEmulatedMedia", { features: [] });
 });
@@ -233,9 +234,34 @@ test("a strain that no longer counts is forgotten for good: a later strain canno
   quality.show();
   expect(new MotionStore(quality, () => 1000).tier).toBe("full");
 
-  // One fresh strain, which dates itself: only it counts at the next load.
+  // One fresh strain, dated as the frame watch dates it: only it counts at the next load.
   quality.relieve("full");
+  localStorage.setItem("sunreye.strained-at", "1000");
   expect(loadedAt(2000)).toBe("full medium");
+});
+
+test("a strain is dated once, by the frame watch's clock, when it lowers the drawing too", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  jank();
+
+  const quality = new QualityStore(() => 5000);
+
+  quality.see(RTX);
+  quality.show();
+
+  const kept = vi.spyOn(Storage.prototype, "setItem");
+  const motion = new MotionStore(quality, () => 1000);
+  const release = motion.watch();
+
+  vi.advanceTimersByTime(4000);
+  await vi.waitFor(() => {
+    expect(quality.look(motion.tier).level).toBe("medium");
+  });
+  release();
+
+  expect(kept.mock.calls.filter(([key]) => key === "sunreye.strained-at")).toEqual([
+    ["sunreye.strained-at", "1000"],
+  ]);
 });
 
 test("a page that never reloads forgets its strain as the seven days end, and measures anew", async () => {
