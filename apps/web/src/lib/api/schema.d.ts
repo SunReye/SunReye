@@ -1909,6 +1909,11 @@ export interface components {
              */
             month: number;
         };
+        /**
+         * @description An opening's light at night (ADR 20 Night).
+         * @enum {string}
+         */
+        Light: "auto" | "on" | "off";
         /** @description The core's last log lines. */
         Lines: {
             /** @description Oldest first, as written to stderr. */
@@ -2106,6 +2111,11 @@ export interface components {
             /** Format: double */
             height: number;
             kind: components["schemas"]["OpeningKind"];
+            /**
+             * @description Whether it glows at night; the rule's choice is not stored, so a scene stored before the
+             *     choice existed loads and saves as it was.
+             */
+            light?: components["schemas"]["Light"];
             /**
              * Format: double
              * @description Metres from the ground to its lower edge; a door's is 0.

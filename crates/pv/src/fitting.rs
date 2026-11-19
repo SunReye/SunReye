@@ -3,7 +3,7 @@
 
 use serde::Serialize;
 
-use crate::{Opening, OpeningKind, Scene, Wall};
+use crate::{Light, Opening, OpeningKind, Scene, Wall};
 
 /// Metres: the smallest opening, the steps a new one's place is sought in, and a new one's
 /// distance from a corner.
@@ -64,6 +64,7 @@ impl Scene {
                     width,
                     height,
                     sill,
+                    light: Light::Auto,
                 })?)
             })
     }

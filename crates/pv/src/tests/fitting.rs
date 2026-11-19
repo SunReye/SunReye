@@ -2,7 +2,7 @@
 
 use serde_json::{Value, json};
 
-use crate::{Opening, OpeningKind, Scene, Unfit, Wall};
+use crate::{Light, Opening, OpeningKind, Scene, Unfit, Wall};
 
 fn scene(block: &Value, openings: &[Opening]) -> Scene {
     let mut house = json!({
@@ -30,6 +30,7 @@ const WINDOW: Opening = Opening {
     width: 1.2,
     height: 1.4,
     sill: 0.9,
+    light: Light::Auto,
 };
 
 #[test]

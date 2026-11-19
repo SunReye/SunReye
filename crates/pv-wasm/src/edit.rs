@@ -185,11 +185,11 @@ fn ghost(ghost: &Ghost) -> Value {
     })
 }
 
-/// With its sill, which a stored opening on the ground leaves out.
+/// As it is stored, with its sill, which a stored opening on the ground leaves out.
 fn opening(opening: &Opening) -> Value {
-    json!({
-        "kind": opening.kind, "block": opening.block, "wall": opening.wall,
-        "along": opening.along, "width": opening.width, "height": opening.height,
-        "sill": opening.sill,
-    })
+    let mut stored = serde_json::to_value(opening).unwrap_or_default();
+    if let Some(fields) = stored.as_object_mut() {
+        fields.insert("sill".into(), json!(opening.sill));
+    }
+    stored
 }

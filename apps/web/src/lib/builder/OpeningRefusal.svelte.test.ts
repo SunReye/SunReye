@@ -56,6 +56,7 @@ test("a window moved onto another is refused with the reason, until a change fit
     roofs: [],
     pv,
     onchange,
+    onadd: () => null,
     onremove: () => null,
   });
 

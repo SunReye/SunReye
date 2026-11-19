@@ -194,12 +194,13 @@ function chance({ corners: [low] }: Fitted): number {
   return ((hash ^ (hash >>> 15)) >>> 0) / 0xffffffff;
 }
 
-/** Whether an opening is lit at night: the front door's light, and most windows, each by where
- * it sits, so the house looks lived in and the same every time. */
+/** Whether an opening is lit at night: as chosen for it, else the front door's light and most
+ * windows, each by where it sits, so the house looks lived in and the same every time. A garage
+ * door has no glass to light. */
 function lit(opening: Fitted): boolean {
-  if (opening.kind === "garageDoor") return false;
+  if (opening.kind === "garageDoor" || opening.light === "off") return false;
 
-  return opening.kind === "frontDoor" || chance(opening) < LIT;
+  return opening.light === "on" || opening.kind === "frontDoor" || chance(opening) < LIT;
 }
 
 /** Each opening as a mesh named "opening", in order, then the spill of those lit at night, on
