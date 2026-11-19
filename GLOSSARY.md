@@ -364,6 +364,18 @@ _Avoid_: Ceiling, max power
 How much a device animates: full, lite or still. On Automatisch a measured frame strain lowers it; the low-power switch and reduced motion force still.
 _Avoid_: Animation level, performance mode
 
+**Frame strain**:
+A measurement that a device did not hold its frames. It lowers the motion tier or Auto's 3D quality, and is forgotten after seven days.
+_Avoid_: Jank count, performance score
+
+**Frame limit**:
+A browser's choice of the most frames a second the 3D scene draws, *Bildrate*: Unbegrenzt, 60 or 30.
+_Avoid_: FPS cap, refresh rate
+
+**Canvas chip**:
+A small surface floating over the 3D scene, such as a live label: the card colour, nearly opaque, without blur.
+_Avoid_: Glass chip, badge
+
 **Motion setting**:
 A browser's choice of motion tier, *Bewegung*: Automatisch, where measured strain decides, or Voll or Reduziert, which hold. It never chooses still.
 _Avoid_: Motion mode, animation setting
