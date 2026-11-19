@@ -89,6 +89,7 @@ export async function open(built: Readonly<Promise<void>> = Promise.resolve()) {
 
   return {
     canvas,
+    scene,
     /** Whether the weather loop runs: the studio draws on its own. */
     looping: async (): Promise<boolean> => (await draws(asked.drawn)) > 0,
     seen,

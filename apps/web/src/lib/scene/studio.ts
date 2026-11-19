@@ -59,6 +59,9 @@ export class Studio {
     });
     this.#look = look(gpuOf(this.renderer.getContext()));
     this.renderer.shadowMap.enabled = true;
+    // Drawn on `recast` alone (ADR 20 Rendering): three.js would draw it with every render, the
+    // occlusion's own among them, under a sun that stands still.
+    this.renderer.shadowMap.autoUpdate = false;
     this.renderer.toneMapping = NeutralToneMapping;
     this.renderer.outputColorSpace = SRGBColorSpace;
     this.#environment = new Environment(this.renderer, this.scene);
@@ -115,12 +118,24 @@ export class Studio {
     camera.updateProjectionMatrix();
     this.#place();
     this.#shade();
+    this.recast();
+  }
+
+  /** What casts a shadow changed, or where from: the sun's shadow map is drawn again with the
+   * next frame. */
+  recast(): void {
+    this.renderer.shadowMap.needsUpdate = true;
   }
 
   /** Sun or moon, sky, environment, backdrop, fog and exposure for the time and the theme, and
    * the `weather`'s fog, which greys backdrop and fog alike, and floor (ADR 23). */
   light(day: Daylight, look: Theme, page: Readonly<Color>, weather?: SceneWeather): void {
-    this.#toward.set(...toThree(day.toward));
+    const toward = toThree(day.toward);
+
+    // The map is the sun's view: its colour and strength are not in it.
+    if (!this.#toward.equals({ x: toward[0], y: toward[1], z: toward[2] })) this.recast();
+
+    this.#toward.set(...toward);
     this.#sun.color.setRGB(day.colour.r, day.colour.g, day.colour.b);
     this.#sun.intensity = day.intensity;
     this.#sun.shadow.intensity = day.shadow;
@@ -226,6 +241,7 @@ export class Studio {
     this.#passes.follow(this.#look);
     shadowFor(this.renderer, this.#sun, this.#look);
     this.#shade();
+    this.recast();
   }
 
   #shade(): void {

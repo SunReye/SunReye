@@ -168,12 +168,9 @@ export class Passes {
     const [x, y] = jitter(this.#refiner.taken);
 
     this.#camera.setViewOffset(width, height, x, y, width, height);
-    // Nothing moved: the shadow map of the settled frame holds.
-    this.#renderer.shadowMap.autoUpdate = false;
     this.#composer.renderToScreen = false;
     this.#composer.render();
     this.#composer.renderToScreen = true;
-    this.#renderer.shadowMap.autoUpdate = true;
     this.#camera.clearViewOffset();
     this.#refiner.add(this.#renderer, this.#composer.readBuffer.texture, width, height);
 

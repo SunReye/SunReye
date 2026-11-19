@@ -96,6 +96,14 @@ export class Opening {
     });
   };
 
+  /** What casts a shadow changed, as when a car parks: draws in the next frame, the sun's shadow
+   * map with it (ADR 20 Rendering). */
+  // fallow-ignore-next-line unused-class-member -- SceneCanvas calls it through `Lit["opening"]`.
+  readonly recast = (): void => {
+    this.#studio.recast();
+    this.render();
+  };
+
   /**
    * Shows what moves with the `weather`, read as it changes (ADR 23). What falls is shown as
    * the motion tier does: it moves in the loop on full, lite draws a sparse still field, still

@@ -265,7 +265,8 @@
     const parking = parkLater(canvas, opening, () =>
       openGarage(
         studio.scene,
-        render,
+        // A car that parks, leaves or changes body casts another shadow.
+        opening.recast,
         untrack(() => model),
       ),
     );

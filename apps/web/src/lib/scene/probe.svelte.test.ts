@@ -19,9 +19,12 @@ test("a frame's draw calls, triangles and programs are counted, each frame anew"
   expect(first.programs).toBeGreaterThan(0);
   expect(first.script).toBeGreaterThanOrEqual(0);
 
+  // The frames after draw no shadow map, and the same as each other: nothing adds up.
   const second = frame();
+  const third = frame();
 
-  expect([second.calls, second.triangles]).toEqual([first.calls, first.triangles]);
+  expect(second.calls).toBeLessThan(first.calls);
+  expect([third.calls, third.triangles]).toEqual([second.calls, second.triangles]);
 });
 
 test("a frame's passes are told with the size of what each drew into", async () => {
