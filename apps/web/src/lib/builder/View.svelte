@@ -14,7 +14,7 @@
   import Stage, {
     type Editing,
     type Hit,
-    type Painting,
+    type Roofwork,
     type Panel,
     type Projector,
   } from "./Stage.svelte";
@@ -33,7 +33,7 @@
     covered = false,
     onpick,
     editing,
-    painting,
+    roofwork,
     onto,
     tools,
     selected,
@@ -55,7 +55,7 @@
     /** The selected object's handles. */
     editing?: Editing | undefined;
     /** The selected face's laying, or the wiring mode's selecting. */
-    painting?: Painting | undefined;
+    roofwork?: Roofwork | undefined;
     /** The roof face a phone's camera flies onto: from afar a module is too small for a finger
      * (ADR 20). */
     onto?: RoofFace | undefined;
@@ -106,7 +106,7 @@
       {cars}
       {onpick}
       {editing}
-      {painting}
+      {roofwork}
       onrender={(next) => {
         project = next;
       }}

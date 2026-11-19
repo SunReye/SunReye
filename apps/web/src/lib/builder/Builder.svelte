@@ -50,7 +50,7 @@
   const moment = new Moment(
     () => ({ core, pv, location, draft: session.draft, moduleTypes: session.moduleTypes }),
     // Handles to drag, or a face to lay and wire: faces and edges stay exact (ADR 23).
-    () => session.editing !== undefined || session.painting !== undefined,
+    () => session.editing !== undefined || session.roofwork !== undefined,
   );
 
   provideUploader((glb) => core.uploadCarBody(glb));
@@ -79,7 +79,7 @@
       clear={sheet ? PEEK : 0}
       covered={sheet && session.expanded}
       editing={session.editing}
-      painting={session.painting}
+      roofwork={session.roofwork}
       onto={phone.current ? session.wiring.onto : undefined}
       tools={phone.current ? tools : undefined}
       selected={session}

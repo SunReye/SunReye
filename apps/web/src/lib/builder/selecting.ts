@@ -1,6 +1,6 @@
 // The wiring mode's selection (ADR 20): the modules picked on the roofs in the order they were
 // crossed, and what wiring or unwiring them makes of the draft. Pure.
-import { addString, paint, refuses, type Draft } from "./modules.ts";
+import { addString, inNoString, refuses, wire, type Draft } from "./modules.ts";
 import type { Scene } from "./pv.ts";
 
 /** A module by its grid's position in the scene and its own in the grid. */
@@ -21,12 +21,10 @@ export function toggled(selection: readonly Cell[], cell: Cell): Cell[] {
 /** The draft with `cells` wired into string `string` in their order, after the modules it holds;
  * null where one lies in a grid of another module type, as the core refuses it on save. */
 export function wiredInto(draft: Draft, cells: readonly Cell[], string: number): Draft | null {
-  const stroke = { kind: "paint", string, erase: false } as const;
-
-  if (cells.some(({ grid }) => refuses(draft, grid, stroke))) return null;
+  if (cells.some(({ grid }) => refuses(draft, grid, string))) return null;
 
   const scene = cells.reduce(
-    (wired: Scene, { grid, module }) => paint(wired, grid, module, stroke),
+    (wired: Scene, { grid, module }) => wire(wired, grid, module, string),
     draft.scene,
   );
 
@@ -46,10 +44,8 @@ export function wiredNew(draft: Draft, cells: readonly Cell[], name: string): Dr
 
 /** The draft with `cells` in no string. */
 export function unwired(draft: Draft, cells: readonly Cell[]): Draft {
-  const stroke = { kind: "paint", erase: false } as const;
-
   const scene = cells.reduce(
-    (loose: Scene, { grid, module }) => paint(loose, grid, module, stroke),
+    (loose: Scene, { grid, module }) => wire(loose, grid, module),
     draft.scene,
   );
 
@@ -62,7 +58,7 @@ export function mostUnwired(
   scene: Scene,
 ): { readonly block: number; readonly face: number } | undefined {
   const loose = (scene.grids ?? []).map(
-    ({ modules }) => modules.filter((module) => (module.string ?? undefined) === undefined).length,
+    ({ modules }) => modules.filter((module) => inNoString(module)).length,
   );
 
   const most = scene.grids?.[loose.indexOf(Math.max(...loose))];

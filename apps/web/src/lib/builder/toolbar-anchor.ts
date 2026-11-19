@@ -13,7 +13,7 @@ export interface Anchored {
   readonly laid: Modules;
   readonly geometry: Pick<Geometry, "mounts">;
   /** The wiring mode's selection, while it is on. */
-  readonly painting: Pick<Selecting, "kind" | "chosen"> | { readonly kind: "modules" } | undefined;
+  readonly roofwork: Pick<Selecting, "kind" | "chosen"> | { readonly kind: "modules" } | undefined;
 }
 
 /** A roof face's outline in the scene, out of its own frame. */
@@ -48,9 +48,9 @@ function onFace({ draft, laid }: Anchored, level: Extract<Level, { kind: "face" 
 /** The points of the selection: the selected modules, a face's grid or its module, an object's
  * handles and outline, or a marker's mount; none for a group, a string or the root. */
 function anchorOf(session: Anchored): readonly Point[] {
-  const { level, draft, laid, geometry, painting } = session;
+  const { level, draft, laid, geometry, roofwork } = session;
 
-  if (painting?.kind === "wiring") return painting.chosen.flatMap(({ corners }) => corners);
+  if (roofwork?.kind === "wiring") return roofwork.chosen.flatMap(({ corners }) => corners);
 
   if (level.kind === "face" || level.kind === "module") return onFace(session, level);
 

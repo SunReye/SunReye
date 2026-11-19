@@ -5,7 +5,7 @@
 import type { Capabilities, ModuleType, Problem } from "../api/core.ts";
 import { m } from "../paraglide/messages.js";
 import { getLocale } from "../paraglide/runtime.js";
-import { painted, type Draft } from "./modules.ts";
+import { wiredIn, type Draft } from "./modules.ts";
 import type { Misplaced, Pv } from "./pv.ts";
 import type { InputLimits, Inverters, Sizing } from "./sizing.ts";
 
@@ -66,7 +66,7 @@ function coldStrings(
 ): Cold[] {
   const strings = draft.strings.map((string, i) => ({
     ...string,
-    modules: painted(draft.scene, i).modules,
+    modules: wiredIn(draft.scene, i).modules,
   }));
 
   return pv.coldVoltages(moduleTypes, strings).flatMap((volts, string) => {
@@ -125,7 +125,7 @@ export function sized(
 
   const strings = draft.strings.map((string, i) => ({
     ...string,
-    modules: painted(draft.scene, i).modules,
+    modules: wiredIn(draft.scene, i).modules,
   }));
 
   return pv.sizing(moduleTypes, strings, inverters).map((warning) => {

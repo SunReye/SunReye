@@ -3,6 +3,7 @@
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the session is edited through its own methods. */
 import { haptics } from "../haptics.ts";
 import { addGrid, fillGrid } from "./modules.ts";
+import type { Scene } from "./pv.ts";
 import { removal } from "./removal.ts";
 import type { Session } from "./session.svelte.ts";
 import { duplicate, refit } from "./wall-openings.ts";
@@ -55,23 +56,29 @@ export function lightAt(session: Session, light: Light): void {
   if (!("unfit" in lit)) session.change({ ...draft, scene: lit });
 }
 
-/** The selected face's grid, or one of the first module type on a face that has none, and where
- * its free roof still takes a module; null off a face, or without a module type to lay. */
+/** The scene with a grid on the selected face, and the grid: its own, or one of the first module
+ * type; null off a face, or without a module type to lay. */
+function gridded(session: Session): { scene: Scene; grid: number } | null {
+  const { level, draft, moduleTypes } = session;
+  const grid = gridAt(session);
+  const [type] = moduleTypes;
+
+  if (grid >= 0) return { scene: draft.scene, grid };
+
+  if (level.kind !== "face" || type === undefined) return null;
+
+  return {
+    scene: addGrid(draft.scene, level.block, level.face, type.id),
+    grid: draft.scene.grids?.length ?? 0,
+  };
+}
+
+/** The selected face's grid and where its free roof still takes a module. */
 function filling(session: Session) {
-  const { level, draft, plan, moduleTypes } = session;
-  const at = gridAt(session);
-  const type = moduleTypes[0]?.id;
+  const on = gridded(session);
+  const { pv, sizes } = session.plan;
 
-  if (level.kind !== "face" || (at < 0 && type === undefined)) return null;
-
-  const scene =
-    at < 0 && type !== undefined
-      ? addGrid(draft.scene, level.block, level.face, type)
-      : draft.scene;
-
-  const grid = at < 0 ? (scene.grids?.length ?? 1) - 1 : at;
-
-  return { scene, grid, free: plan.pv.fillFace({ scene, sizes: plan.sizes, grid }) };
+  return on && { ...on, free: pv.fillFace({ scene: on.scene, sizes, grid: on.grid }) };
 }
 
 /** Whether the selected face's free roof still takes a module. */

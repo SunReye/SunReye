@@ -5,7 +5,7 @@
   import type { Device, ModuleType, StringDraft } from "../api/core.ts";
   import { m } from "../paraglide/messages.js";
   import { amount, choices } from "./fields.ts";
-  import type { Painted } from "./modules.ts";
+  import type { WiredIn } from "./modules.ts";
   import ModuleTypeSelect from "./ModuleTypeSelect.svelte";
   import RemoveButton from "./RemoveButton.svelte";
   import { stringCss } from "./scene.ts";
@@ -26,8 +26,8 @@
     string: Readonly<StringDraft>;
     /** Its position in the layout, which picks its colour. */
     position: number;
-    /** What the scene paints into it. */
-    made: Painted;
+    /** The modules the scene wires into it. */
+    made: WiredIn;
     /** Where it leaves its inverter's limits: the cold voltage and its MPPT input's window. */
     warnings: readonly string[];
     /** Why the last save was refused for it, if it was. */

@@ -5,7 +5,7 @@ import { m } from "../paraglide/messages.js";
 import { strungOn, type Stringing } from "./auto-string.ts";
 import type { Selecting } from "./gestures.ts";
 import { laying, type Level } from "./levels.ts";
-import type { Draft } from "./modules.ts";
+import { inNoString, type Draft } from "./modules.ts";
 import type { Modules, RoofFace } from "./pv.ts";
 import type { Panel } from "./scene.ts";
 import { mostUnwired, unwired, wiredInto, wiredNew, type Cell } from "./selecting.ts";
@@ -32,6 +32,10 @@ export interface Proposal {
 }
 
 type Face = Readonly<Pick<RoofFace, "block" | "face">>;
+
+/** Whether `level` is the wiring mode's: the Strings group or a string. */
+const wiringAt = (level: Level): boolean =>
+  level.kind === "string" || (level.kind === "section" && level.section === "strings");
 
 export class WiringMode {
   readonly #session: Wired;
@@ -109,7 +113,7 @@ export class WiringMode {
   /** The grids that hold modules in no string, each with its face and how many. */
   get loose(): { readonly grid: number; readonly face: string; readonly count: number }[] {
     return (this.#session.draft.scene.grids ?? []).flatMap((grid, index) => {
-      const count = grid.modules.filter((laid) => (laid.string ?? undefined) === undefined).length;
+      const count = grid.modules.filter((laid) => inNoString(laid)).length;
       const face = m.builder_face_item({ block: grid.block + 1, face: grid.face + 1 });
 
       return count === 0 ? [] : [{ grid: index, face, count }];
@@ -120,7 +124,7 @@ export class WiringMode {
   get active(): boolean {
     const { level } = this.#session;
 
-    return level.kind === "string" || (level.kind === "section" && level.section === "strings");
+    return wiringAt(level);
   }
 
   /** The string that is open, by its position; none in the Strings group. */
@@ -142,9 +146,7 @@ export class WiringMode {
   /** The modules in no string, grid by grid. */
   get unwired(): Cell[] {
     return (this.#session.draft.scene.grids ?? []).flatMap((grid, index) =>
-      grid.modules.flatMap((laid, module) =>
-        (laid.string ?? undefined) === undefined ? [{ grid: index, module }] : [],
-      ),
+      grid.modules.flatMap((laid, module) => (inNoString(laid) ? [{ grid: index, module }] : [])),
     );
   }
 
@@ -158,8 +160,7 @@ export class WiringMode {
 
   /** Leaving the mode drops the selection, a proposal and the face. */
   entered(level: Level): void {
-    if (level.kind === "string" || (level.kind === "section" && level.section === "strings"))
-      return;
+    if (wiringAt(level)) return;
 
     this.select([]);
     this.discard();
@@ -194,7 +195,7 @@ export class WiringMode {
   }
 
   /** What the canvas draws and selects while wiring; none outside the mode. */
-  get painting(): Selecting | undefined {
+  get roofwork(): Selecting | undefined {
     if (!this.active) return undefined;
 
     const { draft, laid } = this.#session;

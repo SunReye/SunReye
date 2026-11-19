@@ -61,7 +61,7 @@ export interface Selecting {
   readonly onselect: (selection: readonly Cell[]) => void;
 }
 
-export type Painting = Laying | Selecting;
+export type Roofwork = Laying | Selecting;
 
 /** A press that became a gesture: where its moves and its end go. */
 export interface Press {
@@ -218,8 +218,8 @@ export function select(mode: Selecting, aim: Aim): Press | null {
   };
 }
 
-/** What a painting reads besides the level: the draft's steps, the crate and its layout. */
-export interface Brushed extends Steps {
+/** What laying reads besides the level: the draft's steps, the crate and its layout. */
+export interface LaySteps extends Steps {
   readonly laid: Modules;
   readonly pv: Pick<Pv, "lay" | "slide">;
   readonly sizes: Sizes;
@@ -229,8 +229,8 @@ export interface Brushed extends Steps {
 
 /** The selected face's grid as the crate lays modules on it; none for any other level, or for a
  * face without a grid. */
-export function paintingOf(level: Level, brushed: Brushed): Laying | undefined {
-  const { draft, laid, pv, sizes, ondrag, ondrop, go } = brushed;
+export function layingOf(level: Level, roofSources: LaySteps): Laying | undefined {
+  const { draft, laid, pv, sizes, ondrag, ondrop, go } = roofSources;
   const steps = { draft, ondrag, ondrop };
 
   if (level.kind !== "face" && level.kind !== "module") return undefined;

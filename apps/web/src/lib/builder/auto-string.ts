@@ -2,7 +2,7 @@
 // the lower left and cut into as few new strings as the inverter's limits allow. Pure.
 import type { ModuleType } from "../api/core.ts";
 import type { Checking } from "./checks.ts";
-import { addString, type Draft } from "./modules.ts";
+import { addString, inNoString, type Draft } from "./modules.ts";
 import type { GridModule } from "./pv.ts";
 import { wiredInto, type Cell } from "./selecting.ts";
 
@@ -142,9 +142,7 @@ function cut(count: number, free: readonly Free[]): Cut {
 
 /** The modules of a grid that are in no string, each with its place in the grid. */
 function unwiredOf(modules: readonly Readonly<GridModule>[]): Loose[] {
-  return modules.flatMap((module, at): Loose[] =>
-    (module.string ?? undefined) === undefined ? [[at, module]] : [],
-  );
+  return modules.flatMap((module, at): Loose[] => (inNoString(module) ? [[at, module]] : []));
 }
 
 /** Each of the `strings` from `first` takes its run of the serpentine, in turn. */

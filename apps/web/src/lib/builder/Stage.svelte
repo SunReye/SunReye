@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  export type { Editing, Painting, Projector } from "./SceneCanvas.svelte";
+  export type { Editing, Roofwork, Projector } from "./SceneCanvas.svelte";
 
   export type { Hit, Panel } from "./scene.ts";
 </script>
@@ -18,7 +18,7 @@
   import type { Geometry, Point, RoofFace } from "./pv.ts";
   import SceneCanvas, {
     type Editing,
-    type Painting,
+    type Roofwork,
     type Projector,
   } from "./SceneCanvas.svelte";
   import type { Hit, Panel } from "./scene.ts";
@@ -35,7 +35,7 @@
     cars,
     onpick,
     editing,
-    painting,
+    roofwork,
     onrender,
     onto,
     aspect = 1,
@@ -57,8 +57,8 @@
     onrender?: ((project: Projector) => void) | undefined;
     /** The selected object's handles. */
     editing?: Editing | undefined;
-    /** The picked string, painted by a drag across modules. */
-    painting?: Painting | undefined;
+    /** The selected face's laying, or the wiring mode's selecting. */
+    roofwork?: Roofwork | undefined;
     /** The face the camera flies onto while it is given; it returns to the kept view after. */
     onto?: RoofFace | undefined;
     /** The canvas's width over its height: preset views fit the scene across it. */
@@ -102,7 +102,7 @@
   {onpick}
   {onrender}
   {editing}
-  {painting}
+  {roofwork}
 />
 <div data-canvas-zone class="absolute top-3 right-3 flex flex-col gap-2">
   <ViewMenu

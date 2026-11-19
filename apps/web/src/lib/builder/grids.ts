@@ -13,7 +13,7 @@ export interface Spot {
 
 /** A module on a roof face. */
 export interface GridModule extends Spot {
-  /** The string it is painted into; unassigned, it produces nothing. */
+  /** The string it is wired into; in none, it produces nothing. */
   readonly string?: number | null;
   readonly optimized?: boolean;
   /** Its place along its string's wiring, from the lowest; one without follows them. */

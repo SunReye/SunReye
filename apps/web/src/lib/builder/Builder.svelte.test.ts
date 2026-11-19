@@ -142,7 +142,9 @@ test("a string saved before any module is painted into it is named on its own le
   await expect.element(inspector().getByLabelText("Name")).toHaveValue("String 1");
   await expect
     .element(screen.getByRole("alert"))
-    .toHaveTextContent("Noch kein Modul gehört zu String 1. Male Module hinein, dann speichere.");
+    .toHaveTextContent(
+      "Noch kein Modul gehört zu String 1. Verdrahte Module hinein, dann speichere.",
+    );
   expect(screen.container.textContent).not.toContain("physikalischen Bereichs");
 });
 

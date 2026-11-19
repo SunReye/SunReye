@@ -2,7 +2,7 @@
   warnings of the input itself. -->
 <script lang="ts">
   import { m } from "../paraglide/messages.js";
-  import { painted, type Draft } from "./modules.ts";
+  import { wiredIn, type Draft } from "./modules.ts";
   import StringRow from "./StringRow.svelte";
   import type { InputRows } from "./string-tree.ts";
 
@@ -28,7 +28,7 @@
     <StringRow
       name={draft.strings[index]?.name ?? ""}
       position={index}
-      made={painted(draft.scene, index)}
+      made={wiredIn(draft.scene, index)}
       {warnings}
       onclick={() => {
         onpick(index);

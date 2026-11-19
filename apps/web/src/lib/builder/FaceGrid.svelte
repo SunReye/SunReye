@@ -33,7 +33,7 @@
     onchange: (draft: Draft) => void;
   } = $props();
 
-  /** The strings painted here that are too high in the cold. */
+  /** The strings wired here that are too high in the cold. */
   const coldHere = $derived(
     checks.cold.filter(({ string }) => grid.modules.some((module) => module.string === string)),
   );

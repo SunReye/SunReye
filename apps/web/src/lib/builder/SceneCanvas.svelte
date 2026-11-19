@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export type { Plant, SceneWeather } from "../scene/weather.ts";
 
-  export type { Editing, Painting, Projector } from "./drawing.svelte.ts";
+  export type { Editing, Roofwork, Projector } from "./drawing.svelte.ts";
 </script>
 
 <script lang="ts">
@@ -14,7 +14,7 @@
   import { Ghost, lit, type Lit, type SceneFailure, type Sky } from "../scene/stage.svelte.ts";
   import { FOV, type View } from "./camera.ts";
   import {
-    Brushwork,
+    RoofTool,
     Handled,
     keep,
     overlaid,
@@ -22,7 +22,7 @@
     projector,
     type Editing,
     type Hit,
-    type Painting,
+    type Roofwork,
     type Panel,
     type Projector,
   } from "./drawing.svelte.ts";
@@ -45,7 +45,7 @@
     onready,
     onerror,
     editing,
-    painting,
+    roofwork,
   }: {
     geometry: Geometry;
     /** The placed modules. */
@@ -78,10 +78,10 @@
     editing?: Editing | undefined;
     /** The selected face, whose roof a press lays modules on, or the picked string, which a drag
      * across modules wires. */
-    painting?: Painting | undefined;
+    roofwork?: Roofwork | undefined;
   } = $props();
 
-  const brushing = new Brushwork();
+  const roofTool = new RoofTool();
 
   const handled = new Handled();
 
@@ -251,9 +251,9 @@
     const handling = { editing: () => editing, drawn: kept.drawn, panels: source.panels };
     // Before the picking and the orbit controls: a press on a handle never reaches them.
     const unhandle = handled.attach(canvas, camera, studio.scene, handling, render);
-    const unlay = overlaid(studio.scene, () => brushing.shown(painting), render);
-    const brushed = { painting: () => painting, drawn: kept.drawn, panels: source.panels };
-    const brush = brushing.attach(canvas, camera, brushed);
+    const unlay = overlaid(studio.scene, () => roofTool.shown(roofwork), render);
+    const roofSources = { roofwork: () => roofwork, drawn: kept.drawn, panels: source.panels };
+    const roofPress = roofTool.attach(canvas, camera, roofSources);
 
     const unpick = picking(canvas, camera, kept.drawn, {
       panels: source.panels,
@@ -277,7 +277,7 @@
     return () => {
       resize.disconnect();
       unhandle();
-      brush.dispose();
+      roofPress.dispose();
       unlay();
       unpick();
       controls.dispose();
