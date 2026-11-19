@@ -201,6 +201,27 @@ async fn the_owners_strings_inputs_and_inverter_are_forecast() {
     assert_near(inverter, 13_444.54, "inverter");
 }
 
+/// A clock reads sub-seconds; the issue still covers its own hour from its first second (ADR 15).
+#[tokio::test]
+async fn an_issue_mid_hour_covers_its_hour_from_the_top() {
+    let plant = plant(&[NOON, NOON + 900]).await;
+    plant
+        .layouts
+        .change(at(0), vec![plant.string(None, 1, 0.0, 16)], None, at(0))
+        .await
+        .unwrap();
+    let forecast = SolarForecast::new(plant.layouts.clone(), WEATHER, &plant.bus);
+
+    let issued = at(NOON + 41 * 60) + Duration::from_millis(400);
+    forecast
+        .refresh(&plant.storage, &HashMap::new(), BERLIN, issued)
+        .await
+        .unwrap();
+
+    let power = plant.forecast("pv.power", None, &[NOON, NOON + 900]).await;
+    assert!(power.iter().all(|w| *w > 0.0), "{power:?}");
+}
+
 /// The inverter is capped at its variant's AC rating (ADR 5, 17): the SUN-5K's 5 kW, not the
 /// family's 20 kW.
 #[tokio::test]

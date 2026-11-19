@@ -99,8 +99,12 @@ impl SolarForecast {
         location: Location,
         issued: SystemTime,
     ) -> Result<(), storage::Error> {
-        let since = issued.duration_since(UNIX_EPOCH).unwrap_or_default();
-        let from = issued - Duration::from_secs(since.as_secs() % HOUR.as_secs());
+        let since = issued
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        // Whole seconds: a sub-second left on `from` would skip the hour's first target.
+        let from = UNIX_EPOCH + Duration::from_secs(since - since % HOUR.as_secs());
         let weather = self.weather(storage, from, from + HORIZON).await?;
         let versions = self.layouts.versions().await?;
         let mut series: BTreeMap<Key, Vec<(SystemTime, f64)>> = versions
