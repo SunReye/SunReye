@@ -69,3 +69,12 @@ test("the GPU's time is told where the browser measures it, and is none where it
 
   expect(studio.renderer.getContext().getError()).toBe(0);
 });
+
+test("the scene is antialiased in its own target, and the canvas it is copied onto is not", () => {
+  const { studio, frame } = measured("medium");
+  const scene = frame().passes.find(({ target }) => target === "target");
+
+  // Only the finished picture reaches the canvas: samples of its own would be filled for nothing.
+  expect(studio.renderer.getContext().getContextAttributes()?.antialias).toBe(false);
+  expect(scene?.samples).toBe(4);
+});

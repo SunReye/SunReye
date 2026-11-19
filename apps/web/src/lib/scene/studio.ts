@@ -54,7 +54,8 @@ export class Studio {
     this.camera = camera;
     this.renderer = new WebGLRenderer({
       canvas,
-      antialias: true,
+      // The scene is antialiased in its own target (passes.ts); the canvas takes the picture alone.
+      antialias: false,
       powerPreference: "high-performance",
     });
     this.#look = look(gpuOf(this.renderer.getContext()));
