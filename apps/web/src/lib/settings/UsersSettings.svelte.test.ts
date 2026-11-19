@@ -102,6 +102,15 @@ test("the admin sees every viewer and token with its scope", async () => {
   await expect.element(tokens.getByRole("list").getByText("Admin", { exact: true })).toBeVisible();
 });
 
+test("the tokens lead to the API reference they open", async () => {
+  const screen = await opened(accounts([], []));
+  const tokens = screen.getByRole("region", { name: "Zugangstokens" });
+
+  await expect
+    .element(tokens.getByRole("link", { name: "API-Referenz" }))
+    .toHaveAttribute("href", "#/api");
+});
+
 test("an added viewer joins the list, and a taken name says why", async () => {
   const screen = await opened(accounts([{ id: 1, name: "Oma" }], []));
   const viewers = screen.getByRole("region", { name: "Betrachter" });

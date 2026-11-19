@@ -1415,5 +1415,6 @@
   "explore_view_saved": "View saved.",
   "explore_view_updated": "View updated.",
   "explore_view_renamed": "View renamed.",
-  "explore_view_deleted": "View deleted."
+  "explore_view_deleted": "View deleted.",
+  "api_reference": "API reference"
 }

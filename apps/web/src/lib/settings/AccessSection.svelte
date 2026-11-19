@@ -20,6 +20,7 @@
     row,
     action,
     form,
+    more,
   }: {
     id: string;
     title: string;
@@ -31,6 +32,8 @@
     action: string;
     /** The add form; it calls `close` once done or cancelled. */
     form: Snippet<[close: () => void]>;
+    /** After the hint: where to read on. */
+    more?: Snippet;
   } = $props();
 
   let adding = $state(false);
@@ -44,6 +47,7 @@
   <header class="flex flex-col gap-1 px-4 pt-5 pb-2">
     <Eyebrow {id}>{title}</Eyebrow>
     <p class="text-sm text-muted-foreground">{hint}</p>
+    {@render more?.()}
   </header>
   <div class="drill-card divide-y divide-border/60 border-y border-border/60">
     {#if answer === undefined}

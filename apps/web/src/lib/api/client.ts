@@ -2,6 +2,8 @@
 import createClient from "openapi-fetch";
 import type { components, paths } from "./schema";
 
+export type { components };
+
 export type Client = ReturnType<typeof createClient<paths>>;
 
 /** The generated client over `fetch`, its paths resolved under `base`. */

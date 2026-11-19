@@ -1,11 +1,11 @@
 /// <reference types="bun" />
 // three.js loads up front only on the builder route (ADR 11, 20); the dashboard loads it lazily,
-// once a scene exists and WebGL2 is there. Read from the SPA build's Vite manifest: its chunks and
-// their static and dynamic imports.
+// once a scene exists and WebGL2 is there. Scalar loads only with the API reference (ADR 11).
+// Read from the SPA build's Vite manifest: its chunks and their static and dynamic imports.
 // The gate builds the SPA before `bun test`; run `bun run --cwd apps/web build` first by hand.
 import { expect, test } from "bun:test";
 
-const web = new URL("../../../", import.meta.url).pathname;
+const web = new URL("../../", import.meta.url).pathname;
 const client = `${web}.svelte-kit/output/client/`;
 
 interface Chunk {
@@ -31,21 +31,23 @@ if (!isManifest(parsed)) throw new TypeError("not a Vite manifest");
 
 const manifest = parsed;
 
-/** Whether a chunk's code is three.js's: its messages carry the `THREE.` prefix. */
-async function carriesThree(file: string): Promise<boolean> {
-  return (await Bun.file(`${client}${file}`).text()).includes("THREE.");
+/** The chunks whose code holds `marker`. Found by content, not name: Rollup names a merged chunk
+ * after any of its modules. */
+async function carrying(marker: string): Promise<Set<string>> {
+  const keys = await Promise.all(
+    Object.entries(manifest).map(async ([key, chunk]: readonly [string, Chunk]) =>
+      (await Bun.file(`${client}${chunk.file}`).text()).includes(marker) ? [key] : [],
+    ),
+  );
+
+  return new Set(keys.flat());
 }
 
-// Found by content, not name: Rollup names a merged chunk after any of its modules.
-const three = new Set(
-  (
-    await Promise.all(
-      Object.entries(manifest).map(async ([key, chunk]: readonly [string, Chunk]) =>
-        (await carriesThree(chunk.file)) ? [key] : [],
-      ),
-    )
-  ).flat(),
-);
+/** three.js's: its messages carry the `THREE.` prefix. */
+const three = await carrying("THREE.");
+
+/** Scalar's: its components carry the `scalar-app` class. */
+const scalar = await carrying("scalar-app");
 
 /** Every chunk `key` loads before it runs: itself and its static imports. */
 function closure(key: string): Set<string> {
@@ -62,8 +64,9 @@ function closure(key: string): Set<string> {
   return keys;
 }
 
-function loadsThree(key: string): boolean {
-  return [...closure(key)].some((reached) => three.has(reached));
+/** Whether `key` loads up front a chunk `carries` picks. */
+function loads(key: string, carries: (chunk: string) => boolean): boolean {
+  return [...closure(key)].some((reached) => carries(reached));
 }
 
 /** The source route of each node entry, from the node module SvelteKit generated for it. */
@@ -79,7 +82,7 @@ test("only the builder route's chunks carry three.js up front", async () => {
   expect(three.size).toBeGreaterThan(0);
 
   const carriers = await Promise.all(
-    entries.filter((key) => loadsThree(key)).map((key) => route(key)),
+    entries.filter((key) => loads(key, (chunk) => three.has(chunk))).map((key) => route(key)),
   );
 
   expect(carriers).toEqual(["builder/"]);
@@ -93,8 +96,23 @@ test("the dashboard reaches three.js only through the scene's lazy imports", asy
   // Rollup may hoist the lazy import into a chunk the route shares, so look
   // through everything the route loads up front.
   const lazy = [...closure(dashboard ?? "")].flatMap((key) => manifest[key]?.dynamicImports ?? []);
-  const carriers = lazy.flatMap((key) => (loadsThree(key) ? [manifest[key]?.name] : []));
+
+  const carriers = lazy.flatMap((key) =>
+    loads(key, (chunk) => three.has(chunk)) ? [manifest[key]?.name] : [],
+  );
 
   // Both load together once a scene is shown: the scene and the car models it draws.
   expect(carriers).toEqual(["LiveScene", "models"]);
+});
+
+test("only the API route's chunks carry Scalar up front", async () => {
+  const entries = Object.keys(manifest).filter((key) => manifest[key]?.isEntry === true);
+
+  expect(scalar.size).toBeGreaterThan(0);
+
+  const carriers = await Promise.all(
+    entries.filter((key) => loads(key, (chunk) => scalar.has(chunk))).map((key) => route(key)),
+  );
+
+  expect(carriers).toEqual(["api/"]);
 });

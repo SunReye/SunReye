@@ -1415,5 +1415,6 @@
   "explore_view_saved": "Ansicht gespeichert.",
   "explore_view_updated": "Ansicht aktualisiert.",
   "explore_view_renamed": "Ansicht umbenannt.",
-  "explore_view_deleted": "Ansicht gelöscht."
+  "explore_view_deleted": "Ansicht gelöscht.",
+  "api_reference": "API-Referenz"
 }

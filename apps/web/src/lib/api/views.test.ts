@@ -1,22 +1,7 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { connect, type Transport } from "./core.ts";
-import { BASE, problem } from "./core.harness.ts";
-
-/** A core that answers every request with `response` and keeps what it was sent. */
-function answering(response: Response): Transport & { readonly sent: Request[] } {
-  const sent: Request[] = [];
-
-  return {
-    base: BASE,
-    sent,
-    fetch: (request) => {
-      sent.push(request);
-
-      return Promise.resolve(response);
-    },
-  };
-}
+import { connect } from "./core.ts";
+import { answering, BASE, problem } from "./core.harness.ts";
 
 const TODAY = { id: 3, name: "Heute", query: "r=day&s=pv.power" };
 

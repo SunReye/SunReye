@@ -1,0 +1,51 @@
+/* Scalar in the app's look (ADR 11): its theme is off and every colour, font and radius it reads
+   is the app's token. On the body, where Scalar sets its mode class, so its overlays get them too;
+   unlayered, so they win over its own layers. */
+body.dark-mode,
+body.light-mode {
+  --scalar-font: "Inter Variable", sans-serif;
+  --scalar-font-code: "JetBrains Mono Variable", monospace;
+  /* Operation summaries are whole sentences: section headings at the app's card-title scale. */
+  --scalar-heading-1: 1.25rem;
+  --scalar-heading-2: 1.125rem;
+  --scalar-radius: calc(var(--radius) * 0.75);
+  --scalar-radius-lg: var(--radius);
+  --scalar-radius-xl: calc(var(--radius) * 1.5);
+
+  --scalar-background-1: var(--background);
+  --scalar-background-2: var(--card);
+  --scalar-background-3: var(--muted);
+  --scalar-background-accent: var(--brand-soft);
+  --scalar-color-1: var(--foreground);
+  --scalar-color-2: var(--muted-foreground);
+  --scalar-color-3: color-mix(in oklab, var(--muted-foreground) 75%, var(--background));
+  --scalar-color-accent: var(--brand);
+  --scalar-border-color: var(--border);
+  --scalar-link-color: var(--brand);
+
+  /* Method badges are labels: no brand blue, which marks controls only (ADR 21). */
+  --scalar-color-green: var(--success);
+  --scalar-color-red: var(--destructive);
+  --scalar-color-orange: var(--warning);
+
+  --scalar-button-1: var(--primary);
+  --scalar-button-1-hover: color-mix(in oklab, var(--primary) 88%, var(--foreground));
+  --scalar-button-1-color: var(--primary-foreground);
+
+  --scalar-sidebar-background-1: transparent;
+  --scalar-sidebar-border-color: var(--border);
+  --scalar-sidebar-color-1: var(--foreground);
+  --scalar-sidebar-color-2: var(--muted-foreground);
+  --scalar-sidebar-color-active: var(--foreground);
+  --scalar-sidebar-item-hover-background: var(--accent);
+  --scalar-sidebar-item-hover-color: var(--accent-foreground);
+  --scalar-sidebar-item-active-background: var(--brand-soft);
+  --scalar-sidebar-search-background: var(--card);
+  --scalar-sidebar-search-border-color: var(--input);
+  --scalar-sidebar-search-color: var(--muted-foreground);
+}
+
+/* The sidebar's foot holds only Scalar's own link once its mode toggle is off. */
+body .darklight-reference {
+  display: none;
+}
