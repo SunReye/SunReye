@@ -7,7 +7,7 @@ import { cssColour } from "../scene/backdrop.ts";
 import { pause } from "../scene/prepare.ts";
 import type { Lit } from "../scene/stage.svelte.ts";
 import { freeOverlay, overlay, type Tints } from "./overlay.ts";
-import { Brush, type Brushing, type Painting, type Refused } from "./painting.ts";
+import { Brush, type Brushing, type Painting } from "./painting.ts";
 import type { Geometry, Ghost, Point } from "./pv.ts";
 import { buildScene, buildSliced, strike, tint, toThree, type Hit, type Panel } from "./scene.ts";
 
@@ -150,7 +150,7 @@ export function overlaid(
 
   // Read on a new face or string only, as the handles: a drag rebuilds the overlay every step.
   const colours = (shown: Painting): Tints => {
-    const key = shown.kind === "string" ? `string ${shown.string}` : `grid ${shown.grid}`;
+    const key = shown.kind === "wiring" ? "wiring" : `grid ${shown.grid}`;
 
     if (tints?.key !== key) {
       const brand = cssColour("var(--brand)");
@@ -188,9 +188,6 @@ export function overlaid(
 
 /** What the brush shows on the canvas besides the scene, and the brush itself (painting.ts). */
 export class Brushwork {
-  /** Why the last module pressed refused the paint, until the next press. */
-  refused = $state.raw<Refused>();
-
   /** The modules not laid yet, under the pointer on the selected face. */
   #ghosts = $state.raw<readonly Ghost[]>([]);
 
@@ -199,7 +196,7 @@ export class Brushwork {
     return painting?.kind === "modules" ? { ...painting, ghosts: this.#ghosts } : painting;
   }
 
-  /** Lays modules on the selected face and wires the picked string; before the orbit controls. */
+  /** Lays modules on the selected face and selects them for wiring; before the orbit controls. */
   attach(
     canvas: HTMLCanvasElement,
     camera: PerspectiveCamera,
@@ -207,9 +204,6 @@ export class Brushwork {
   ): Brush {
     return new Brush(canvas, camera, {
       ...sources,
-      onrefuse: (reason) => {
-        this.refused = reason;
-      },
       onghost: (lain) => {
         this.#ghosts = lain;
       },

@@ -80,8 +80,7 @@
       covered={sheet && session.expanded}
       editing={session.editing}
       painting={session.painting}
-      roofs={session.laid.roofs}
-      facing={phone.current ? session.level : undefined}
+      onto={phone.current ? session.wiring.onto : undefined}
       tools={phone.current ? tools : undefined}
       onpick={(hit) => {
         session.pick(hit, phone.current);
@@ -90,9 +89,10 @@
     {#if session.offering}
       <Templates
         {pv}
+        draft={session.draft}
         clear={sheet ? PEEK : 0}
-        onpick={(template) => {
-          session.begin(template);
+        onpick={(filled) => {
+          session.begin(filled);
         }}
       />
     {/if}

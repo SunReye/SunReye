@@ -17,18 +17,12 @@ import { painted, panels, uncovered, type Draft } from "./modules.ts";
 import { exists, type Plan } from "./outline.ts";
 import type { Geometry, Modules, Pv, Scene, Sizes } from "./pv.ts";
 import { paintingOf, type Editing, type Hit, type Painting, type Panel } from "./drawing.svelte.ts";
-import { fill, type Template } from "./templates.ts";
+import { WiringMode } from "./wiring-mode.svelte.ts";
 
 const same = (a: Scene, b: Scene): boolean => JSON.stringify(a) === JSON.stringify(b);
 
-/** Today in the browser's calendar, as a date input holds it. */
-function today(): string {
-  const now = new Date();
-
-  return [now.getFullYear(), now.getMonth() + 1, now.getDate()]
-    .map((part) => String(part).padStart(2, "0"))
-    .join("-");
-}
+/** Today in the browser's calendar, as a date input holds it: Sweden writes `YYYY-MM-DD`. */
+const today = (): string => new Date().toLocaleDateString("sv-SE");
 
 /** What a session reads: the crate, the core, the layout in force and the plant's devices. */
 export interface Opening extends Checking {
@@ -70,6 +64,9 @@ export class Session {
   /** Whether a click in 3D asked the inspector to show itself. */
   expanded = $state(false);
 
+  /** The wiring mode: its selection, and what wiring it makes of the draft (ADR 20). */
+  readonly wiring = new WiringMode(this);
+
   /** Whether the admin chose to start from nothing. */
   #empty = $state(false);
 
@@ -90,7 +87,7 @@ export class Session {
 
     this.geometry = $derived(opening().pv.geometry(this.draft.scene));
     this.laid = $derived(opening().pv.modules(this.draft.scene, this.#sizes));
-    this.panels = $derived(panels(this.draft.scene, this.laid.grids));
+    this.panels = $derived(this.wiring.lit(panels(this.draft.scene, this.laid.grids)));
     this.plan = $derived({
       draft: this.draft,
       laid: this.laid,
@@ -218,9 +215,13 @@ export class Session {
     };
   }
 
-  /** The selected face's grid, on whose roof a press in 3D lays modules, or the picked string,
-   * which a drag across modules wires (ADR 20). */
+  /** The selected face's grid, on whose roof a press in 3D lays modules, or the wiring mode, in
+   * which a drag across modules selects them (ADR 20). */
   get painting(): Painting | undefined {
+    return this.wiring.painting ?? this.#laying();
+  }
+
+  #laying(): Painting | undefined {
     return paintingOf(this.level, {
       draft: this.draft,
       laid: this.laid,
@@ -243,14 +244,16 @@ export class Session {
     return this.draft.scene.blocks.length === 0 && !this.#empty;
   }
 
-  /** Fills the scene from a template, one undo step; nothing remembers which (ADR 20). */
-  begin(template: Template): void {
-    if (template === "empty") this.#empty = true;
-    else this.change(fill(this.draft, template));
+  /** Starts from a template's `filled` draft, one undo step, or from nothing; nothing remembers
+   * which (ADR 20). */
+  begin(filled?: Draft): void {
+    if (filled === undefined) this.#empty = true;
+    else this.change(filled);
   }
 
   go(level: Level): void {
     haptics.soft();
+    this.wiring.entered(level);
     this.#level = level;
   }
 
@@ -259,7 +262,7 @@ export class Session {
   pick(hit: Hit, peek = false): void {
     const level = picked(this.draft.scene, hit, this.#opening().pv);
 
-    if (level === null) return;
+    if (this.wiring.aimed(level) || level === null) return;
 
     this.go(level);
     this.expanded = !peek;

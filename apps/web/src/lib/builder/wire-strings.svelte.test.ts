@@ -103,15 +103,27 @@ function three(draft: Draft): [number, number][] {
   return all.slice(south, south + 3);
 }
 
+/** The bar that names the selection and wires it. */
+const bar = () => page.getByRole("toolbar", { name: "Auswahl" });
+
+const act = (name: string) => bar().getByRole("button", { name });
+
 test.each<Pointer>(["mouse", "touch"])(
-  "a %s drag across modules in 3D paints them into the picked string, as one undo step",
+  "a %s drag across modules selects them; the bar wires them into the string, as one undo step",
   async (pointer) => {
     const draft = filled([wired("Süd", MODULE.id)]);
 
     await opened(draft);
     await press(pointer, three(draft));
 
+    // Selecting wires nothing yet.
+    await expect.element(bar().getByText("3 gewählt")).toBeVisible();
+    await expect.element(made(0)).toBeVisible();
+
+    await act("In Süd verdrahten").click();
+
     await expect.element(made(3)).toBeVisible();
+    await expect.element(bar()).not.toBeInTheDocument();
 
     await inspector().getByRole("button", { name: "Rückgängig" }).click();
 
@@ -119,27 +131,78 @@ test.each<Pointer>(["mouse", "touch"])(
   },
 );
 
-test("painting a string of another module type in 3D is refused beside the pointer", async () => {
+test("a tap takes a selected module out again; the bar unwires a selection or drops it", async () => {
+  const draft = filled([wired("Süd", MODULE.id)]);
+  await opened(draft);
+
+  const [first, second, third] = three(draft);
+
+  if (first === undefined || second === undefined || third === undefined) {
+    throw new Error("no modules");
+  }
+
+  await press("mouse", [first, second, third]);
+  await press("mouse", [second]);
+  await expect.element(bar().getByText("2 gewählt")).toBeVisible();
+
+  await act("In Süd verdrahten").click();
+  await expect.element(made(2)).toBeVisible();
+
+  await press("mouse", [first]);
+  await act("Lösen").click();
+  await expect.element(made(1)).toBeVisible();
+
+  await press("mouse", [third]);
+  await act("Auswahl aufheben").click();
+  await expect.element(bar()).not.toBeInTheDocument();
+  await expect.element(made(1)).toBeVisible();
+});
+
+test("a selection of another module type than the string is refused in the bar, and stays", async () => {
   const draft = filled([wired("Ost", OTHER.id)]);
 
   await opened(draft);
   await press("mouse", three(draft).slice(0, 1));
+  await act("In Ost verdrahten").click();
 
   await expect
     .element(page.getByRole("alert").filter({ hasText: "Ost hat einen anderen Modultyp" }))
     .toBeVisible();
+  await expect.element(bar().getByText("1 gewählt")).toBeVisible();
   await expect.element(made(0)).toBeVisible();
 });
 
-test("a drag across modules wires them in the order it crosses them, and saves that order", async () => {
+test("from the Strings group a selection is wired into a string of the menu, or a new one", async () => {
+  const draft = filled([wired("Süd", MODULE.id)]);
+  const draws = vi.spyOn(EffectComposer.prototype, "render");
+
+  await render(Builder, {
+    pv,
+    core: connect(testCore()),
+    start: draft,
+    moduleTypes: [MODULE, OTHER],
+    devices: DEVICES,
+  });
+  await drill("Strings");
+  await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
+
+  await press("mouse", three(draft));
+  await act("Verdrahten").click();
+  await page.getByRole("menuitem", { name: "Neuer String" }).click();
+
+  await expect
+    .element(inspector().getByRole("button", { name: /^String 2.*3 Module/u }))
+    .toBeVisible();
+});
+
+test("a selection wired in the order it was crossed saves that wiring order", async () => {
   const transport = testCore();
   const draft = filled([wired("Süd", MODULE.id)]);
 
   await opened(draft, transport);
 
-  await expect.element(inspector().getByText(/^Ziehe auf dem Dach über Module/u)).toBeVisible();
-
   await press("mouse", three(draft).toReversed());
+  await act("In Süd verdrahten").click();
 
   await expect.element(made(3)).toBeVisible();
 
