@@ -11,15 +11,13 @@ import type {
 } from "../api/core.ts";
 import { checked, stringRefusal, type Checking, type StringRefusal } from "./checks.ts";
 import { haptics } from "../haptics.ts";
-import { begin, record, redo, undo, type Edits } from "./history.ts";
+import { Drafts } from "./drafts.svelte.ts";
 import { handled, parent, picked, type Level } from "./levels.ts";
-import { painted, panels, uncovered, type Draft } from "./modules.ts";
+import { painted, panels, type Draft } from "./modules.ts";
 import { exists, type Plan } from "./outline.ts";
 import type { Geometry, Modules, Pv, Scene, Sizes } from "./pv.ts";
 import { paintingOf, type Editing, type Hit, type Painting, type Panel } from "./drawing.svelte.ts";
 import { WiringMode } from "./wiring-mode.svelte.ts";
-
-const same = (a: Scene, b: Scene): boolean => JSON.stringify(a) === JSON.stringify(b);
 
 /** Today in the browser's calendar, as a date input holds it: Sweden writes `YYYY-MM-DD`. */
 const today = (): string => new Date().toLocaleDateString("sv-SE");
@@ -37,7 +35,7 @@ export interface Opening extends Checking {
 export class Session {
   readonly #opening: () => Opening;
 
-  #history: Edits<Draft>;
+  readonly #drafts: Drafts;
 
   readonly geometry: Geometry;
 
@@ -76,13 +74,10 @@ export class Session {
   /** Module types added in this session; the core keeps them, no undo takes them back. */
   #added = $state.raw<readonly ModuleType[]>([]);
 
-  /** A handle drag's scene, shown but not yet recorded. */
-  #dragged = $state.raw<Draft>();
-
   constructor(opening: () => Opening) {
     this.#opening = opening;
     // The start is where this session begins; a later one is a new session's.
-    this.#history = $state.raw(begin(opening().start));
+    this.#drafts = new Drafts(opening().start, (scene) => opening().pv.covered(scene, this.#sizes));
 
     this.#sizes = $derived(
       Object.fromEntries(this.moduleTypes.map(({ id, width, height }) => [id, { width, height }])),
@@ -130,19 +125,19 @@ export class Session {
 
   /** The draft as recorded: without a drag's step or a proposal. */
   get present(): Draft {
-    return this.#history.present;
+    return this.#drafts.present;
   }
 
   get draft(): Draft {
-    return this.#dragged ?? this.wiring.proposal ?? this.#history.present;
+    return this.#drafts.dragged ?? this.wiring.proposal ?? this.#drafts.present;
   }
 
   get undoable(): boolean {
-    return this.#history.past.length > 0;
+    return this.#drafts.undoable;
   }
 
   get redoable(): boolean {
-    return this.#history.future.length > 0;
+    return this.#drafts.redoable;
   }
 
   /** The level shown: an undo or a removal can take its object away, and its group shows instead. */
@@ -150,48 +145,31 @@ export class Session {
     return exists(this.#level, this.plan) ? this.#level : parent(this.#level);
   }
 
-  /** The scene without the modules a roof chimney or roof window covers: one added or moved onto
-   * modules removes them in the same undo step (ADR 20). */
-  #cleared(scene: Scene): Scene {
-    const lain = (scene.grids ?? []).some(({ modules }) => modules.length > 0);
-
-    const covering = (scene.chimneys?.length ?? 0) + (scene.roofWindows?.length ?? 0);
-
-    // No chimney and no roof window, or no module: no question to the crate.
-    return lain && covering > 0
-      ? uncovered(scene, this.#opening().pv.covered(scene, this.#sizes))
-      : scene;
-  }
-
   change(next: Draft): void {
-    this.#history = record(this.#history, { ...next, scene: this.#cleared(next.scene) });
+    this.#drafts.record(next);
     this.saved = undefined;
   }
 
   /** Shows a handle drag's step at once; `drop` records the drag as one undo step (ADR 20). */
   drag(scene: Scene): void {
-    this.#dragged = { ...this.#history.present, scene: this.#cleared(scene) };
+    this.#drafts.drag(scene);
   }
 
   drop(): void {
-    const dragged = this.#dragged;
+    const dragged = this.#drafts.drop();
 
-    this.#dragged = undefined;
-
-    if (dragged !== undefined && !same(dragged.scene, this.#history.present.scene)) {
-      this.change(dragged);
-    }
+    if (dragged !== undefined) this.change(dragged);
   }
 
   /** Either drops a proposal: a redo back to its draft must not bring it back. */
   undo(): void {
     this.wiring.discard();
-    this.#history = undo(this.#history);
+    this.#drafts.undo();
   }
 
   redo(): void {
     this.wiring.discard();
-    this.#history = redo(this.#history);
+    this.#drafts.redo();
   }
 
   /** A selected block, obstacle, ground surface, fence, car place, chimney or opening's handles,
@@ -292,7 +270,7 @@ export class Session {
     if (refused !== null) this.go({ kind: "string", index: refused.string });
 
     if (!("problem" in saved)) {
-      this.#history = begin({ scene: saved.scene ?? draft.scene, strings: saved.strings });
+      this.#drafts.begin({ scene: saved.scene ?? draft.scene, strings: saved.strings });
     }
   }
 }
