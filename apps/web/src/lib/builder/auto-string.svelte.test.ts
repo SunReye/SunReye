@@ -120,3 +120,37 @@ test("saving keeps a proposal: what is saved is what is shown, and it is recorde
     ],
   });
 });
+
+test("on one free input the proposed strings are of one length: no warning of its own making", async () => {
+  const { scene } = house();
+
+  await render(Builder, {
+    pv,
+    core: connect(testCore()),
+    start: { scene: filledFace(addGrid(scene, 0, 1, MODULE.id), 0), strings: [] },
+    moduleTypes: [MODULE],
+    devices: DEVICES,
+    limits: { 1: 400 },
+    inputs: { 1: [INPUT] },
+  });
+  await drill("Strings");
+  await act(`${SOUTH}: 16 Module automatisch verdrahten`).click();
+
+  await expect
+    .element(input(1).getByRole("button", { name: /^String 1.*8 Module/u }))
+    .toBeVisible();
+  await expect
+    .element(input(1).getByRole("button", { name: /^String 2.*8 Module/u }))
+    .toBeVisible();
+  await expect.element(inspector().getByText(/ungleich lang/u)).not.toBeInTheDocument();
+
+  // Kept, the one input is taken: the next face finds none free and says so.
+  await act("Übernehmen").click();
+  await drill("Szene", "Module", "Baukörper 1, Fläche 1", MODULE.name, "Fläche füllen");
+  await drill("Module", "Szene", "Strings");
+  await act("Baukörper 1, Fläche 1: 16 Module automatisch verdrahten").click();
+
+  await expect
+    .element(inspector().getByRole("alert").filter({ hasText: "Kein MPPT-Eingang ohne String" }))
+    .toBeVisible();
+});

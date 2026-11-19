@@ -1,7 +1,7 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
 import type { StringDraft } from "../api/core.ts";
-import { autoStrung } from "./auto-string.ts";
+import { autoStrung, type Limit } from "./auto-string.ts";
 import { addGrid, type Draft } from "./modules.ts";
 import { place } from "./placing.ts";
 import type { Scene } from "./pv.ts";
@@ -53,28 +53,64 @@ function run(of: Draft | null, string: number): number[] {
     .map(([, at]) => at);
 }
 
-test("a face's unwired modules run in a serpentine into as few even strings as the limit allows", () => {
-  const strung = autoStrung(draft, 0, { longest: 6, device: 1, inputs: 3 }, name);
+/** Each new string's input and its modules in wiring order. */
+const made = (of: Draft | undefined) =>
+  (of?.strings ?? []).slice(1).map((string, i) => [string.input, run(of ?? null, i + 1)]);
 
-  // 16 modules at most 6 long: three strings of 6, 5 and 5.
-  expect(run(strung, 1)).toEqual([0, 1, 2, 3, 4, 5]);
-  expect(run(strung, 2)).toEqual([6, 7, 15, 14, 13]);
-  expect(run(strung, 3)).toEqual([12, 11, 10, 9, 8]);
-  // Input 1 carries the garage: the free inputs in order, then in parallel on the last.
-  expect(strung?.strings.slice(1)).toEqual([
-    { ...first, name: "String 2", input: 2 },
-    { ...first, name: "String 3", input: 3 },
-    { ...first, name: "String 4", input: 3 },
+const strung = (limit: Limit, from: Draft = draft) => {
+  const result = autoStrung(from, 0, limit, name);
+
+  return result !== null && "draft" in result ? result : undefined;
+};
+
+test("with an input free for each, a face's modules run in a serpentine into as few even strings as the limit allows", () => {
+  const result = strung({ longest: 6, device: 1, free: [2, 3, 4], parallel: 2 });
+
+  // 16 modules at most 6 long: three strings of 6, 5 and 5, each alone on its input.
+  expect(made(result?.draft)).toEqual([
+    [2, [0, 1, 2, 3, 4, 5]],
+    [3, [6, 7, 15, 14, 13]],
+    [4, [12, 11, 10, 9, 8]],
   ]);
+  expect(result?.left).toBe(0);
+  expect(result?.draft.strings[1]).toEqual({ ...first, name: "String 2", input: 2 });
 });
 
-test("without a limit the face is one string; wired modules stay as they are; none unwired, nothing", () => {
+test("strings that share an input are all one length: the fewest that leave no module over", () => {
+  const result = strung({ longest: 6, device: 1, free: [2, 3], parallel: 2 });
+
+  // Three strings would be 6, 5 and 5 with two in parallel: four of four share the two inputs.
+  expect(made(result?.draft)).toEqual([
+    [2, [0, 1, 2, 3]],
+    [2, [4, 5, 6, 7]],
+    [3, [15, 14, 13, 12]],
+    [3, [11, 10, 9, 8]],
+  ]);
+  expect(result?.left).toBe(0);
+});
+
+test("where no equal cut holds every module the rest stays unwired, and is counted", () => {
   const partly = wiredInto(draft, [{ grid: 0, module: 3 }], 0) ?? draft;
-  const strung = autoStrung(partly, 0, { longest: null, device: 1, inputs: 0 }, name);
+  // 15 modules at most 7 long on one input that carries two strings: two of seven, one over.
+  const result = strung({ longest: 7, device: 1, free: [2], parallel: 2 }, partly);
 
-  expect(run(strung, 0)).toEqual([3]);
-  expect(run(strung, 1)).toEqual([0, 1, 2, 4, 5, 6, 7, 15, 14, 13, 12, 11, 10, 9, 8]);
-  expect(strung?.strings[1]).toEqual({ ...first, name: "String 2", input: 1 });
+  expect(made(result?.draft)).toEqual([
+    [2, [0, 1, 2, 4, 5, 6, 7]],
+    [2, [15, 14, 13, 12, 11, 10, 9]],
+  ]);
+  expect(result?.left).toBe(1);
+  // The wired module stays as it is.
+  expect(run(result?.draft ?? null, 0)).toEqual([3]);
+});
 
-  expect(strung && autoStrung(strung, 0, { longest: 6, device: 1, inputs: 3 }, name)).toBeNull();
+test("without a limit the face is one string; no free input, no proposal; none unwired, nothing", () => {
+  const whole = strung({ longest: null, device: 1, free: [2], parallel: null });
+
+  expect(made(whole?.draft)).toEqual([[2, [0, 1, 2, 3, 4, 5, 6, 7, 15, 14, 13, 12, 11, 10, 9, 8]]]);
+  expect(autoStrung(draft, 0, { longest: 6, device: 1, free: [], parallel: 2 }, name)).toEqual({
+    refused: "input",
+  });
+  expect(
+    whole && autoStrung(whole.draft, 0, { longest: 6, device: 1, free: [3], parallel: 2 }, name),
+  ).toBeNull();
 });

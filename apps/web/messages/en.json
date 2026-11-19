@@ -192,6 +192,8 @@
   "builder_unwire": "Unwire",
   "builder_selection_clear": "Drop the selection",
   "builder_refused_mixed": "The selection holds different module types.",
+  "builder_no_free_input": "No MPPT input without a string: wire the strings by hand.",
+  "builder_proposal_left": "{count} modules stay in no string.",
   "builder_auto_string": "{face}: wire {count} modules automatically",
   "builder_proposal": "Proposal: {count} new strings",
   "builder_keep": "Keep",

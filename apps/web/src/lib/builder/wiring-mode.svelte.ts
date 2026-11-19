@@ -26,8 +26,9 @@ interface Proposal {
   /** The recorded draft it was made of: an undo or an edit ends it. */
   readonly basis: Draft;
   readonly draft: Draft;
-  /** How many strings it adds. */
+  /** How many strings it adds, and how many modules it leaves in no string. */
   readonly strings: number;
+  readonly left: number;
 }
 
 type Face = Readonly<Pick<RoofFace, "block" | "face">>;
@@ -63,10 +64,10 @@ export class WiringMode {
     return this.#proposed?.draft;
   }
 
-  /** How many strings the proposal adds; none without one. */
+  /** How many strings the proposal adds and how many modules it leaves over; none without one. */
   // fallow-ignore-next-line unused-class-member -- read through `session.wiring` in the components.
-  get proposed(): number | undefined {
-    return this.#proposed?.strings;
+  get proposed(): Pick<Proposal, "strings" | "left"> | undefined {
+    return this.#proposed;
   }
 
   /** Proposes grid `grid`'s modules in no string as new strings on the first inverter that lists
@@ -81,9 +82,16 @@ export class WiringMode {
 
     if (strung === null) return;
 
-    const strings = strung.strings.length - present.strings.length;
+    if ("refused" in strung) {
+      this.refused = m.builder_no_free_input();
 
-    this.#proposal = { basis: present, draft: strung, strings };
+      return;
+    }
+
+    const strings = strung.draft.strings.length - present.strings.length;
+
+    this.refused = undefined;
+    this.#proposal = { basis: present, draft: strung.draft, strings, left: strung.left };
   }
 
   /** Records the proposal as one undo step. */

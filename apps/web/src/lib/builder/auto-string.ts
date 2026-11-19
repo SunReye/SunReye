@@ -11,8 +11,21 @@ export interface Limit {
   /** The most modules in series, as the crate reckons it; null without the inverter's limits. */
   readonly longest: number | null;
   readonly device: number;
-  /** How many MPPT inputs it has; 0 where its profile lists none. */
-  readonly inputs: number;
+  /** Its MPPT inputs that carry no string, in order. */
+  readonly free: readonly number[];
+  /** How many strings an input's maximum current carries in parallel; null where unknown. */
+  readonly parallel: number | null;
+}
+
+/** A proposal: the draft with the new strings, and how many modules no equal cut could hold. */
+export interface Strung {
+  readonly draft: Draft;
+  readonly left: number;
+}
+
+/** Why nothing is proposed: the inverter has no MPPT input without a string. */
+export interface Unstrung {
+  readonly refused: "input";
 }
 
 /** Metres up the face within which modules share a row. */
@@ -35,33 +48,44 @@ function rows(cells: readonly Loose[]): Loose[][] {
   return found.map((row: readonly Loose[]) => row.toSorted(([, a], [, b]) => a.across - b.across));
 }
 
-/** `count` cut into as few runs of at most `longest` as hold it, their lengths at most one apart,
- * the longer first. */
-function cuts(count: number, longest: number | null): number[] {
+/** Each new string's length and input, in turn. */
+type Cut = readonly (readonly [length: number, input: number])[];
+
+/** `count` modules cut into strings no longer than the limit, never unequal in parallel (ADR 20):
+ * one on each free input and at most one apart where the inputs suffice; else all of one length,
+ * the fewest that leave none over, shared out over the inputs; else the fewest of the longest
+ * equal length, the rest left over. */
+function cut(count: number, { longest, free, parallel }: Readonly<Limit>): Cut {
   const most = longest === null || longest < 1 ? count : longest;
-  const runs = Math.ceil(count / most);
-  const [short, longer] = [Math.floor(count / runs), count % runs];
+  const fewest = Math.ceil(count / most);
 
-  return Array.from({ length: runs }, (_, i) => short + (i < longer ? 1 : 0));
+  if (fewest <= free.length) {
+    const [short, longer] = [Math.floor(count / fewest), count % fewest];
+
+    return free.slice(0, fewest).map((input, i) => [short + (i < longer ? 1 : 0), input]);
+  }
+
+  const carried = parallel === null ? Infinity : free.length * parallel;
+  const runs = Array.from({ length: fewest + 1 }, (_, i) => fewest + i);
+  const even = runs.find((strings) => strings <= carried && count % strings === 0);
+  const strings = even ?? Math.min(fewest, carried);
+  const length = Math.min(most, Math.floor(count / Math.max(strings, 1)));
+
+  return Array.from({ length: strings }, (_, i) => [
+    length,
+    free[Math.floor((i * free.length) / strings)] ?? 0,
+  ]);
 }
 
-/** The MPPT input of the `nth` new string: the inverter's inputs that carry no string, in order,
- * then its last; input 1 where it lists none. */
-function inputFor(draft: Draft, { device, inputs }: Readonly<Limit>, nth: number): number {
-  const taken = new Set(draft.strings.flatMap((s) => (s.device === device ? [s.input] : [])));
-  const free = Array.from({ length: inputs }, (_, i) => i + 1).filter((input) => !taken.has(input));
-
-  return free[nth] ?? Math.max(inputs, 1);
-}
-
-/** The draft with grid `grid`'s modules in no string wired into new strings named by `name` from
- * their number; null where it holds none. Wired modules stay as they are. */
+/** Grid `grid`'s modules in no string wired into new strings named by `name` from their number:
+ * the proposal, why there is none, or null where the grid holds no such module. Wired modules stay
+ * as they are. */
 export function autoStrung(
   draft: Draft,
   grid: number,
   limit: Readonly<Limit>,
   name: (number: number) => string,
-): Draft | null {
+): Strung | Unstrung | null {
   const laid = draft.scene.grids?.[grid];
 
   const loose = (laid?.modules ?? []).flatMap((module, at): Loose[] =>
@@ -73,30 +97,32 @@ export function autoStrung(
 
   if (like === undefined || loose.length === 0) return null;
 
+  if (limit.free.length === 0) return { refused: "input" };
+
   const serpentine: Cell[] = rows(loose).flatMap((row: readonly Loose[], i) =>
     (i % 2 === 0 ? row : row.toReversed()).map(([module]) => ({ grid, module })),
   );
 
-  const lengths = cuts(serpentine.length, limit.longest);
+  const strings = cut(serpentine.length, limit);
   const before = draft.strings.length;
 
-  const made = lengths.map((_, nth) => ({
+  const made = strings.map(([, input], nth) => ({
     ...like,
     name: name(before + nth + 1),
     device: limit.device,
-    input: inputFor(draft, limit, nth),
+    input,
   }));
 
   let strung: Draft | null = { ...draft, strings: [...draft.strings, ...made] };
   let from = 0;
 
   // Each new string takes its run of the serpentine, in turn.
-  for (const [nth, length] of lengths.entries()) {
+  for (const [nth, [length]] of strings.entries()) {
     strung = strung && wiredInto(strung, serpentine.slice(from, from + length), before + nth);
     from += length;
   }
 
-  return strung;
+  return strung && { draft: strung, left: serpentine.length - from };
 }
 
 /** What auto-stringing reads besides the draft: the crate, each inverter's limits and the module
@@ -106,20 +132,33 @@ export interface Stringing extends Checking {
 }
 
 /** Grid `grid`'s modules in no string as new strings on the first inverter that lists its inputs,
- * else the first string's; null where the grid holds none. */
+ * else the first string's: on its inputs that carry no string, no more in parallel than an input's
+ * current carries. */
 export function strungOn(
   draft: Draft,
   grid: number,
   { pv, limits, inputs, moduleTypes }: Stringing,
   name: (number: number) => string,
-): Draft | null {
+): Strung | Unstrung | null {
   const device = Number(Object.keys(inputs)[0] ?? draft.strings[0]?.device ?? 1);
   const type = moduleTypes.find(({ id }) => id === draft.scene.grids?.[grid]?.moduleType);
+  const [input] = inputs[device] ?? [];
+  const taken = new Set(draft.strings.flatMap((s) => (s.device === device ? [s.input] : [])));
+  // An inverter that lists no inputs has as many as its strings name, and one more.
+  const count = inputs[device]?.length ?? Math.max(0, ...taken) + 1;
 
-  const longest =
-    type === undefined
-      ? null
-      : pv.longest(type, limits[device] ?? null, inputs[device]?.[0] ?? null);
-
-  return autoStrung(draft, grid, { longest, device, inputs: inputs[device]?.length ?? 0 }, name);
+  return autoStrung(
+    draft,
+    grid,
+    {
+      longest: type === undefined ? null : pv.longest(type, limits[device] ?? null, input ?? null),
+      device,
+      free: Array.from({ length: count }, (_, i) => i + 1).filter((at) => !taken.has(at)),
+      parallel:
+        type === undefined || input === undefined
+          ? null
+          : Math.max(1, Math.floor(input.maxCurrent / type.isc)),
+    },
+    name,
+  );
 }
