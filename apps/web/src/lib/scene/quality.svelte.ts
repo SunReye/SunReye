@@ -3,7 +3,7 @@
  * seen and the levels strain has taken off Auto are kept per browser (ADR 20 Look).
  */
 import { forget, read, write } from "../kept.ts";
-import type { MotionTier } from "../motion/tier.ts";
+import { STRAINED_AT, strainLeft, type MotionTier } from "../motion/tier.ts";
 import {
   capable,
   drawn,
@@ -22,12 +22,19 @@ const STEPS = "sunreye.3d-strain";
 const GPU = "sunreye.gpu";
 
 export class QualityStore {
+  readonly #now: () => number;
   #choice = $state(parseQuality(read(QUALITY)));
-  #steps = $state(parseSteps(read(STEPS)));
+  #steps = $state(0);
   #gpu = $state(read(GPU));
   /** Studios on show: only a strain measured over a drawn scene says anything about its cost.
    * Asked when a strain is measured, never rendered: plain, so a studio's set-up tracks nothing. */
   #shown = 0;
+
+  /** `now` dates a strain: it lasts seven days (ADR 21). */
+  constructor(now: () => number = () => Date.now()) {
+    this.#now = now;
+    this.#steps = strainLeft(read(STRAINED_AT), now()) > 0 ? parseSteps(read(STEPS)) : 0;
+  }
 
   get choice(): Quality {
     return this.#choice;
@@ -87,6 +94,7 @@ export class QualityStore {
 
     this.#steps = Math.min(MAX_STEPS, this.#steps + 1);
     write(STEPS, String(this.#steps));
+    write(STRAINED_AT, String(this.#now()));
 
     return true;
   }

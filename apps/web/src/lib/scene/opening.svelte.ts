@@ -29,6 +29,10 @@ export class Opening {
   /** The lens glass as it fades, and its hold on the loop while anything on it moves or fades. */
   readonly #lens = new Fade();
   #glazing: (() => void) | undefined;
+  /** The frame watch's leave of its idle watch while the loop runs. */
+  #looping: (() => void) | undefined;
+  /** Told once the first frame is drawn, or never will be: the frame watch settles from then. */
+  readonly #settle: () => void;
 
   /**
    * The weather loop (ADR 23 "Motion"): the one loop this studio is drawn in. What moves keeps
@@ -47,17 +51,23 @@ export class Opening {
     count: (now) => {
       motion.frame(now);
     },
+    // The frame watch judges the loop by its own frames while it runs (ADR 21).
+    started: () => {
+      this.#looping = motion.loop();
+    },
     // One frame more: it places the labels and starts the burst the loop's frames went without.
     stopped: () => {
+      this.#looping?.();
       this.#changed = false;
       this.render();
     },
   });
 
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws with it.
-  constructor(studio: Studio, drawn: () => void) {
+  constructor(studio: Studio, drawn: () => void, settle: () => void) {
     this.#studio = studio;
     this.#drawn = drawn;
+    this.#settle = settle;
     this.#burst = new Burst(studio, () => this.#held || this.#gone);
     this.loop.pause("held", true);
     this.#unwatch = pauseUnseen(this.loop, studio.renderer.domElement);
@@ -124,6 +134,23 @@ export class Opening {
   /** Once `built`, prepares, draws the first frame, calls `ready` once it is drawn, and `due`
    * when idle after. */
   async open(built: Readonly<Promise<void>>, ready: () => void, due: () => void): Promise<void> {
+    try {
+      await this.#first(built);
+    } finally {
+      this.#settle();
+    }
+
+    if (this.#gone || this.#held) return;
+
+    ready();
+    // After the fade, when nothing else is waiting.
+    this.#later = setTimeout(() => {
+      idle(due, 2000);
+    }, 450);
+  }
+
+  /** Prepares and draws the first frame; held still if it could not be. */
+  async #first(built: Readonly<Promise<void>>): Promise<void> {
     await built;
     await pause();
 
@@ -136,14 +163,6 @@ export class Opening {
     // Not before the GPU has drawn it: a fade over a frame still rasterising is a cut.
     await gpuIdle(this.#studio.renderer);
     await nextFrame();
-
-    if (this.#gone) return;
-
-    ready();
-    // After the fade, when nothing else is waiting.
-    this.#later = setTimeout(() => {
-      idle(due, 2000);
-    }, 450);
   }
 
   /** Runs `park`, its programs compiled first; on screen, the change fades in. */

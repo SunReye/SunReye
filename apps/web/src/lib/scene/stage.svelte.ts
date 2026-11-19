@@ -154,8 +154,8 @@ export function lit(
   sky: () => Sky,
   drawn: () => void,
 ): Lit {
-  const { studio, look, weather, close } = openStudio(canvas, camera);
-  const opened = new Opening(studio, drawn);
+  const { studio, look, weather, settle, close } = openStudio(canvas, camera);
+  const opened = new Opening(studio, drawn, settle);
   const { flight, render } = opened;
   const shown = stage(studio);
   const steady = steadied(sky, look, weather);

@@ -51,8 +51,8 @@ function onScreen(): HTMLCanvasElement {
   return canvas;
 }
 
-/** A lit studio on a canvas on screen, opened, under a weather the test sets. */
-export async function open() {
+/** A lit studio on a canvas on screen, opened once `built`, under a weather the test sets. */
+export async function open(built: Readonly<Promise<void>> = Promise.resolve()) {
   const canvas = onScreen();
   let weather = $state.raw(DRY);
   let scene: Lit | undefined;
@@ -79,7 +79,7 @@ export async function open() {
 
   if (scene === undefined) throw new TypeError("no scene");
 
-  await scene.opening.open(Promise.resolve(), noop, noop);
+  await scene.opening.open(built, noop, noop);
 
   /** The weather turns to what it was but for `next`. */
   const turn = (next: Partial<SceneWeather>): void => {

@@ -17,6 +17,9 @@ export interface Opened {
   /** What the studio is to draw of `given`: read in an effect, it follows the Wettereffekte
    * switch. */
   readonly weather: (given: SceneWeather | undefined) => SceneWeather | undefined;
+  /** The studio's first frame is drawn, or never will be: the frame watch settles from here
+   * (ADR 21). */
+  readonly settle: () => void;
   /** The studio is off show. */
   readonly close: () => void;
 }
@@ -45,13 +48,17 @@ export function openStudio(
   );
 
   const hide = quality.show();
+  // Preparing the scene is no evidence of what the device holds.
+  const settle = motion.hold();
   const unwatch = motion.watch();
 
   return {
     studio,
     look,
     weather,
+    settle,
     close() {
+      settle();
       unwatch();
       hide();
     },

@@ -66,3 +66,15 @@ test("a strain leaves a chosen level alone", () => {
   expect(quality.relieve("full")).toBe(false);
   expect(quality.look("full").level).toBe("high");
 });
+
+test("a level strain took off Auto comes back after seven days", () => {
+  const day = 86_400_000;
+  const quality = new QualityStore(() => 1000);
+
+  quality.see(RTX);
+  quality.show();
+  quality.relieve("full");
+
+  expect(new QualityStore(() => 1000 + 7 * day - 1).look("full").level).toBe("medium");
+  expect(new QualityStore(() => 1000 + 7 * day).look("full").level).toBe("high");
+});

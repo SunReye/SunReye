@@ -43,7 +43,7 @@ function display() {
 
 function open() {
   const screen = display();
-  const seen = { draws: 0, counted: 0, stopped: 0 };
+  const seen = { draws: 0, counted: 0, started: 0, stopped: 0 };
 
   const loop = new Loop({
     frames: screen.frames,
@@ -54,6 +54,9 @@ function open() {
     },
     count() {
       seen.counted += 1;
+    },
+    started() {
+      seen.started += 1;
     },
     stopped() {
       seen.stopped += 1;
@@ -73,7 +76,7 @@ test("nothing loops until something kept shows; then it draws 30 times a second 
   loop.keep((seconds) => {
     times.push(seconds);
   });
-  expect(loop.running).toBe(true);
+  expect([loop.running, seen.started]).toEqual([true, 1]);
   screen.run(60);
   expect(seen.draws).toBe(30);
   // Each keeper steps before each draw, by the loop's own clock.
@@ -184,6 +187,7 @@ test("a picture that changed besides is drawn in the next frame, and on while th
       return flying > 0;
     },
     count() {},
+    started() {},
     stopped() {},
   });
 

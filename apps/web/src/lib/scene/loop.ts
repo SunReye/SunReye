@@ -14,6 +14,8 @@ export interface Looped {
   readonly draw: (now: number) => boolean;
   /** Told of every frame the display gives while the loop runs, drawn in or not. */
   readonly count: (now: number) => void;
+  /** The loop draws from here on, until `stopped`. */
+  readonly started: () => void;
   /** The loop has stopped or paused: the picture it leaves is settled by whoever draws on. */
   readonly stopped: () => void;
 }
@@ -92,6 +94,7 @@ export class Loop {
     this.#ran = running;
 
     if (running) {
+      this.#on.started();
       this.#next();
 
       return;
