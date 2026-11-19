@@ -13,6 +13,7 @@ import {
   inspector,
   MODULE,
   onCanvas,
+  phone,
   press,
   pv,
   starts,
@@ -124,7 +125,7 @@ test.each<Pointer>(["mouse", "touch"])(
 );
 
 test.each<Pointer>(["mouse", "touch"])(
-  "after Drehen a %s drag anywhere turns the house about its centre, in steps of 5°, one undo step",
+  "after Drehen a %s drag sideways anywhere turns the house about its centre, one undo step",
   async (pointer) => {
     const scene = await picked();
     const tools = page.getByRole("toolbar", { name: "Aktionen" });
@@ -132,11 +133,12 @@ test.each<Pointer>(["mouse", "touch"])(
     const undo = inspector().getByRole("button", { name: "Rückgängig" });
 
     await tools.getByRole("button", { name: "Drehen" }).click();
-    // On the house itself: the ring round it lies outside the canvas.
+    // On the house itself, by its middle: the ring round it lies outside the canvas.
     await press(pointer, swipe(onCanvas(scene)([2, 1.5, 8])));
 
-    await expect.element(rotation.getByText(/^[1-9]\d*[05]$|^5$/u)).toBeVisible();
-    await expect.element(tools.getByRole("status").getByText(/^Drehung \d+°$/u)).toBeVisible();
+    // 80 px to the right is 40° against the clock: the near side follows the pointer.
+    await expect.element(rotation.getByText(/^320$/u)).toBeVisible();
+    await expect.element(tools.getByRole("status").getByText("Drehung 320°")).toBeVisible();
 
     await tools.getByRole("button", { name: "Fertig" }).click();
     await undo.click();
@@ -152,4 +154,36 @@ test("while strings are wired a drag from the house orbits: a block has handles 
   await press("mouse", swipe(onCanvas(scene)([2, 1.5, 8])));
   await expect.poll(() => localStorage.getItem(VIEW), SLOW).not.toBeNull();
   await expect.element(inspector().getByRole("button", { name: "Rückgängig" })).toBeDisabled();
+});
+
+test("on a phone a picked house's knob lies in the canvas, clear of the sheet and the status line", async () => {
+  await phone();
+
+  const draws = vi.spyOn(EffectComposer.prototype, "render");
+  const { scene } = house();
+
+  await render(Builder, {
+    pv,
+    core: connect(testCore()),
+    start: house(),
+    moduleTypes: [MODULE],
+    devices: DEVICES,
+  });
+  await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
+
+  const knob = offered(scene, { kind: "block", index: 0 }, pv.modules(scene, {}), false).find(
+    ({ grip }) => grip === "carry",
+  );
+
+  if (knob === undefined) throw new Error("no knob");
+
+  const [x, y] = onCanvas(scene)(knob.at);
+  const canvas = page.getByLabelText("3D-Szene des Hauses").element().getBoundingClientRect();
+  const status = page.getByRole("group", { name: "Jetzt in der Szene" }).element();
+
+  expect(x).toBeGreaterThan(canvas.left + 22);
+  expect(x).toBeLessThan(canvas.right - 22);
+  expect(y).toBeGreaterThan(canvas.top + 22);
+  expect(y).toBeLessThan(status.getBoundingClientRect().top - 22);
+  await page.viewport(1280, 900);
 });

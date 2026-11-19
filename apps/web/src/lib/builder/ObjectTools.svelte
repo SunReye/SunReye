@@ -24,6 +24,12 @@
       : undefined,
   );
 
+  // With "Hinzufügen" beside them, a phone's width takes the last two as icons only.
+  const compact = $derived(session.stance.spot !== undefined);
+  const narrow = $derived(compact ? "w-11 px-0" : "");
+  const edit = $derived(compact ? "" : m.builder_edit_object());
+  const remove = $derived(compact ? "" : m.builder_remove());
+
   // A scene keeps at least one block.
   const removable = $derived(
     session.level.kind !== "block" || session.draft.scene.blocks.length > 1,
@@ -47,7 +53,9 @@
   {/if}
   <ToolButton
     icon={Pencil}
-    label={m.builder_edit_object()}
+    label={edit}
+    class={narrow}
+    aria-label={m.builder_edit_object()}
     onclick={() => {
       session.expanded = true;
     }}
@@ -56,7 +64,9 @@
 {#if removable}
   <ToolButton
     icon={Trash2}
-    label={m.builder_remove()}
+    label={remove}
+    class={narrow}
+    aria-label={m.builder_remove()}
     onclick={() => {
       removeAt(session);
     }}

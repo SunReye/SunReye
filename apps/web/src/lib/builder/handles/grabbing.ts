@@ -12,6 +12,7 @@ import { handleOf } from "./gizmo.ts";
 import {
   drag,
   handles,
+  turned,
   type Dragged,
   type Grab,
   type Handle,
@@ -57,6 +58,9 @@ export interface Sources {
   readonly onreading: (reading?: Reading) => void;
 }
 
+/** Degrees the dial turns for each pixel the pointer goes sideways: a quarter turn in 180 px. */
+const PER_PIXEL = 0.5;
+
 /** A drag starts once the pointer has travelled this many pixels: a tap that slips changes
  * nothing (ADR 20, mistaken drags). */
 const SLIP = 8;
@@ -69,6 +73,8 @@ interface Held {
   /** Where the pointer is now. */
   at: readonly [number, number];
   moving: boolean;
+  /** The turn mode's dial: the pointer's travel sideways turns, wherever it was pressed. */
+  readonly dial: boolean;
   /** The last step's value, as text: a turn ticks when it changes. */
   shown: string;
 }
@@ -117,10 +123,10 @@ export class Grabbing {
   #grabbed(at: readonly [number, number], editing: Editing): Grab | undefined {
     const ray = rayAt(this.#camera, at);
 
-    // The turn mode: the whole canvas is the dial, for the ring may lie outside it.
-    if (editing.turning) return { grip: "turn", ray, height: 0 };
-
     const handle = this.#handleAt(at);
+
+    // The turn mode: off the ring, which may lie outside the canvas, the canvas is a dial.
+    if (editing.turning && handle === null) return { grip: "turn", ray, height: 0 };
 
     if (handle !== null) {
       // A block's knob carries it as its footprint would.
@@ -166,16 +172,14 @@ export class Grabbing {
       return;
     }
 
-    const editing = this.#sources.editing();
+    const editing = event.button === 0 ? this.#sources.editing() : undefined;
+    const grab = editing && this.#grabbed(ndc(this.#canvas, event), editing);
 
-    const grab =
-      editing === undefined || event.button !== 0
-        ? undefined
-        : this.#grabbed(ndc(this.#canvas, event), editing);
+    if (editing !== undefined && grab !== undefined) this.#hold(event, editing, grab);
+  };
 
-    if (editing === undefined || grab === undefined) return;
-
-    // The orbit controls and the click picking never see it.
+  /** Takes the pointer: the orbit controls and the click picking never see it. */
+  #hold(event: PointerEvent, editing: Editing, grab: Grab): void {
     event.stopImmediatePropagation();
     this.#canvas.setPointerCapture(event.pointerId);
     this.#held = {
@@ -185,10 +189,12 @@ export class Grabbing {
       down: [event.clientX, event.clientY],
       at: [event.clientX, event.clientY],
       moving: false,
+      // Off the ring nothing was grabbed at a point.
+      dial: editing.turning && grab.at === undefined,
       shown: "",
     };
     this.#canvas.style.cursor = "grabbing";
-  };
+  }
 
   readonly #move = (event: PointerEvent): void => {
     const held = this.#held;
@@ -210,18 +216,29 @@ export class Grabbing {
     if (held.moving) this.#step(held, rayAt(this.#camera, ndc(this.#canvas, event)));
   };
 
-  #step(held: Held, ray: Ray): void {
+  /** What the held drag makes of the scene now; a turn's every snapped step is felt. */
+  #dragged(held: Held, ray: Ray): Dragged | null {
     const { editing, grab } = held;
-    const dragged = drag(editing.scene, editing.target, grab, ray, editing);
 
-    if (dragged === null) return;
+    // The side nearest the camera follows the finger: to the right is against the clock.
+    const dragged = held.dial
+      ? turned(editing.scene, editing.target, (held.down[0] - held.at[0]) * PER_PIXEL)
+      : drag(editing.scene, editing.target, grab, ray, editing);
 
-    const shown = dragged.value.join(" ");
+    const shown = dragged?.value.join(" ") ?? held.shown;
 
-    // Each snapped step of a turn is felt.
-    if (dragged.unit === "°" && held.shown !== "" && shown !== held.shown) haptics.selection();
+    if (grab.grip === "turn" && held.shown !== "" && shown !== held.shown) haptics.selection();
 
     held.shown = shown;
+
+    return dragged;
+  }
+
+  #step(held: Held, ray: Ray): void {
+    const { editing, grab } = held;
+    const dragged = this.#dragged(held, ray);
+
+    if (dragged === null) return;
 
     editing.ondrag(dragged.scene);
 

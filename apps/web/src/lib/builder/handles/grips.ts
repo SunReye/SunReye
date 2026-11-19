@@ -10,7 +10,7 @@ export type { Target } from "./body.ts";
 
 export type { Ray, Triple } from "./frame.ts";
 
-export { drag, type Dragged, type Grab } from "./dragging.ts";
+export { drag, turned, type Dragged, type Grab } from "./dragging.ts";
 
 /** What a handle drags: a wall arrow's width, depth or radius, an opening's height, the ridge's
  * pitch, the ring's turn, the footprint's place, a block's knob that carries it, or a fence's
