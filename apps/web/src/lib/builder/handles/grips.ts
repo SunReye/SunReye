@@ -13,8 +13,18 @@ export type { Ray, Triple } from "./frame.ts";
 export { drag, type Dragged, type Grab } from "./dragging.ts";
 
 /** What a handle drags: a wall arrow's width, depth or radius, an opening's height, the ridge's
- * pitch, the ring's turn, the footprint's place, or a fence's point. */
-export type Grip = "width" | "depth" | "height" | "radius" | "pitch" | "turn" | "move" | "point";
+ * pitch, the ring's turn, the footprint's place, a block's knob that carries it, or a fence's
+ * point. */
+export type Grip =
+  | "width"
+  | "depth"
+  | "height"
+  | "radius"
+  | "pitch"
+  | "turn"
+  | "move"
+  | "carry"
+  | "point";
 
 export interface Handle {
   readonly grip: Grip;
