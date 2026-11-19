@@ -774,3 +774,30 @@ async fn a_series_without_a_stored_kind_takes_its_roles() {
         ]
     );
 }
+
+#[tokio::test(start_paused = true)]
+async fn paused_time_holds_while_the_storage_thread_works() {
+    // Tests on paused time see storage as instant: its real time never jumps their timers.
+    let dir = tempfile::tempdir().unwrap();
+    let storage = Storage::open(
+        &dir.path().join("core.sqlite"),
+        epoch(),
+        "UTC",
+        &Bus::default(),
+    )
+    .unwrap();
+    let pending = tokio::spawn(tokio::time::sleep(Duration::from_secs(3600)));
+    let start = tokio::time::Instant::now();
+
+    storage
+        .database()
+        .run(|_| {
+            std::thread::sleep(Duration::from_millis(50));
+            Ok(())
+        })
+        .await
+        .unwrap();
+
+    pending.abort();
+    assert_eq!(start.elapsed(), Duration::ZERO);
+}

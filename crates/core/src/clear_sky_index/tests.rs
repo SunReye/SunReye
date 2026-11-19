@@ -544,12 +544,6 @@ async fn it_computes_as_each_quarter_closes() {
     let (_location, receiver) = tokio::sync::watch::channel(Some(BERLIN));
     let index = plant.index();
     let grids: HashMap<(DeviceId, u32), Grid> = HashMap::new();
-    // Paused time jumps to the next timer while storage works; this keeps each jump short.
-    let ticker = tokio::spawn(async {
-        loop {
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    });
     let closed = async |q: u64| loop {
         if plant.stored().await[&q].is_some() {
             return start.elapsed();
@@ -561,7 +555,6 @@ async fn it_computes_as_each_quarter_closes() {
         () = index.run(&plant.storage, &grids, receiver, clock) => panic!("stopped"),
         seen = async { (closed(noon - QUARTER).await, closed(noon).await) } => seen,
     };
-    ticker.abort();
 
     assert!(before < Duration::from_mins(1), "{before:?}");
     // Closed at 12:15 and stored half a minute later: 14½ minutes in.
