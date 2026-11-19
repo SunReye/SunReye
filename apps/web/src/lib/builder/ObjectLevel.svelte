@@ -138,6 +138,7 @@
     refused={plan.refused?.string === index ? plan.refused.text : undefined}
     {moduleTypes}
     devices={plan.devices}
+    inputs={plan.inputs[string.device]?.length}
     onchange={(next) => {
       onchange({ ...draft, strings: draft.strings.with(index, next) });
     }}

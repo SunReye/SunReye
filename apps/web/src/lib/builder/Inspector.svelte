@@ -11,6 +11,7 @@
   import { depth, parent, type Level } from "./levels.ts";
   import { title } from "./outline.ts";
   import SaveBar from "./SaveBar.svelte";
+  import StringsLevel from "./StringsLevel.svelte";
   import type { Session } from "./session.svelte.ts";
 
   let {
@@ -81,18 +82,20 @@
         in:shift={{ entering: true }}
         out:shift={{ entering: false }}
       >
-        <Editor
-          plan={session.plan}
-          moduleTypes={session.moduleTypes}
-          types={session}
-          {level}
-          onlevel={go}
-          onchange={(draft) => {
-            session.change(draft);
-          }}
-        />
         {#if level.kind === "section" && level.section === "strings"}
+          <StringsLevel {session} />
           {@render check()}
+        {:else}
+          <Editor
+            plan={session.plan}
+            moduleTypes={session.moduleTypes}
+            types={session}
+            {level}
+            onlevel={go}
+            onchange={(draft) => {
+              session.change(draft);
+            }}
+          />
         {/if}
       </section>
     {/key}

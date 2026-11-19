@@ -59,6 +59,15 @@ export class WiringMode {
       : [];
   }
 
+  /** The modules in no string, grid by grid. */
+  get unwired(): Cell[] {
+    return (this.#session.draft.scene.grids ?? []).flatMap((grid, index) =>
+      grid.modules.flatMap((laid, module) =>
+        (laid.string ?? undefined) === undefined ? [{ grid: index, module }] : [],
+      ),
+    );
+  }
+
   select(selection: readonly Cell[]): void {
     this.#selection = selection;
     this.refused = undefined;

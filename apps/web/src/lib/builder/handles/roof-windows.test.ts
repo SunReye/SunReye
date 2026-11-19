@@ -149,6 +149,7 @@ test("a new roof window goes where the crate finds room, off the modules", () =>
     devices: [],
     cold: [],
     sized: [],
+    inputs: {},
     refused: null,
   };
 

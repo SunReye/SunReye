@@ -19,6 +19,7 @@
     refused,
     moduleTypes,
     devices,
+    inputs,
     onchange,
     onremove,
   }: {
@@ -34,6 +35,8 @@
     moduleTypes: readonly ModuleType[];
     /** The inverters it may be wired to. */
     devices: readonly Device[];
+    /** How many MPPT inputs its inverter has, where its profile lists them. */
+    inputs: number | undefined;
     onchange: (string: Readonly<StringDraft>) => void;
     onremove: () => void;
   } = $props();
@@ -50,7 +53,8 @@
       : amount(m.field_device(), 1, 999),
   );
 
-  const input = amount(m.field_input(), 1, 16);
+  // The inputs its inverter has (ADR 9); 16 where its profile lists none.
+  const input = $derived(amount(m.field_input(), 1, inputs ?? 16));
   const loss = amount(m.field_loss(), 0, 50, 0.1);
 </script>
 

@@ -145,7 +145,7 @@ export interface Checking {
 }
 
 /** The draft's warnings: its strings over their inverter's limit in the cold, and where it leaves
- * an MPPT input's window. */
+ * an MPPT input's window; with the inputs they were reckoned against. */
 export function checked(
   { pv, limits, inputs }: Checking,
   draft: Draft,
@@ -154,6 +154,7 @@ export function checked(
   return {
     cold: coldStrings(pv, draft, moduleTypes, limits),
     sized: sized(pv, draft, moduleTypes, inputs),
+    inputs,
   };
 }
 
