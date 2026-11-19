@@ -63,10 +63,13 @@ export function glowShift(
 /** Each module's glow, its colour times its strength, as the instanced mesh carries it. */
 const GLOWS = "moduleGlow";
 
+/** One colour for every glow that is set: a glide sets each module's with every frame. */
+const mixed = new Color();
+
 /** Sets module `i`'s glow among `glows`: `hex` at `strength`. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own buffer.
 function glowAt(glows: InstancedBufferAttribute, i: number, hex: number, strength: number): void {
-  const { r, g, b } = new Color(hex).multiplyScalar(strength);
+  const { r, g, b } = mixed.setHex(hex).multiplyScalar(strength);
 
   glows.setXYZ(i, r, g, b);
 }
