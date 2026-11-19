@@ -10,6 +10,7 @@
   import Inspector from "./Inspector.svelte";
   import InspectorSheet from "./InspectorSheet.svelte";
   import ModelCheck from "./ModelCheck.svelte";
+  import SelectionBar from "./SelectionBar.svelte";
   import type { Session } from "./session.svelte.ts";
 
   let {
@@ -29,17 +30,29 @@
   } = $props();
 
   const local = $derived(new Date(at));
+
+  const selecting = $derived(session.wiring.selection.length > 0);
 </script>
 
 {#if sheet}
-  <InspectorSheet bind:expanded={session.expanded}>
+  <InspectorSheet bind:expanded={session.expanded} bar={selecting ? bar : undefined}>
     <Inspector {session} {check} />
   </InspectorSheet>
 {:else}
-  <GlassCard element="aside" aria-label={m.builder_edit()} class="min-h-0">
-    <Inspector {session} {check} />
+  <GlassCard element="aside" aria-label={m.builder_edit()} class="flex min-h-0 flex-col">
+    {#if selecting}
+      {@render bar()}
+    {/if}
+    <div class="min-h-0 flex-1">
+      <Inspector {session} {check} />
+    </div>
   </GlassCard>
 {/if}
+
+<!-- In the sheet's peek on a phone, so the roof stays in view while its modules are picked. -->
+{#snippet bar()}
+  <SelectionBar wiring={session.wiring} strings={session.draft.strings} />
+{/snippet}
 
 <!-- Beside the strings it judges, at the slider's month and hour (ADR 20). -->
 {#snippet check()}

@@ -7,7 +7,6 @@
   import type { Snippet } from "svelte";
   import type { Core, Device, ModuleType } from "../api/core.ts";
   import { parkedNow } from "../cars/parked.svelte.ts";
-  import { laying, type Level } from "./levels.ts";
   import type { Moment } from "./moment.svelte.ts";
   import type { Draft } from "./modules.ts";
   import type { Geometry, Location, RoofFace } from "./pv.ts";
@@ -28,8 +27,7 @@
     onpick,
     editing,
     painting,
-    roofs = [],
-    facing,
+    onto,
     tools,
   }: {
     core: Core;
@@ -48,12 +46,11 @@
     onpick?: ((hit: Hit) => void) | undefined;
     /** The selected object's handles. */
     editing?: Editing | undefined;
-    /** The picked string, painted by a drag across modules. */
+    /** The selected face's laying, or the wiring mode's selecting. */
     painting?: Painting | undefined;
-    roofs?: readonly RoofFace[];
-    /** A phone's inspector level: from afar a roof cell is too small for a finger, so the camera
-     * flies onto the face whose modules it lays (ADR 20). */
-    facing?: Level | undefined;
+    /** The roof face a phone's camera flies onto: from afar a module is too small for a finger
+     * (ADR 20). */
+    onto?: RoofFace | undefined;
     /** Buttons at the lower right, beside the status line. */
     tools?: Snippet | undefined;
   } = $props();
@@ -83,7 +80,7 @@
       {onpick}
       {editing}
       {painting}
-      onto={facing && laying(roofs, facing)}
+      {onto}
       aspect={width / height}
       bind:trial={moment.trial}
     />

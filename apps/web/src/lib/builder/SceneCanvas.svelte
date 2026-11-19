@@ -304,17 +304,6 @@
       style:top="{top}px">{text}</output
     >
   {/if}
-  {#if brushing.refused !== undefined}
-    {@const refused = brushing.refused}
-    <p
-      role="alert"
-      class="glass-ambient pointer-events-none absolute flex h-7 translate-x-3.5 -translate-y-1/2 items-center rounded-md px-2 text-xs whitespace-nowrap text-destructive ring-1 ring-destructive/40 elevation-1"
-      style:left="{refused.left}px"
-      style:top="{refused.top}px"
-    >
-      {refused.text}
-    </p>
-  {/if}
 </div>
 
 <style>

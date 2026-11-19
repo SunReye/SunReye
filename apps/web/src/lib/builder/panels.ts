@@ -28,6 +28,8 @@ export interface Panel {
   readonly grid?: number;
   /** Its position in that grid. */
   readonly module?: number;
+  /** In the wiring mode its string's colour glows at full strength (ADR 20). */
+  readonly bright?: boolean;
 }
 
 /** The string glow: the solar colour, and how far the light it stands for shows (`daylight`). */
@@ -108,7 +110,7 @@ function framed(corners: readonly Point[]) {
   };
 }
 
-export function panel({ corners, string }: Panel): Mesh {
+export function panel({ corners, string, bright }: Panel): Mesh {
   const geometry = new BufferGeometry();
   const { position, uv } = framed(corners);
 
@@ -120,7 +122,8 @@ export function panel({ corners, string }: Panel): Mesh {
 
   material.side = DoubleSide;
   material.emissive.setHex(stringColour(string));
-  material.emissiveIntensity = IDENTITY;
+  material.emissiveIntensity =
+    bright === true && string !== null && string !== undefined ? 1 : IDENTITY;
 
   const mesh = new Mesh(geometry, material);
 

@@ -1,7 +1,7 @@
 // What laying modules and wiring strings draw over the roof (ADR 20): a selected face's roof outside
 // its setback and under its chimneys shaded, the ghost modules under the pointer in the brand colour
-// or red where they do not fit, the selected module's outline, and the picked string's wiring in its
-// tint from a start marker. Built anew for each step; it only shows, a press strikes the roof under
+// or red where they do not fit, the selected module's outline, and in the wiring mode every string's
+// wiring in its tint from a start marker with the selection over it. Built anew for each step; it only shows, a press strikes the roof under
 // it.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- three.js objects, built in place. */
 import {
@@ -34,10 +34,11 @@ export type Shown =
       readonly ghosts?: readonly Ghost[];
     }
   | {
-      readonly kind: "string";
-      readonly string: number;
-      /** Its modules' centres, along its wiring. */
-      readonly path: readonly Point[];
+      readonly kind: "wiring";
+      /** Each string's modules' centres along its wiring, by the string's position. */
+      readonly paths: readonly (readonly Point[])[];
+      /** The selected modules' footprints, in the order they were crossed. */
+      readonly chosen: readonly Footprint[];
     };
 
 /** The overlay's colours: the brand's, and the one of what does not fit. */
@@ -144,9 +145,8 @@ function ghost({ corners, fits }: Ghost, { brand, unfit }: Tints): Object3D[] {
   ];
 }
 
-/** A string's wiring: a thin line through its modules' centres and a marker at its start. */
-function wired(string: number, path: readonly Point[]): Object3D[] {
-  const colour = stringColour(string);
+/** A wiring in `colour`: a thin line through its modules' centres and a marker at its start. */
+function wired(colour: Color | number, path: readonly Point[]): Object3D[] {
   const points = path.map((point) => new Vector3(...toThree(point)));
   const [first] = points;
 
@@ -165,13 +165,31 @@ function wired(string: number, path: readonly Point[]): Object3D[] {
   return [line, start];
 }
 
+/** The mean of a footprint's corners. */
+function centre({ corners }: Footprint): Point {
+  const sum = corners.reduce((a, p) => [a[0] + p[0], a[1] + p[1], a[2] + p[2]] as const, [0, 0, 0]);
+  const count = Math.max(corners.length, 1);
+
+  return [sum[0] / count, sum[1] / count, sum[2] / count];
+}
+
+/** The wiring mode: every string's wiring in its tint, and the selection outlined in the brand
+ * colour with a line through it in its order. */
+function wiringMode(shown: Extract<Shown, { kind: "wiring" }>, { brand }: Tints): Object3D[] {
+  return [
+    ...shown.paths.flatMap((path, string) => wired(stringColour(string), path)),
+    ...shown.chosen.map(({ corners }) => outline(corners, brand, OVER)),
+    ...wired(brand, shown.chosen.map(centre)),
+  ];
+}
+
 /** The overlay's objects, over the scene. */
 export function overlay(shown: Shown, tints: Tints): Group {
   const group = new Group();
 
   const parts =
-    shown.kind === "string"
-      ? wired(shown.string, shown.path)
+    shown.kind === "wiring"
+      ? wiringMode(shown, tints)
       : [
           shaded(shown.shade),
           ...(shown.selected === undefined

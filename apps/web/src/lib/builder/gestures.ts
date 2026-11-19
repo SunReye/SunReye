@@ -1,11 +1,10 @@
-// What a press on the drawn scene starts while a face is selected or a string picked (ADR 20): on
-// free roof of the selected face it lays the ghost module or, dragged, a row; on one of its modules
-// it moves that module, or selects it with a tap; with a string picked it wires the modules the
-// pointer crosses, in that order, on any face.
+// What a press on the drawn scene starts while a face is selected or in the wiring mode (ADR 20):
+// on free roof of the selected face it lays the ghost module or, dragged, a row; on one of its
+// modules it moves that module, or selects it with a tap; in the wiring mode it selects the modules
+// the pointer crosses, in that order, on any face.
 import { haptics } from "../haptics.ts";
-import { m } from "../paraglide/messages.js";
 import type { Aim } from "./aim.ts";
-import { paint, refuses, strokeOf, type Draft } from "./modules.ts";
+import type { Draft } from "./modules.ts";
 import { move, place } from "./placing.ts";
 import { faceGrid, laying as roofOf, type Level } from "./levels.ts";
 import type {
@@ -19,7 +18,7 @@ import type {
   Scene,
   Sizes,
 } from "./pv.ts";
-import { wiring as pathOf } from "./wiring.ts";
+import { sameCell, type Cell } from "./selecting.ts";
 import type { Hit } from "./strike.ts";
 
 export interface Steps {
@@ -50,16 +49,19 @@ export interface Laying extends Steps {
   readonly onselect: (module: number) => void;
 }
 
-/** The picked string, which a drag across modules wires. */
-export interface Stringing extends Steps {
-  readonly kind: "string";
-  /** By position in the draft's strings. */
-  readonly string: number;
-  /** Its modules' centres along its wiring. */
-  readonly path: readonly Point[];
+/** The wiring mode: every string's wiring is drawn and a drag across modules selects them. */
+export interface Selecting {
+  readonly kind: "wiring";
+  /** Each string's modules' centres along its wiring, by the string's position. */
+  readonly paths: readonly (readonly Point[])[];
+  /** The selected modules, in the order they were crossed. */
+  readonly selection: readonly Cell[];
+  /** Their footprints, in that order. */
+  readonly chosen: readonly Footprint[];
+  readonly onselect: (selection: readonly Cell[]) => void;
 }
 
-export type Painting = Laying | Stringing;
+export type Painting = Laying | Selecting;
 
 /** A press that became a gesture: where its moves and its end go. */
 export interface Press {
@@ -72,12 +74,8 @@ export interface Press {
 
 /** What a gesture shows besides the scene. */
 export interface Showing {
-  /** The latest painting: each step of a stroke paints onto the last. */
-  readonly painting: () => Painting | undefined;
   /** The modules not laid yet, under the pointer. */
   readonly onghost: (ghosts: readonly Ghost[]) => void;
-  /** Why a module refused the paint, beside the pointer; none clears it. */
-  readonly onrefuse: (text?: string, at?: readonly [number, number]) => void;
 }
 
 /** Puts the scene back as it was, unrecorded. */
@@ -187,51 +185,35 @@ function moduleUnder(hit: Hit | null): { readonly grid: number; readonly module:
     : null;
 }
 
-/** What a press on a module starts while a string is picked: the modules the pointer crosses are
- * wired into it, or out of it where the press began on one of its own. */
-export function wire(wiring: Stringing, aim: Aim, show: Showing): Press | null {
+/** What a press on a module starts in the wiring mode: it and the modules the pointer crosses
+ * join the selection in that order; a tap on a selected one takes it out. */
+export function select(mode: Selecting, aim: Aim): Press | null {
   const first = moduleUnder(aim.hit());
 
   if (first === null) return null;
 
-  const stroke = strokeOf(wiring.draft.scene, first.grid, first.module, {
-    kind: "paint",
-    string: wiring.string,
-  });
+  const before = mode.selection;
+  const held = before.some((cell) => sameCell(cell, first));
+  let now = held ? before : [...before, first];
 
-  let last = "";
-
-  const cross = (at: Aim): void => {
-    const under = moduleUnder(at.hit());
-    const now = show.painting() ?? wiring;
-
-    if (under === null || `${under.grid}.${under.module}` === last) return;
-
-    last = `${under.grid}.${under.module}`;
-
-    if (refuses(now.draft, under.grid, stroke)) {
-      haptics.error();
-      show.onrefuse(
-        m.builder_refused_module_type({ name: wiring.draft.strings[wiring.string]?.name ?? "" }),
-        at.at,
-      );
-
-      return;
-    }
-
-    haptics.selection();
-    now.ondrag(paint(now.draft.scene, under.grid, under.module, stroke));
-  };
-
-  cross(aim);
+  haptics.selection();
+  mode.onselect(now);
 
   return {
-    move: cross,
-    drop: () => {
-      (show.painting() ?? wiring).ondrop();
+    move: (at) => {
+      const under = moduleUnder(at.hit());
+
+      if (under === null || now.some((cell) => sameCell(cell, under))) return;
+
+      now = [...now, under];
+      haptics.selection();
+      mode.onselect(now);
+    },
+    drop: (tap) => {
+      if (tap && held) mode.onselect(before.filter((cell) => !sameCell(cell, first)));
     },
     abort: () => {
-      putBack(wiring);
+      mode.onselect(before);
     },
   };
 }
@@ -245,17 +227,11 @@ export interface Brushed extends Steps {
   readonly go: (level: Level) => void;
 }
 
-/** The selected face's grid as the crate lays modules on it, or the picked string; none for any
- * other level, or for a face without a grid. */
-export function paintingOf(level: Level, brushed: Brushed): Painting | undefined {
+/** The selected face's grid as the crate lays modules on it; none for any other level, or for a
+ * face without a grid. */
+export function paintingOf(level: Level, brushed: Brushed): Laying | undefined {
   const { draft, laid, pv, sizes, ondrag, ondrop, go } = brushed;
   const steps = { draft, ondrag, ondrop };
-
-  if (level.kind === "string") {
-    const path = pathOf(draft.scene, laid.grids, level.index);
-
-    return { ...steps, kind: "string", string: level.index, path };
-  }
 
   if (level.kind !== "face" && level.kind !== "module") return undefined;
 
