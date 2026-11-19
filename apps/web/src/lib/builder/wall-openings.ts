@@ -62,23 +62,28 @@ function placed(pv: Pick<Pv, "refit">, scene: Scene, alongs: readonly number[]):
   return null;
 }
 
-/** The scene with a copy of opening `index` last: in the first free place to its right on the same
- * wall, else the wall's first free place, in 10 cm steps; null where the wall has no room. */
-export function duplicate(pv: Pick<Pv, "refit">, scene: Scene, index: number): Scene | null {
-  const openings = scene.openings ?? [];
-  const original = openings[index];
-
-  if (original === undefined) return null;
+/** The scene with a copy of `original` last: in the first free place to the right of where it
+ * stands on its wall, else the wall's first free place, in 10 cm steps; null where the wall has no
+ * room, or its block is gone. */
+export function pasted(pv: Pick<Pv, "refit">, scene: Scene, original: Opening): Scene | null {
+  if (scene.blocks[original.block] === undefined) return null;
 
   const from = snap(original.along + original.width + BESIDE, STEP);
   // A wall is no longer than a block may be.
   const steps = Array.from({ length: LONGEST / STEP }, (_, i) => snap(i * STEP, STEP));
-  const copied = { ...scene, openings: [...openings, original] };
+  const copied = { ...scene, openings: [...(scene.openings ?? []), original] };
 
   return placed(pv, copied, [
     ...steps.filter((at) => at >= from),
     ...steps.filter((at) => at < from),
   ]);
+}
+
+/** The scene with a copy of opening `index` last, placed as a pasted one; null without room. */
+export function duplicate(pv: Pick<Pv, "refit">, scene: Scene, index: number): Scene | null {
+  const original = scene.openings?.[index];
+
+  return original === undefined ? null : pasted(pv, scene, original);
 }
 
 const lowered = (opening: Opening): Opening => ({ ...opening, block: opening.block - 1 });
