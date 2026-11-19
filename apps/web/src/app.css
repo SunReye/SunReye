@@ -150,6 +150,8 @@
    ambient glass is thin enough to show them; Backdrop.svelte.test.ts holds its text at AA. */
 :root {
   --ambient-opacity: 64%;
+  /* A canvas chip (ADR 21): at 90 % its quietest text keeps AA over black and over white. */
+  --chip-opacity: 90%;
   /* The energy hues, pale: on a light page a light must tint without darkening the glass. */
   --light-pv: oklch(0.9 0.1 67 / 50%);
   --light-battery: oklch(0.9 0.1 157 / 42%);
@@ -227,12 +229,14 @@
 @media (prefers-reduced-transparency: reduce) {
   :root {
     --ambient-opacity: 100%;
+    --chip-opacity: 100%;
   }
 }
 
 /* The low-power switch (ADR 11) sets `data-low-power` on <html>: every glass surface goes opaque. */
 :root[data-low-power] {
   --ambient-opacity: 100%;
+  --chip-opacity: 100%;
   --glass-opacity: 100%;
   --glass-muted-mix: 0%;
   --glass-destructive-mix: 0%;
@@ -342,13 +346,21 @@
   }
 }
 
-/* Ambient glass (ADR 21): rail, bottom bar, dashboard cards, 3D chips; ~64 % light / 58 % dark with the strong blur.
+/* Ambient glass (ADR 21): rail, bottom bar, dashboard cards; ~64 % light / 58 % dark with the strong blur.
    Only the colour and blur: shape, ring and elevation come from the dy-ui component it sits on. */
 @utility glass-ambient {
   background-color: color-mix(in oklab, var(--card) var(--ambient-opacity), transparent) !important;
   background-image: var(--noise);
   -webkit-backdrop-filter: var(--glass-filter-strong) saturate(140%);
   backdrop-filter: var(--glass-filter-strong) saturate(140%);
+}
+
+/* A canvas chip (ADR 21): what floats over the 3D canvas, a live label or the camera lock. No
+   backdrop blur: the browser would make it again for every frame the canvas draws. The card
+   colour, nearly opaque instead; shape, ring and elevation come from what it sits on. */
+@utility canvas-chip {
+  background-color: color-mix(in oklab, var(--card) var(--chip-opacity), transparent) !important;
+  background-image: var(--noise);
 }
 
 /* One section's rows on a drill-in page (ADR 21): on the phone's level screens an inset glass card
@@ -438,7 +450,7 @@
   animation-timing-function: ease-out;
 }
 
-/* On ambient glass the registry's muted pressed box disappears; lift it a step. */
-:is(.glass-ambient, .glass-ambient *)[data-slot="toggle-group"]::before {
+/* On ambient glass and a canvas chip the registry's muted pressed box disappears; lift it a step. */
+:is(.glass-ambient, .glass-ambient *, .canvas-chip)[data-slot="toggle-group"]::before {
   background-color: color-mix(in oklab, var(--foreground) 13%, transparent);
 }

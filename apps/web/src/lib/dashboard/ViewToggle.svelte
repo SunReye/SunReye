@@ -35,7 +35,7 @@
     size="sm"
     spacing={1}
     bind:value={() => shows, set}
-    class="glass-ambient rounded-md p-0.5 ring-1 ring-border/60 elevation-1"
+    class="canvas-chip rounded-md p-0.5 ring-1 ring-border/60 elevation-1"
     aria-label={m.dash_view()}
   >
     <ToggleGroup.Item value="3d" class="px-3 text-xs">3D</ToggleGroup.Item>

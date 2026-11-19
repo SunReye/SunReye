@@ -301,9 +301,9 @@
   <PerfOverlay />
   {#if handled.label !== undefined}
     {@const { text, left, top } = handled.label}
-    <!-- The same ambient glass chip as the live scene's labels; it never takes the pointer. -->
+    <!-- The same canvas chip as the live scene's labels; it never takes the pointer. -->
     <output
-      class="glass-ambient pointer-events-none absolute flex h-7 translate-x-3.5 -translate-y-1/2 items-center rounded-md px-2 text-xs whitespace-nowrap tabular-nums ring-1 ring-border/60 elevation-1"
+      class="canvas-chip pointer-events-none absolute flex h-7 translate-x-3.5 -translate-y-1/2 items-center rounded-md px-2 text-xs whitespace-nowrap tabular-nums ring-1 ring-border/60 elevation-1"
       style:left="{left}px"
       style:top="{top}px">{text}</output
     >

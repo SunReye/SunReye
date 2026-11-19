@@ -84,7 +84,7 @@
 
 {#if studio !== undefined}
   <div
-    class="pointer-events-none absolute top-14 left-2 z-20 flex max-w-[calc(100%-1rem)] flex-col gap-1.5 rounded-md bg-card/90 p-2 font-mono text-[10px] leading-tight text-card-foreground ring-1 ring-border/60"
+    class="pointer-events-none absolute top-14 left-2 z-20 flex max-w-[calc(100%-1rem)] flex-col gap-1.5 rounded-md canvas-chip p-2 font-mono text-[10px] leading-tight text-card-foreground ring-1 ring-border/60"
   >
     <output aria-label={m.perf_readout()} class="whitespace-pre-wrap">{lines.join("\n")}</output>
     <div class="pointer-events-auto flex flex-wrap items-center gap-1">
