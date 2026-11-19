@@ -13,6 +13,7 @@ import {
 import { toThree } from "../builder/scene.ts";
 import { aim, backdrop, sky } from "./backdrop.ts";
 import type { Daylight, Theme } from "./light.ts";
+import { skyStep } from "./sky-step.ts";
 
 export class Environment {
   /** The sky model alone: what the environment is made from, and compiled ahead. */
@@ -72,15 +73,11 @@ export class Environment {
 
   /**
    * The sky model at the sun, as the scene's environment. Made again only once the sun has moved
-   * a degree, the clouds have changed or the theme has: a dragged time slider moves it by far
-   * less per step.
+   * a step of its sky (sky-step.ts), the clouds have changed or the theme has: a minute moves
+   * the sun by far less. Its strength follows the light at once.
    */
   #make(day: Daylight, { dark, environment }: Theme): void {
-    const key = JSON.stringify([
-      day.sun.map((v) => Math.round(v * 60)),
-      dark,
-      Math.round(day.clouds.coverage * 20),
-    ]);
+    const key = JSON.stringify([skyStep(day.sun), dark, Math.round(day.clouds.coverage * 20)]);
 
     this.#lit.environmentIntensity = day.environment * environment;
 
