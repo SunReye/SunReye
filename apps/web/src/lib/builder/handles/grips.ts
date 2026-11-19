@@ -10,11 +10,21 @@ export type { Target } from "./body.ts";
 
 export type { Ray, Triple } from "./frame.ts";
 
-export { drag, type Dragged, type Grab } from "./dragging.ts";
+export { drag, turned, type Dragged, type Grab } from "./dragging.ts";
 
 /** What a handle drags: a wall arrow's width, depth or radius, an opening's height, the ridge's
- * pitch, the ring's turn, the footprint's place, or a fence's point. */
-export type Grip = "width" | "depth" | "height" | "radius" | "pitch" | "turn" | "move" | "point";
+ * pitch, the ring's turn, the footprint's place, a block's knob that carries it, or a fence's
+ * point. */
+export type Grip =
+  | "width"
+  | "depth"
+  | "height"
+  | "radius"
+  | "pitch"
+  | "turn"
+  | "move"
+  | "carry"
+  | "point";
 
 export interface Handle {
   readonly grip: Grip;
@@ -32,6 +42,11 @@ export interface Handle {
 const ARROW = 0.4;
 const RING = 1;
 
+/** Metres a rectangle's arrows stand off its walls, and at most above the ground: at a wall's
+ * foot, so its face stays free for a tap and a drag (ADR 20, mistaken drags). */
+const OFF = 0.8;
+const LOW = 0.3;
+
 function rectHandles(north: number, rect: Rect, roof: ReturnType<typeof ridge>): Handle[] {
   const { width, depth, height } = rect;
   const at = (u: number, y: number, w: number): Triple => onWorld(north, rect, u, y, w);
@@ -42,9 +57,11 @@ function rectHandles(north: number, rect: Rect, roof: ReturnType<typeof ridge>):
     return world(north, [x, 0, z]);
   };
 
+  const low = Math.min(height / 2, LOW);
+
   const sides: Handle[] = [
-    { grip: "width", at: at(width + ARROW, height / 2, depth / 2), axis: outward(1, 0) },
-    { grip: "depth", at: at(width / 2, height / 2, depth + ARROW), axis: outward(0, 1) },
+    { grip: "width", at: at(width + OFF, low, depth / 2), axis: outward(1, 0) },
+    { grip: "depth", at: at(width / 2, low, depth + OFF), axis: outward(0, 1) },
   ];
 
   const pitch: Handle[] =

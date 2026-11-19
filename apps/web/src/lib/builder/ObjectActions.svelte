@@ -1,45 +1,24 @@
-<!-- The context toolbar for a selected object (ADR 20): an opening carries its own
-  actions; every object is edited in the inspector, pulled up at it, and removed. -->
+<!-- The context toolbar for a selected object (ADR 20): its tools, or in the turn mode its angle
+  and the way out. -->
 <script lang="ts">
-  import Pencil from "@lucide/svelte/icons/pencil";
-  import Trash2 from "@lucide/svelte/icons/trash-2";
-  import { m } from "../paraglide/messages.js";
-  import { removeAt } from "./context-actions.ts";
-  import OpeningActions from "./OpeningActions.svelte";
+  import { turnAt } from "./context-actions.ts";
+  import ObjectTools from "./ObjectTools.svelte";
   import type { Session } from "./session.svelte.ts";
-  import ToolButton from "./ToolButton.svelte";
+  import TurnActions from "./TurnActions.svelte";
 
   let { session, onrefuse }: { session: Session; onrefuse: (reason?: string) => void } = $props();
 
-  const opening = $derived(
-    session.level.kind === "opening"
-      ? session.draft.scene.openings?.[session.level.index]
-      : undefined,
-  );
-
-  // A scene keeps at least one block.
-  const removable = $derived(
-    session.level.kind !== "block" || session.draft.scene.blocks.length > 1,
-  );
+  /** The object's turn, where it has a ring. */
+  const angle = $derived(turnAt(session));
 </script>
 
-{#if opening !== undefined}
-  <OpeningActions {session} {opening} {onrefuse} />
+{#if angle !== undefined && session.picking.turning}
+  <TurnActions
+    {angle}
+    ondone={() => {
+      session.picking.turning = false;
+    }}
+  />
 {:else}
-  <ToolButton
-    icon={Pencil}
-    label={m.builder_edit_object()}
-    onclick={() => {
-      session.expanded = true;
-    }}
-  />
-{/if}
-{#if removable}
-  <ToolButton
-    icon={Trash2}
-    label={m.builder_remove()}
-    onclick={() => {
-      removeAt(session);
-    }}
-  />
+  <ObjectTools {session} turnable={angle !== undefined} {onrefuse} />
 {/if}

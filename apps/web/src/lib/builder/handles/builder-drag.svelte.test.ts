@@ -1,7 +1,7 @@
 import "../../../app.css";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { cdp } from "vitest/browser";
+import { cdp, page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect } from "../../api/core.ts";
 import Builder from "../Builder.svelte";
@@ -128,10 +128,10 @@ async function mouseDrag(start: Scene, from: Triple, to: Triple): Promise<void> 
   await cdp().send("Input.dispatchMouseEvent", { ...mouse, type: "mouseReleased", x: ex, y: ey });
 }
 
-test("dragging a car place moves it in one undo step; its ring turns it", SLOW, async () => {
+/** The builder seen from above with the car place picked; the inspector's undo button. */
+async function placePicked() {
   const draws = vi.spyOn(EffectComposer.prototype, "render");
   const start = parked();
-  const place: Target = { kind: "place", index: 0 };
 
   localStorage.setItem("sunreye.builder.view", JSON.stringify(ABOVE));
 
@@ -145,10 +145,16 @@ test("dragging a car place moves it in one undo step; its ring turns it", SLOW, 
 
   await drill("Geräte", "Stellplatz 1");
   await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
-  await mouseDrag(start.scene, [-3.75, 0, 3.5], [-3.75, 0, 5.5]);
+
+  return { scene: start.scene, undo: inspector().getByRole("button", { name: "Rückgängig" }) };
+}
+
+test("dragging a car place moves it in one undo step", SLOW, async () => {
+  const { scene, undo } = await placePicked();
+
+  await mouseDrag(scene, [-3.75, 0, 3.5], [-3.75, 0, 5.5]);
 
   const z = inspector().getByRole("button", { name: starts("Position z (m)") });
-  const undo = inspector().getByRole("button", { name: "Rückgängig" });
 
   await expect.element(z.getByText(/^[23](,\d)?$/u)).toBeVisible();
 
@@ -156,18 +162,32 @@ test("dragging a car place moves it in one undo step; its ring turns it", SLOW, 
 
   await expect.element(z.getByText(/^1$/u)).toBeVisible();
   await expect.element(undo).toBeDisabled();
+});
 
-  const ring = handles(start.scene, place).find(({ grip }) => grip === "turn");
+test("a car place's ring shows after Drehen and turns it", SLOW, async () => {
+  const { scene, undo } = await placePicked();
+  const place: Target = { kind: "place", index: 0 };
+  const ring = handles(scene, place).find(({ grip }) => grip === "turn");
 
   if (ring?.radius === undefined) throw new Error("no ring");
 
   const [cx, , cz] = ring.at;
-
-  await mouseDrag(start.scene, [cx + ring.radius, 0, cz], [cx, 0, cz + ring.radius]);
-
   const rotation = inspector().getByRole("button", { name: starts("Drehung (°)") });
+  const tools = page.getByRole("toolbar", { name: "Aktionen" });
+
+  await tools.getByRole("button", { name: "Drehen" }).click();
+  await mouseDrag(scene, [cx + ring.radius, 0, cz], [cx, 0, cz + ring.radius]);
 
   await expect.element(rotation.getByText(/^90$/u)).toBeVisible();
+  await expect.element(tools.getByRole("status")).toHaveTextContent("Drehung 90°");
+
+  await tools.getByRole("button", { name: "Fertig" }).click();
+  await expect.element(tools.getByRole("button", { name: "Drehen" })).toBeVisible();
+
+  // The turn is the one step there is to undo.
+  await undo.click();
+  await expect.element(rotation.getByText(/^0$/u)).toBeVisible();
+  await expect.element(undo).toBeDisabled();
 });
 
 /** The house with a chimney on its south face, 3 m across and 1.5 m up it. */

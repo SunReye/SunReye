@@ -24,6 +24,7 @@ import {
   type Camera,
 } from "three";
 import type { Handle } from "./grips.ts";
+import { CLEAR, hidden, reachOf } from "./sight.ts";
 
 /** Metres: big enough to read on a house, small enough not to hide its walls. */
 const CONE = { radius: 0.22, length: 0.5 };
@@ -47,7 +48,6 @@ function seen(colour: Color): MeshBasicMaterial {
   return new MeshBasicMaterial({
     color: colour,
     transparent: true,
-    depthTest: false,
     depthWrite: false,
     toneMapped: false,
   });
@@ -117,12 +117,34 @@ function outline(handle: Handle, colour: Color): Object3D[] {
   ];
 }
 
+/** A block's knob: a ball with an arrowhead to each side along the ground, the sign for moving. */
+function cross(colour: Color): Object3D[] {
+  const heads = [0, 1, 2, 3].map((quarter) => {
+    const head = new Mesh(new ConeGeometry(CONE.radius, CONE.length, 16), seen(colour));
+    const angle = (quarter * Math.PI) / 2;
+    const out = new Vector3(Math.cos(angle), 0, Math.sin(angle));
+
+    head.position.copy(out).multiplyScalar(KNOB + CONE.length / 2);
+    head.quaternion.setFromUnitVectors(UP, out);
+
+    return head;
+  });
+
+  return [
+    new Mesh(new SphereGeometry(KNOB * 0.6, 16, 12), seen(colour)),
+    ...heads,
+    new Mesh(new SphereGeometry(REACH, 12, 8), unseen()),
+  ];
+}
+
 function parts(handle: Handle, colour: Color): Object3D[] {
   if (handle.grip === "turn") return ring(handle, colour);
 
   if (handle.grip === "move") return outline(handle, colour);
 
-  if (handle.grip !== "pitch" && handle.grip !== "point") return arrow(handle, colour);
+  if (handle.axis !== undefined) return arrow(handle, colour);
+
+  if (handle.grip === "carry") return cross(colour);
 
   return [
     new Mesh(new SphereGeometry(KNOB, 20, 14), seen(colour)),
@@ -196,20 +218,28 @@ function reach(
   return nearest;
 }
 
+/** Whether `scene` hides the handle `group`; a ring lies round its object and is never wholly
+ * hidden. */
+const unsighted = (group: Object3D, camera: Camera, scene: Object3D | undefined): boolean =>
+  scene !== undefined && HANDLES.get(group)?.grip !== "turn" && hidden(group, camera, scene);
+
 /** The handle the ray from `camera` through `at` (−1 to 1, y up) strikes; else the nearest drawn
- * within half a fingertip on `canvas`; null for none. */
+ * within half a fingertip on `canvas`; null for none. One that `scene` hides is passed over. */
 export function handleOf(
   handles: Group,
   camera: Camera,
   at: readonly [number, number],
   canvas: Readonly<Pick<HTMLCanvasElement, "clientWidth" | "clientHeight">>,
+  scene?: Object3D,
 ): Handle | null {
   const ray = new Raycaster();
 
   ray.setFromCamera(new Vector2(...at), camera);
 
   const meshes = handles.children.filter((group) => HANDLES.get(group)?.grip !== "move");
-  const [first] = ray.intersectObjects(meshes, true);
+  // Under the pointer, and not behind what the scene shows there.
+  const far = reachOf(ray, scene) + CLEAR;
+  const first = ray.intersectObjects(meshes, true).find(({ distance }) => distance <= far);
   let part = first?.object ?? null;
 
   while (part !== null && part.parent !== handles) part = part.parent;
@@ -217,6 +247,7 @@ export function handleOf(
   if (part !== null) return HANDLES.get(part) ?? null;
 
   const near = meshes
+    .filter((group) => !unsighted(group, camera, scene))
     .map((group) => ({ group, pixels: reach(group, camera, at, canvas) }))
     .filter(({ pixels }) => pixels <= TOUCH)
     .toSorted((a, b) => a.pixels - b.pixels)[0];
