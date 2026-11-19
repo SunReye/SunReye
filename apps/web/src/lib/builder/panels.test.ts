@@ -152,28 +152,23 @@ test("each module lies where its corners do, 3.5 cm proud of its roof", () => {
 test("a module's cells run their long side along its long side, from its first corner", () => {
   const group = buildScene(house, panels);
 
-  for (const panel of panels) {
-    const [a, b, , d] = panel.corners;
+  // A fifth of the way to each module's second corner and a tenth to its last: u across the
+  // short side, v along the long one.
+  const cells = panels.map((panel) => {
     const { uv } = under(group, within(panel, 0.2, 0.1));
 
-    if (a === undefined || b === undefined || d === undefined) throw new TypeError("no corners");
+    return [uv?.x.toFixed(3), uv?.y.toFixed(3)];
+  });
 
-    const [toB, toD] = [point(b).sub(point(a)), point(d).sub(point(a))];
-    const long = toB.length() > toD.length();
-    const across = long ? 0.1 : 0.2;
-    // Corners wound clockwise seen from the sky: the cells are laid mirrored across the short
-    // side, as a body is never mirrored itself (it would be lit from below).
-    const mirrored = (long ? toD.cross(toB) : toB.cross(toD)).dot(OUT) < 0;
-
-    // u across the short side and v along the long one, from the first corner.
-    expect(uv?.x).toBeCloseTo(mirrored ? 1 - across : across, 5);
-    expect(uv?.y).toBeCloseTo(long ? 0.2 : 0.1, 5);
-  }
-
-  // Both ways occur among the fixtures.
-  expect(
-    new Set(panels.map((panel) => under(group, within(panel, 0.2, 0.1)).uv?.x.toFixed(1))).size,
-  ).toBe(4);
+  expect(cells).toEqual([
+    // Portrait, its corners wound clockwise seen from the sky: the cells are laid mirrored
+    // across the short side, as a body is never mirrored itself (it would be lit from below).
+    ["0.800", "0.100"],
+    ["0.200", "0.100"],
+    // Landscape, wound counterclockwise, then clockwise.
+    ["0.100", "0.200"],
+    ["0.900", "0.200"],
+  ]);
 });
 
 test("a module's glass faces the sky, wound as it faces: it is lit from above, not from below", () => {
