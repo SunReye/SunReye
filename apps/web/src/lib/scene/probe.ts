@@ -61,7 +61,9 @@ export class Probe {
     // Counted over a whole frame of passes, each a render of its own.
     renderer.info.autoReset = false;
 
-    const bind = renderer.setRenderTarget.bind(renderer);
+    // three.js's own, a property of the renderer: put back as it was.
+    const own = renderer.setRenderTarget;
+    const bind = own.bind(renderer);
 
     // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own call.
     renderer.setRenderTarget = (...to) => {
@@ -70,7 +72,7 @@ export class Probe {
     };
 
     this.#restore = () => {
-      renderer.setRenderTarget = bind;
+      renderer.setRenderTarget = own;
       renderer.info.autoReset = true;
     };
   }

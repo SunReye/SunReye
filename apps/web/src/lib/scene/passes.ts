@@ -149,6 +149,12 @@ export class Passes {
     return this.#probe;
   }
 
+  /** Counts no more: the renderer is as it was before `measure`. */
+  unmeasure(): void {
+    this.#probe?.dispose();
+    this.#probe = undefined;
+  }
+
   /** Draws once with every pass, the glass too: each makes and first uses its programs. */
   warm(): void {
     const { enabled } = this.#lens;
@@ -184,6 +190,6 @@ export class Passes {
     this.#occlusion.dispose();
     this.#lens.dispose();
     this.#refiner.dispose();
-    this.#probe?.dispose();
+    this.unmeasure();
   }
 }

@@ -4,13 +4,13 @@
   lighter drawing on this page. No blur: it lies over the canvas it measures.
 -->
 <script lang="ts">
+  import { untrack } from "svelte";
   import { Toggle } from "#lib/components/ui/toggle/index.js";
   import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
-  import { read } from "../kept.ts";
   import { motion } from "../motion/tier.svelte.ts";
   import { m } from "../paraglide/messages.js";
   import { readout } from "./perf-lines.ts";
-  import { perf } from "./perf.svelte.ts";
+  import { perf, strains } from "./perf.svelte.ts";
   import { quality } from "./quality.svelte.ts";
   import { gpuOf } from "./quality.ts";
 
@@ -48,20 +48,19 @@
         tier: motion.tier,
         looping: motion.looping,
         renderer: gpuOf(measured.renderer.getContext()),
-        strains: {
-          drawing: read("sunreye.3d-strain"),
-          motion: read("sunreye.motion-strain"),
-          at: read("sunreye.strained-at"),
-        },
+        strains: strains(),
       });
     };
 
-    sample();
+    // Read now, not followed: a change of the quality or the tier is the next reading's, and
+    // must not count the studio anew.
+    untrack(sample);
 
     const timer = setInterval(sample, EVERY);
 
     return () => {
       clearInterval(timer);
+      measured.unmeasure();
     };
   });
 

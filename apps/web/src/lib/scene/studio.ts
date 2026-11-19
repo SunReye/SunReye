@@ -192,6 +192,11 @@ export class Studio {
     return this.#passes.measure(() => this.#sun.shadow.map, clock);
   }
 
+  /** Counts no more, and draws as before `measure`. */
+  unmeasure(): void {
+    this.#passes.unmeasure();
+  }
+
   /** Ultra's burst: one more frame into the settled picture; true while more are due. */
   refine(): boolean {
     return this.#passes.refine();

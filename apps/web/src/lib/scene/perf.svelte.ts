@@ -1,6 +1,9 @@
 // The scene's readout as state (ADR 21 "Measuring"): whether the URL asked for it, the studio it
 // tells of, and what its switches try in place of this browser's 3D quality. Nothing is kept.
-import { asked } from "./perf-lines.ts";
+import { read } from "../kept.ts";
+import { MOTION_STRAIN, STRAINED_AT } from "../motion/tier.ts";
+import { asked, type Facts } from "./perf-lines.ts";
+import { STEPS } from "./quality.svelte.ts";
 import type { Look } from "./quality.ts";
 import type { Studio } from "./studio.ts";
 
@@ -14,10 +17,6 @@ class Perf {
   /** Whether the readout shows: asked for once, it stays for the page's life. */
   get on(): boolean {
     return this.#on;
-  }
-
-  set on(next: boolean) {
-    this.#on = next;
   }
 
   /** Reads the URL again: a route that asks for the readout turns it on. */
@@ -47,3 +46,8 @@ class Perf {
 }
 
 export const perf = new Perf();
+
+/** What this browser keeps of its strains, as kept. */
+export function strains(): Facts["strains"] {
+  return { drawing: read(STEPS), motion: read(MOTION_STRAIN), at: read(STRAINED_AT) };
+}
