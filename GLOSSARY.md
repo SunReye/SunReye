@@ -260,6 +260,10 @@ _Avoid_: Marked modules, lasso
 Wiring a roof face's unwired modules into new strings in a serpentine, as few as the inverter's limits allow; previewed before it is kept. German UI: Automatisch verdrahten.
 _Avoid_: Auto-layout, auto-wiring, string wizard
 
+**Context toolbar**:
+The builder's small toolbar on the canvas beside what is selected, with that selection's commonest actions.
+_Avoid_: Floating menu, action bar, assign bar
+
 **MPPT window**:
 The voltages an MPPT input tracks between, with the start voltage it wakes at and its maximum input current: the input's limits from the inverter's datasheet.
 _Avoid_: MPP range, DC window
