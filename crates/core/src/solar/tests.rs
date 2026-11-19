@@ -2,6 +2,7 @@
 //! owner's layout (`crates/pv/fixtures/estimate.csv`, the 2026-06-21 11:00 UTC row).
 
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -610,4 +611,56 @@ async fn it_issues_on_start_after_each_weather_issue_and_after_a_layout_change()
         () = forecast.run((&plant.storage, &learned), berlin, issues, ticking()) => panic!("it stopped"),
         () = check => {}
     }
+}
+
+/// Counts each turn the I/O thread gives it, forever.
+async fn count(turns: Arc<AtomicU64>) {
+    loop {
+        turns.fetch_add(1, Ordering::Relaxed);
+        tokio::task::yield_now().await;
+    }
+}
+
+#[tokio::test]
+async fn the_model_leaves_the_io_thread_free_while_it_runs() {
+    // ADR 2: on the one I/O thread a model run would stall polling and every request.
+    let plant = plant(&[NOON]).await;
+    plant
+        .layouts
+        .change(
+            at(0),
+            vec![
+                plant.string(None, 1, 90.0, 1),
+                plant.string(None, 2, 90.0, 1),
+            ],
+            Some(walled_house(plant.module_type)),
+            at(0),
+        )
+        .await
+        .unwrap();
+    let versions = plant.layouts.versions().await.unwrap();
+    let noon = sunreye_pv::Weather {
+        unix: i64::try_from(NOON).unwrap(),
+        ghi: 880.0,
+        dni: 800.0,
+        dhi: 150.0,
+        temperature: 25.0,
+        wind: Some(3.0),
+    };
+    let weather = (0..200).map(|_| (at(NOON), noon)).collect();
+    let turns = Arc::new(AtomicU64::new(0));
+    let spinning = tokio::spawn(count(Arc::clone(&turns)));
+
+    let modelled = super::estimates(&plant.layouts, &versions, BERLIN, weather)
+        .await
+        .unwrap();
+    spinning.abort();
+
+    assert_eq!(modelled.len(), 200);
+    let ran = turns.load(Ordering::Relaxed);
+    // Inline, the model let the other task run 17 times; off the thread, hundreds of thousands.
+    assert!(
+        ran > 1_000,
+        "the I/O thread ran {ran} other polls during the model"
+    );
 }

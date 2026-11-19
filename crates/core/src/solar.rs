@@ -202,16 +202,29 @@ pub(crate) async fn estimates(
         .into_iter()
         .map(|m| (m.id, m.datasheet.model()))
         .collect();
-    Ok(weather
-        .into_iter()
-        .map(|(target, sky)| {
-            let values = in_force(versions, target).map_or_else(HashMap::new, |version| {
-                let model = Model::new(version, &module_types, layouts.inverters(), location);
-                model.values(&pv::estimate(&model.layout, &sky))
-            });
-            (target, values)
+    let versions = versions.to_vec();
+    let inverters = layouts.inverters().clone();
+    // Seconds of work on a slow device: on tokio's blocking pool, the I/O thread stays free (ADR 2).
+    tokio::task::spawn_blocking(move || {
+        weather
+            .into_iter()
+            .map(|(target, sky)| {
+                let values = in_force(&versions, target).map_or_else(HashMap::new, |version| {
+                    let model = Model::new(version, &module_types, &inverters, location);
+                    model.values(&pv::estimate(&model.layout, &sky))
+                });
+                (target, values)
+            })
+            .collect()
+    })
+    .await
+    // A panic in the model stays one, as it would have been on the I/O thread; only a runtime
+    // shutting down cancels it.
+    .map_err(|e| {
+        e.try_into_panic().map_or(storage::Error::Stopped, |panic| {
+            std::panic::resume_unwind(panic)
         })
-        .collect())
+    })
 }
 
 /// A string's inverter device and MPPT input.
