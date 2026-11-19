@@ -285,3 +285,14 @@ test("on a pitched roof the light lies on the slope", () => {
 test("a roof above the window, such as its own eave, takes none of its light", () => {
   expect(patch(litWindow(0.9), [lowerRoof(3, 1)])?.top).toBeLessThan(0.1);
 });
+
+/** Which of `made` glow at night with the night light `light` chosen for each. */
+const chosen = (light: "on" | "off", made: readonly Fitted[] = street) =>
+  glowing(drawnAtNight(made.map((item) => ({ ...item, light }))));
+
+test("a chosen night light overrules the rule: lit every night, or never", () => {
+  expect(chosen("on").every(Boolean)).toBe(true);
+  expect(chosen("off").some(Boolean)).toBe(false);
+  // A front door's light is on by the rule; chosen dark, it stays dark.
+  expect(chosen("off", [fitted("frontDoor", 0)])).toEqual([false]);
+});

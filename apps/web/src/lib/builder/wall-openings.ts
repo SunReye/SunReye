@@ -19,6 +19,9 @@ export const USUAL: Readonly<
 /** Metres: the handles' step. */
 const STEP = 0.1;
 
+/** Metres: the longest wall the inspector lets a block have. */
+const LONGEST = 60;
+
 /** The scene with opening `index` changed, kept on its wall, or why the change cannot be. */
 export function refit(
   pv: Pick<Pv, "refit">,
@@ -40,6 +43,42 @@ export function refit(
  * when none takes it. */
 export function fresh(pv: Pick<Pv, "place">, scene: Scene, kind: OpeningKind): Opening | null {
   return pv.place(scene, kind, USUAL[kind]);
+}
+
+/** Metres between an opening and its duplicate. */
+const BESIDE = 0.2;
+
+/** The first of `alongs` at which `copy`, the scene's last opening, fits its wall as it is. */
+function placed(pv: Pick<Pv, "refit">, scene: Scene, alongs: readonly number[]): Scene | null {
+  const index = (scene.openings?.length ?? 0) - 1;
+
+  for (const along of alongs) {
+    const next = refit(pv, scene, index, { along });
+
+    // Kept where it was asked: the crate moved it nowhere to keep it on the wall.
+    if (!("unfit" in next) && next.openings?.[index]?.along === along) return next;
+  }
+
+  return null;
+}
+
+/** The scene with a copy of opening `index` last: in the first free place to its right on the same
+ * wall, else the wall's first free place, in 10 cm steps; null where the wall has no room. */
+export function duplicate(pv: Pick<Pv, "refit">, scene: Scene, index: number): Scene | null {
+  const openings = scene.openings ?? [];
+  const original = openings[index];
+
+  if (original === undefined) return null;
+
+  const from = snap(original.along + original.width + BESIDE, STEP);
+  // A wall is no longer than a block may be.
+  const steps = Array.from({ length: LONGEST / STEP }, (_, i) => snap(i * STEP, STEP));
+  const copied = { ...scene, openings: [...openings, original] };
+
+  return placed(pv, copied, [
+    ...steps.filter((at) => at >= from),
+    ...steps.filter((at) => at < from),
+  ]);
 }
 
 const lowered = (opening: Opening): Opening => ({ ...opening, block: opening.block - 1 });

@@ -96,6 +96,10 @@
     roofs={plan.laid.roofs}
     pv={plan.pv}
     onchange={sceneEdit}
+    onadd={(next) => {
+      sceneEdit(next);
+      onlevel({ kind: "opening", index: (next.openings?.length ?? 1) - 1 });
+    }}
     onremove={sceneRemove}
   />
 {:else if surrounding !== null}

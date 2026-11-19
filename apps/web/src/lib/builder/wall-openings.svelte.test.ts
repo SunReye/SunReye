@@ -6,6 +6,7 @@ import { render } from "vitest-browser-svelte";
 import { connect } from "../api/core.ts";
 import Builder from "./Builder.svelte";
 import {
+  choose,
   DEVICES,
   desk,
   drill,
@@ -106,4 +107,39 @@ test("a window is added on a wall and its width arrow drags it wider, in one und
   await undo.click();
 
   await expect.element(width.getByText(/^1,2$/u)).toBeVisible();
+});
+
+test("a window is set dark at night and duplicated: the copy stands picked, as dark as its original", async () => {
+  const start = house();
+  const count = start.scene.openings?.length ?? 0;
+
+  await render(Builder, {
+    pv,
+    core: connect(testCore()),
+    start,
+    moduleTypes: [MODULE],
+    devices: DEVICES,
+  });
+
+  await drill("Gebäude", "Fenster hinzufügen");
+  await choose("Nachtlicht", "Dunkel");
+  await inspector().getByRole("button", { name: "Duplizieren" }).click();
+
+  // The copy is the scene's last opening, on its own level.
+  await expect
+    .element(inspector().getByRole("heading", { name: `Fenster ${String(count + 2)}` }))
+    .toBeVisible();
+  await expect
+    .element(
+      inspector()
+        .getByRole("button", { name: starts("Nachtlicht") })
+        .getByText("Dunkel"),
+    )
+    .toBeVisible();
+
+  // One undo takes the copy and returns to the group.
+  await inspector().getByRole("button", { name: "Rückgängig" }).click();
+  await expect
+    .element(inspector().getByRole("button", { name: "Duplizieren" }))
+    .not.toBeInTheDocument();
 });

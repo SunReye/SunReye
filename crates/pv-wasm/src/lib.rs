@@ -44,7 +44,7 @@ fn geometry(scene: &[u8]) -> String {
                 })).collect::<Vec<_>>()
             }),
             "openings": scene.fitted().ok().map(|fitted| {
-                fitted.iter().map(|f| json!({ "kind": f.kind, "corners": f.corners, "out": f.out }))
+                fitted.iter().map(|f| json!({ "kind": f.kind, "corners": f.corners, "out": f.out, "light": f.light }))
                     .collect::<Vec<_>>()
             }),
             "roofWindows": scene.panes().ok(),

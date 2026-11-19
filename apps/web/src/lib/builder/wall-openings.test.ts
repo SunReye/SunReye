@@ -1,7 +1,14 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
 import { loadPv, type Opening, type Scene } from "./pv.ts";
-import { fresh, refit, slide as slideOn, withOpenings, type OpeningGrip } from "./wall-openings.ts";
+import {
+  duplicate,
+  fresh,
+  refit,
+  slide as slideOn,
+  withOpenings,
+  type OpeningGrip,
+} from "./wall-openings.ts";
 
 // The release build the gate and the SPA build produce (crates/pv-wasm).
 const wasm = new URL(
@@ -160,4 +167,22 @@ test("a removed block takes its openings with it, and later blocks' follow it do
 
   expect(withOpenings(two, 0).openings).toEqual([{ ...window, block: 0 }]);
   expect(withOpenings(house, 0)).toEqual(house);
+});
+
+test("a duplicate stands to the right of its original on the same wall, like it in all but place", () => {
+  const dark = { ...window, light: "off" } as const;
+  const copied = duplicate(pv, glazed(dark), 0);
+
+  // The 1.2 m window ends at 3.2 m; its copy starts 20 cm on.
+  expect(copied?.openings).toEqual([dark, { ...dark, along: 3.4 }]);
+});
+
+test("without room to its right a duplicate takes the wall's first free place, or none", () => {
+  const last = { ...window, along: 8.6 };
+
+  expect(duplicate(pv, glazed(last), 0)?.openings?.[1]).toEqual({ ...last, along: 0 });
+
+  const whole = { ...window, along: 0, width: 10 };
+
+  expect(duplicate(pv, glazed(whole), 0)).toBeNull();
 });

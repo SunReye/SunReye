@@ -32,7 +32,7 @@ pub use fitting::Unfit;
 pub use grid::{Area, GAP, GridModule, Misplaced, ModuleGrid, Placed, RoofFace, Size, Spot};
 pub use laying::Ghost;
 pub use mppt::{input_output, module_counts_differ};
-pub use opening::{Fitted, Opening, OpeningKind};
+pub use opening::{Fitted, Light, Opening, OpeningKind};
 pub use parking::{CarPlace, Stand};
 pub use perez::plane_irradiance;
 pub use roof_window::RoofWindow;

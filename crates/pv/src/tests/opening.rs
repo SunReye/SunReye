@@ -1,6 +1,6 @@
 //! Windows and doors on a block's walls (ADR 20), checked against points worked out by hand.
 
-use crate::{Block, Opening, OpeningKind, Overhang, Roof, Scene, Wall};
+use crate::{Block, Light, Opening, OpeningKind, Overhang, Roof, Scene, Wall};
 
 /// A 10 m × 8 m block at the origin with 3 m walls, and a carport beside it.
 fn house(openings: Vec<Opening>) -> Scene {
@@ -41,6 +41,7 @@ fn window(wall: Wall, along: f64) -> Opening {
         width: 1.2,
         height: 1.4,
         sill: 0.9,
+        light: Light::Auto,
     }
 }
 
@@ -193,4 +194,35 @@ fn openings_never_shade() {
     let glazed = house(vec![window(Wall::Front, 2.0)]);
     assert_eq!(bare.faces(), glazed.faces());
     assert_eq!(bare.occluders().len(), glazed.occluders().len());
+}
+
+#[test]
+fn an_opening_stored_without_a_night_light_lights_by_the_rule_and_is_stored_as_it_was() {
+    let stored = r#"{"kind":"window","block":0,"wall":"front","along":2.0,"width":1.2,"height":1.4,"sill":0.9}"#;
+    let opening: Opening = serde_json::from_str(stored).unwrap();
+
+    assert_eq!(opening.light, Light::Auto);
+    assert_eq!(serde_json::to_string(&opening).unwrap(), stored);
+}
+
+#[test]
+fn a_chosen_night_light_is_stored_and_reaches_what_is_drawn() {
+    let dark = Opening {
+        light: Light::Off,
+        ..window(Wall::Front, 2.0)
+    };
+    let stored = serde_json::to_string(&dark).unwrap();
+
+    assert!(stored.ends_with(r#""light":"off"}"#), "{stored}");
+    assert_eq!(serde_json::from_str::<Opening>(&stored).unwrap(), dark);
+
+    let lit = Opening {
+        light: Light::On,
+        ..window(Wall::Front, 5.0)
+    };
+    let fitted = house(vec![dark, lit, window(Wall::Back, 2.0)])
+        .fitted()
+        .unwrap();
+    let lights: Vec<Light> = fitted.iter().map(|opening| opening.light).collect();
+    assert_eq!(lights, vec![Light::Off, Light::On, Light::Auto]);
 }

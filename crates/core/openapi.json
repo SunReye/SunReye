@@ -2118,6 +2118,15 @@
         ],
         "type": "object"
       },
+      "Light": {
+        "description": "An opening's light at night (ADR 20 Night).",
+        "enum": [
+          "auto",
+          "on",
+          "off"
+        ],
+        "type": "string"
+      },
       "Lines": {
         "description": "The core's last log lines.",
         "properties": {
@@ -2625,6 +2634,10 @@
           },
           "kind": {
             "$ref": "#/components/schemas/OpeningKind"
+          },
+          "light": {
+            "$ref": "#/components/schemas/Light",
+            "description": "Whether it glows at night; the rule's choice is not stored, so a scene stored before the\nchoice existed loads and saves as it was."
           },
           "sill": {
             "description": "Metres from the ground to its lower edge; a door's is 0.",

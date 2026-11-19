@@ -8,7 +8,7 @@
   import type { Pv, RoofFace, Scene, Unfit } from "./pv.ts";
   import { chimneySizes, windowSizes } from "./roof-fields.ts";
   import RoofFieldset from "./RoofFieldset.svelte";
-  import { refit } from "./wall-openings.ts";
+  import { duplicate, refit } from "./wall-openings.ts";
 
   let {
     kind,
@@ -17,6 +17,7 @@
     roofs,
     pv,
     onchange,
+    onadd,
     onremove,
   }: {
     kind: "block" | "chimney" | "roofWindow" | "opening";
@@ -27,6 +28,8 @@
     /** The crate, which keeps a changed opening on its wall. */
     pv: Pick<Pv, "refit">;
     onchange: (scene: Scene) => void;
+    /** The scene with one opening more, the last, which is picked. */
+    onadd: (scene: Scene) => void;
     /** The scene without the object. */
     onremove: (scene: Scene) => void;
   } = $props();
@@ -99,6 +102,14 @@
         unfit = undefined;
         onchange(fitted);
       }
+    }}
+    oncopy={() => {
+      const copied = duplicate(pv, scene, index);
+
+      if (copied === null) haptics.error();
+      else onadd(copied);
+
+      unfit = copied === null ? "room" : undefined;
     }}
     onremove={() => {
       onremove({ ...scene, openings: openings.toSpliced(index, 1) });
