@@ -259,7 +259,9 @@ test("a strain is dated once, by the frame watch's clock, when it lowers the dra
   });
   release();
 
-  expect(kept.mock.calls.filter(([key]) => key === "sunreye.strained-at")).toEqual([
+  // All it kept: the level taken off Auto, and the one date.
+  expect(kept.mock.calls).toEqual([
+    ["sunreye.3d-strain", "1"],
     ["sunreye.strained-at", "1000"],
   ]);
 });
