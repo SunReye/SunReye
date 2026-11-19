@@ -1,5 +1,7 @@
 // Auto-stringing (ADR 20): a roof face's modules in no string, run in a serpentine row by row from
 // the lower left and cut into as few new strings as the inverter's limits allow. Pure.
+import type { ModuleType } from "../api/core.ts";
+import type { Checking } from "./checks.ts";
 import { addString, type Draft } from "./modules.ts";
 import type { GridModule } from "./pv.ts";
 import { wiredInto, type Cell } from "./selecting.ts";
@@ -95,4 +97,29 @@ export function autoStrung(
   }
 
   return strung;
+}
+
+/** What auto-stringing reads besides the draft: the crate, each inverter's limits and the module
+ * types. */
+export interface Stringing extends Checking {
+  readonly moduleTypes: readonly Readonly<ModuleType>[];
+}
+
+/** Grid `grid`'s modules in no string as new strings on the first inverter that lists its inputs,
+ * else the first string's; null where the grid holds none. */
+export function strungOn(
+  draft: Draft,
+  grid: number,
+  { pv, limits, inputs, moduleTypes }: Stringing,
+  name: (number: number) => string,
+): Draft | null {
+  const device = Number(Object.keys(inputs)[0] ?? draft.strings[0]?.device ?? 1);
+  const type = moduleTypes.find(({ id }) => id === draft.scene.grids?.[grid]?.moduleType);
+
+  const longest =
+    type === undefined
+      ? null
+      : pv.longest(type, limits[device] ?? null, inputs[device]?.[0] ?? null);
+
+  return autoStrung(draft, grid, { longest, device, inputs: inputs[device]?.length ?? 0 }, name);
 }

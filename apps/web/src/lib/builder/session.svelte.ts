@@ -12,7 +12,7 @@ import type {
 import { checked, stringRefusal, type Checking, type StringRefusal } from "./checks.ts";
 import { haptics } from "../haptics.ts";
 import { begin, record, redo, undo, type Edits } from "./history.ts";
-import { parent, picked, type Level } from "./levels.ts";
+import { handled, parent, picked, type Level } from "./levels.ts";
 import { painted, panels, uncovered, type Draft } from "./modules.ts";
 import { exists, type Plan } from "./outline.ts";
 import type { Geometry, Modules, Pv, Scene, Sizes } from "./pv.ts";
@@ -65,7 +65,10 @@ export class Session {
   expanded = $state(false);
 
   /** The wiring mode: its selection, and what wiring it makes of the draft (ADR 20). */
-  readonly wiring = new WiringMode(this);
+  readonly wiring = new WiringMode(this, () => ({
+    ...this.#opening(),
+    moduleTypes: this.moduleTypes,
+  }));
 
   /** Whether the admin chose to start from nothing. */
   #empty = $state(false);
@@ -125,8 +128,13 @@ export class Session {
     return saved !== undefined && "problem" in saved ? stringRefusal(saved, names) : null;
   }
 
+  /** The draft as recorded: without a drag's step or a proposal. */
+  get present(): Draft {
+    return this.#history.present;
+  }
+
   get draft(): Draft {
-    return this.#dragged ?? this.#history.present;
+    return this.#dragged ?? this.wiring.proposal ?? this.#history.present;
   }
 
   get undoable(): boolean {
@@ -188,18 +196,7 @@ export class Session {
   get editing(): Editing | undefined {
     const { level } = this;
 
-    if (
-      level.kind !== "block" &&
-      level.kind !== "obstacle" &&
-      level.kind !== "surface" &&
-      level.kind !== "fence" &&
-      level.kind !== "place" &&
-      level.kind !== "chimney" &&
-      level.kind !== "roofWindow" &&
-      level.kind !== "opening"
-    ) {
-      return undefined;
-    }
+    if (!handled(level)) return undefined;
 
     return {
       scene: this.draft.scene,
@@ -218,25 +215,24 @@ export class Session {
   /** The selected face's grid, on whose roof a press in 3D lays modules, or the wiring mode, in
    * which a drag across modules selects them (ADR 20). */
   get painting(): Painting | undefined {
-    return this.wiring.painting ?? this.#laying();
-  }
-
-  #laying(): Painting | undefined {
-    return paintingOf(this.level, {
-      draft: this.draft,
-      laid: this.laid,
-      pv: this.#opening().pv,
-      sizes: this.#sizes,
-      ondrag: (scene) => {
-        this.drag(scene);
-      },
-      ondrop: () => {
-        this.drop();
-      },
-      go: (level) => {
-        this.go(level);
-      },
-    });
+    return (
+      this.wiring.painting ??
+      paintingOf(this.level, {
+        draft: this.draft,
+        laid: this.laid,
+        pv: this.#opening().pv,
+        sizes: this.#sizes,
+        ondrag: (scene) => {
+          this.drag(scene);
+        },
+        ondrop: () => {
+          this.drop();
+        },
+        go: (level) => {
+          this.go(level);
+        },
+      })
+    );
   }
 
   /** Templates are offered while the scene has no block, until the admin starts empty. */
