@@ -54,7 +54,8 @@ export const plant: Plant = { ...PLANT_DEFAULTS };
 /** This year, by UTC. */
 export const YEAR = new Date(TODAY * DAY).getUTCFullYear();
 
-export const asked: Readonly<{ series: string; from: number; to: number }>[] = [];
+/** Each plant read: its series, span, and `period`, or `history` for the history route. */
+export const asked: Readonly<{ series: string; from: number; to: number; period: string }>[] = [];
 
 /** The last path segment of every request the screen made, in order. */
 export const requested: string[] = [];
@@ -77,7 +78,7 @@ function history(q: Query): Response {
 
   const [from, to] = [Date.parse(q("from")!), Date.parse(q("to")!)];
 
-  asked.push({ series: name, from, to });
+  asked.push({ series: name, from, to, period: "history" });
 
   const points = (new Map(Object.entries(series())).get(name) ?? []).filter(
     (p: Readonly<{ start: string; end: string }>) =>
@@ -173,7 +174,7 @@ function statistics(q: Query): Response {
   const period = q("period") ?? "";
   const recorded = period === "day" || period === "hour" ? rollups(name, period, from, to) : [];
 
-  asked.push({ series: name, from, to });
+  asked.push({ series: name, from, to, period });
 
   return Response.json({
     period,
@@ -249,7 +250,7 @@ function transport(): Transport {
       if (plant.gate && plantRead) await plant.gate;
 
       return read
-        ? read((name) => url.searchParams.get(name))
+        ? read((key) => url.searchParams.get(key))
         : Response.json({ problem: { code: "request.route" } }, { status: 404 });
     },
   };

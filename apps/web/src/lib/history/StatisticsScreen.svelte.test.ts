@@ -50,6 +50,31 @@ test("stepping to another day reads only that day: what holds for every range is
     ).toHaveLength(1);
 });
 
+test("a step the router then catches up with reads the new day once", async () => {
+  const { screen, went } = await show(DAY);
+
+  // The first day is drawn: its reads are done.
+  await expect.element(screen.getByText(/^Gestern hat die Anlage 6,0 kWh erzeugt/u)).toBeVisible();
+  asked.length = 0;
+
+  await screen.getByRole("button", { name: "Früher" }).first().click();
+  // The address follows once the movement is over; the router hands the screen its params.
+  await expect.poll(() => went.length, { timeout: 2000 }).toBeGreaterThan(0);
+  await screen.rerender({ params: new URLSearchParams(`range=day&at=${iso(TODAY - 2)}`) });
+  await new Promise((done) => {
+    setTimeout(done, 300);
+  });
+
+  // The days around the step: an earlier test's screen may still be reading its own.
+  const reads = asked
+    .filter(({ from }) => from >= (TODAY - 4) * 86_400_000)
+    .map(({ series, from, to, period }) => `${series} ${period} ${from} ${to}`);
+
+  expect(reads.length).toBeGreaterThan(0);
+  expect(reads.filter((read, i) => reads.indexOf(read) !== i)).toEqual([]);
+  expect(requested.filter((name) => name === "timezone")).toHaveLength(1);
+});
+
 test("the breakdown says what its rows changed against, and the peaks name their hour", async () => {
   const { screen } = await show(DAY);
   const breakdown = screen.getByRole("region", { name: "Aufschlüsselung" });

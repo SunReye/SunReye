@@ -59,11 +59,12 @@ export class Statistics {
 
   constructor(input: () => { core: StatisticsCore; params: URLSearchParams; go: Go }) {
     this.route = new RangeRoute(() => input(), 0, VIEW_PARAMS);
-    this.data = new StatsData(() => ({ core: input().core, route: this.route, cmp: this.#cmp }));
-    this.#shown = untrack(() => ({ metric: this.view.metric, tab: this.view.tab }));
-
-    // `input()` reads the route too: through a derived, a new range leaves the facts as read.
+    // `input()` reads the route too: through a derived, the router catching up with a step the
+    // screen already took reads nothing again.
     const core = $derived(input().core);
+
+    this.data = new StatsData(() => ({ core, route: this.route, cmp: this.#cmp }));
+    this.#shown = untrack(() => ({ metric: this.view.metric, tab: this.view.tab }));
 
     $effect(() => {
       let live = true;
