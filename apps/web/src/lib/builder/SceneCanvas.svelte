@@ -68,7 +68,7 @@
     /** The view the admin orbited to, once they let go. */
     onview: (view: View) => void;
     /** After each draw: where a point of the scene lands on the canvas, or null behind it. */
-    onrender?: (project: Projector) => void;
+    onrender?: ((project: Projector) => void) | undefined;
     /** A click, not a drag: what it struck, if anything. */
     onpick?: ((hit: Hit) => void) | undefined;
     /** The first frame is drawn: nothing was before, so it never waited on a compile. */

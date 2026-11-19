@@ -10,7 +10,14 @@
   import type { Moment } from "./moment.svelte.ts";
   import type { Draft } from "./modules.ts";
   import type { Geometry, Location, RoofFace } from "./pv.ts";
-  import Stage, { type Editing, type Hit, type Painting, type Panel } from "./Stage.svelte";
+  import ContextBar, { type Room, type Selected } from "./ContextBar.svelte";
+  import Stage, {
+    type Editing,
+    type Hit,
+    type Painting,
+    type Panel,
+    type Projector,
+  } from "./Stage.svelte";
   import StatusStrip from "./StatusStrip.svelte";
   import TimeSlider from "./TimeSlider.svelte";
 
@@ -29,6 +36,7 @@
     painting,
     onto,
     tools,
+    selected,
   }: {
     core: Core;
     /** Read, never written: the slider changes nothing in the scene (ADR 20). */
@@ -53,10 +61,24 @@
     onto?: RoofFace | undefined;
     /** Buttons at the lower right, beside the status line. */
     tools?: Snippet | undefined;
+    /** The session whose selection carries the context toolbar. */
+    selected?: Selected | undefined;
   } = $props();
 
   let width = $state(0);
   let height = $state(0);
+
+  /** Where a point of the scene lands on the canvas, as last drawn. */
+  let project = $state.raw<Projector>();
+
+  /** A pointer is down on the canvas: it orbits or drags, and the toolbar is out of its way. */
+  let held = $state(false);
+
+  /** The canvas between the time slider and the status line, and the weather button in it. */
+  const room = $derived<Room>({
+    bounds: { left: 12, top: 64, right: width - 12, bottom: height - clear - 68 },
+    avoid: [{ left: width - 56, top: 12, right: width - 12, bottom: 108 }],
+  });
 
   const cars = $derived(parkedNow(draft.scene.carPlaces ?? [], geometry.stands));
 </script>
@@ -65,6 +87,15 @@
 <div
   bind:clientWidth={width}
   bind:clientHeight={height}
+  onpointerdowncapture={(event) => {
+    held = event.target instanceof HTMLCanvasElement;
+  }}
+  onpointerupcapture={() => {
+    held = false;
+  }}
+  onpointercancelcapture={() => {
+    held = false;
+  }}
   class="relative size-full min-h-0 overflow-hidden rounded-lg ring-1 ring-border/60 elevation-1 max-sm:rounded-none max-sm:ring-0 max-sm:[box-shadow:none]"
 >
   <!-- Measured first: the first view fits the canvas, with no flight to it. -->
@@ -80,10 +111,17 @@
       {onpick}
       {editing}
       {painting}
+      onrender={(next) => {
+        project = next;
+      }}
       {onto}
       aspect={width / height}
       bind:trial={moment.trial}
     />
+  {/if}
+
+  {#if selected !== undefined && project !== undefined && !held && !covered}
+    <ContextBar session={selected} {project} {room} />
   {/if}
 
   <!-- Beside the views' button, which the stage keeps at the top right. -->

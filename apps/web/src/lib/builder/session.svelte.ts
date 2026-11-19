@@ -23,7 +23,7 @@ import { WiringMode } from "./wiring-mode.svelte.ts";
 const today = (): string => new Date().toLocaleDateString("sv-SE");
 
 /** What a session reads: the crate, the core, the layout in force and the plant's devices. */
-export interface Opening extends Checking {
+export interface Reads extends Checking {
   readonly pv: Pv;
   readonly core: Core;
   /** The layout in force, or an empty one: nothing to undo before it. */
@@ -33,7 +33,7 @@ export interface Opening extends Checking {
 }
 
 export class Session {
-  readonly #opening: () => Opening;
+  readonly #opening: () => Reads;
 
   readonly #drafts: Drafts;
 
@@ -74,7 +74,7 @@ export class Session {
   /** Module types added in this session; the core keeps them, no undo takes them back. */
   #added = $state.raw<readonly ModuleType[]>([]);
 
-  constructor(opening: () => Opening) {
+  constructor(opening: () => Reads) {
     this.#opening = opening;
     // The start is where this session begins; a later one is a new session's.
     this.#drafts = new Drafts(opening().start, (scene) => opening().pv.covered(scene, this.#sizes));

@@ -77,6 +77,31 @@ function cut(count: number, { longest, free, parallel }: Readonly<Limit>): Cut {
   ]);
 }
 
+/** The modules of a grid that are in no string, each with its place in the grid. */
+function unwiredOf(modules: readonly Readonly<GridModule>[]): Loose[] {
+  return modules.flatMap((module, at): Loose[] =>
+    (module.string ?? undefined) === undefined ? [[at, module]] : [],
+  );
+}
+
+/** Each of the `strings` from `first` takes its run of the serpentine, in turn. */
+function run(
+  draft: Draft,
+  serpentine: readonly Cell[],
+  strings: Cut,
+  first: number,
+): Strung | null {
+  let strung: Draft | null = draft;
+  let from = 0;
+
+  for (const [nth, [length]] of strings.entries()) {
+    strung = strung && wiredInto(strung, serpentine.slice(from, from + length), first + nth);
+    from += length;
+  }
+
+  return strung && { draft: strung, left: serpentine.length - from };
+}
+
 /** Grid `grid`'s modules in no string wired into new strings named by `name` from their number:
  * the proposal, why there is none, or null where the grid holds no such module. Wired modules stay
  * as they are. */
@@ -87,10 +112,7 @@ export function autoStrung(
   name: (number: number) => string,
 ): Strung | Unstrung | null {
   const laid = draft.scene.grids?.[grid];
-
-  const loose = (laid?.modules ?? []).flatMap((module, at): Loose[] =>
-    (module.string ?? undefined) === undefined ? [[at, module]] : [],
-  );
+  const loose = unwiredOf(laid?.modules ?? []);
 
   // A new string as the builder adds one: wired like the first.
   const like = laid && addString(draft, "", laid.moduleType).strings.at(-1);
@@ -113,16 +135,16 @@ export function autoStrung(
     input,
   }));
 
-  let strung: Draft | null = { ...draft, strings: [...draft.strings, ...made] };
-  let from = 0;
+  return run({ ...draft, strings: [...draft.strings, ...made] }, serpentine, strings, before);
+}
 
-  // Each new string takes its run of the serpentine, in turn.
-  for (const [nth, [length]] of strings.entries()) {
-    strung = strung && wiredInto(strung, serpentine.slice(from, from + length), before + nth);
-    from += length;
-  }
+/** The inputs of `device` that carry no string, of the `listed` many it has. */
+function freeOn(draft: Draft, device: number, listed: number | undefined): number[] {
+  const taken = new Set(draft.strings.flatMap((s) => (s.device === device ? [s.input] : [])));
+  // An inverter that lists no inputs has as many as its strings name, and one more.
+  const count = listed ?? Math.max(0, ...taken) + 1;
 
-  return strung && { draft: strung, left: serpentine.length - from };
+  return Array.from({ length: count }, (_, i) => i + 1).filter((at) => !taken.has(at));
 }
 
 /** What auto-stringing reads besides the draft: the crate, each inverter's limits and the module
@@ -142,23 +164,15 @@ export function strungOn(
 ): Strung | Unstrung | null {
   const device = Number(Object.keys(inputs)[0] ?? draft.strings[0]?.device ?? 1);
   const type = moduleTypes.find(({ id }) => id === draft.scene.grids?.[grid]?.moduleType);
-  const [input] = inputs[device] ?? [];
-  const taken = new Set(draft.strings.flatMap((s) => (s.device === device ? [s.input] : [])));
-  // An inverter that lists no inputs has as many as its strings name, and one more.
-  const count = inputs[device]?.length ?? Math.max(0, ...taken) + 1;
+  const listed = inputs[device];
+  const free = freeOn(draft, device, listed?.length);
 
-  return autoStrung(
-    draft,
-    grid,
-    {
-      longest: type === undefined ? null : pv.longest(type, limits[device] ?? null, input ?? null),
-      device,
-      free: Array.from({ length: count }, (_, i) => i + 1).filter((at) => !taken.has(at)),
-      parallel:
-        type === undefined || input === undefined
-          ? null
-          : Math.max(1, Math.floor(input.maxCurrent / type.isc)),
-    },
-    name,
-  );
+  if (type === undefined)
+    return autoStrung(draft, grid, { longest: null, device, free, parallel: null }, name);
+
+  const input = listed?.[0];
+  const longest = pv.longest(type, limits[device] ?? null, input ?? null);
+  const parallel = input ? Math.max(1, Math.floor(input.maxCurrent / type.isc)) : null;
+
+  return autoStrung(draft, grid, { longest, device, free, parallel }, name);
 }
