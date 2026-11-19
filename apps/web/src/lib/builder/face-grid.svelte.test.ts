@@ -96,3 +96,22 @@ test("a string over its inverter's voltage in the cold is warned of at its modul
   await drill("Module", "Szene", "Strings", "Süd");
   await expect.element(inspector().getByRole("status").filter({ hasText: warning })).toBeVisible();
 });
+
+test("a string outside its MPPT input's window is warned of on its level, with figure and limit", async () => {
+  await render(Builder, {
+    pv,
+    core: connect(testCore()),
+    start: overVoltage(),
+    moduleTypes: [MODULE],
+    devices: DEVICES,
+    limits: { 1: 800 },
+    inputs: { 1: [{ maxCurrent: 36, minVoltage: 160, maxVoltage: 650, startVoltage: 160 }] },
+  });
+
+  await drill("Strings", "Süd");
+
+  // 32 × 34 V × (1 + 0.27 %/K × 35 K), worked by hand.
+  const warning = "Süd: 1191 V im Arbeitspunkt bei −10 °C liegen über dem MPPT-Bereich bis 650 V.";
+
+  await expect.element(inspector().getByRole("status").filter({ hasText: warning })).toBeVisible();
+});

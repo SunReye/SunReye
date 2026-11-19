@@ -4,8 +4,12 @@
 // save, where the core points its refusal (ADR 9), worded beside the object it names.
 import type { Capabilities, ModuleType, Problem } from "../api/core.ts";
 import { m } from "../paraglide/messages.js";
+import { getLocale } from "../paraglide/runtime.js";
 import { painted, type Draft } from "./modules.ts";
 import type { Misplaced, Pv } from "./pv.ts";
+import type { InputLimits, Inverters, Sizing } from "./sizing.ts";
+
+export type { Inverters } from "./sizing.ts";
 
 /** Maximum DC input voltage in volts, by inverter device id. */
 export type Limits = Readonly<Record<number, number>>;
@@ -22,6 +26,17 @@ export function limitsOf({ devices }: Pick<Capabilities, "devices">): Limits {
         ? []
         : [[Number(id), maxInputVoltage] as const];
     }),
+  );
+}
+
+/** The inputs the core's capabilities list, where an inverter's profile gives them (ADR 9). */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the API's generated type, read only.
+export function inputsOf({ devices }: Pick<Capabilities, "devices">): Inverters {
+  return Object.fromEntries(
+    // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- read only, as above.
+    Object.entries(devices).flatMap(([id, { inputs }]): [number, readonly InputLimits[]][] =>
+      inputs === undefined || inputs.length === 0 ? [] : [[Number(id), inputs]],
+    ),
   );
 }
 
@@ -62,6 +77,84 @@ export function coldStrings(
       ? []
       : [{ string, volts, limit, text: coldText(draft.strings[string]?.name ?? "", volts, limit) }];
   });
+}
+
+/** An MPPT window warning (ADR 20), worded: a string's by its position, or an input's. */
+export interface Sized {
+  readonly string?: number;
+  readonly device?: number;
+  readonly input?: number;
+  readonly text: string;
+}
+
+/** One warning's text; a string's names it. */
+function sizedText(warning: Sizing, draft: Draft): string {
+  if (warning.kind === "uneven") return m.sizing_uneven({ input: warning.input });
+
+  if (warning.kind === "current") {
+    const current = new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 1 });
+    const { input, amperes, limit } = warning;
+
+    return m.sizing_current({
+      input,
+      current: current.format(amperes),
+      limit: current.format(limit),
+    });
+  }
+
+  const string = draft.strings[warning.string];
+  const name = string?.name ?? "";
+
+  if (warning.kind === "noInput") return m.sizing_no_input({ name, input: string?.input ?? 0 });
+
+  const figures = { name, voltage: Math.round(warning.volts), limit: Math.round(warning.limit) };
+  const texts = { start: m.sizing_start, low: m.sizing_low, high: m.sizing_high };
+
+  return texts[warning.kind](figures);
+}
+
+/** The draft's MPPT window warnings as the crate reckons them, its modules counted from the
+ * scene; none while no inverter lists its inputs. */
+export function sized(
+  pv: Readonly<Pick<Pv, "sizing">>,
+  draft: Draft,
+  moduleTypes: readonly Readonly<ModuleType>[],
+  inverters: Inverters,
+): Sized[] {
+  if (Object.keys(inverters).length === 0) return [];
+
+  const strings = draft.strings.map((string, i) => ({
+    ...string,
+    modules: painted(draft.scene, i).modules,
+  }));
+
+  return pv.sizing(moduleTypes, strings, inverters).map((warning) => {
+    const text = sizedText(warning, draft);
+
+    return "string" in warning
+      ? { string: warning.string, text }
+      : { device: warning.device, input: warning.input, text };
+  });
+}
+
+/** What the live checks read: the crate and each inverter's limits. */
+export interface Checking {
+  readonly pv: Readonly<Pick<Pv, "coldVoltages" | "sizing">>;
+  readonly limits: Limits;
+  readonly inputs: Inverters;
+}
+
+/** The draft's warnings: its strings over their inverter's limit in the cold, and where it leaves
+ * an MPPT input's window. */
+export function checked(
+  { pv, limits, inputs }: Checking,
+  draft: Draft,
+  moduleTypes: readonly Readonly<ModuleType>[],
+) {
+  return {
+    cold: coldStrings(pv, draft, moduleTypes, limits),
+    sized: sized(pv, draft, moduleTypes, inputs),
+  };
 }
 
 function coldText(name: string, volts: number, limit: number): string {

@@ -15,6 +15,7 @@ function session(): Session {
       moduleTypes: [MODULE],
       devices: DEVICES,
       limits: {},
+      inputs: {},
     }));
   });
 

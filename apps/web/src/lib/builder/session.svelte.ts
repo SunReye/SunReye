@@ -9,7 +9,7 @@ import type {
   ModuleType,
   Problem,
 } from "../api/core.ts";
-import { coldStrings, stringRefusal, type Limits, type StringRefusal } from "./checks.ts";
+import { checked, stringRefusal, type Checking, type StringRefusal } from "./checks.ts";
 import { haptics } from "../haptics.ts";
 import { begin, record, redo, undo, type Edits } from "./history.ts";
 import { parent, picked, type Level } from "./levels.ts";
@@ -31,15 +31,13 @@ function today(): string {
 }
 
 /** What a session reads: the crate, the core, the layout in force and the plant's devices. */
-export interface Opening {
+export interface Opening extends Checking {
   readonly pv: Pv;
   readonly core: Core;
   /** The layout in force, or an empty one: nothing to undo before it. */
   readonly start: Draft;
   readonly moduleTypes: readonly Readonly<ModuleType>[];
   readonly devices: readonly Readonly<Device>[];
-  /** Each inverter's maximum DC input voltage, by device id. */
-  readonly limits: Limits;
 }
 
 export class Session {
@@ -99,7 +97,7 @@ export class Session {
       pv: opening().pv,
       sizes: this.#sizes,
       devices: opening().devices,
-      cold: coldStrings(opening().pv, this.draft, this.moduleTypes, opening().limits),
+      ...checked(opening(), this.draft, this.moduleTypes),
       refused: this.#refused(),
     });
   }
