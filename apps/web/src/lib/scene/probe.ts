@@ -61,7 +61,8 @@ export class Probe {
     // Counted over a whole frame of passes, each a render of its own.
     renderer.info.autoReset = false;
 
-    // three.js's own, a property of the renderer: put back as it was.
+    // three.js's own, a property of the renderer: kept to be put back as it was.
+    // oxlint-disable-next-line typescript/unbound-method -- never called unbound.
     const own = renderer.setRenderTarget;
     const bind = own.bind(renderer);
 

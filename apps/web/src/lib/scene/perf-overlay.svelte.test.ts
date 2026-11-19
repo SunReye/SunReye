@@ -58,21 +58,26 @@ test("the readout gone, nothing counts the studio's frames: its renderer is as i
 
   const opened = shown();
   const { renderer } = opened;
-  const own = renderer.setRenderTarget;
+  // How the renderer binds a target, which three.js keeps as a property of its own.
+  // oxlint-disable-next-line typescript/unbound-method -- compared, never called.
+  const binds = () => renderer.setRenderTarget;
+  const own = binds();
+  // The probe the readout is given: the studio has one.
+  const probe = opened.measure();
   const screen = await render(PerfOverlay);
 
   await expect.element(screen.getByRole("status", { name: "Leistungsanzeige" })).toBeVisible();
   // Counted over a frame's passes, each bound through the probe.
   expect(renderer.info.autoReset).toBe(false);
-  expect(renderer.setRenderTarget).not.toBe(own);
+  expect(binds()).not.toBe(own);
 
   await screen.unmount();
 
   expect(renderer.info.autoReset).toBe(true);
-  expect(renderer.setRenderTarget).toBe(own);
+  expect(binds()).toBe(own);
 
-  // A frame draws as before, counted anew by three.js itself.
-  opened.render();
+  // A frame draws as before, and the probe is told of none.
   opened.render();
   expect(renderer.info.render.frame).toBeGreaterThan(0);
+  expect(probe.last).toBeUndefined();
 });
