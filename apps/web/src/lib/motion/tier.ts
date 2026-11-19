@@ -103,16 +103,20 @@ export function parseStrain(raw: string | null | undefined): number {
 export const STRAINED_AT = "sunreye.strained-at";
 
 /** A strain lasts seven days (ADR 21): one slow stretch must not hold a device down for good. */
-const STRAIN_LASTS_MS = 7 * 24 * 60 * 60 * 1000;
+export const STRAIN_LASTS_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * Milliseconds the strain dated `raw` still lasts at `now`; 0 once it is to be forgotten. A
  * strain without a readable date is from before strains were dated, and counts as that old.
+ * Never more than the seven days: a clock set back since leaves a date after `now`, and a wait
+ * past the 2^31 ms a timer holds would end at once.
  */
 export function strainLeft(raw: string | null | undefined, now: number): number {
   const at = raw === null || raw === undefined ? Number.NaN : Number(raw);
 
-  return Number.isFinite(at) ? Math.max(0, at + STRAIN_LASTS_MS - now) : 0;
+  if (!Number.isFinite(at)) return 0;
+
+  return Math.min(STRAIN_LASTS_MS, Math.max(0, at + STRAIN_LASTS_MS - now));
 }
 
 /**

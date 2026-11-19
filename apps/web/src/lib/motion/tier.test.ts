@@ -20,6 +20,7 @@ import {
   resolveTier,
   STRAIN_RATIO,
   STRAIN_WINDOW,
+  strainLeft,
 } from "./tier";
 
 describe("resolveTier", () => {
@@ -230,5 +231,29 @@ describe("FrameStrain windows", () => {
     // None of those advanced the window: a full window of jank is still needed.
     expect(feed(strain, STRAIN_WINDOW - 1, JANK_FRAME_MS + 4, 10_000)).toBe(0);
     expect(feed(strain, 1, JANK_FRAME_MS + 4, 100_000)).toBe(1);
+  });
+});
+
+describe("strainLeft", () => {
+  const DAY = 86_400_000;
+
+  test("a strain lasts seven days from its date", () => {
+    expect(strainLeft("1000", 1000)).toBe(604_800_000);
+    expect(strainLeft("1000", 1000 + 7 * DAY - 1)).toBe(1);
+    expect(strainLeft("1000", 1000 + 7 * DAY)).toBe(0);
+    expect(strainLeft("1000", 1000 + 30 * DAY)).toBe(0);
+  });
+
+  test("a strain without a readable date is over", () => {
+    for (const raw of [null, undefined, "soon", "Infinity"]) {
+      expect(strainLeft(raw, 1000)).toBe(0);
+    }
+  });
+
+  test("a strain dated after now lasts seven days and no longer", () => {
+    // A clock set back since leaves a date in the future. Its wait would pass the 2^31 ms a
+    // timer holds, which then fires at once and forgets the strain on the spot.
+    expect(strainLeft(String(40 * DAY), 0)).toBe(604_800_000);
+    expect(strainLeft(String(1000 + 60_000), 1000)).toBe(604_800_000);
   });
 });
