@@ -1,14 +1,14 @@
 <!-- A window's or a door's level in the inspector: its kind, wall, place and size (ADR 20). -->
 <script lang="ts">
+  import { Button } from "#lib/components/ui/button/index.js";
   import * as Item from "#lib/components/ui/item/index.js";
   import type { Editable } from "../components/value-editor/editable.ts";
   import { m } from "../paraglide/messages.js";
   import { choices, metres } from "./fields.ts";
   import { OPENING_KINDS, WALL_NAMES } from "./outline.ts";
-  import type { Opening } from "./pv.ts";
   import RemoveButton from "./RemoveButton.svelte";
   import ValueRow from "./ValueRow.svelte";
-  import type { Unfit } from "./pv.ts";
+  import type { Opening, Unfit } from "./pv.ts";
   import { USUAL } from "./wall-openings.ts";
 
   let {
@@ -16,6 +16,7 @@
     blocks,
     refused,
     onchange,
+    oncopy,
     onremove,
   }: {
     item: Opening;
@@ -25,6 +26,8 @@
     refused: Unfit | undefined;
     /** A change the wall has no room for, or one over another opening, is not made. */
     onchange: (change: Partial<Opening>) => void;
+    /** Adds one like it beside it on its wall. */
+    oncopy: () => void;
     onremove: () => void;
   } = $props();
 
@@ -54,6 +57,14 @@
   ] as const satisfies readonly (readonly [Numeric, Editable])[];
 
   const SILL = ["sill", metres(m.opening_sill(), 0, 10)] as const;
+
+  const LIGHTS = ["auto", "on", "off"] as const;
+
+  const light = choices(m.opening_light(), [
+    m.opening_light_auto(),
+    m.opening_light_on(),
+    m.opening_light_off(),
+  ]);
 
   const REASONS: Readonly<Record<Unfit, () => string>> = {
     overlap: m.opening_refused_overlap,
@@ -102,8 +113,23 @@
       }}
     />
   {/each}
+  {#if item.kind !== "garageDoor"}
+    <!-- A garage door has no glass to light (ADR 20 Night). -->
+    <ValueRow
+      edit={light}
+      value={LIGHTS.indexOf(item.light ?? "auto")}
+      onchange={(index) => {
+        onchange({ light: LIGHTS[index] ?? "auto" });
+      }}
+    />
+  {/if}
 </Item.Group>
 {#if refused !== undefined}
   <p role="alert" class="px-4 py-2 text-sm text-destructive">{REASONS[refused]()}</p>
 {/if}
+<div class="border-t border-border/60 px-3 pt-3">
+  <Button variant="outline" class="min-h-11 w-full" onclick={oncopy}>
+    {m.builder_duplicate()}
+  </Button>
+</div>
 <RemoveButton {onremove} />

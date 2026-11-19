@@ -7,7 +7,7 @@ import { cssColour } from "../scene/backdrop.ts";
 import { pause } from "../scene/prepare.ts";
 import type { Lit } from "../scene/stage.svelte.ts";
 import { freeOverlay, overlay, type Tints } from "./overlay.ts";
-import { Brush, type Brushing, type Painting, type Refused } from "./painting.ts";
+import { RoofPress, type RoofSources, type Roofwork } from "./roof-press.ts";
 import type { Geometry, Ghost, Point } from "./pv.ts";
 import { buildScene, buildSliced, strike, tint, toThree, type Hit, type Panel } from "./scene.ts";
 
@@ -15,7 +15,7 @@ export type { Hit, Panel } from "./scene.ts";
 
 export { Handled, type Editing } from "./handles/handled.svelte.ts";
 
-export { paintingOf, type Painting } from "./gestures.ts";
+export { layingOf, type Roofwork } from "./gestures.ts";
 
 /** Pixels from the canvas's top left corner. */
 export type Projector = (point: Point) => readonly [number, number] | null;
@@ -138,19 +138,19 @@ export function picking(
   };
 }
 
-/** Keeps the overlay of what `painting` lays or wires in the studio, rebuilt with each step;
+/** Keeps the overlay of what `roofwork` lays or wires in the studio, rebuilt with each step;
  * returns its removal. */
 export function overlaid(
   studio: Studio,
-  painting: () => Painting | undefined,
+  roofwork: () => Roofwork | undefined,
   render: () => void,
 ): () => void {
   let group: Group | undefined;
   let tints: { readonly key: string; readonly colours: Tints } | undefined;
 
   // Read on a new face or string only, as the handles: a drag rebuilds the overlay every step.
-  const colours = (shown: Painting): Tints => {
-    const key = shown.kind === "string" ? `string ${shown.string}` : `grid ${shown.grid}`;
+  const colours = (shown: Roofwork): Tints => {
+    const key = shown.kind === "wiring" ? "wiring" : `grid ${shown.grid}`;
 
     if (tints?.key !== key) {
       const brand = cssColour("var(--brand)");
@@ -173,7 +173,7 @@ export function overlaid(
   };
 
   $effect(() => {
-    const shown = painting();
+    const shown = roofwork();
 
     untrack(() => {
       replace(shown && overlay(shown, colours(shown)));
@@ -186,30 +186,25 @@ export function overlaid(
   };
 }
 
-/** What the brush shows on the canvas besides the scene, and the brush itself (painting.ts). */
-export class Brushwork {
-  /** Why the last module pressed refused the paint, until the next press. */
-  refused = $state.raw<Refused>();
-
+/** What a press on the roof shows on the canvas besides the scene, and the press itself
+ * (roof-press.ts). */
+export class RoofTool {
   /** The modules not laid yet, under the pointer on the selected face. */
   #ghosts = $state.raw<readonly Ghost[]>([]);
 
-  /** `painting` with the ghosts under the pointer, for the overlay. */
-  shown(painting: Painting | undefined): Painting | undefined {
-    return painting?.kind === "modules" ? { ...painting, ghosts: this.#ghosts } : painting;
+  /** `roofwork` with the ghosts under the pointer, for the overlay. */
+  shown(roofwork: Roofwork | undefined): Roofwork | undefined {
+    return roofwork?.kind === "modules" ? { ...roofwork, ghosts: this.#ghosts } : roofwork;
   }
 
-  /** Lays modules on the selected face and wires the picked string; before the orbit controls. */
+  /** Lays modules on the selected face and selects them for wiring; before the orbit controls. */
   attach(
     canvas: HTMLCanvasElement,
     camera: PerspectiveCamera,
-    sources: Pick<Brushing, "painting" | "drawn" | "panels">,
-  ): Brush {
-    return new Brush(canvas, camera, {
+    sources: Pick<RoofSources, "roofwork" | "drawn" | "panels">,
+  ): RoofPress {
+    return new RoofPress(canvas, camera, {
       ...sources,
-      onrefuse: (reason) => {
-        this.refused = reason;
-      },
       onghost: (lain) => {
         this.#ghosts = lain;
       },

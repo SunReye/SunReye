@@ -117,8 +117,31 @@ test("an equipment marker hangs on its wall with its label above the ridge", () 
     equipment: [{ device: 1, kind: "inverter", block: 0, wall: "front", along: 2, inside: false }],
   };
 
-  expect(pv.geometry(marked).mounts).toEqual([{ at: [2, -8.1, 1.5], above: [2, -8.1, 8] }]);
+  expect(pv.geometry(marked).mounts).toEqual([
+    { at: [2, -8.1, 1.5], above: [2, -8.1, 8], out: [0, -1, 0] },
+  ]);
   expect(pv.geometry(house).mounts).toEqual([]);
+});
+
+test("on a house turned by the compass a marker hangs on the turned wall, facing out of it", () => {
+  const turned: Scene = {
+    ...house,
+    north: 90,
+    equipment: [{ device: 1, kind: "inverter", block: 0, wall: "front", along: 2, inside: false }],
+  };
+
+  const [mount] = pv.geometry(turned).mounts ?? [];
+  const front = pv.modules(turned, {}).walls[0]?.front;
+
+  if (mount === undefined || front === undefined) throw new Error("no marker on a wall");
+
+  // From the wall's left end: 2 m along it and 10 cm out of it, as on the unturned house.
+  const [east, north] = [mount.at[0] - front.left[0], mount.at[1] - front.left[1]];
+  const along = (way: readonly [number, number, number]) => east * way[0] + north * way[1];
+
+  expect(along(front.right)).toBeCloseTo(2, 9);
+  expect(along(front.out)).toBeCloseTo(0.1, 9);
+  expect(mount.out[0] * front.out[0] + mount.out[1] * front.out[1]).toBeCloseTo(1, 9);
 });
 
 test("a marker off its wall has no mounts drawn", () => {

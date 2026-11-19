@@ -1,7 +1,7 @@
 import "../../app.css";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { userEvent } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect, type Transport } from "../api/core.ts";
 import Builder from "./Builder.svelte";
@@ -64,6 +64,7 @@ test("the admin lays modules, wires one into a string, undoes one and saves from
 
   await drill("Module", "Szene", "Strings", "String hinzufügen");
   await roof("0.0");
+  await page.getByRole("button", { name: "In String 1 verdrahten" }).click();
   await drill("Strings");
   await expect.element(inspector().getByText("1 Module, davon 0 mit Optimierer")).toBeVisible();
 
@@ -141,7 +142,9 @@ test("a string saved before any module is painted into it is named on its own le
   await expect.element(inspector().getByLabelText("Name")).toHaveValue("String 1");
   await expect
     .element(screen.getByRole("alert"))
-    .toHaveTextContent("Noch kein Modul gehört zu String 1. Male Module hinein, dann speichere.");
+    .toHaveTextContent(
+      "Noch kein Modul gehört zu String 1. Verdrahte Module hinein, dann speichere.",
+    );
   expect(screen.container.textContent).not.toContain("physikalischen Bereichs");
 });
 

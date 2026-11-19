@@ -138,7 +138,7 @@ async function datasheet(): Promise<void> {
 const placed = (count: string) =>
   inspector().getByText(new RegExp(`^${count} Module gesetzt$`, "u"));
 
-test("from an empty core an admin creates a module type, fills a roof face and paints a string", async () => {
+test("from an empty core an admin creates a module type, fills a roof face and wires a string", async () => {
   const draws = vi.spyOn(EffectComposer.prototype, "render");
   const core = emptyCore();
 
@@ -161,6 +161,7 @@ test("from an empty core an admin creates a module type, fills a roof face and p
   const cells = cellsOnPage(addGrid(house().scene, 0, 1, MODULE.id), 0);
 
   await press("mouse", [cells("0.0")]);
+  await page.getByRole("button", { name: "In String 1 verdrahten" }).click();
 
   await drill("Strings");
   await expect.element(inspector().getByText(/^1 Module, davon 0 mit Optimierer$/u)).toBeVisible();

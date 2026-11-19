@@ -21,6 +21,34 @@ pub struct Opening {
     /// Metres from the ground to its lower edge; a door's is 0.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub sill: f64,
+    /// Whether it glows at night; the rule's choice is not stored, so a scene stored before the
+    /// choice existed loads and saves as it was.
+    #[serde(default, skip_serializing_if = "Light::auto")]
+    pub light: Light,
+}
+
+/// An opening's light at night (ADR 20 Night).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "camelCase")]
+pub enum Light {
+    /// By where it sits: about three windows in five, and the front door.
+    #[default]
+    Auto,
+    /// Lit every night.
+    On,
+    /// Never lit.
+    Off,
+}
+
+impl Light {
+    #[expect(
+        clippy::trivially_copy_pass_by_ref,
+        reason = "serde hands the field by reference"
+    )]
+    fn auto(&self) -> bool {
+        *self == Self::Auto
+    }
 }
 
 #[expect(
@@ -57,6 +85,8 @@ pub struct Fitted {
     pub corners: [Point; 4],
     /// The wall's outward normal, level.
     pub out: Point,
+    /// Whether it glows at night.
+    pub light: Light,
 }
 
 impl Opening {
@@ -125,6 +155,7 @@ impl Scene {
                 at(along, sill + height),
             ],
             out: [east - east0, north - north0, 0.0],
+            light: opening.light,
         })
     }
 }

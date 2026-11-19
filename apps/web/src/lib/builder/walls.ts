@@ -30,7 +30,12 @@ export interface Opening {
   readonly height: number;
   /** Metres from the ground to its lower edge; a door's is 0. */
   readonly sill?: number;
+  /** Whether it glows at night; by the rule without one (ADR 20 Night). */
+  readonly light?: Light;
 }
+
+/** An opening's night light: by where it sits, lit every night, or never. */
+export type Light = "auto" | "on" | "off";
 
 /** Why an opening cannot be as asked: it lies over another, or its wall has no room for it. */
 export type Unfit = "overlap" | "room";
@@ -51,4 +56,6 @@ export interface Fitted {
   readonly corners: readonly [Point, Point, Point, Point];
   /** The wall's outward normal, level. */
   readonly out: Point;
+  /** Whether it glows at night; by the rule without one. */
+  readonly light?: Light;
 }

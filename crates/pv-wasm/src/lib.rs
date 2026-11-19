@@ -6,6 +6,7 @@
 
 mod clear;
 mod edit;
+mod sizing;
 
 use std::collections::HashMap;
 
@@ -27,7 +28,7 @@ fn geometry(scene: &[u8]) -> String {
             "faces": scene.faces().iter().map(face).collect::<Vec<_>>(),
             "solids": scene.solids().iter().map(solid).collect::<Vec<_>>(),
             "mounts": scene.mounts().ok().map(|mounts| {
-                mounts.iter().map(|m| json!({ "at": m.at, "above": m.above })).collect::<Vec<_>>()
+                mounts.iter().map(|m| json!({ "at": m.at, "above": m.above, "out": m.out })).collect::<Vec<_>>()
             }),
             "stands": scene.stands().ok().map(|stands| {
                 stands.iter().map(|s| json!({ "at": s.at, "forward": s.forward, "above": s.above }))
@@ -43,7 +44,7 @@ fn geometry(scene: &[u8]) -> String {
                 })).collect::<Vec<_>>()
             }),
             "openings": scene.fitted().ok().map(|fitted| {
-                fitted.iter().map(|f| json!({ "kind": f.kind, "corners": f.corners, "out": f.out }))
+                fitted.iter().map(|f| json!({ "kind": f.kind, "corners": f.corners, "out": f.out, "light": f.light }))
                     .collect::<Vec<_>>()
             }),
             "roofWindows": scene.panes().ok(),
@@ -446,6 +447,24 @@ mod exports {
         // SAFETY: the caller guarantees the buffer, written through `reserve`.
         let input = unsafe { std::slice::from_raw_parts(input, input_len) };
         leak(super::edited(input, super::edit::Glazed::reply))
+    }
+
+    /// # Safety
+    /// `input`/`input_len` name a live buffer from `reserve`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn sizing(input: *const u8, input_len: usize) -> u64 {
+        // SAFETY: the caller guarantees the buffer, written through `reserve`.
+        let input = unsafe { std::slice::from_raw_parts(input, input_len) };
+        leak(super::edited(input, super::sizing::Checked::reply))
+    }
+
+    /// # Safety
+    /// `input`/`input_len` name a live buffer from `reserve`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn longest(input: *const u8, input_len: usize) -> u64 {
+        // SAFETY: the caller guarantees the buffer, written through `reserve`.
+        let input = unsafe { std::slice::from_raw_parts(input, input_len) };
+        leak(super::edited(input, super::sizing::Longest::reply))
     }
 
     /// Hands a reply to the host as `ptr << 32 | len`; the host releases it.

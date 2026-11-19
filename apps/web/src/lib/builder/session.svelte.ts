@@ -9,43 +9,33 @@ import type {
   ModuleType,
   Problem,
 } from "../api/core.ts";
-import { coldStrings, stringRefusal, type Limits, type StringRefusal } from "./checks.ts";
+import { checked, stringRefusal, type Checking, type StringRefusal } from "./checks.ts";
 import { haptics } from "../haptics.ts";
-import { begin, record, redo, undo, type Edits } from "./history.ts";
-import { parent, picked, type Level } from "./levels.ts";
-import { painted, panels, uncovered, type Draft } from "./modules.ts";
+import { Drafts } from "./drafts.svelte.ts";
+import { handled, parent, picked, type Level } from "./levels.ts";
+import { wiredIn, panels, type Draft } from "./modules.ts";
 import { exists, type Plan } from "./outline.ts";
 import type { Geometry, Modules, Pv, Scene, Sizes } from "./pv.ts";
-import { paintingOf, type Editing, type Hit, type Painting, type Panel } from "./drawing.svelte.ts";
-import { fill, type Template } from "./templates.ts";
+import { layingOf, type Editing, type Hit, type Roofwork, type Panel } from "./drawing.svelte.ts";
+import { WiringMode } from "./wiring-mode.svelte.ts";
 
-const same = (a: Scene, b: Scene): boolean => JSON.stringify(a) === JSON.stringify(b);
-
-/** Today in the browser's calendar, as a date input holds it. */
-function today(): string {
-  const now = new Date();
-
-  return [now.getFullYear(), now.getMonth() + 1, now.getDate()]
-    .map((part) => String(part).padStart(2, "0"))
-    .join("-");
-}
+/** Today in the browser's calendar, as a date input holds it: Sweden writes `YYYY-MM-DD`. */
+const today = (): string => new Date().toLocaleDateString("sv-SE");
 
 /** What a session reads: the crate, the core, the layout in force and the plant's devices. */
-export interface Opening {
+export interface Reads extends Checking {
   readonly pv: Pv;
   readonly core: Core;
   /** The layout in force, or an empty one: nothing to undo before it. */
   readonly start: Draft;
   readonly moduleTypes: readonly Readonly<ModuleType>[];
   readonly devices: readonly Readonly<Device>[];
-  /** Each inverter's maximum DC input voltage, by device id. */
-  readonly limits: Limits;
 }
 
 export class Session {
-  readonly #opening: () => Opening;
+  readonly #opening: () => Reads;
 
-  #history: Edits<Draft>;
+  readonly #drafts: Drafts;
 
   readonly geometry: Geometry;
 
@@ -72,19 +62,22 @@ export class Session {
   /** Whether a click in 3D asked the inspector to show itself. */
   expanded = $state(false);
 
+  /** The wiring mode: its selection, and what wiring it makes of the draft (ADR 20). */
+  readonly wiring = new WiringMode(this, () => ({
+    ...this.#opening(),
+    moduleTypes: this.moduleTypes,
+  }));
+
   /** Whether the admin chose to start from nothing. */
   #empty = $state(false);
 
   /** Module types added in this session; the core keeps them, no undo takes them back. */
   #added = $state.raw<readonly ModuleType[]>([]);
 
-  /** A handle drag's scene, shown but not yet recorded. */
-  #dragged = $state.raw<Draft>();
-
-  constructor(opening: () => Opening) {
+  constructor(opening: () => Reads) {
     this.#opening = opening;
     // The start is where this session begins; a later one is a new session's.
-    this.#history = $state.raw(begin(opening().start));
+    this.#drafts = new Drafts(opening().start, (scene) => opening().pv.covered(scene, this.#sizes));
 
     this.#sizes = $derived(
       Object.fromEntries(this.moduleTypes.map(({ id, width, height }) => [id, { width, height }])),
@@ -92,14 +85,14 @@ export class Session {
 
     this.geometry = $derived(opening().pv.geometry(this.draft.scene));
     this.laid = $derived(opening().pv.modules(this.draft.scene, this.#sizes));
-    this.panels = $derived(panels(this.draft.scene, this.laid.grids));
+    this.panels = $derived(this.wiring.lit(panels(this.draft.scene, this.laid.grids)));
     this.plan = $derived({
       draft: this.draft,
       laid: this.laid,
       pv: opening().pv,
       sizes: this.#sizes,
       devices: opening().devices,
-      cold: coldStrings(opening().pv, this.draft, this.moduleTypes, opening().limits),
+      ...checked(opening(), this.draft, this.moduleTypes),
       refused: this.#refused(),
     });
   }
@@ -130,16 +123,21 @@ export class Session {
     return saved !== undefined && "problem" in saved ? stringRefusal(saved, names) : null;
   }
 
+  /** The draft as recorded: without a drag's step or a proposal. */
+  get present(): Draft {
+    return this.#drafts.present;
+  }
+
   get draft(): Draft {
-    return this.#dragged ?? this.#history.present;
+    return this.#drafts.dragged ?? this.wiring.proposal ?? this.#drafts.present;
   }
 
   get undoable(): boolean {
-    return this.#history.past.length > 0;
+    return this.#drafts.undoable;
   }
 
   get redoable(): boolean {
-    return this.#history.future.length > 0;
+    return this.#drafts.redoable;
   }
 
   /** The level shown: an undo or a removal can take its object away, and its group shows instead. */
@@ -147,45 +145,39 @@ export class Session {
     return exists(this.#level, this.plan) ? this.#level : parent(this.#level);
   }
 
-  /** The scene without the modules a roof chimney or roof window covers: one added or moved onto
-   * modules removes them in the same undo step (ADR 20). */
-  #cleared(scene: Scene): Scene {
-    const lain = (scene.grids ?? []).some(({ modules }) => modules.length > 0);
-
-    const covering = (scene.chimneys?.length ?? 0) + (scene.roofWindows?.length ?? 0);
-
-    // No chimney and no roof window, or no module: no question to the crate.
-    return lain && covering > 0
-      ? uncovered(scene, this.#opening().pv.covered(scene, this.#sizes))
-      : scene;
-  }
-
+  /** Records `next` as one undo step. While a proposal shows, the edit was made of it: the
+   * proposal is dropped and nothing recorded, for only Keep or a save keeps one (ADR 20). */
   change(next: Draft): void {
-    this.#history = record(this.#history, { ...next, scene: this.#cleared(next.scene) });
+    if (this.wiring.proposal !== undefined) {
+      this.wiring.discard();
+
+      return;
+    }
+
+    this.#drafts.record(next);
     this.saved = undefined;
   }
 
   /** Shows a handle drag's step at once; `drop` records the drag as one undo step (ADR 20). */
   drag(scene: Scene): void {
-    this.#dragged = { ...this.#history.present, scene: this.#cleared(scene) };
+    this.#drafts.drag(scene);
   }
 
   drop(): void {
-    const dragged = this.#dragged;
+    const dragged = this.#drafts.drop();
 
-    this.#dragged = undefined;
-
-    if (dragged !== undefined && !same(dragged.scene, this.#history.present.scene)) {
-      this.change(dragged);
-    }
+    if (dragged !== undefined) this.change(dragged);
   }
 
+  /** Either drops a proposal: a redo back to its draft must not bring it back. */
   undo(): void {
-    this.#history = undo(this.#history);
+    this.wiring.discard();
+    this.#drafts.undo();
   }
 
   redo(): void {
-    this.#history = redo(this.#history);
+    this.wiring.discard();
+    this.#drafts.redo();
   }
 
   /** A selected block, obstacle, ground surface, fence, car place, chimney or opening's handles,
@@ -193,18 +185,7 @@ export class Session {
   get editing(): Editing | undefined {
     const { level } = this;
 
-    if (
-      level.kind !== "block" &&
-      level.kind !== "obstacle" &&
-      level.kind !== "surface" &&
-      level.kind !== "fence" &&
-      level.kind !== "place" &&
-      level.kind !== "chimney" &&
-      level.kind !== "roofWindow" &&
-      level.kind !== "opening"
-    ) {
-      return undefined;
-    }
+    if (!handled(level)) return undefined;
 
     return {
       scene: this.draft.scene,
@@ -220,24 +201,27 @@ export class Session {
     };
   }
 
-  /** The selected face's grid, on whose roof a press in 3D lays modules, or the picked string,
-   * which a drag across modules wires (ADR 20). */
-  get painting(): Painting | undefined {
-    return paintingOf(this.level, {
-      draft: this.draft,
-      laid: this.laid,
-      pv: this.#opening().pv,
-      sizes: this.#sizes,
-      ondrag: (scene) => {
-        this.drag(scene);
-      },
-      ondrop: () => {
-        this.drop();
-      },
-      go: (level) => {
-        this.go(level);
-      },
-    });
+  /** The selected face's grid, on whose roof a press in 3D lays modules, or the wiring mode, in
+   * which a drag across modules selects them (ADR 20). */
+  get roofwork(): Roofwork | undefined {
+    return (
+      this.wiring.roofwork ??
+      layingOf(this.level, {
+        draft: this.draft,
+        laid: this.laid,
+        pv: this.#opening().pv,
+        sizes: this.#sizes,
+        ondrag: (scene) => {
+          this.drag(scene);
+        },
+        ondrop: () => {
+          this.drop();
+        },
+        go: (level) => {
+          this.go(level);
+        },
+      })
+    );
   }
 
   /** Templates are offered while the scene has no block, until the admin starts empty. */
@@ -245,14 +229,16 @@ export class Session {
     return this.draft.scene.blocks.length === 0 && !this.#empty;
   }
 
-  /** Fills the scene from a template, one undo step; nothing remembers which (ADR 20). */
-  begin(template: Template): void {
-    if (template === "empty") this.#empty = true;
-    else this.change(fill(this.draft, template));
+  /** Starts from a template's `filled` draft, one undo step, or from nothing; nothing remembers
+   * which (ADR 20). */
+  begin(filled?: Draft): void {
+    if (filled === undefined) this.#empty = true;
+    else this.change(filled);
   }
 
   go(level: Level): void {
     haptics.soft();
+    this.wiring.entered(level);
     this.#level = level;
   }
 
@@ -261,7 +247,7 @@ export class Session {
   pick(hit: Hit, peek = false): void {
     const level = picked(this.draft.scene, hit, this.#opening().pv);
 
-    if (level === null) return;
+    if (this.wiring.aimed(level) || level === null) return;
 
     this.go(level);
     this.expanded = !peek;
@@ -277,7 +263,7 @@ export class Session {
   /** One configuration change from the chosen day on (ADR 20); nothing left to undo after. */
   async save(): Promise<void> {
     const { draft } = this;
-    const strings = draft.strings.map((string, i) => ({ ...string, ...painted(draft.scene, i) }));
+    const strings = draft.strings.map((string, i) => ({ ...string, ...wiredIn(draft.scene, i) }));
 
     const saved = await this.#opening().core.changeLayout({
       appliesFrom: new Date(`${this.appliesFrom}T00:00`).toISOString(),
@@ -292,7 +278,7 @@ export class Session {
     if (refused !== null) this.go({ kind: "string", index: refused.string });
 
     if (!("problem" in saved)) {
-      this.#history = begin({ scene: saved.scene ?? draft.scene, strings: saved.strings });
+      this.#drafts.begin({ scene: saved.scene ?? draft.scene, strings: saved.strings });
     }
   }
 }

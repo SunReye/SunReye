@@ -110,3 +110,39 @@ test("a chimney dragged past its face stops at the edge, wholly on it, and slide
 
   expect(drawn.filter(({ surface }) => surface === "chimney")).toHaveLength(5);
 });
+
+/** From a camera south of the house, 35° up, through three.js's `point`. */
+function oblique(point: readonly [number, number, number]): Ray {
+  const origin = [5, 20, 30] as const;
+  const way = [point[0] - origin[0], point[1] - origin[1], point[2] - origin[2]] as const;
+  const length = Math.hypot(...way);
+
+  return { origin, direction: [way[0] / length, way[1] / length, way[2] / length] };
+}
+
+test("seen from the side a chimney stays under the pointer: a metre up the slope is a metre up", () => {
+  const south = roofs[1];
+
+  if (south === undefined) throw new Error("no south face");
+
+  /** Three.js's point `across` and `up` the south face. */
+  const onFace = (across: number, up: number): [number, number, number] => {
+    const [e, n, u] = south.origin.map(
+      (from, axis) => from + (south.across[axis] ?? 0) * across + (south.up[axis] ?? 0) * up,
+    );
+
+    return [e ?? 0, u ?? 0, -(n ?? 0)];
+  };
+
+  const moved = drag(
+    scene,
+    TARGET,
+    // Grabbed where it meets the roof.
+    { grip: "move", ray: oblique(onFace(3, 1.5)), height: onFace(3, 1.5)[1] },
+    oblique(onFace(5, 2.5)),
+    { pv, laid },
+  );
+
+  expect(moved?.scene.chimneys?.[0]).toEqual({ ...CHIMNEY, across: 5, up: 2.5 });
+  expect(moved?.value).toEqual([5, 2.5]);
+});

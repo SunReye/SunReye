@@ -19,6 +19,9 @@ export const USUAL: Readonly<
 /** Metres: the handles' step. */
 const STEP = 0.1;
 
+/** Metres: the longest wall the inspector lets a block have. */
+const LONGEST = 60;
+
 /** The scene with opening `index` changed, kept on its wall, or why the change cannot be. */
 export function refit(
   pv: Pick<Pv, "refit">,
@@ -40,6 +43,47 @@ export function refit(
  * when none takes it. */
 export function fresh(pv: Pick<Pv, "place">, scene: Scene, kind: OpeningKind): Opening | null {
   return pv.place(scene, kind, USUAL[kind]);
+}
+
+/** Metres between an opening and its duplicate. */
+const BESIDE = 0.2;
+
+/** The first of `alongs` at which `copy`, the scene's last opening, fits its wall as it is. */
+function placed(pv: Pick<Pv, "refit">, scene: Scene, alongs: readonly number[]): Scene | null {
+  const index = (scene.openings?.length ?? 0) - 1;
+
+  for (const along of alongs) {
+    const next = refit(pv, scene, index, { along });
+
+    // Kept where it was asked: the crate moved it nowhere to keep it on the wall.
+    if (!("unfit" in next) && next.openings?.[index]?.along === along) return next;
+  }
+
+  return null;
+}
+
+/** The scene with a copy of `original` last: in the first free place to the right of where it
+ * stands on its wall, else the wall's first free place, in 10 cm steps; null where the wall has no
+ * room, or its block is gone. */
+export function pasted(pv: Pick<Pv, "refit">, scene: Scene, original: Opening): Scene | null {
+  if (scene.blocks[original.block] === undefined) return null;
+
+  const from = snap(original.along + original.width + BESIDE, STEP);
+  // A wall is no longer than a block may be.
+  const steps = Array.from({ length: LONGEST / STEP }, (_, i) => snap(i * STEP, STEP));
+  const copied = { ...scene, openings: [...(scene.openings ?? []), original] };
+
+  return placed(pv, copied, [
+    ...steps.filter((at) => at >= from),
+    ...steps.filter((at) => at < from),
+  ]);
+}
+
+/** The scene with a copy of opening `index` last, placed as a pasted one; null without room. */
+export function duplicate(pv: Pick<Pv, "refit">, scene: Scene, index: number): Scene | null {
+  const original = scene.openings?.[index];
+
+  return original === undefined ? null : pasted(pv, scene, original);
 }
 
 const lowered = (opening: Opening): Opening => ({ ...opening, block: opening.block - 1 });
@@ -112,9 +156,23 @@ function travel(
   return [dot([to[0] - from[0], 0, to[2] - from[2]], wall.right), to[1] - from[1]];
 }
 
-/** What a grip changes by a drag of `across` metres along the wall and `up` metres. */
+/** A window's sill `up` metres higher, the window whole between the ground and the `eave`; any
+ * other opening stays on the ground (ADR 20). */
+function lifted(opening: Opening, up: number, eave: number): Partial<Opening> {
+  if (opening.kind !== "window") return {};
+
+  const sill = snap((opening.sill ?? 0) + up, STEP);
+
+  return { sill: Math.max(0, Math.min(sill, snap(eave - opening.height, 0.01))) };
+}
+
+/** What a grip changes by a drag of `across` metres along the wall and `up` metres, under a wall
+ * `eave` metres high. */
 const GRIPS = {
-  move: (opening: Opening, across: number) => ({ along: snap(opening.along + across, STEP) }),
+  move: (opening: Opening, across: number, up: number, eave: number) => ({
+    along: snap(opening.along + across, STEP),
+    ...lifted(opening, up, eave),
+  }),
   width: (opening: Opening, across: number) => ({ width: snap(opening.width + across, STEP) }),
   height: (opening: Opening, _: number, up: number) => ({
     height: snap(opening.height + up, STEP),
@@ -123,13 +181,18 @@ const GRIPS = {
 
 export type OpeningGrip = keyof typeof GRIPS;
 
-/** The dragged scene and what the grip's handle shows of opening `index`. */
+/** The dragged scene and what the grip's handle shows of opening `index`: a moved window its place
+ * along the wall and its sill. */
 function reading(scene: Scene, index: number, grip: OpeningGrip): Dragged | null {
   const opening = scene.openings?.[index];
 
-  return opening === undefined
-    ? null
-    : { scene, value: [opening[grip === "move" ? "along" : grip]], unit: "m" };
+  if (opening === undefined) return null;
+
+  if (grip !== "move") return { scene, value: [opening[grip]], unit: "m" };
+
+  const value = opening.kind === "window" ? [opening.along, opening.sill ?? 0] : [opening.along];
+
+  return { scene, value, unit: "m" };
 }
 
 /** What an opening's drag asks the crate: its fit, and the walls it laid out. */
@@ -159,7 +222,8 @@ export function slide(
 
   if (moved === null) return null;
 
-  const next = refit(pv, scene, index, GRIPS[grip](opening, ...moved));
+  const eave = scene.blocks[opening.block]?.eave ?? 0;
+  const next = refit(pv, scene, index, GRIPS[grip](opening, ...moved, eave));
 
   return "unfit" in next ? null : reading(next, index, grip);
 }

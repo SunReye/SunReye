@@ -10,7 +10,7 @@
   import { Moment } from "./moment.svelte.ts";
   import type { Location, Pv } from "./pv.ts";
   import PhoneTools from "./PhoneTools.svelte";
-  import { Session, type Opening } from "./session.svelte.ts";
+  import { Session, type Reads } from "./session.svelte.ts";
   import Templates from "./Templates.svelte";
   import { provideUploader } from "./upload.ts";
   import View from "./View.svelte";
@@ -23,31 +23,34 @@
     devices,
     location,
     limits = {},
+    inputs = {},
   }: {
     pv: Pv;
     core: Core;
     /** The layout in force, or an empty one: nothing to undo before it. */
-    start: Opening["start"];
+    start: Reads["start"];
     moduleTypes: readonly ModuleType[];
     /** What equipment markers may name. */
     devices: readonly Device[];
     /** Unknown to a viewer: the sun stays put and no clear sky is run. */
     location?: Location | undefined;
     /** Each inverter's maximum DC input voltage, by device id; a viewer knows none. */
-    limits?: Opening["limits"];
+    limits?: Reads["limits"];
+    /** Each inverter's MPPT inputs' limits, by device id; a viewer knows none. */
+    inputs?: Reads["inputs"];
   } = $props();
 
   // Every width edits (ADR 20): a phone with the inspector as a sheet and "+" on the canvas.
   const phone = new MediaQuery("max-width: 40rem");
   const portrait = new MediaQuery("orientation: portrait");
 
-  const session = new Session(() => ({ pv, core, start, moduleTypes, devices, limits }));
+  const session = new Session(() => ({ pv, core, start, moduleTypes, devices, limits, inputs }));
 
   /** The time slider's instant: it reads the draft, never writes it. */
   const moment = new Moment(
     () => ({ core, pv, location, draft: session.draft, moduleTypes: session.moduleTypes }),
     // Handles to drag, or a face to lay and wire: faces and edges stay exact (ADR 23).
-    () => session.editing !== undefined || session.painting !== undefined,
+    () => session.editing !== undefined || session.roofwork !== undefined,
   );
 
   provideUploader((glb) => core.uploadCarBody(glb));
@@ -76,10 +79,10 @@
       clear={sheet ? PEEK : 0}
       covered={sheet && session.expanded}
       editing={session.editing}
-      painting={session.painting}
-      roofs={session.laid.roofs}
-      facing={phone.current ? session.level : undefined}
+      roofwork={session.roofwork}
+      onto={phone.current ? session.wiring.onto : undefined}
       tools={phone.current ? tools : undefined}
+      selected={session}
       onpick={(hit) => {
         session.pick(hit, phone.current);
       }}
@@ -87,9 +90,10 @@
     {#if session.offering}
       <Templates
         {pv}
+        draft={session.draft}
         clear={sheet ? PEEK : 0}
-        onpick={(template) => {
-          session.begin(template);
+        onpick={(filled) => {
+          session.begin(filled);
         }}
       />
     {/if}

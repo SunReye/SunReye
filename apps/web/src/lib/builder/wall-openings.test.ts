@@ -1,7 +1,15 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
 import { loadPv, type Opening, type Scene } from "./pv.ts";
-import { fresh, refit, slide as slideOn, withOpenings, type OpeningGrip } from "./wall-openings.ts";
+import {
+  duplicate,
+  pasted,
+  fresh,
+  refit,
+  slide as slideOn,
+  withOpenings,
+  type OpeningGrip,
+} from "./wall-openings.ts";
 
 // The release build the gate and the SPA build produce (crates/pv-wasm).
 const wasm = new URL(
@@ -101,7 +109,32 @@ test("dragging an opening slides it along its wall in 10 cm steps", () => {
   const dragged = slide(scene, "move", ray(2.5), ray(3.07));
 
   expect(dragged?.scene.openings?.[0]).toMatchObject({ along: 2.6, width: 1.2 });
-  expect(dragged).toMatchObject({ value: [2.6], unit: "m" });
+  expect(dragged).toMatchObject({ value: [2.6, 0.9], unit: "m" });
+});
+
+test("dragging a window also moves it up and down its wall, its sill following in 10 cm steps", () => {
+  const up = slide(glazed(window), "move", ray(2.5, 1.5), ray(3.52, 1.93));
+
+  expect(up?.scene.openings?.[0]).toEqual({ ...window, along: 3, sill: 1.3 });
+  expect(up?.value).toEqual([3, 1.3]);
+
+  // Kept whole under the 3 m eave and off the ground's far side.
+  expect(slide(glazed(window), "move", ray(2.5, 1.5), ray(2.5, 9))?.scene.openings?.[0]).toEqual({
+    ...window,
+    sill: 1.6,
+  });
+  expect(slide(glazed(window), "move", ray(2.5, 1.5), ray(2.5, -9))?.scene.openings?.[0]).toEqual({
+    ...window,
+    sill: 0,
+  });
+});
+
+test("a door dragged up stays on the ground", () => {
+  const door: Opening = { ...window, kind: "frontDoor", height: 2.1, sill: 0 };
+  const moved = slide(glazed(door), "move", ray(2.5, 1.5), ray(3.5, 2.5));
+
+  expect(moved?.scene.openings?.[0]).toEqual({ ...door, along: 3 });
+  expect(moved?.value).toEqual([3]);
 });
 
 test("its width and height handles resize it, kept on the wall and under the eave", () => {
@@ -135,4 +168,31 @@ test("a removed block takes its openings with it, and later blocks' follow it do
 
   expect(withOpenings(two, 0).openings).toEqual([{ ...window, block: 0 }]);
   expect(withOpenings(house, 0)).toEqual(house);
+});
+
+test("a duplicate stands to the right of its original on the same wall, like it in all but place", () => {
+  const dark = { ...window, light: "off" } as const;
+  const copied = duplicate(pv, glazed(dark), 0);
+
+  // The 1.2 m window ends at 3.2 m; its copy starts 20 cm on.
+  expect(copied?.openings).toEqual([dark, { ...dark, along: 3.4 }]);
+});
+
+test("without room to its right a duplicate takes the wall's first free place, or none", () => {
+  const last = { ...window, along: 8.6 };
+
+  expect(duplicate(pv, glazed(last), 0)?.openings?.[1]).toEqual({ ...last, along: 0 });
+
+  const whole = { ...window, along: 0, width: 10 };
+
+  expect(duplicate(pv, glazed(whole), 0)).toBeNull();
+});
+
+test("a copied opening is pasted beside where it stood, whatever became of it since", () => {
+  // The original has moved off: its copy still stands beside where it was copied.
+  const moved = { ...window, along: 0 };
+
+  expect(pasted(pv, glazed(moved), window)?.openings).toEqual([moved, { ...window, along: 3.4 }]);
+  // Its block is gone: nothing is pasted.
+  expect(pasted(pv, glazed(window), { ...window, block: 7 })).toBeNull();
 });

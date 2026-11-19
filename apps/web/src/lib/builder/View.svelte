@@ -7,11 +7,17 @@
   import type { Snippet } from "svelte";
   import type { Core, Device, ModuleType } from "../api/core.ts";
   import { parkedNow } from "../cars/parked.svelte.ts";
-  import { laying, type Level } from "./levels.ts";
   import type { Moment } from "./moment.svelte.ts";
   import type { Draft } from "./modules.ts";
   import type { Geometry, Location, RoofFace } from "./pv.ts";
-  import Stage, { type Editing, type Hit, type Painting, type Panel } from "./Stage.svelte";
+  import ContextBar, { type Selected } from "./ContextBar.svelte";
+  import Stage, {
+    type Editing,
+    type Hit,
+    type Roofwork,
+    type Panel,
+    type Projector,
+  } from "./Stage.svelte";
   import StatusStrip from "./StatusStrip.svelte";
   import TimeSlider from "./TimeSlider.svelte";
 
@@ -27,10 +33,10 @@
     covered = false,
     onpick,
     editing,
-    painting,
-    roofs = [],
-    facing,
+    roofwork,
+    onto,
     tools,
+    selected,
   }: {
     core: Core;
     /** Read, never written: the slider changes nothing in the scene (ADR 20). */
@@ -48,26 +54,44 @@
     onpick?: ((hit: Hit) => void) | undefined;
     /** The selected object's handles. */
     editing?: Editing | undefined;
-    /** The picked string, painted by a drag across modules. */
-    painting?: Painting | undefined;
-    roofs?: readonly RoofFace[];
-    /** A phone's inspector level: from afar a roof cell is too small for a finger, so the camera
-     * flies onto the face whose modules it lays (ADR 20). */
-    facing?: Level | undefined;
+    /** The selected face's laying, or the wiring mode's selecting. */
+    roofwork?: Roofwork | undefined;
+    /** The roof face a phone's camera flies onto: from afar a module is too small for a finger
+     * (ADR 20). */
+    onto?: RoofFace | undefined;
     /** Buttons at the lower right, beside the status line. */
     tools?: Snippet | undefined;
+    /** The session whose selection carries the context toolbar. */
+    selected?: Selected | undefined;
   } = $props();
 
   let width = $state(0);
   let height = $state(0);
+  let canvas = $state<HTMLDivElement>();
+
+  /** Where a point of the scene lands on the canvas, as last drawn. */
+  let project = $state.raw<Projector>();
+
+  /** A pointer is down on the canvas: it orbits or drags, and the toolbar is out of its way. */
+  let held = $state(false);
 
   const cars = $derived(parkedNow(draft.scene.carPlaces ?? [], geometry.stands));
 </script>
 
 <!-- Edge to edge on a phone. -->
 <div
+  bind:this={canvas}
   bind:clientWidth={width}
   bind:clientHeight={height}
+  onpointerdowncapture={(event) => {
+    held = event.target instanceof HTMLCanvasElement;
+  }}
+  onpointerupcapture={() => {
+    held = false;
+  }}
+  onpointercancelcapture={() => {
+    held = false;
+  }}
   class="relative size-full min-h-0 overflow-hidden rounded-lg ring-1 ring-border/60 elevation-1 max-sm:rounded-none max-sm:ring-0 max-sm:[box-shadow:none]"
 >
   <!-- Measured first: the first view fits the canvas, with no flight to it. -->
@@ -82,16 +106,23 @@
       {cars}
       {onpick}
       {editing}
-      {painting}
-      onto={facing && laying(roofs, facing)}
+      {roofwork}
+      onrender={(next) => {
+        project = next;
+      }}
+      {onto}
       aspect={width / height}
       bind:trial={moment.trial}
     />
   {/if}
 
+  {#if selected !== undefined && project !== undefined && canvas !== undefined && !held && !covered}
+    <ContextBar session={selected} {project} {canvas} {clear} />
+  {/if}
+
   <!-- Beside the views' button, which the stage keeps at the top right. -->
   <div class="pointer-events-none absolute top-3 right-16 left-3 flex">
-    <div class="pointer-events-auto w-full max-w-md">
+    <div data-canvas-zone class="pointer-events-auto w-full max-w-md">
       <TimeSlider bind:day={moment.day} bind:minutes={moment.minutes} />
     </div>
   </div>
@@ -115,7 +146,7 @@
       />
     </div>
     {#if tools}
-      <div class="pointer-events-auto shrink-0">
+      <div data-canvas-zone class="pointer-events-auto shrink-0">
         {@render tools()}
       </div>
     {/if}

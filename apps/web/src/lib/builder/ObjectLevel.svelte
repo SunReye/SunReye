@@ -5,8 +5,8 @@
   import CarPlaceFieldset from "./CarPlaceFieldset.svelte";
   import EquipmentFieldset from "./EquipmentFieldset.svelte";
   import FaceLevel from "./FaceLevel.svelte";
-  import { parent, type Level } from "./levels.ts";
-  import { painted, withoutString, type Draft, type TypeSource } from "./modules.ts";
+  import type { Level } from "./levels.ts";
+  import { wiredIn, type Draft, type TypeSource } from "./modules.ts";
   import type { Plan } from "./outline.ts";
   import StringFieldset from "./StringFieldset.svelte";
   import SurroundingLevel from "./SurroundingLevel.svelte";
@@ -18,6 +18,7 @@
     types,
     onchange,
     onlevel,
+    onremove,
   }: {
     level: Exclude<Level, { kind: "root" | "section" }>;
     plan: Plan;
@@ -26,6 +27,8 @@
     types: TypeSource;
     onchange: (draft: Draft) => void;
     onlevel: (level: Level) => void;
+    /** Takes the level's object out of the draft and shows its group. */
+    onremove: () => void;
   } = $props();
 
   const draft = $derived(plan.draft);
@@ -38,6 +41,13 @@
   const places = $derived(scene.carPlaces ?? []);
   const place = $derived(level.kind === "place" ? places[index] : undefined);
   const string = $derived(level.kind === "string" ? draft.strings[index] : undefined);
+
+  /** Where the string leaves its inverter's limits, and the inputs that inverter has. */
+  const warnings = $derived(
+    [...plan.cold, ...plan.sized].flatMap((warned) => (warned.string === index ? [warned.text] : [])),
+  );
+
+  const inputs = $derived(string && plan.inputs[string.device]);
 
   const roof = $derived(
     level.kind === "face" || level.kind === "module"
@@ -52,6 +62,12 @@
 
   function sceneChange(next: Partial<Draft["scene"]>): void {
     onchange({ ...draft, scene: { ...scene, ...next } });
+  }
+
+  /** A scene with one opening more: recorded, and its last opening picked. */
+  function added(next: Draft["scene"]): void {
+    sceneEdit(next);
+    onlevel({ kind: "opening", index: (next.openings?.length ?? 1) - 1 });
   }
 
   /** A building or a surrounding object's level: the kinds that edit the scene alone. */
@@ -74,18 +90,6 @@
     onchange({ ...draft, scene: next });
   }
 
-  function sceneRemove(next: Draft["scene"]): void {
-    remove({ ...draft, scene: next });
-  }
-
-  /** The draft without this object, back at its group. */
-  function remove(next: Draft): void {
-    // Read first: once the object is gone, the level shown is already its parent.
-    const up = parent(level);
-
-    onchange(next);
-    onlevel(up);
-  }
 </script>
 
 {#if building !== null}
@@ -96,7 +100,8 @@
     roofs={plan.laid.roofs}
     pv={plan.pv}
     onchange={sceneEdit}
-    onremove={sceneRemove}
+    onadd={added}
+    {onremove}
   />
 {:else if surrounding !== null}
   <SurroundingLevel
@@ -104,7 +109,7 @@
     {index}
     {scene}
     onchange={sceneEdit}
-    onremove={sceneRemove}
+    {onremove}
   />
 {:else if marker !== undefined}
   <EquipmentFieldset
@@ -114,9 +119,7 @@
     onchange={(next) => {
       sceneChange({ equipment: equipment.with(index, next) });
     }}
-    onremove={() => {
-      remove({ ...draft, scene: { ...scene, equipment: equipment.toSpliced(index, 1) } });
-    }}
+    {onremove}
   />
 {:else if place !== undefined}
   <CarPlaceFieldset
@@ -125,25 +128,22 @@
     onchange={(next) => {
       sceneChange({ carPlaces: places.with(index, next) });
     }}
-    onremove={() => {
-      remove({ ...draft, scene: { ...scene, carPlaces: places.toSpliced(index, 1) } });
-    }}
+    {onremove}
   />
 {:else if string !== undefined}
   <StringFieldset
     {string}
     position={index}
-    made={painted(scene, index)}
-    warning={plan.cold.find((cold) => cold.string === index)?.text}
+    made={wiredIn(scene, index)}
+    {warnings}
     refused={plan.refused?.string === index ? plan.refused.text : undefined}
     {moduleTypes}
     devices={plan.devices}
+    inputs={inputs?.length}
     onchange={(next) => {
       onchange({ ...draft, strings: draft.strings.with(index, next) });
     }}
-    onremove={() => {
-      remove({ scene: withoutString(scene, index), strings: draft.strings.toSpliced(index, 1) });
-    }}
+    {onremove}
   />
 {:else if roof !== undefined}
   <FaceLevel
@@ -153,6 +153,6 @@
     {moduleTypes}
     {types}
     {onchange}
-    onremove={remove}
+    {onremove}
   />
 {/if}

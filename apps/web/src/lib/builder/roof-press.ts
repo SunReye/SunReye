@@ -1,30 +1,21 @@
-// Laying modules and wiring strings in 3D (ADR 20). A press that starts a gesture (gestures.ts)
+// Laying modules and selecting them for wiring in 3D (ADR 20). A press that starts a gesture (gestures.ts)
 // never reaches the orbit controls or the click picking; any other orbits, and a second finger
 // hands both to the orbit controls. A mouse over the selected face shows the ghost module. Each
 // gesture is one undo step. Mouse, pen and touch.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- three.js and the DOM, used in place. */
 import type { Group, PerspectiveCamera } from "three";
 import { onPlane, type Aim } from "./aim.ts";
-import { hover, lay, wire, type Painting, type Press } from "./gestures.ts";
+import { hover, lay, select, type Roofwork, type Press } from "./gestures.ts";
 import type { Ghost } from "./pv.ts";
 import { strike, type Panel } from "./scene.ts";
 import { Handover, listen, ndc } from "./pointer.ts";
 
-export type { Painting } from "./gestures.ts";
+export type { Roofwork } from "./gestures.ts";
 
-/** Why a module refused the paint, beside the pointer in canvas pixels. */
-export interface Refused {
-  readonly text: string;
-  readonly left: number;
-  readonly top: number;
-}
-
-export interface Brushing {
-  readonly painting: () => Painting | undefined;
+export interface RoofSources {
+  readonly roofwork: () => Roofwork | undefined;
   readonly drawn: () => Group | undefined;
   readonly panels: () => readonly Panel[];
-  /** A refusal, or none once the next press starts. */
-  readonly onrefuse: (refused?: Refused) => void;
   /** The modules not laid yet, to show under the pointer. */
   readonly onghost: (ghosts: readonly Ghost[]) => void;
 }
@@ -42,10 +33,10 @@ interface Held {
 }
 
 /** Listens on a canvas, before the orbit controls and the click picking. */
-export class Brush {
+export class RoofPress {
   readonly #canvas: HTMLCanvasElement;
   readonly #camera: PerspectiveCamera;
-  readonly #sources: Brushing;
+  readonly #sources: RoofSources;
   #held: Held | undefined;
 
   readonly #handover = new Handover();
@@ -53,7 +44,7 @@ export class Brush {
   /** Stops listening. */
   readonly dispose: () => void;
 
-  constructor(canvas: HTMLCanvasElement, camera: PerspectiveCamera, sources: Brushing) {
+  constructor(canvas: HTMLCanvasElement, camera: PerspectiveCamera, sources: RoofSources) {
     this.#canvas = canvas;
     this.#camera = camera;
     this.#sources = sources;
@@ -89,25 +80,6 @@ export class Brush {
     };
   }
 
-  /** What a gesture shows: its ghosts, and a refusal beside the pointer. */
-  #showing() {
-    const { painting, onghost, onrefuse } = this.#sources;
-
-    return {
-      painting,
-      onghost,
-      onrefuse: (text?: string, at?: readonly [number, number]) => {
-        const box = this.#canvas.getBoundingClientRect();
-
-        onrefuse(
-          text === undefined || at === undefined
-            ? undefined
-            : { text, left: at[0] - box.left, top: at[1] - box.top },
-        );
-      },
-    };
-  }
-
   readonly #press = (event: PointerEvent): void => {
     if (this.#handover.handed(event)) return;
 
@@ -117,18 +89,14 @@ export class Brush {
       return;
     }
 
-    const painting = this.#sources.painting();
+    const roofwork = this.#sources.roofwork();
 
-    if (painting === undefined || event.button !== 0) return;
-
-    this.#sources.onrefuse();
+    if (roofwork === undefined || event.button !== 0) return;
 
     const aim = this.#aim(event);
 
     const gesture =
-      painting.kind === "string"
-        ? wire(painting, aim, this.#showing())
-        : lay(painting, aim, this.#showing());
+      roofwork.kind === "wiring" ? select(roofwork, aim) : lay(roofwork, aim, this.#sources);
 
     if (gesture !== null) this.#hold(event, gesture);
   };
@@ -176,10 +144,10 @@ export class Brush {
 
   /** A mouse over the selected face: the ghost module follows it. */
   #hover(event: PointerEvent): void {
-    const painting = this.#sources.painting();
+    const roofwork = this.#sources.roofwork();
 
-    if (event.pointerType === "mouse" && painting?.kind === "modules") {
-      this.#sources.onghost(hover(painting, this.#aim(event)));
+    if (event.pointerType === "mouse" && roofwork?.kind === "modules") {
+      this.#sources.onghost(hover(roofwork, this.#aim(event)));
     }
   }
 

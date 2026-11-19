@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  export type { Editing, Painting } from "./SceneCanvas.svelte";
+  export type { Editing, Roofwork, Projector } from "./SceneCanvas.svelte";
 
   export type { Hit, Panel } from "./scene.ts";
 </script>
@@ -16,7 +16,11 @@
   } from "./camera.ts";
   import type { SceneWeather } from "../scene/weather.ts";
   import type { Geometry, Point, RoofFace } from "./pv.ts";
-  import SceneCanvas, { type Editing, type Painting } from "./SceneCanvas.svelte";
+  import SceneCanvas, {
+    type Editing,
+    type Roofwork,
+    type Projector,
+  } from "./SceneCanvas.svelte";
   import type { Hit, Panel } from "./scene.ts";
   import ViewMenu from "./ViewMenu.svelte";
   import WeatherMenu, { type Trial } from "./WeatherMenu.svelte";
@@ -31,7 +35,8 @@
     cars,
     onpick,
     editing,
-    painting,
+    roofwork,
+    onrender,
     onto,
     aspect = 1,
     trial = $bindable(null),
@@ -48,10 +53,12 @@
     /** The connected cars. */
     cars: readonly Parked[];
     onpick?: ((hit: Hit) => void) | undefined;
+    /** After each draw: where a point of the scene lands on the canvas. */
+    onrender?: ((project: Projector) => void) | undefined;
     /** The selected object's handles. */
     editing?: Editing | undefined;
-    /** The picked string, painted by a drag across modules. */
-    painting?: Painting | undefined;
+    /** The selected face's laying, or the wiring mode's selecting. */
+    roofwork?: Roofwork | undefined;
     /** The face the camera flies onto while it is given; it returns to the kept view after. */
     onto?: RoofFace | undefined;
     /** The canvas's width over its height: preset views fit the scene across it. */
@@ -93,10 +100,11 @@
   {view}
   onview={keep}
   {onpick}
+  {onrender}
   {editing}
-  {painting}
+  {roofwork}
 />
-<div class="absolute top-3 right-3 flex flex-col gap-2">
+<div data-canvas-zone class="absolute top-3 right-3 flex flex-col gap-2">
   <ViewMenu
     onpick={(preset) => {
       keep(presetView(preset, geometry, aspect));

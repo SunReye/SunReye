@@ -14,7 +14,7 @@ use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
-use sunreye_profile::Profile;
+use sunreye_profile::{Inverter, Profile};
 use sunreye_pv::{self as pv, Scene};
 use tokio::sync::watch;
 use utoipa::{IntoParams, ToSchema};
@@ -128,13 +128,13 @@ impl Inverters {
         inverters.get(&device).cloned()
     }
 
-    /// Each inverter's maximum DC input voltage, by device, where its profile declares one.
+    /// Each inverter's DC side, by device, where its profile describes one.
     #[must_use]
-    pub fn max_input_voltages(&self) -> Vec<(DeviceId, f64)> {
+    pub fn limits(&self) -> Vec<(DeviceId, Inverter)> {
         let inverters = crate::read(&self.0);
         inverters
             .iter()
-            .filter_map(|(id, profile)| Some((*id, profile.inverter()?.max_input_voltage)))
+            .filter_map(|(id, profile)| Some((*id, profile.inverter()?.clone())))
             .collect()
     }
 

@@ -103,7 +103,7 @@ function fenceHandles({ north, fences = [] }: Scene, index: number): Handle[] {
 
 /** What a chimney's, a roof window's and an opening's handles stand on, as the crate laid the scene
  * out. */
-export type Laid = Pick<Modules, "walls" | "footings" | "panes">;
+export type Laid = Pick<Modules, "walls" | "footings" | "panes" | "roofs">;
 
 /** A chimney's foot outlined on its roof face; its top, where the live value shows. The chimney
  * itself is dragged. */
@@ -167,7 +167,7 @@ function openingHandles(scene: Scene, index: number, laid: Laid): Handle[] {
   ];
 }
 
-const NONE: Laid = { walls: [], footings: [], panes: [] };
+const NONE: Laid = { walls: [], footings: [], panes: [], roofs: [] };
 
 /** The selected object's handles; a chimney's, a roof window's and an opening's stand on what the
  * crate `laid` out for this `scene`, and without it they have none. */

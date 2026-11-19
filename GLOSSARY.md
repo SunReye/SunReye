@@ -244,6 +244,34 @@ _Avoid_: Array, panel group
 The order a string runs through its modules, from its first.
 _Avoid_: Paint order
 
+**Wire**:
+To put a module into a string, at a place in its wiring order; to unwire takes it out. German UI: verdrahten, lösen.
+_Avoid_: Paint, assign (alone), link
+
+**Wiring mode**:
+The builder's state while its Strings group or a string is open: every string's wiring order is drawn and a drag across modules selects them. German UI: Verdrahten.
+_Avoid_: Paint mode, string tool
+
+**Selection**:
+The modules picked in the wiring mode, in the order they were crossed, before they are wired or unwired; held by the page, never stored.
+_Avoid_: Marked modules, lasso
+
+**Auto-stringing**:
+Wiring a roof face's unwired modules into new strings in a serpentine, as few as the inverter's limits allow; previewed before it is kept. German UI: Automatisch verdrahten.
+_Avoid_: Auto-layout, auto-wiring, string wizard
+
+**Context toolbar**:
+The builder's small toolbar on the canvas beside what is selected, with that selection's commonest actions.
+_Avoid_: Floating menu, action bar, assign bar
+
+**MPPT window**:
+The voltages an MPPT input tracks between, with the start voltage it wakes at and its maximum input current: the input's limits from the inverter's datasheet.
+_Avoid_: MPP range, DC window
+
+**MPPT window warning**:
+A notice that a string or an MPPT input leaves the input's limits at −10 °C or at a 70 °C cell; it never refuses a layout.
+_Avoid_: Sizing error, string error
+
 **Substring**:
 The cells of one module behind one bypass diode. Shade bypasses a substring, not the whole module.
 _Avoid_: Cell string, diode group

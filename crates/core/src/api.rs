@@ -257,6 +257,33 @@ struct DeviceSupport {
     /// open-circuit voltage at −10 °C is checked against (ADR 20).
     #[serde(skip_serializing_if = "Option::is_none")]
     max_input_voltage: Option<f64>,
+    /// An inverter's MPPT inputs' limits from its profile, in the inputs' order from 1: what the
+    /// builder offers a string and warns against (ADR 20).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    inputs: Vec<InputSupport>,
+}
+
+/// One MPPT input's limits (ADR 5).
+#[derive(Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+struct InputSupport {
+    /// Amperes.
+    max_current: f64,
+    /// The bottom of its voltage window, in volts.
+    min_voltage: f64,
+    /// The top of its voltage window, in volts.
+    max_voltage: f64,
+    /// Volts.
+    start_voltage: f64,
+}
+
+const fn input_support(mppt: &sunreye_profile::Mppt) -> InputSupport {
+    InputSupport {
+        max_current: mppt.max_current,
+        min_voltage: mppt.min_voltage,
+        max_voltage: mppt.max_voltage,
+        start_voltage: mppt.start_voltage,
+    }
 }
 
 /// A setting a device's profile declares (ADR 5, 7).
@@ -319,11 +346,10 @@ async fn capabilities(
             .map(|(setting, enable)| setting_support(setting, *enable))
             .collect();
     }
-    for (DeviceId(device), volts) in layouts.inverters().max_input_voltages() {
-        support
-            .entry(device.to_string())
-            .or_default()
-            .max_input_voltage = Some(volts);
+    for (DeviceId(device), inverter) in layouts.inverters().limits() {
+        let entry = support.entry(device.to_string()).or_default();
+        entry.max_input_voltage = Some(inverter.max_input_voltage);
+        entry.inputs = inverter.mppt.iter().map(input_support).collect();
     }
     support
         .entry(weather::DEVICE.0.to_string())

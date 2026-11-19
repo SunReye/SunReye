@@ -1157,6 +1157,13 @@
             },
             "type": "array"
           },
+          "inputs": {
+            "description": "An inverter's MPPT inputs' limits from its profile, in the inputs' order from 1: what the\nbuilder offers a string and warns against (ADR 20).",
+            "items": {
+              "$ref": "#/components/schemas/InputSupport"
+            },
+            "type": "array"
+          },
           "maxInputVoltage": {
             "description": "An inverter's maximum DC input voltage in volts, from its profile: what a string's\nopen-circuit voltage at −10 °C is checked against (ADR 20).",
             "format": "double",
@@ -1937,6 +1944,38 @@
         ],
         "type": "object"
       },
+      "InputSupport": {
+        "description": "One MPPT input's limits (ADR 5).",
+        "properties": {
+          "maxCurrent": {
+            "description": "Amperes.",
+            "format": "double",
+            "type": "number"
+          },
+          "maxVoltage": {
+            "description": "The top of its voltage window, in volts.",
+            "format": "double",
+            "type": "number"
+          },
+          "minVoltage": {
+            "description": "The bottom of its voltage window, in volts.",
+            "format": "double",
+            "type": "number"
+          },
+          "startVoltage": {
+            "description": "Volts.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "maxCurrent",
+          "minVoltage",
+          "maxVoltage",
+          "startVoltage"
+        ],
+        "type": "object"
+      },
       "Investment": {
         "description": "The investment payback is measured against.",
         "properties": {
@@ -2078,6 +2117,15 @@
           "factor"
         ],
         "type": "object"
+      },
+      "Light": {
+        "description": "An opening's light at night (ADR 20 Night).",
+        "enum": [
+          "auto",
+          "on",
+          "off"
+        ],
+        "type": "string"
       },
       "Lines": {
         "description": "The core's last log lines.",
@@ -2586,6 +2634,10 @@
           },
           "kind": {
             "$ref": "#/components/schemas/OpeningKind"
+          },
+          "light": {
+            "$ref": "#/components/schemas/Light",
+            "description": "Whether it glows at night; the rule's choice is not stored, so a scene stored before the\nchoice existed loads and saves as it was."
           },
           "sill": {
             "description": "Metres from the ground to its lower edge; a door's is 0.",

@@ -1,21 +1,23 @@
 // What a handle drag makes of the scene (ADR 20): from the ray that grabbed it to the pointer's
 // ray now, snapped. Pure; the drag slides in a level plane, the pitch in an upright one.
-import type { Pv, Scene } from "../pv.ts";
+import type { Modules, Pv, Scene } from "../pv.ts";
 import { slide as slideOpening, type Fitter } from "../wall-openings.ts";
 import { bodyOf, on, ridge, type Body, type Rect, type Round, type Target } from "./body.ts";
 import {
   clamp,
   inScene,
-  level,
   meet,
   snap,
   tidy,
   toDegrees,
   turn,
+  world,
   type Ray,
   type Triple,
 } from "./frame.ts";
 import type { Grip } from "./grips.ts";
+import { onRoof } from "./on-roof.ts";
+import { onLevel } from "./shallow.ts";
 import { along, edges, pull, snapTurn } from "./snapping.ts";
 
 /** Where a drag began: its grip, its ray, and the height of the plane it slides in. */
@@ -25,6 +27,8 @@ export interface Grab {
   readonly point?: number | undefined;
   readonly ray: Ray;
   readonly height: number;
+  /** The point grabbed, in three.js's frame: what a shallow view's drag moves. */
+  readonly at?: Triple | undefined;
 }
 
 export interface Dragged {
@@ -182,53 +186,33 @@ function slid(grip: Grip, slide: Slide, body: Body): Dragged | null {
  * out. */
 export interface Crate extends Fitter {
   readonly pv: Pick<Pv, "refit" | "glide" | "glideWindow">;
+  readonly laid: Pick<Modules, "walls" | "roofs">;
 }
 
-/** A chimney follows the pointer's level move along its roof face, where the crate lets it. */
-function climb({ scene, target, from, to }: Slide, pv: Pick<Pv, "glide">): Dragged | null {
-  const chimneys = scene.chimneys ?? [];
-  // The scene's frame turned back to east and north, the crate's.
-  const [east, south] = turn(to[0] - from[0], to[2] - from[2], scene.north);
-  const moved = pv.glide(scene, target.index, [east, -south]);
-
-  return moved
-    ? {
-        scene: { ...scene, chimneys: chimneys.with(target.index, moved) },
-        value: [moved.across, moved.up],
-        unit: "m",
-      }
-    : null;
-}
-
-/** A roof window follows the pointer's level move along its roof face, where the crate lets it. */
-function glaze({ scene, target, from, to }: Slide, pv: Pick<Pv, "glideWindow">): Dragged | null {
-  const windows = scene.roofWindows ?? [];
-  // The scene's frame turned back to east and north, the crate's.
-  const [east, south] = turn(to[0] - from[0], to[2] - from[2], scene.north);
-  const moved = pv.glideWindow(scene, target.index, [east, -south]);
-
-  return moved
-    ? {
-        scene: { ...scene, roofWindows: windows.with(target.index, moved) },
-        value: [moved.across, moved.up],
-        unit: "m",
-      }
-    : null;
-}
-
-/** A drag in a level plane: a fence's point, a chimney or a roof window on its face, or a body. */
-function levelled(slide: Slide, grab: Grab, crate: Crate | undefined): Dragged | null {
+/** A drag in a level plane: a fence's point, or a body. */
+function levelled(slide: Slide, grab: Grab): Dragged | null {
   if (grab.grip === "point") return repoint(slide, grab.point ?? -1);
-
-  if (slide.target.kind === "chimney" || slide.target.kind === "roofWindow") {
-    if (grab.grip !== "move" || crate === undefined) return null;
-
-    return slide.target.kind === "chimney" ? climb(slide, crate.pv) : glaze(slide, crate.pv);
-  }
 
   const body = bodyOf(slide.scene, slide.target);
 
   return body === undefined ? null : slid(grab.grip, slide, body);
+}
+
+/** A drag the crate keeps in its place: an opening slides in its wall's plane, a chimney and a roof
+ * window in their roof face's. */
+function fitted(
+  scene: Scene,
+  target: Target,
+  [grab, now]: readonly [Grab, Ray],
+  crate: Crate,
+): Dragged | null {
+  if (target.kind !== "opening") {
+    return grab.grip === "move" ? onRoof(scene, target, [grab, now], crate) : null;
+  }
+
+  return grab.grip === "move" || grab.grip === "width" || grab.grip === "height"
+    ? slideOpening(scene, target.index, grab.grip, [grab.ray, now], crate)
+    : null;
 }
 
 /** What dragging `grab` to the pointer's ray `now` makes of the scene; null where the ray misses
@@ -241,12 +225,8 @@ export function drag(
   now: Ray,
   crate?: Crate,
 ): Dragged | null {
-  // An opening slides in its wall's plane, not a level one.
-  if (target.kind === "opening") {
-    return crate !== undefined &&
-      (grab.grip === "move" || grab.grip === "width" || grab.grip === "height")
-      ? slideOpening(scene, target.index, grab.grip, [grab.ray, now], crate)
-      : null;
+  if (target.kind === "opening" || target.kind === "chimney" || target.kind === "roofWindow") {
+    return crate === undefined ? null : fitted(scene, target, [grab, now], crate);
   }
 
   const [start, end] = [inScene(scene.north, grab.ray), inScene(scene.north, now)];
@@ -255,9 +235,12 @@ export function drag(
     return target.kind === "block" ? tilt(scene, target.index, start, end) : null;
   }
 
-  const [from, to] = [level(start, grab.height), level(end, grab.height)];
+  const held = grab.at && world(-scene.north, grab.at);
+  const ends = onLevel([start, end], grab.height, held);
 
-  if (from === null || to === null) return null;
+  if (ends === null) return null;
 
-  return levelled({ scene, target, from, to }, grab, crate);
+  const [from, to] = ends;
+
+  return levelled({ scene, target, from, to }, grab);
 }

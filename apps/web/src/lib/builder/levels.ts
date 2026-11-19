@@ -57,6 +57,18 @@ const SECTIONS: Readonly<Record<Exclude<Level["kind"], "root" | "section">, Sect
   string: "strings",
 };
 
+/** An object that shows handles in 3D (ADR 20). */
+export type Handled = Extract<Level, { index: number }> & {
+  readonly kind: Exclude<Extract<Level, { index: number }>["kind"], "marker" | "string">;
+};
+
+const UNHANDLED = new Set<Level["kind"]>(["root", "section", "face", "module", "marker", "string"]);
+
+/** Whether `level` is an object with handles to drag. */
+export function handled(level: Level): level is Handled {
+  return !UNHANDLED.has(level.kind);
+}
+
 /** The level its back button returns to. */
 export function parent(level: Level): Level {
   if (level.kind === "root" || level.kind === "section") return { kind: "root" };

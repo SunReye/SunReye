@@ -21,10 +21,8 @@ import {
   testCore,
   undesk,
   filledFace,
-  SIZES,
 } from "./builder.harness.ts";
-import { addGrid, emptyDraft, panels } from "./modules.ts";
-import { toThree } from "./scene.ts";
+import { addGrid, emptyDraft } from "./modules.ts";
 import { handles } from "./handles/grips.ts";
 
 // The builder on a phone (ADR 20): the canvas fills the screen, the inspector is a bottom sheet,
@@ -49,17 +47,19 @@ async function row(label: string): Promise<void> {
   await tap(button);
 }
 
-/** Each module's centre on the page once the house's south face is filled, from its first view. */
-function southModules(): [number, number][] {
-  const gridded = addGrid(house().scene, 0, 1, MODULE.id);
-  const filled = filledFace(gridded, 0);
-  const onPage = onCanvas(filled);
+/** One finger selects three modules of the filled south face a phone has flown onto, and the
+ * peeking sheet's bar wires them into "String 1": the roof stays in view. */
+async function wireThree(): Promise<void> {
+  const filled = filledFace(addGrid(house().scene, 0, 1, MODULE.id), 0);
+  const cells = cellsOnPage(filled, 0, ontoFace(filled, 0));
 
-  return panels(filled, pv.modules(filled, SIZES).grids).map(({ corners }) => {
-    const sum = corners.reduce((a, p) => [a[0] + p[0], a[1] + p[1], a[2] + p[2]], [0, 0, 0]);
+  await press("touch", [cells("0.0"), cells("0.1"), cells("0.2")]);
 
-    return onPage(toThree([sum[0] / 4, sum[1] / 4, sum[2] / 4]));
-  });
+  const bar = page.getByRole("toolbar", { name: "Auswahl" });
+
+  await expect.element(bar.getByText("3 gewählt")).toBeVisible();
+  await tap(bar.getByRole("button", { name: "In String 1 verdrahten" }));
+  await expect.element(bar).not.toBeInTheDocument();
 }
 
 beforeEach(async () => {
@@ -110,7 +110,7 @@ test("a tap on the house drills the inspector to it, still peeking: the handles 
   await expect.element(handle()).toHaveAttribute("aria-expanded", "false");
 });
 
-test("by touch alone an admin builds a house from a template, lays modules on a face and paints a string", async () => {
+test("by touch alone an admin builds a house from a template, lays modules on a face and wires a string", async () => {
   const draws = vi.spyOn(EffectComposer.prototype, "render");
 
   await render(Builder, {
@@ -134,20 +134,18 @@ test("by touch alone an admin builds a house from a template, lays modules on a 
   await tap(page.getByRole("button", { name: "String hinzufügen" }));
   await expect.element(sheet().getByRole("heading", { name: "String 1" })).toBeVisible();
 
-  // Down to look, then one finger paints three modules of the south face.
+  // Down to look: the camera has flown onto the face, and one finger selects three of its modules.
   await tap(handle());
   await expect.element(handle()).toHaveAttribute("aria-expanded", "false");
 
-  const centres = southModules();
-
   await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
-  await press("touch", centres.slice(0, 3));
+  await wireThree();
 
   await tap(handle());
   await row("Strings");
   await expect.element(sheet().getByText(/^3 Module, davon 0 mit Optimierer$/u)).toBeVisible();
 
-  // The canvas's own undo takes the paint back.
+  // The canvas's own undo takes the wiring back.
   await tap(handle());
   await tap(tools().getByRole("button", { name: "Rückgängig" }));
   await tap(handle());

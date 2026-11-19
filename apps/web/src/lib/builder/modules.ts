@@ -1,4 +1,4 @@
-// Modules on the roof faces and string painting (ADR 20). Pure: each edit returns a new scene; the
+// Modules on the roof faces and their wiring into strings (ADR 20). Pure: each edit returns a new scene; the
 // pv crate decides where a module lies and what fits.
 import type { CatalogueSheet, Datasheet, ModuleType, Problem, StringDraft } from "../api/core.ts";
 import type { GridModule, LaidGrid, ModuleGrid, Scene } from "./pv.ts";
@@ -6,7 +6,7 @@ import { following, ordered } from "./wiring.ts";
 import { withOpenings } from "./wall-openings.ts";
 import type { Panel } from "./scene.ts";
 
-/** What the builder edits and saves: the scene and the strings its modules are painted into. */
+/** What the builder edits and saves: the scene and the strings its modules are wired into. */
 export interface Draft {
   readonly scene: Scene;
   readonly strings: readonly Readonly<StringDraft>[];
@@ -22,11 +22,6 @@ const LOSS = 2;
 
 /** Metres kept free along a new grid's edges. */
 const SETBACK = 0.3;
-
-/** What a press on a module does. */
-export type Tool =
-  /** Into a string by its position in the layout, or unassigned without one. */
-  { readonly kind: "paint"; readonly string?: number } | { readonly kind: "optimizer" };
 
 /** A grid of portrait modules of `moduleType` on a block's roof face. */
 export function addGrid(scene: Scene, block: number, face: number, moduleType: number): Scene {
@@ -71,50 +66,31 @@ export interface TypeSource {
   moduleCatalogue(): Promise<readonly CatalogueSheet[] | Problem>;
 }
 
-/** What a drag does to every module it crosses, as the module it started on decides (ADR 20). */
-export type Stroke =
-  /** Into a string, or unassigned without one; erasing unassigns. */
-  | { readonly kind: "paint"; readonly string?: number; readonly erase: boolean }
-  | { readonly kind: "optimizer"; readonly on: boolean };
+/** Whether a module is in no string: it produces nothing. */
+export const inNoString = (module: Pick<GridModule, "string">): boolean =>
+  (module.string ?? undefined) === undefined;
 
-/** The stroke the tool starts on module `module` of grid `index`: it toggles that module. */
-export function strokeOf(scene: Scene, index: number, module: number, tool: Tool): Stroke {
-  const laid = scene.grids?.[index]?.modules[module];
-
-  if (tool.kind === "optimizer") return { kind: "optimizer", on: laid?.optimized !== true };
-
-  const string = tool.string;
-  const into = laid !== undefined && (laid.string ?? undefined) === string;
-
-  return string === undefined
-    ? { kind: "paint", erase: false }
-    : { kind: "paint", string, erase: into };
-}
-
-/** The stroke's effect on module `module` of grid `index`; crossing it twice changes nothing
- * more. */
-export function paint(scene: Scene, index: number, module: number, stroke: Stroke): Scene {
-  const next = stroke.kind === "paint" ? following(scene, stroke.string) : 0;
+/** Module `module` of grid `index` wired into string `string`, after the modules it holds; in no
+ * string without one. Wiring it into its own string again changes nothing. */
+export function wire(scene: Scene, index: number, module: number, string?: number): Scene {
+  const next = following(scene, string);
 
   return withModules(scene, index, (modules) => {
     const before = modules[module];
 
     return before === undefined
       ? modules
-      : modules.with(module, ordered(before, stroked(before, stroke), next));
+      : modules.with(module, ordered(before, assigned(before, string), next));
   });
 }
 
-/** A tap: the tool's effect on module `module` of grid `index`. */
-export function apply(scene: Scene, index: number, module: number, tool: Tool): Scene {
-  return paint(scene, index, module, strokeOf(scene, index, module, tool));
-}
+/** Module `module` of grid `index` with or without an optimizer. */
+export function optimize(scene: Scene, index: number, module: number, on: boolean): Scene {
+  return withModules(scene, index, (modules) => {
+    const before = modules[module];
 
-/** What a stroke makes of a module. */
-export function stroked(module: GridModule, stroke: Stroke): GridModule {
-  if (stroke.kind === "optimizer") return { ...module, optimized: stroke.on };
-
-  return assigned(module, stroke.erase ? undefined : stroke.string);
+    return before === undefined ? modules : modules.with(module, { ...before, optimized: on });
+  });
 }
 
 function assigned({ across, up, landscape, optimized }: GridModule, string?: number): GridModule {
@@ -123,15 +99,12 @@ function assigned({ across, up, landscape, optimized }: GridModule, string?: num
   return string === undefined ? kept : { ...kept, string };
 }
 
-/** Whether painting into grid `index` is refused: a string of another module type than the grid,
+/** Whether wiring into grid `index` is refused: a string of another module type than the grid,
  * as the core refuses it on save (ADR 20). */
-export function refuses(draft: Draft, index: number, stroke: Tool | Stroke): boolean {
+export function refuses(draft: Draft, index: number, string: number): boolean {
   const grid = draft.scene.grids?.[index];
-  const string = stroke.kind === "paint" ? stroke.string : undefined;
 
-  if (grid === undefined || string === undefined) return false;
-
-  return draft.strings[string]?.moduleType !== grid.moduleType;
+  return grid !== undefined && draft.strings[string]?.moduleType !== grid.moduleType;
 }
 
 /** Grid `index` filled: a module in the grid's orientation at each place the crate found free. */
@@ -211,13 +184,13 @@ export function withoutString(scene: Scene, index: number): Scene {
 }
 
 /** What a string is made of in the scene. */
-export interface Painted {
+export interface WiredIn {
   readonly modules: number;
   readonly optimized: number;
 }
 
-/** How many modules are painted into string `index`, and how many of them are optimized. */
-export function painted(scene: Scene, index: number): Painted {
+/** How many modules are wired into string `index`, and how many of them are optimized. */
+export function wiredIn(scene: Scene, index: number): WiredIn {
   const cells = (scene.grids ?? []).flatMap((grid) =>
     grid.modules.filter((cell) => cell.string === index),
   );

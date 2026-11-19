@@ -4,13 +4,11 @@ import {
   addGrid,
   clearGrid,
   addString,
-  apply,
-  paint,
-  painted,
+  optimize,
   panels,
   refuses,
-  strokeOf,
-  stroked,
+  wire,
+  wiredIn,
   withoutBlock,
   withoutString,
 } from "./modules.ts";
@@ -55,12 +53,13 @@ const laid = (count: number) => place(gridded, 0, spots(count));
 
 const [first, second] = [spot(0), spot(1)];
 
-test("the optimizer tool toggles a module's optimizer", () => {
-  const on = apply(laid(1), 0, 0, { kind: "optimizer" });
+test("a module's optimizer is set and taken, the rest of it kept", () => {
+  const wired = wire(laid(1), 0, 0, 0);
+  const on = optimize(wired, 0, 0, true);
 
-  expect(on.grids?.[0]?.modules).toEqual([{ ...first, optimized: true }]);
-  expect(apply(on, 0, 0, { kind: "optimizer" }).grids?.[0]?.modules).toEqual([
-    { ...first, optimized: false },
+  expect(on.grids?.[0]?.modules).toEqual([{ ...first, string: 0, order: 0, optimized: true }]);
+  expect(optimize(on, 0, 0, false).grids?.[0]?.modules).toEqual([
+    { ...first, string: 0, order: 0, optimized: false },
   ]);
 });
 
@@ -99,9 +98,9 @@ test("removing a block drops the equipment on its walls and renumbers that of la
 });
 
 test("removing a string unassigns its modules and renumbers later strings", () => {
-  let scene = apply(laid(2), 0, 0, { kind: "paint", string: 0 });
+  let scene = wire(laid(2), 0, 0, 0);
 
-  scene = apply(scene, 0, 1, { kind: "paint", string: 1 });
+  scene = wire(scene, 0, 1, 1);
 
   expect(withoutString(scene, 0).grids?.[0]?.modules).toEqual([
     { ...first, optimized: false },
@@ -109,17 +108,17 @@ test("removing a string unassigns its modules and renumbers later strings", () =
   ]);
 });
 
-test("a string counts the modules painted into it across faces", () => {
+test("a string counts the modules wired into it across faces", () => {
   let scene = place(addGrid(laid(1), 1, 0, 7), 1, spots(2));
 
-  scene = apply(scene, 0, 0, { kind: "paint", string: 0 });
-  scene = apply(scene, 1, 0, { kind: "paint", string: 0 });
+  scene = wire(scene, 0, 0, 0);
+  scene = wire(scene, 1, 0, 0);
 
-  expect(painted(scene, 0)).toEqual({ modules: 2, optimized: 0 });
+  expect(wiredIn(scene, 0)).toEqual({ modules: 2, optimized: 0 });
 });
 
 test("a module is drawn where the crate laid it out, named by its place in its grid", () => {
-  const scene = apply(laid(2), 0, 1, { kind: "paint", string: 0 });
+  const scene = wire(laid(2), 0, 1, 0);
   const grids = pv.modules(scene, SIZES).grids;
   const drawn = panels(scene, grids);
 
@@ -171,53 +170,14 @@ test("a new string is wired like the first one, else to device 1, and starts emp
   expect(addString(rewired, "North", 7).strings[1]).toMatchObject({ device: 4, loss: 3, input: 1 });
 });
 
-test("a string stroke paints across grids, and one starting on the string's own module unpaints", () => {
-  const two = place(addGrid(laid(1), 1, 0, 7), 1, spots(1));
-  const painting = strokeOf(two, 0, 0, { kind: "paint", string: 0 });
-  let scene = paint(two, 0, 0, painting);
-
-  scene = paint(scene, 1, 0, painting);
-
-  expect(painted(scene, 0).modules).toBe(2);
-
-  const unpainting = strokeOf(scene, 1, 0, { kind: "paint", string: 0 });
-
-  scene = paint(scene, 1, 0, unpainting);
-  scene = paint(scene, 0, 0, unpainting);
-
-  expect(painted(scene, 0).modules).toBe(0);
-  expect(scene.grids?.flatMap((grid) => grid.modules)).toHaveLength(2);
-});
-
-test("painting a string into a grid of another module type is refused", () => {
+test("wiring into a grid of another module type than the string is refused", () => {
   const draft = {
     scene: addGrid(gridded, 1, 0, 8),
     strings: addString({ scene: gridded, strings: [] }, "South", 7).strings,
   };
 
-  expect(refuses(draft, 0, { kind: "paint", string: 0 })).toBe(false);
-  expect(refuses(draft, 1, { kind: "paint", string: 0 })).toBe(true);
-  expect(refuses(draft, 1, { kind: "paint" })).toBe(false);
-  expect(refuses(draft, 1, { kind: "optimizer" })).toBe(false);
-});
-
-test("a stroke changes a module's string or optimizer and keeps the rest", () => {
-  const module = { across: 1, up: 2, landscape: true, string: 1, optimized: true };
-
-  expect(stroked(module, { kind: "optimizer", on: false })).toEqual({
-    ...module,
-    optimized: false,
-  });
-  expect(stroked(module, { kind: "paint", string: 2, erase: false })).toEqual({
-    ...module,
-    string: 2,
-  });
-  expect(stroked(module, { kind: "paint", string: 1, erase: true })).toEqual({
-    across: 1,
-    up: 2,
-    landscape: true,
-    optimized: true,
-  });
+  expect(refuses(draft, 0, 0)).toBe(false);
+  expect(refuses(draft, 1, 0)).toBe(true);
 });
 
 test("clearing a face takes its modules and keeps its grid", () => {

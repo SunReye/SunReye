@@ -863,3 +863,28 @@ async fn each_stored_layout_change_is_logged_with_its_counts_and_an_equal_one_is
         [("south".to_owned(), south), ("east".to_owned(), east)]
     );
 }
+
+#[tokio::test]
+async fn an_openings_night_light_is_saved_with_the_scene_and_read_back() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let module = core.module_type(&set_cookie).await;
+    let strings = [string(None, "south", &module, 1, 0.0)];
+    let window = |along: f64| {
+        json!({
+            "kind": "window", "block": 0, "wall": "front",
+            "along": along, "width": 1.2, "height": 1.4, "sill": 0.9,
+        })
+    };
+    let mut scene = house(&module, &[cell(0, 0, Some(0), false)]);
+    let mut dark = window(1.0);
+    dark["light"] = json!("off");
+    // The rule's choice is not stored: an opening without one comes back without one.
+    scene["openings"] = json!([dark, window(6.0)]);
+
+    let (status, saved) = core.put_scene(&set_cookie, &strings, &scene).await;
+    let (_, layout) = core.call(&set_cookie, get("/api/v1/layout")).await;
+
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    assert_eq!(layout["scene"]["openings"], scene["openings"]);
+}

@@ -2,9 +2,9 @@
 import type { Device } from "../api/core.ts";
 import { m } from "../paraglide/messages.js";
 import { getLocale } from "../paraglide/runtime.js";
-import type { Cold, StringRefusal } from "./checks.ts";
+import type { Cold, Inverters, Sized, StringRefusal } from "./checks.ts";
 import { moduleOf, parent, type Level, type Section } from "./levels.ts";
-import { painted, type Draft } from "./modules.ts";
+import { inNoString, wiredIn, type Draft } from "./modules.ts";
 import {
   FENCE_FINISHES,
   GROUND_FINISHES,
@@ -31,6 +31,10 @@ export interface Plan {
   readonly devices: readonly Readonly<Device>[];
   /** The strings over their inverter's limit in the cold, as the crate reckons them. */
   readonly cold: readonly Cold[];
+  /** Where the layout leaves an MPPT input's window (ADR 20). */
+  readonly sized: readonly Sized[];
+  /** Each inverter's MPPT inputs' limits, where its profile lists them. */
+  readonly inputs: Inverters;
   /** The string the last save was refused for, until the next edit. */
   readonly refused: StringRefusal | null;
 }
@@ -77,7 +81,7 @@ export function placed(draft: Draft) {
 
   return {
     count: cells.length,
-    unassigned: cells.filter((cell) => (cell.string ?? undefined) === undefined).length,
+    unassigned: cells.filter((cell) => inNoString(cell)).length,
   };
 }
 
@@ -222,7 +226,7 @@ function strings({ draft }: Plan): Entry[] {
   return draft.strings.map((string, index) => ({
     level: { kind: "string", index },
     label: string.name,
-    summary: m.builder_string_modules(painted(draft.scene, index)),
+    summary: m.builder_string_modules(wiredIn(draft.scene, index)),
   }));
 }
 
