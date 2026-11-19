@@ -4,13 +4,17 @@
 import { motion } from "../motion/tier.svelte.ts";
 import { Burst } from "./burst.ts";
 import { Flight } from "./flight.ts";
-import { Fade } from "./lens.ts";
 import { Loop, pauseUnseen } from "./loop.ts";
 import { ahead, gpuIdle, nextFrame, pause, prepare } from "./prepare.ts";
-import type { Ghost } from "./stage.svelte.ts";
 import type { Studio } from "./studio.ts";
-import type { Falling, Glass } from "./weather.ts";
 import { idle } from "./warm.ts";
+import { weatherMoves, type Moving } from "./weather-moves.svelte.ts";
+
+/** The picture held over the canvas while what arrives fades in beneath it (stage.svelte.ts). */
+interface Held {
+  canvas: HTMLCanvasElement | undefined;
+  phase: "off" | "hold" | "fade";
+}
 
 export class Opening {
   readonly #studio: Studio;
@@ -26,9 +30,8 @@ export class Opening {
   /** A change waits for the loop's next frame: the picture is not the last one moved on. */
   #changed = false;
   readonly #unwatch: () => void;
-  /** The lens glass as it fades, and its hold on the loop while anything on it moves or fades. */
-  readonly #lens = new Fade();
-  #glazing: (() => void) | undefined;
+  /** Lets the loop go of what moved with the weather. */
+  #unmove: (() => void) | undefined;
   /** The frame watch's leave of its idle watch while the loop runs. */
   #looping: (() => void) | undefined;
   /** Told once the first frame is drawn, or never will be: the frame watch settles from then. */
@@ -104,39 +107,10 @@ export class Opening {
     this.render();
   };
 
-  /**
-   * Shows what moves with the `weather`, read as it changes (ADR 23). What falls is shown as
-   * the motion tier does: it moves in the loop on full, lite draws a sparse still field, still
-   * draws none. The glass is put on the lens: it fades in and out in the loop, which it keeps
-   * until the lens is clear again or frost alone stands on it; off the full tier, where nothing
-   * loops, the lens is cleared at once. Call during a component's set-up.
-   */
-  moves(weather: { readonly falling: Falling | null; readonly glass: Glass | null }): void {
-    $effect(() => {
-      const target = weather.glass;
-
-      if (motion.tier === "full") this.#glaze(target);
-      else this.#clear();
-    });
-
-    $effect(() => {
-      const fell = weather.falling;
-      const { tier } = motion;
-
-      this.#studio.fall(tier === "still" ? null : fell, tier === "lite");
-      this.render();
-
-      return fell !== null && tier === "full"
-        ? this.loop.keep((seconds) => {
-            this.#studio.drift(seconds);
-          })
-        : undefined;
-    });
-
-    // The loop is the full tier's, whoever keeps it.
-    $effect(() => {
-      this.loop.pause("tier", motion.tier !== "full");
-    });
+  /** Shows what moves with the `weather`, read as it changes (ADR 23): what falls and the lens
+   * glass, each in the loop while it moves. Call during a component's set-up. */
+  moves(weather: Moving): void {
+    this.#unmove = weatherMoves(this.#studio, this.loop, this.render, weather);
   }
 
   /** Once `built`, prepares, draws the first frame, calls `ready` once it is drawn, and `due`
@@ -176,7 +150,7 @@ export class Opening {
   /** Runs `park`, its programs compiled first; on screen, the change fades in. */
   /* oxlint-disable typescript/prefer-readonly-parameter-types -- the canvas is drawn on. */
   // fallow-ignore-next-line unused-class-member -- SceneCanvas calls it through `Lit["opening"]`.
-  async arrive(canvas: HTMLCanvasElement, ghost: Ghost, park: () => void): Promise<void> {
+  async arrive(canvas: HTMLCanvasElement, ghost: Held, park: () => void): Promise<void> {
     const fade = !motion.still && !this.flight.flying && ghost.canvas !== undefined;
 
     this.#hold(true);
@@ -214,44 +188,13 @@ export class Opening {
     this.#gone = true;
     this.#unwatch();
     this.loop.pause("gone", true);
-    this.#unglaze();
+    this.#unmove?.();
     clearTimeout(this.#later);
     cancelAnimationFrame(this.#frame);
     this.#burst.rest();
   }
 
   readonly #isGone = (): boolean => this.#gone;
-
-  #glaze(target: Glass | null): void {
-    this.#lens.aim(target);
-
-    if (this.#resting()) return;
-
-    this.#glazing ??= this.loop.keep((seconds) => {
-      this.#studio.lens(this.#lens.at(seconds), seconds);
-
-      // The loop's last frame is drawn through the lens as it stands.
-      if (this.#resting()) this.#unglaze();
-    });
-  }
-
-  /** Whether the lens owes no frame: it is clear, or frost alone has faded in and stands drawn
-   * (ADR 23 "Motion": the loop stops when the weather turns dry). */
-  #resting(): boolean {
-    return this.#lens.clear || this.#lens.still;
-  }
-
-  #unglaze(): void {
-    this.#glazing?.();
-    this.#glazing = undefined;
-  }
-
-  #clear(): void {
-    this.#lens.cut();
-    this.#studio.lens(null, 0);
-    this.#unglaze();
-    this.render();
-  }
 
   /** A frame at `now`: where the flight moved the camera is drawn in it, not the next. True
    * while the flight goes on. */
