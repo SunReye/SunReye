@@ -101,7 +101,32 @@ test("dragging an opening slides it along its wall in 10 cm steps", () => {
   const dragged = slide(scene, "move", ray(2.5), ray(3.07));
 
   expect(dragged?.scene.openings?.[0]).toMatchObject({ along: 2.6, width: 1.2 });
-  expect(dragged).toMatchObject({ value: [2.6], unit: "m" });
+  expect(dragged).toMatchObject({ value: [2.6, 0.9], unit: "m" });
+});
+
+test("dragging a window also moves it up and down its wall, its sill following in 10 cm steps", () => {
+  const up = slide(glazed(window), "move", ray(2.5, 1.5), ray(3.52, 1.93));
+
+  expect(up?.scene.openings?.[0]).toEqual({ ...window, along: 3, sill: 1.3 });
+  expect(up?.value).toEqual([3, 1.3]);
+
+  // Kept whole under the 3 m eave and off the ground's far side.
+  expect(slide(glazed(window), "move", ray(2.5, 1.5), ray(2.5, 9))?.scene.openings?.[0]).toEqual({
+    ...window,
+    sill: 1.6,
+  });
+  expect(slide(glazed(window), "move", ray(2.5, 1.5), ray(2.5, -9))?.scene.openings?.[0]).toEqual({
+    ...window,
+    sill: 0,
+  });
+});
+
+test("a door dragged up stays on the ground", () => {
+  const door: Opening = { ...window, kind: "frontDoor", height: 2.1, sill: 0 };
+  const moved = slide(glazed(door), "move", ray(2.5, 1.5), ray(3.5, 2.5));
+
+  expect(moved?.scene.openings?.[0]).toEqual({ ...door, along: 3 });
+  expect(moved?.value).toEqual([3]);
 });
 
 test("its width and height handles resize it, kept on the wall and under the eave", () => {
