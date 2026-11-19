@@ -27,7 +27,10 @@
   <!-- Auto-stringing's result, listed above and drawn on the roof until it is kept or dropped. -->
   <div class="flex flex-col gap-2 p-3">
     <p role="status" class="text-sm font-medium">
-      {m.builder_proposal({ count: session.wiring.proposed })}
+      {m.builder_proposal({ count: session.wiring.proposed.strings })}
+      {#if session.wiring.proposed.left > 0}
+        {m.builder_proposal_left({ count: session.wiring.proposed.left })}
+      {/if}
     </p>
     <div class="grid grid-cols-2 gap-2">
       <Button
@@ -70,6 +73,9 @@
         {m.builder_auto_string({ face, count })}
       </Button>
     {/each}
+    {#if session.wiring.refused !== undefined && session.wiring.selection.length === 0}
+      <p role="alert" class="text-sm text-destructive">{session.wiring.refused}</p>
+    {/if}
     <p class="text-sm text-muted-foreground">{m.builder_string_hint()}</p>
   </div>
 
