@@ -24,8 +24,6 @@
     mark: { label: string; on: boolean; value: number | null } | null;
     /** The faint bars of bands still to come. */
     ghost: { label: string; colour: string; value: number | null } | null;
-    /** The dashed line over the bars. */
-    line: { label: string; colour: string; value: number | null } | null;
     /** What a hatched band is, while the plot has one. */
     gap: string | null;
     /** Figures show a dash: still loading, or a band without readings. */
@@ -58,7 +56,6 @@
   type Row = Legend["rows"][number] & {
     reference: Legend["mark"];
     expected: Legend["ghost"];
-    curve: Legend["line"];
     gap: Legend["gap"];
   };
 
@@ -74,7 +71,6 @@
       Object.assign({}, r, {
         reference: r.mark ? legend.mark : null,
         expected: r.mark ? legend.ghost : null,
-        curve: r.mark ? legend.line : null,
         gap: r.mark ? legend.gap : null,
       }),
     ),
@@ -114,19 +110,6 @@
   </div>
 {/snippet}
 
-{#snippet dashed(line: NonNullable<Legend["line"]>)}
-  <div class={KEY}>
-    <span
-      class="h-0 w-3 shrink-0 translate-y-[-3px] border-t border-dashed"
-      style:border-color={line.colour}
-    ></span>
-    <dt class="whitespace-nowrap text-muted-foreground">{line.label}</dt>
-    {#if line.value !== null}
-      <dd class={VALUE}>{@render figure(line.value)}</dd>
-    {/if}
-  </div>
-{/snippet}
-
 {#snippet hatched(label: string)}
   <div class={KEY}>
     <span class="hatch size-2 shrink-0 translate-y-[-1px]"></span>
@@ -159,7 +142,6 @@
       </div>
     {/each}
     {#if r.expected}{@render expected(r.expected)}{/if}
-    {#if r.curve}{@render dashed(r.curve)}{/if}
     {#if r.gap}{@render hatched(r.gap)}{/if}
     <!-- Last: it keeps its line while it is faded out, which must not part the keys. -->
     {#if r.reference}{@render reference(r.reference)}{/if}

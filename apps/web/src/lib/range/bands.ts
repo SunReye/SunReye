@@ -1,6 +1,5 @@
 // Where the band chart draws each bar, mark and gridline: plain boxes placed and sized only by
 // `transform`, so every change runs on CSS transitions (ADR 21).
-import { curveMonotoneX, line } from "d3-shape";
 import { m } from "../paraglide/messages.js";
 import { getLocale } from "../paraglide/runtime.js";
 import type { Via } from "./range.ts";
@@ -20,8 +19,6 @@ export interface Band {
   readonly mark?: number | null | undefined;
   /** The upper side's expected height where the band has not happened yet. */
   readonly ghost?: number | null | undefined;
-  /** A point of the dashed line over the bars, such as today's forecast. */
-  readonly line?: number | null | undefined;
   readonly drillable: boolean;
 }
 
@@ -37,7 +34,6 @@ export interface Readout {
   readonly mark?: number | null | undefined;
   /** What is still expected, where bands have not happened yet. */
   readonly ghost?: number | null | undefined;
-  readonly line?: number | null | undefined;
   /** The keys state no value: one series, whose sum the sheet's head already states. */
   readonly bare?: boolean | undefined;
 }
@@ -67,10 +63,7 @@ export interface Scale {
 }
 
 export function scaleOf(bands: readonly Band[], lower: boolean, max?: number): Scale {
-  const tallest = Math.max(
-    0,
-    ...bands.map((b) => Math.max(add(b.up), b.mark ?? 0, b.ghost ?? 0, b.line ?? 0)),
-  );
+  const tallest = Math.max(0, ...bands.map((b) => Math.max(add(b.up), b.mark ?? 0, b.ghost ?? 0)));
 
   const upMax = max ?? (niceCeil(tallest) || 1);
   const downMax = lower ? niceCeil(Math.max(0, ...bands.map((b) => add(b.down))), true) : 0;
@@ -81,26 +74,6 @@ export function scaleOf(bands: readonly Band[], lower: boolean, max?: number): S
 
 /** A value's place on a scale, in % from the top. */
 export const place = (v: number, top: number, whole: number): number => ((top - v) / whole) * 100;
-
-const hasLine = (b: Band): boolean => (b.line ?? null) !== null;
-
-/** The dashed line's path through each band's centre, breaking where a band has no point; null without any. */
-export function lineOf(
-  bands: readonly Band[],
-  s: Scale,
-  width: number,
-  height: number,
-): string | null {
-  if (width === 0 || !bands.some((b) => hasLine(b))) return null;
-
-  const slot = width / bands.length;
-
-  return line<Band>()
-    .defined(hasLine)
-    .x((_, i) => (i + 0.5) * slot)
-    .y((b) => (place(b.line ?? 0, s.upMax, s.span) / 100) * height)
-    .curve(curveMonotoneX)([...bands]);
-}
 
 const move = (top: number, size: number) =>
   `translateY(${top.toFixed(3)}%) scaleY(${Math.max(0, size).toFixed(5)})`;

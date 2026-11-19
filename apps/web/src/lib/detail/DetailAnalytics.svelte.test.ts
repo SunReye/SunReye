@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 import "../../app.css";
-import { asked, prepare, restore, show } from "./detail.harness.ts";
+import { asked, PLANT, prepare, restore, rollup, served, show } from "./detail.harness.ts";
 
 beforeEach(prepare);
 
@@ -18,23 +18,46 @@ test("a sheet's range steps, and History opens at it", async () => {
     .toHaveAttribute("href", "#/history?range=day&at=2026-11-11");
 });
 
-test("today's production overlays the inverters' forecast as a dashed curve; another day does not", async () => {
+test("today's production marks the inverters' forecast on its hours, as History does; another day does not", async () => {
   const { screen } = await show("production");
   const sheet = screen.getByRole("dialog", { name: "Produktion" });
   const overview = sheet.getByRole("tabpanel", { name: "Übersicht" });
   const forecast = overview.getByRole("term").filter({ hasText: "Prognose" });
-  const curve = () => overview.element().querySelector("path[stroke-dasharray='3 4']");
+  const ticks = () => overview.element().querySelectorAll(".mark.on").length;
 
   await expect.element(forecast).toBeVisible();
   await expect.element(overview.getByText("8,0 kWh")).toBeVisible();
-  await expect.poll(curve).not.toBeNull();
-  // The curve replaces the marks and the faint bars.
-  expect(overview.element().querySelectorAll(".mark.on, .seg.opacity-30")).toHaveLength(0);
+  await expect.poll(ticks).toBeGreaterThan(0);
+  expect(overview.element().querySelector("path[stroke-dasharray]")).toBeNull();
 
   await sheet.getByRole("button", { name: "Früher" }).click();
 
   await expect.element(forecast).not.toBeInTheDocument();
-  await expect.poll(curve).toBeNull();
+  await expect.poll(ticks).toBe(0);
+});
+
+test("an hour its forecast expects nothing of carries no tick", async () => {
+  const made = ["2026-11-12T08:00:00Z", "2026-11-12T10:00:00Z"].map((at) =>
+    rollup(Date.parse(at), 1000),
+  );
+
+  served.rolled = (a) =>
+    a.device === PLANT && a.series === "pv.power"
+      ? Response.json({
+          points: made.filter(
+            (p: Readonly<{ start: string }>) => p.start >= a.from && p.start < a.to,
+          ),
+          period: a.period,
+        })
+      : undefined;
+
+  const { screen } = await show("production");
+
+  const sheet = screen.getByRole("dialog", { name: "Produktion" });
+  const overview = sheet.getByRole("tabpanel", { name: "Übersicht" });
+
+  // The plan forecasts 10:00 to 14:00 and it is 12:20: 10:00 and the hour under way, not 08:00.
+  await expect.poll(() => overview.element().querySelectorAll(".mark.on").length).toBe(2);
 });
 
 test("a battery's overview names its charge and discharge sides, never its series id", async () => {

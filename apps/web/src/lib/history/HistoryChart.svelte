@@ -1,7 +1,7 @@
 <!--
   One series over the route's range, a band per hour, day or month: a power series as its energy,
-  any other as its mean. Today, a series with a forecast draws it as a dashed curve over the hours,
-  as the prototype's day chart does. A new range tweens the bars from the figures they showed (ADR 21).
+  any other as its mean. Today, a series with a forecast marks each hour's forecast on its bar, as
+  History's forecast chart does. A new range tweens the bars from the figures they showed (ADR 21).
 -->
 <script lang="ts">
   import type { Core } from "../api/core.ts";
@@ -119,7 +119,7 @@
       bands: bandsOf(got.list, (_, i) => {
         const f = figures[i]!;
 
-        return { ...f, ...split(f.value), line: plans ? f.planned : null };
+        return { ...f, ...split(f.value), mark: plans && f.planned > 0 ? f.planned : null };
       }),
       expected: plans && figures.reduce((a, f) => a + f.planned, 0),
       // A signed flow's sides are named for its sign, as charged and discharged, even on a day
@@ -162,8 +162,8 @@
   up={view.up ?? meta}
   down={view.down}
   via={view.via}
-  lineLabel={view.expected === null ? "" : m.range_forecast()}
-  summary={{ title, ...view.sum, line: view.expected }}
+  markLabel={view.expected === null ? "" : m.range_forecast()}
+  summary={{ title, ...view.sum, mark: view.expected }}
   fmt={reads.fmt}
   unit={reads.unit}
   loading={view.loading}
