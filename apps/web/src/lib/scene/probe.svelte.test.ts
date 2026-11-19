@@ -89,6 +89,18 @@ test("the scene is antialiased in its own target, and the canvas it is copied on
   expect(scene?.samples).toBe(4);
 });
 
+test("only the scene is drawn multisampled: no pass after it is, the lens glass's neither", () => {
+  const { studio, frame } = measured("high");
+
+  studio.lens({ rain: 1, snow: 0, frost: 0 }, 0);
+
+  const passes = frame().passes.filter(({ target }) => target === "target");
+
+  // The scene, the occlusion's three, its copy and blend, the tone mapping and the glass's field.
+  expect(passes).toHaveLength(8);
+  expect(passes.map(({ samples }) => samples)).toEqual([4, 0, 0, 0, 0, 0, 0, 0]);
+});
+
 test("on a phone Mittel draws its occlusion at half its pixel ratio, and Hoch at Mittel's", async () => {
   await screen(PHONE.ratio);
 
@@ -101,8 +113,9 @@ test("on a phone Mittel draws its occlusion at half its pixel ratio, and Hoch at
     "target 293×450",
     "target 293×450",
     "target 293×450",
-    "target 585×900 ×4",
-    "target 585×900 ×4",
+    // Its blend over the picture, which no longer needs the scene's samples.
+    "target 585×900",
+    "target 585×900",
     "canvas 585×900",
   ]);
   expect(told(measured("high", size).frame())).toEqual([
@@ -111,8 +124,8 @@ test("on a phone Mittel draws its occlusion at half its pixel ratio, and Hoch at
     "target 585×900",
     "target 585×900",
     "target 585×900",
-    "target 780×1200 ×4",
-    "target 780×1200 ×4",
+    "target 780×1200",
+    "target 780×1200",
     "canvas 780×1200",
   ]);
 });

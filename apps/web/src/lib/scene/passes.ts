@@ -3,16 +3,15 @@
 // lens glass over it all while the weather puts something on it (ADR 23).
 import {
   DoubleSide,
-  HalfFloatType,
   type PerspectiveCamera,
   type Scene,
   type WebGLRenderer,
-  WebGLRenderTarget,
+  type WebGLRenderTarget,
 } from "three";
-import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { Composer } from "./composer.ts";
 import { LensPass } from "./lens-pass.ts";
 import { Probe } from "./probe.ts";
 import type { Look } from "./quality.ts";
@@ -59,7 +58,7 @@ function sample(pass: GTAOPass, samples: number): void {
 export class Passes {
   readonly #renderer: WebGLRenderer;
   readonly #camera: PerspectiveCamera;
-  readonly #composer: EffectComposer;
+  readonly #composer: Composer;
   readonly #occlusion: GTAOPass;
   readonly #lens = new LensPass();
   readonly #refiner = new Refiner();
@@ -77,10 +76,7 @@ export class Passes {
     this.#renderer = renderer;
     this.#camera = camera;
     // Multisampled HDR, then ambient occlusion, then tone mapping and sRGB.
-    this.#composer = new EffectComposer(
-      renderer,
-      new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples: 4 }),
-    );
+    this.#composer = new Composer(renderer);
     this.#occlusion = ambientOcclusion(scene, camera);
     this.#composer.addPass(new RenderPass(scene, camera));
     this.#composer.addPass(this.#occlusion);
@@ -97,7 +93,7 @@ export class Passes {
 
   /** The target the scene pass draws into: a program differs by it. */
   get target(): WebGLRenderTarget {
-    return this.#composer.readBuffer;
+    return this.#composer.scene;
   }
 
   /** The passes `look` asks for. */
