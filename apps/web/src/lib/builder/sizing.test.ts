@@ -58,6 +58,7 @@ test("the crate finds where strings leave their MPPT inputs' windows", () => {
 
   expect(rounded(found)).toEqual([
     { kind: "start", string: 0, volts: 134.62, limit: 160 },
+    { kind: "low", string: 0, volts: 89.61, limit: 160 },
     { kind: "high", string: 2, volts: 669.83, limit: 650 },
     { kind: "noInput", string: 3 },
     { kind: "uneven", device: 1, input: 1 },

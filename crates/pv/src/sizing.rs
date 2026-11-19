@@ -71,8 +71,7 @@ fn window(string: usize, wired: &Wired, limits: &MpptLimits) -> Vec<Sizing> {
         limit: limits.start_voltage,
     });
     let hot = peak_voltage(module, *modules, HOT);
-    // One that never starts is not also told it runs low.
-    let low = (start.is_none() && hot < limits.min_voltage).then_some(Sizing::Low {
+    let low = (hot < limits.min_voltage).then_some(Sizing::Low {
         string,
         volts: hot,
         limit: limits.min_voltage,
@@ -115,8 +114,9 @@ pub fn window_warnings(
     // None without the inverter's limits; else the input's, none where it has no such input.
     let limits = |device: u32, input: u32| {
         let inputs = inverters.get(&device)?;
-        let at = usize::try_from(input).ok()?.checked_sub(1)?;
-        Some(inputs.get(at))
+        // Inputs count from 1: input 0 is none of them.
+        let at = usize::try_from(input).ok().and_then(|at| at.checked_sub(1));
+        Some(at.and_then(|at| inputs.get(at)))
     };
     let own = strings.iter().enumerate().flat_map(|(string, wired)| {
         match limits(wired.device, wired.input) {
