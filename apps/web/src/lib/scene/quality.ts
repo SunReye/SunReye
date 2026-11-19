@@ -75,7 +75,7 @@ export interface Device {
   readonly capable: boolean;
   /** A touch device, one whose primary pointer is coarse: a phone or a tablet. Its GPU's name
    * does not tell it from a desktop's, and its screen is more than it fills at Hoch (ADR 20). */
-  readonly touch?: boolean;
+  readonly touch: boolean;
   /** Levels the frame watch has taken off Auto. */
   readonly steps: number;
   readonly tier: MotionTier;
@@ -87,7 +87,7 @@ export const MAX_STEPS = 2;
 /** Auto's level before the motion tier caps it: from Hoch on a capable desktop GPU, from Mittel
  * elsewhere. */
 function measured({ capable: strong, touch, steps }: Device): number {
-  return Math.max(0, (strong && touch !== true ? 2 : 1) - steps);
+  return Math.max(0, (strong && !touch ? 2 : 1) - steps);
 }
 
 /** Auto's level: the measured one, on the lite and still tiers at most Mittel. */

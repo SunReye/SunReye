@@ -20,15 +20,13 @@ import {
 import { aim, sky } from "./backdrop.ts";
 import { daylight, theme } from "./light.ts";
 import { skylight } from "./skylight.ts";
-import { drawn, type Level } from "./quality.ts";
+import { look } from "./probe.harness.ts";
+import type { Level } from "./quality.ts";
 import { SAMPLES } from "./refine.ts";
 import { Studio } from "./studio.ts";
 import { backdropAt } from "./vignette.ts";
 
 let studio: Studio | undefined;
-
-/** What a level draws, on any device. */
-const look = (level: Level) => drawn(level, { capable: false, steps: 0, tier: "full" });
 
 function open(level: Level = "medium"): Studio {
   const canvas = document.createElement("canvas");

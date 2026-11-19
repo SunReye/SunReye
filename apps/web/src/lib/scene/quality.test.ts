@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { capable, drawn, parseQuality, parseSteps, relief, type Device } from "./quality.ts";
 
-const strong: Device = { capable: true, steps: 0, tier: "full" };
-const weak: Device = { capable: false, steps: 0, tier: "full" };
+const strong: Device = { capable: true, touch: false, steps: 0, tier: "full" };
+const weak: Device = { capable: false, touch: false, steps: 0, tier: "full" };
 
 test("Niedrig draws as the lite tier did, at a pixel ratio of 1 from a 1024 shadow map", () => {
   expect(drawn("low", strong)).toEqual({
@@ -95,7 +95,7 @@ test("the lite and still tiers drop occlusion and the lens glass at every level"
 });
 
 test("a chosen level keeps its sharpness, whatever the device", () => {
-  const strained: Device = { capable: false, steps: 2, tier: "lite" };
+  const strained: Device = { capable: false, touch: false, steps: 2, tier: "lite" };
 
   expect(drawn("ultra", strained)).toMatchObject({
     level: "ultra",

@@ -12,7 +12,7 @@ function open(): Studio {
 
   document.body.append(canvas);
   studio = new Studio(canvas, new PerspectiveCamera(40, 1, 0.1, 5000), () =>
-    drawn("medium", { capable: false, steps: 0, tier: "full" }),
+    drawn("medium", { capable: false, touch: false, steps: 0, tier: "full" }),
   );
   studio.setSize(64, 64);
 

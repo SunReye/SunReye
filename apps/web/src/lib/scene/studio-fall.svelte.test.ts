@@ -21,7 +21,7 @@ function open(dark = false): Studio {
   camera.lookAt(0, 4, 0);
   document.body.append(canvas);
   studio = new Studio(canvas, camera, () =>
-    drawn("medium", { capable: false, steps: 0, tier: "full" }),
+    drawn("medium", { capable: false, touch: false, steps: 0, tier: "full" }),
   );
   studio.setSize(SIDE, SIDE);
   studio.frame(new Vector3(), 10);

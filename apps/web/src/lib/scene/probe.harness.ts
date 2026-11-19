@@ -25,7 +25,8 @@ export async function screen(ratio?: number): Promise<void> {
 }
 
 /** What a level draws on the full tier, on any device. */
-export const look = (level: Level) => drawn(level, { capable: false, steps: 0, tier: "full" });
+export const look = (level: Level) =>
+  drawn(level, { capable: false, touch: false, steps: 0, tier: "full" });
 
 /** A studio at `level`, lit at noon, with a box that casts and catches the sun's shadow. */
 export function measured(

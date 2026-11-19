@@ -12,7 +12,8 @@ import type { Face, Point } from "../builder/pv.ts";
 import { buildScene } from "../builder/scene.ts";
 import { daylight, theme } from "./light.ts";
 import * as finish from "./materials.ts";
-import { drawn, type Level } from "./quality.ts";
+import { look } from "./probe.harness.ts";
+import type { Level } from "./quality.ts";
 import { Studio } from "./studio.ts";
 
 let studio: Studio | undefined;
@@ -21,9 +22,6 @@ afterEach(() => {
   studio?.dispose();
   studio = undefined;
 });
-
-/** What a level draws, on any device. */
-const look = (level: Level) => drawn(level, { capable: false, steps: 0, tier: "full" });
 
 const mean = (some: readonly number[]): number => some.reduce((sum, v) => sum + v, 0) / some.length;
 
