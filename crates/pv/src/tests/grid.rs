@@ -2,8 +2,8 @@
 //! by hand: each roof face is 10 m wide and 4 m ÷ cos 35° = 4.883 m up the slope.
 
 use super::fixtures::MODULE;
+use super::fixtures::shaded_substrings;
 use crate::Overhang;
-use crate::shade::shaded_substrings;
 use crate::{
     Block, GridModule, Misplaced, ModuleGrid, Obstacle, Place, Plane, Point, Roof, Scene, Size,
     Spot, Sun, open_circuit_voltage,

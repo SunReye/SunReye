@@ -3,8 +3,8 @@
 
 use crate::diode::{BYPASS_DROP, Diode, fit};
 use crate::perez::cos_incidence;
-use crate::shade::shaded_substrings;
-use crate::{Module, ModuleType, Occluder, PvString, Sky, cell_temperature, plane_irradiance};
+use crate::shade::Casters;
+use crate::{Module, ModuleType, PvString, Sky, cell_temperature, plane_irradiance};
 
 /// Martin and Ruiz 2001, pvlib's default for glass-fronted modules.
 const MARTIN_RUIZ_AR: f64 = 0.16;
@@ -36,13 +36,13 @@ pub struct Curve {
 
 impl Curve {
     #[must_use]
-    pub fn new(string: &PvString, sky: &Sky, occluders: &[Occluder]) -> Self {
+    pub fn new(string: &PvString, sky: &Sky, casters: &Casters) -> Self {
         let mut curve = Self::empty(1.0 - string.loss / 100.0);
         let Some(reference) = fit(&string.module) else {
             return curve;
         };
         for module in &string.modules {
-            let groups = substrings(&reference, &string.module, module, sky, occluders);
+            let groups = substrings(&reference, &string.module, module, sky, casters);
             if module.optimized {
                 let mut own = Self::empty(1.0);
                 own.add_all(groups);
@@ -175,7 +175,7 @@ fn substrings(
     module_type: &ModuleType,
     module: &Module,
     sky: &Sky,
-    occluders: &[Occluder],
+    casters: &Casters,
 ) -> Vec<(Option<Diode>, u32)> {
     let poa = plane_irradiance(module.plane, sky);
     let diffuse_light = poa.sky_diffuse + poa.ground_diffuse;
@@ -185,7 +185,7 @@ fn substrings(
     let parts = module_type.bypass_diodes.max(1);
     let shaded = if beam > 0.0 {
         module.place.map_or(0, |place| {
-            shaded_substrings(module_type, module.plane, place, sky.sun, occluders)
+            casters.shaded_substrings(module_type, module.plane, place)
         })
     } else {
         0

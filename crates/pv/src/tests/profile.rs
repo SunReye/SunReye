@@ -11,7 +11,7 @@ use super::fixtures::{MODULE, assert_peak};
 use crate::diode::fit;
 use crate::estimate::{SECONDS_PER_DAY, day_of_year};
 use crate::perez::cos_incidence;
-use crate::shade::shaded_substrings;
+use crate::shade::Casters;
 use crate::string::Curve;
 use crate::{
     GridModule, Input, Inverter, Layout, Location, ModuleGrid, MpptLimits, PvString, Scene, Size,
@@ -142,6 +142,7 @@ fn sky(layout: &Layout, weather: &Weather) -> Sky {
 /// Each string's shaded substrings, among its modules that face the sun.
 fn shaded(layout: &Layout, weather: &Weather) -> Vec<u32> {
     let sun = sky(layout, weather).sun;
+    let casters = Casters::under(sun, &layout.occluders);
     strings(layout)
         .map(|string| {
             let facing = string
@@ -151,8 +152,7 @@ fn shaded(layout: &Layout, weather: &Weather) -> Vec<u32> {
             let places = facing.filter_map(|m| Some((m.plane, m.place?)));
             places
                 .map(|(plane, place)| {
-                    let shaded =
-                        shaded_substrings(&string.module, plane, place, sun, &layout.occluders);
+                    let shaded = casters.shaded_substrings(&string.module, plane, place);
                     u32::from(shaded)
                 })
                 .sum()
@@ -229,8 +229,9 @@ fn stages(layout: &Layout, weather: &[Weather]) -> [(&'static str, f64); 7] {
         }
     });
     let curves = each(&|sky| {
+        let casters = Casters::under(sky.sun, &layout.occluders);
         for string in strings(layout) {
-            black_box(Curve::new(string, sky, &layout.occluders).top);
+            black_box(Curve::new(string, sky, &casters).top);
         }
     });
     let operating = each(&|sky| {

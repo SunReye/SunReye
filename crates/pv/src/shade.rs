@@ -8,42 +8,75 @@ const ALONG: u32 = 9;
 /// Metres a ray travels before it counts, so a module's own roof never shades it.
 const CLEARANCE: f64 = 1e-6;
 
-/// How many of the module's substrings lose their beam. A substring with any shaded sample is
-/// shaded, since its most shaded cell limits its current.
-pub fn shaded_substrings(
-    module: &ModuleType,
-    plane: Plane,
-    at: Place,
-    sun: Sun,
-    occluders: &[Occluder],
-) -> u8 {
-    if occluders.is_empty() {
-        return 0;
+/// What casts beam shade under one sun.
+pub struct Casters {
+    toward_sun: Point,
+    casters: Vec<Caster>,
+}
+
+/// An occluder, with what the sun's ray fixes of its test.
+enum Caster {
+    Triangle(Facing),
+    Round(Occluder),
+}
+
+impl Casters {
+    pub fn under(sun: Sun, occluders: &[Occluder]) -> Self {
+        let toward_sun = direction(sun);
+        let casters = occluders.iter().filter_map(|occluder| match *occluder {
+            Occluder::Triangle(corners) => Facing::new(toward_sun, corners).map(Caster::Triangle),
+            Occluder::Sphere { .. } | Occluder::Cylinder { .. } | Occluder::Cone { .. } => {
+                Some(Caster::Round(*occluder))
+            }
+        });
+        Self {
+            toward_sun,
+            casters: casters.collect(),
+        }
     }
-    let toward_sun = direction(sun);
-    let (tilt, azimuth) = (plane.tilt.to_radians(), plane.azimuth.to_radians());
-    let up_slope = [
-        azimuth.sin() * tilt.cos(),
-        azimuth.cos() * tilt.cos(),
-        tilt.sin(),
-    ];
-    let across_slope = [azimuth.cos(), -azimuth.sin(), 0.0];
-    // Substrings are strips along the long side, side by side across the short side.
-    let (long, short) = if at.landscape {
-        (across_slope, up_slope)
-    } else {
-        (up_slope, across_slope)
-    };
-    let parts = module.bypass_diodes.max(1);
-    let shaded = (0..parts)
-        .filter(|&part| {
-            samples(module, parts, part).any(|(s, l)| {
-                let origin = offset(offset(at.centre, short, s), long, l);
-                occluders.iter().any(|o| blocks(o, origin, toward_sun))
+
+    /// How many of the module's substrings lose their beam. A substring with any shaded sample
+    /// is shaded, since its most shaded cell limits its current.
+    pub fn shaded_substrings(&self, module: &ModuleType, plane: Plane, at: Place) -> u8 {
+        if self.casters.is_empty() {
+            return 0;
+        }
+        let (tilt, azimuth) = (plane.tilt.to_radians(), plane.azimuth.to_radians());
+        let up_slope = [
+            azimuth.sin() * tilt.cos(),
+            azimuth.cos() * tilt.cos(),
+            tilt.sin(),
+        ];
+        let across_slope = [azimuth.cos(), -azimuth.sin(), 0.0];
+        // Substrings are strips along the long side, side by side across the short side.
+        let (long, short) = if at.landscape {
+            (across_slope, up_slope)
+        } else {
+            (up_slope, across_slope)
+        };
+        let parts = module.bypass_diodes.max(1);
+        let shaded = (0..parts)
+            .filter(|&part| {
+                samples(module, parts, part).any(|(s, l)| {
+                    let origin = offset(offset(at.centre, short, s), long, l);
+                    self.casters
+                        .iter()
+                        .any(|c| c.blocks(origin, self.toward_sun))
+                })
             })
-        })
-        .count();
-    u8::try_from(shaded).unwrap_or(parts)
+            .count();
+        u8::try_from(shaded).unwrap_or(parts)
+    }
+}
+
+impl Caster {
+    /// Whether the ray from `origin` toward the sun, `ray`, meets it.
+    fn blocks(&self, origin: Point, ray: Point) -> bool {
+        match self {
+            Self::Triangle(facing) => facing.blocks(origin, ray),
+            Self::Round(occluder) => blocks(occluder, origin, ray),
+        }
+    }
 }
 
 /// Offsets in metres along the short and the long side of one substring's sample points.
@@ -95,7 +128,9 @@ pub fn cross(a: Point, b: Point) -> Point {
 /// Whether the ray from `origin` toward `ray` meets the occluder.
 fn blocks(occluder: &Occluder, origin: Point, ray: Point) -> bool {
     match *occluder {
-        Occluder::Triangle(corners) => triangle(origin, ray, corners),
+        Occluder::Triangle(corners) => {
+            Facing::new(ray, corners).is_some_and(|facing| facing.blocks(origin, ray))
+        }
         Occluder::Sphere { centre, radius } => {
             let to = sub(origin, centre);
             let b = dot(ray, to);
@@ -115,20 +150,41 @@ fn blocks(occluder: &Occluder, origin: Point, ray: Point) -> bool {
     }
 }
 
-/// Möller and Trumbore 1997.
-fn triangle(origin: Point, ray: Point, [first, second, third]: [Point; 3]) -> bool {
-    let (edge, other) = (sub(second, first), sub(third, first));
-    let normal = cross(ray, other);
-    let det = dot(edge, normal);
-    if det.abs() < 1e-12 {
-        return false;
+/// A triangle under one ray direction, by Möller and Trumbore 1997: what every ray shares.
+struct Facing {
+    first: Point,
+    edge: Point,
+    other: Point,
+    normal: Point,
+    det: f64,
+}
+
+impl Facing {
+    /// `None` edge-on to the ray, where nothing is blocked.
+    fn new(ray: Point, [first, second, third]: [Point; 3]) -> Option<Self> {
+        let (edge, other) = (sub(second, first), sub(third, first));
+        let normal = cross(ray, other);
+        let det = dot(edge, normal);
+        (det.abs() >= 1e-12).then_some(Self {
+            first,
+            edge,
+            other,
+            normal,
+            det,
+        })
     }
-    let to = sub(origin, first);
-    let u = dot(to, normal) / det;
-    let turned = cross(to, edge);
-    let v = dot(ray, turned) / det;
-    let distance = dot(other, turned) / det;
-    (0.0..=1.0).contains(&u) && v >= 0.0 && u + v <= 1.0 && distance > CLEARANCE
+
+    fn blocks(&self, origin: Point, ray: Point) -> bool {
+        let to = sub(origin, self.first);
+        let u = dot(to, self.normal) / self.det;
+        if !(0.0..=1.0).contains(&u) {
+            return false;
+        }
+        let turned = cross(to, self.edge);
+        let v = dot(ray, turned) / self.det;
+        let distance = dot(self.other, turned) / self.det;
+        v >= 0.0 && u + v <= 1.0 && distance > CLEARANCE
+    }
 }
 
 /// Metres past which a level ray no longer counts, so its stretch in a slab stays finite.
