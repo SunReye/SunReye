@@ -1,7 +1,7 @@
 // What the context toolbar stands by (ADR 20): the points of the selection in the scene, which
 // the canvas projects to a box. None, no toolbar. Pure.
 import type { Selecting } from "./gestures.ts";
-import { handles } from "./handles/grips.ts";
+import { offered } from "./handles/offered.ts";
 import { handled, type Level } from "./levels.ts";
 import type { Draft } from "./modules.ts";
 import type { Geometry, Modules, Point, RoofFace } from "./pv.ts";
@@ -12,6 +12,10 @@ export interface Anchored {
   readonly draft: Draft;
   readonly laid: Modules;
   readonly geometry: Pick<Geometry, "mounts">;
+  readonly picking: {
+    readonly turning: boolean;
+    readonly spot?: { readonly at: Point } | undefined;
+  };
   /** The wiring mode's selection, while it is on. */
   readonly roofwork: Pick<Selecting, "kind" | "chosen"> | { readonly kind: "modules" } | undefined;
 }
@@ -54,14 +58,17 @@ function anchorOf(session: Anchored): readonly Point[] {
 
   if (level.kind === "face" || level.kind === "module") return onFace(session, level);
 
+  // A wall spot carries the toolbar where the finger was.
+  if (session.picking.spot !== undefined) return [session.picking.spot.at];
+
   if (level.kind === "marker")
     return [geometry.mounts?.[level.index]?.at].filter((at) => at !== undefined);
 
   if (!handled(level)) return [];
 
   // Three.js's x east, y up, z south, back to the crate's east, north, up.
-  return handles(draft.scene, level, laid).flatMap(({ at, outline = [] }) =>
-    [at, ...outline].map(([x, y, z]): Point => [x, 0 - z, y]),
+  return offered(draft.scene, level, laid, session.picking.turning).flatMap(
+    ({ at, outline = [] }) => [at, ...outline].map(([x, y, z]): Point => [x, 0 - z, y]),
   );
 }
 

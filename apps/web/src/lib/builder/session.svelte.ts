@@ -10,13 +10,13 @@ import type {
   Problem,
 } from "../api/core.ts";
 import { checked, stringRefusal, type Checking, type StringRefusal } from "./checks.ts";
-import { haptics } from "../haptics.ts";
 import { Drafts } from "./drafts.svelte.ts";
 import { handled, parent, picked, type Level } from "./levels.ts";
 import { wiredIn, panels, type Draft } from "./modules.ts";
 import { exists, type Plan } from "./outline.ts";
 import type { Geometry, Modules, Pv, Scene, Sizes } from "./pv.ts";
 import { layingOf, type Editing, type Hit, type Roofwork, type Panel } from "./drawing.svelte.ts";
+import { Picking } from "./picking.svelte.ts";
 import { WiringMode } from "./wiring-mode.svelte.ts";
 
 /** Today in the browser's calendar, as a date input holds it: Sweden writes `YYYY-MM-DD`. */
@@ -50,9 +50,6 @@ export class Session {
   /** Each module type's size, by its id. */
   readonly #sizes: Sizes;
 
-  /** Where the inspector stands, as last chosen. */
-  #level = $state.raw<Level>({ kind: "root" });
-
   /** The day the saved layout applies from, `YYYY-MM-DD`. */
   appliesFrom = $state(today());
 
@@ -67,6 +64,9 @@ export class Session {
     ...this.#opening(),
     moduleTypes: this.moduleTypes,
   }));
+
+  /** What is picked, and how it is held: the turn mode and the wall spot. */
+  readonly picking = new Picking();
 
   /** Whether the admin chose to start from nothing. */
   #empty = $state(false);
@@ -142,7 +142,9 @@ export class Session {
 
   /** The level shown: an undo or a removal can take its object away, and its group shows instead. */
   get level(): Level {
-    return exists(this.#level, this.plan) ? this.#level : parent(this.#level);
+    const { level } = this.picking;
+
+    return exists(level, this.plan) ? level : parent(level);
   }
 
   /** Records `next` as one undo step. While a proposal shows, the edit was made of it: the
@@ -154,6 +156,7 @@ export class Session {
       return;
     }
 
+    this.picking.spot = undefined;
     this.#drafts.record(next);
     this.saved = undefined;
   }
@@ -172,11 +175,13 @@ export class Session {
   /** Either drops a proposal: a redo back to its draft must not bring it back. */
   undo(): void {
     this.wiring.discard();
+    this.picking.spot = undefined;
     this.#drafts.undo();
   }
 
   redo(): void {
     this.wiring.discard();
+    this.picking.spot = undefined;
     this.#drafts.redo();
   }
 
@@ -192,6 +197,7 @@ export class Session {
       target: { kind: level.kind, index: level.index },
       pv: this.#opening().pv,
       laid: this.laid,
+      turning: this.picking.turning,
       ondrag: (scene) => {
         this.drag(scene);
       },
@@ -237,9 +243,8 @@ export class Session {
   }
 
   go(level: Level): void {
-    haptics.soft();
     this.wiring.entered(level);
-    this.#level = level;
+    this.picking.go(level);
   }
 
   /** Drills the inspector to what a click in 3D struck, and pulls it up unless it should `peek`: a
@@ -250,7 +255,9 @@ export class Session {
     if (this.wiring.aimed(level) || level === null) return;
 
     this.go(level);
-    this.expanded = !peek;
+    this.picking.strike(hit, this.laid.walls);
+    // A wall spot's toolbar is on the canvas: the inspector stays where it is.
+    this.expanded = !peek && this.picking.spot === undefined;
   }
 
   /** Adds an object and opens it in the pulled-up inspector. */

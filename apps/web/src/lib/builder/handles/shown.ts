@@ -7,7 +7,7 @@ import { ease, MOTION_MS, motionMs } from "../../motion.ts";
 import { cssColour } from "../../scene/backdrop.ts";
 import { appear, free, gizmo } from "./gizmo.ts";
 import type { Editing } from "./grabbing.ts";
-import { handles } from "./grips.ts";
+import { offered } from "./offered.ts";
 
 /** The entrance: the larger of kbase's, for a handle set on a whole object. */
 const ENTRANCE = MOTION_MS.slow;
@@ -31,9 +31,16 @@ export class Shown {
 
   /** The handles of what `editing` selects, or none. */
   show(editing: Editing | undefined): void {
-    const found = editing === undefined ? [] : handles(editing.scene, editing.target, editing.laid);
+    const found =
+      editing === undefined
+        ? []
+        : offered(editing.scene, editing.target, editing.laid, editing.turning);
 
-    const key = editing === undefined ? "" : `${editing.target.kind} ${editing.target.index}`;
+    const key =
+      editing === undefined
+        ? ""
+        : `${editing.target.kind} ${editing.target.index} ${editing.turning}`;
+
     const fresh = key !== this.#selected;
 
     // Read on a new selection only: a drag rebuilds them on every step.

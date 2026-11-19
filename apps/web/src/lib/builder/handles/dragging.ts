@@ -127,8 +127,13 @@ function spin({ scene, target, from, to }: Slide, rect: Rect): Dragged {
   const bearing = (point: Triple): number =>
     toDegrees(Math.atan2(point[2] - centre[2], point[0] - centre[0]));
 
-  const turned = rect.rotation + bearing(to) - bearing(from);
-  const rotation = normalised(snapTurn(scene, target, turned));
+  return about(scene, target, rect, bearing(to) - bearing(from));
+}
+
+/** `rect` turned `by` degrees about its footprint's centre, snapped. */
+function about(scene: Scene, target: Target, rect: Rect, by: number): Dragged {
+  const centre = on(rect, rect.width / 2, 0, rect.depth / 2);
+  const rotation = normalised(snapTurn(scene, target, rect.rotation + by));
   const [cx, cz] = turn(rect.width / 2, rect.depth / 2, rotation);
 
   return {
@@ -136,6 +141,14 @@ function spin({ scene, target, from, to }: Slide, rect: Rect): Dragged {
     value: [rotation],
     unit: "°",
   };
+}
+
+/** The turn mode's dial: `target` turned `by` degrees, clockwise seen from above, about its
+ * centre and snapped as the ring's turn is; null for what has no turn. */
+export function turned(scene: Scene, target: Target, by: number): Dragged | null {
+  const body = bodyOf(scene, target);
+
+  return body?.kind === "rect" ? about(scene, target, body, by) : null;
 }
 
 /** The upright plane a ridge handle slides in: facing the camera, or seen from straight above,

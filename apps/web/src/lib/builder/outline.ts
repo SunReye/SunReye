@@ -16,7 +16,14 @@ import {
 } from "./names.ts";
 import type { Fence, Modules, Pv, Sizes } from "./pv.ts";
 
-export { FENCE_FINISHES, GROUND_FINISHES, OPENING_KINDS, ROOFS, WALL_NAMES } from "./names.ts";
+export {
+  FENCE_FINISHES,
+  GROUND_FINISHES,
+  OPENING_KINDS,
+  ROOFS,
+  UNFIT,
+  WALL_NAMES,
+} from "./names.ts";
 
 /** What the inspector reads besides the level. */
 export interface Plan {
@@ -25,7 +32,7 @@ export interface Plan {
   readonly laid: Modules;
   /** The crate, which places a new opening or roof window, keeps a changed opening on its wall and
    * fills a face. */
-  readonly pv: Pick<Pv, "place" | "refit" | "fillFace" | "placeWindow">;
+  readonly pv: Pick<Pv, "place" | "refit" | "fillFace" | "geometry" | "placeWindow">;
   /** Each module type's size, by its id, as the crate lays modules out. */
   readonly sizes: Sizes;
   readonly devices: readonly Readonly<Device>[];
