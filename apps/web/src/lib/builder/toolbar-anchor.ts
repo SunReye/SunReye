@@ -12,7 +12,7 @@ export interface Anchored {
   readonly draft: Draft;
   readonly laid: Modules;
   readonly geometry: Pick<Geometry, "mounts">;
-  readonly stance: {
+  readonly picking: {
     readonly turning: boolean;
     readonly spot?: { readonly at: Point } | undefined;
   };
@@ -59,7 +59,7 @@ function anchorOf(session: Anchored): readonly Point[] {
   if (level.kind === "face" || level.kind === "module") return onFace(session, level);
 
   // A wall spot carries the toolbar where the finger was.
-  if (session.stance.spot !== undefined) return [session.stance.spot.at];
+  if (session.picking.spot !== undefined) return [session.picking.spot.at];
 
   if (level.kind === "marker")
     return [geometry.mounts?.[level.index]?.at].filter((at) => at !== undefined);
@@ -67,8 +67,8 @@ function anchorOf(session: Anchored): readonly Point[] {
   if (!handled(level)) return [];
 
   // Three.js's x east, y up, z south, back to the crate's east, north, up.
-  return offered(draft.scene, level, laid, session.stance.turning).flatMap(({ at, outline = [] }) =>
-    [at, ...outline].map(([x, y, z]): Point => [x, 0 - z, y]),
+  return offered(draft.scene, level, laid, session.picking.turning).flatMap(
+    ({ at, outline = [] }) => [at, ...outline].map(([x, y, z]): Point => [x, 0 - z, y]),
   );
 }
 

@@ -1,23 +1,27 @@
-<!-- "Hinzufügen" at a wall spot (ADR 20): a window or a door there, or a marker for the plant's
-  first device; what does not fit is refused in words. -->
-<script lang="ts">
-  import Plus from "@lucide/svelte/icons/plus";
-  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
+<!-- "Hinzufügen" at a wall spot (ADR 20): a window or a door there, or a marker for one of the
+  plant's devices, chosen where it has several; what does not fit is refused in words. -->
+<script lang="ts" module>
   import { m } from "../paraglide/messages.js";
-  import { OPENING_KINDS } from "./names.ts";
-  import type { Session } from "./session.svelte.ts";
-  import ToolButton from "./ToolButton.svelte";
-  import { addOnWall, type WallAdd } from "./wall-actions.ts";
-
-  let { session, onrefuse }: { session: Session; onrefuse: (reason?: string) => void } = $props();
 
   const MARKERS = [
     ["inverter", m.equipment_inverter],
     ["battery", m.equipment_battery],
   ] as const;
+</script>
 
-  /** Markers name the first device (ADR 10); none, none offered. */
-  const device = $derived(session.plan.devices[0]?.id);
+<script lang="ts">
+  import Plus from "@lucide/svelte/icons/plus";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
+  import { OPENING_KINDS } from "./names.ts";
+  import type { Session } from "./session.svelte.ts";
+  import ToolButton from "./ToolButton.svelte";
+  import WallMarker from "./WallMarker.svelte";
+  import { addOnWall, type WallAdd } from "./wall-actions.ts";
+
+  let { session, onrefuse }: { session: Session; onrefuse: (reason?: string) => void } = $props();
+
+  /** What a marker may name (ADR 10); none, none offered. */
+  const devices = $derived(session.plan.devices);
 
   function add(choice: WallAdd): void {
     onrefuse(addOnWall(session, choice));
@@ -39,16 +43,11 @@
         }}>{name()}</DropdownMenu.Item
       >
     {/each}
-    {#if device !== undefined}
+    {#if devices.length > 0}
       <DropdownMenu.Separator />
-      {#each MARKERS as [marker, name] (marker)}
-        <DropdownMenu.Item
-          class="min-h-11"
-          onSelect={() => {
-            add({ marker, device });
-          }}>{name()}</DropdownMenu.Item
-        >
-      {/each}
     {/if}
+    {#each devices.length > 0 ? MARKERS : [] as [marker, name] (marker)}
+      <WallMarker {marker} name={name()} {devices} onadd={add} />
+    {/each}
   </DropdownMenu.Content>
 </DropdownMenu.Root>

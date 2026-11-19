@@ -5,7 +5,7 @@
   import type { Editable } from "../components/value-editor/editable.ts";
   import { m } from "../paraglide/messages.js";
   import { choices, metres } from "./fields.ts";
-  import { OPENING_KINDS, WALL_NAMES } from "./outline.ts";
+  import { OPENING_KINDS, UNFIT, WALL_NAMES } from "./outline.ts";
   import RemoveButton from "./RemoveButton.svelte";
   import ValueRow from "./ValueRow.svelte";
   import type { Opening, Unfit } from "./pv.ts";
@@ -66,11 +66,6 @@
     m.opening_light_off(),
   ]);
 
-  const REASONS: Readonly<Record<Unfit, () => string>> = {
-    overlap: m.opening_refused_overlap,
-    room: m.opening_refused_room,
-  };
-
   /** A door stands on the ground: it has no sill to set. */
   const fields = $derived(
     item.kind === "frontDoor" || item.kind === "garageDoor" ? SIZES : [...SIZES, SILL],
@@ -125,7 +120,7 @@
   {/if}
 </Item.Group>
 {#if refused !== undefined}
-  <p role="alert" class="px-4 py-2 text-sm text-destructive">{REASONS[refused]()}</p>
+  <p role="alert" class="px-4 py-2 text-sm text-destructive">{UNFIT[refused]()}</p>
 {/if}
 <div class="border-t border-border/60 px-3 pt-3">
   <Button variant="outline" class="min-h-11 w-full" onclick={oncopy}>

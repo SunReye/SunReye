@@ -1,6 +1,7 @@
 // A wall spot (ADR 20): where a tap struck a block's wall, and what is added there. The crate keeps
 // an opening on its wall and says where a marker hangs; nothing here knows a wall's length. Pure.
 import type { Equipment, Modules, OpeningKind, Point, Pv, Scene, Unfit, Wall } from "./pv.ts";
+import { snap, tidy } from "./handles/frame.ts";
 import { refit, USUAL } from "./wall-openings.ts";
 
 export interface WallSpot {
@@ -22,11 +23,11 @@ interface Found {
 /** Metres a struck point may stand off a wall's plane and still be on it. */
 const ON = 0.05;
 
+/** A struck point to the millimetre: a ray's hit carries noise far below it. */
+const milli = (value: number): number => tidy(Math.round(value * 1000) / 1000);
+
 /** Metres: the handles' step. */
 const STEP = 0.1;
-
-const snap = (value: number): number => Math.round(value / STEP) * STEP;
-const tidy = (value: number): number => Math.round(value * 1000) / 1000;
 
 /** The spot `point` (east, north, up) is on a wall of block `block`; none off its walls, as on
  * its roof. */
@@ -51,8 +52,8 @@ export function spotAt(walls: Modules["walls"], block: number, point: Point): Wa
     nearest && {
       block,
       wall: nearest.wall,
-      along: tidy(nearest.along),
-      height: tidy(point[2]),
+      along: milli(nearest.along),
+      height: milli(point[2]),
       at: point,
     }
   );
@@ -70,20 +71,28 @@ export function openingAt(
 ): Scene | { readonly unfit: Unfit } {
   const usual = USUAL[kind];
   const openings = scene.openings ?? [];
-  const along = tidy(Math.max(0, snap(spot.along - usual.width / 2)));
-  const raised = tidy(Math.max(0, snap(spot.height - usual.height / 2)));
+  const along = tidy(Math.max(0, snap(spot.along - usual.width / 2, STEP)));
+  const raised = tidy(Math.max(0, snap(spot.height - usual.height / 2, STEP)));
   const made = { kind, block: spot.block, wall: spot.wall, along, ...usual };
   const added = { ...scene, openings: [...openings, made] };
 
   const count = openings.length;
-  const lifted = kind === "window" ? refit(pv, added, count, { sill: raised }) : null;
-  const kept = lifted === null || "unfit" in lifted ? undefined : lifted.openings?.[count];
 
-  // As tall as usual at the height asked: the crate cut nothing off it under the eave.
-  if (lifted !== null && kept?.sill === raised && kept.height === usual.height) return lifted;
+  // A door stands on the ground.
+  if (kind !== "window") return refit(pv, added, count, {});
 
-  // A door stands on the ground, and so does a window the wall has no room for higher up.
-  return refit(pv, added, count, {});
+  const lifted = refit(pv, added, count, { sill: raised });
+
+  // Over another opening there: said, not mended by moving it elsewhere.
+  if ("unfit" in lifted) return lifted;
+
+  const kept = lifted.openings?.[count];
+
+  // As tall as usual at the height asked, the crate cut nothing off it under the eave; cut, it
+  // goes at its usual sill instead.
+  return kept?.sill === raised && kept.height === usual.height
+    ? lifted
+    : refit(pv, added, count, {});
 }
 
 /** The scene with a marker of `kind` for `device` at `spot` along its wall, outside; why not,
@@ -99,15 +108,15 @@ export function markerAt(
     kind,
     block: spot.block,
     wall: spot.wall,
-    along: tidy(snap(spot.along)),
+    along: snap(spot.along, STEP),
     inside: false,
   };
 
-  const hung = { ...scene, equipment: [...(scene.equipment ?? []), marker] };
-  const off = (of: Scene): boolean => (pv.geometry(of).mounts ?? null) === null;
+  // Judged alone: the crate answers for all markers at once, and another off its wall is not
+  // this one's fault, nor its excuse.
+  const alone = pv.geometry({ ...scene, equipment: [marker] }).mounts ?? null;
 
-  // A marker that was off its wall before is not this one's fault.
-  return off(hung) && !((scene.equipment ?? []).length > 0 && off(scene))
+  return alone === null
     ? { unfit: "room" }
-    : hung;
+    : { ...scene, equipment: [...(scene.equipment ?? []), marker] };
 }
