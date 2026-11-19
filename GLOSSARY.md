@@ -264,6 +264,14 @@ _Avoid_: Auto-layout, auto-wiring, string wizard
 The builder's small toolbar on the canvas beside what is selected, with that selection's commonest actions.
 _Avoid_: Floating menu, action bar, assign bar
 
+**Wall spot**:
+Where a tap struck a block's wall: the block, the wall, the metres along it and the height. What is added from the context toolbar goes there; held by the page, never stored.
+_Avoid_: Wall selection, anchor, drop point
+
+**Turn mode**:
+The builder's state in which the picked object's ring shows and turns it, entered by "Drehen" and left by "Fertig" or by picking anything else. German UI: Drehen.
+_Avoid_: Rotate tool, rotation lock
+
 **MPPT window**:
 The voltages an MPPT input tracks between, with the start voltage it wakes at and its maximum input current: the input's limits from the inverter's datasheet.
 _Avoid_: MPP range, DC window
