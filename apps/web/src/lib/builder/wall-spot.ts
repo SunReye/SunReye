@@ -71,25 +71,19 @@ export function openingAt(
   const usual = USUAL[kind];
   const openings = scene.openings ?? [];
   const along = tidy(Math.max(0, snap(spot.along - usual.width / 2)));
-  const lifted = tidy(Math.max(0, snap(spot.height - usual.height / 2)));
+  const raised = tidy(Math.max(0, snap(spot.height - usual.height / 2)));
   const made = { kind, block: spot.block, wall: spot.wall, along, ...usual };
   const added = { ...scene, openings: [...openings, made] };
 
-  // A door stands on the ground.
-  const sills = kind === "window" ? [lifted, usual.sill] : [usual.sill];
+  const count = openings.length;
+  const lifted = kind === "window" ? refit(pv, added, count, { sill: raised }) : null;
+  const kept = lifted === null || "unfit" in lifted ? undefined : lifted.openings?.[count];
 
-  const tried = sills.map((sill) => {
-    const fitted = refit(pv, added, openings.length, { sill });
+  // As tall as usual at the height asked: the crate cut nothing off it under the eave.
+  if (lifted !== null && kept?.sill === raised && kept.height === usual.height) return lifted;
 
-    const kept = "unfit" in fitted ? undefined : fitted.openings?.[openings.length];
-
-    // As tall as usual at the height asked: the crate cut nothing off it under the eave.
-    return kept === undefined || (kept.sill === sill && kept.height === usual.height)
-      ? fitted
-      : null;
-  });
-
-  return tried.find((fitted) => fitted !== null) ?? { unfit: "room" };
+  // A door stands on the ground, and so does a window the wall has no room for higher up.
+  return refit(pv, added, count, {});
 }
 
 /** The scene with a marker of `kind` for `device` at `spot` along its wall, outside; why not,
@@ -110,7 +104,10 @@ export function markerAt(
   };
 
   const hung = { ...scene, equipment: [...(scene.equipment ?? []), marker] };
-  const { mounts = null } = pv.geometry(hung);
+  const off = (of: Scene): boolean => (pv.geometry(of).mounts ?? null) === null;
 
-  return mounts === null ? { unfit: "room" } : hung;
+  // A marker that was off its wall before is not this one's fault.
+  return off(hung) && !((scene.equipment ?? []).length > 0 && off(scene))
+    ? { unfit: "room" }
+    : hung;
 }

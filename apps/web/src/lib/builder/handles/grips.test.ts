@@ -2,7 +2,7 @@
 import { expect, test } from "bun:test";
 import { nextBlock } from "../draft.ts";
 import type { Block, Scene } from "../pv.ts";
-import { drag, handles, type Grip, type Ray, type Target } from "./grips.ts";
+import { drag, handles, turned, type Grip, type Ray, type Target } from "./grips.ts";
 
 const HOUSE = nextBlock([]);
 const BLOCK: Target = { kind: "block", index: 0 };
@@ -273,4 +273,16 @@ test("the ring turns a car place about its centre", () => {
   expect(place).toMatchObject({ rotation: 90, width: 2.5, length: 5 });
   // Its centre stays where it was.
   expect([place?.x, place?.z]).toEqual([17.75, 13.25]);
+});
+
+test("a dial turns a block about its centre by the degrees swept, snapped as the ring's turn is", () => {
+  // 10 × 8 m at the origin: its centre stays at (5, 4).
+  const quarter = turned(scene(), BLOCK, 88);
+
+  expect(quarter?.value).toEqual([90]);
+  expect(quarter?.scene.blocks[0]).toMatchObject({ rotation: 90, x: 9, z: -1 });
+  // Against the clock, past zero.
+  expect(turned(scene(), BLOCK, -42)?.value).toEqual([320]);
+  // A fence has no turn.
+  expect(turned(scene(), { kind: "fence", index: 0 }, 30)).toBeNull();
 });

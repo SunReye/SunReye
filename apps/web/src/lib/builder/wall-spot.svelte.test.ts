@@ -4,6 +4,8 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect } from "../api/core.ts";
+import { emptyDraft } from "./modules.ts";
+import { fill } from "./templates.ts";
 import Builder from "./Builder.svelte";
 import {
   desk,
@@ -144,4 +146,84 @@ test("on a phone the toolbar stands by the tapped spot and adding leaves the she
   await page.getByRole("menuitem", { name: "Haustür" }).click();
   await expect.element(bar().getByRole("button", { name: "Duplizieren" })).toBeVisible();
   await expect.element(sheet).toHaveAttribute("aria-expanded", "false");
+});
+
+test("on a turned house under a turned north the window still goes in under the tap", async () => {
+  const draws = vi.spyOn(EffectComposer.prototype, "render");
+  const { scene, strings } = house();
+  const [block] = scene.blocks;
+
+  if (block === undefined) throw new Error("no block");
+
+  // Turned toward the camera: seen at a graze, the roof's edge hides the wall.
+  const turnedScene = { ...scene, north: -10, openings: [], blocks: [{ ...block, rotation: -15 }] };
+
+  await render(Builder, {
+    pv,
+    core: connect(testCore()),
+    start: { strings, scene: turnedScene },
+    moduleTypes: [MODULE],
+    devices: DEVICES,
+  });
+  await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
+
+  // Three metres along the front wall and 1.6 m up, as the crate lays the wall out.
+  const front = pv.modules(turnedScene, {}).walls[0]?.front;
+
+  if (front === undefined) throw new Error("no front wall");
+
+  const [east, north] = [front.left[0] + front.right[0] * 3, front.left[1] + front.right[1] * 3];
+
+  await press("mouse", [onCanvas(turnedScene)([east, 1.6, 0 - north])]);
+  await add().click();
+  await page.getByRole("menuitem", { name: "Fenster", exact: true }).click();
+
+  await expect
+    .element(
+      inspector()
+        .getByRole("button", { name: starts("Abstand vom linken Ende (m)") })
+        .getByText(/^2,4$/u),
+    )
+    .toBeVisible();
+});
+
+test("on a phone a house of two blocks carries all four tools inside the canvas", async () => {
+  await phone();
+
+  const draws = vi.spyOn(EffectComposer.prototype, "render");
+  const start = fill(emptyDraft(), "lHouse");
+  const walled = { ...start, scene: { ...start.scene, openings: [] } };
+
+  await render(Builder, {
+    pv,
+    core: connect(testCore()),
+    start: walled,
+    moduleTypes: [MODULE],
+    devices: DEVICES,
+  });
+  await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
+
+  // The wing's wall that faces the camera in the south-east, a metre and a half along it.
+  const [facing] = Object.values(pv.modules(walled.scene, {}).walls[1] ?? {}).toSorted(
+    (one, other) => other.out[0] - other.out[1] - (one.out[0] - one.out[1]),
+  );
+
+  if (facing === undefined) throw new Error("no wing");
+
+  const { left, right } = facing;
+
+  await press("touch", [
+    onCanvas(walled.scene)([left[0] + right[0] * 1.5, 1.2, 0 - (left[1] + right[1] * 1.5)]),
+  ]);
+  await expect.element(add()).toBeVisible();
+
+  const canvas = page.getByLabelText("3D-Szene des Hauses").element().getBoundingClientRect();
+
+  for (const name of ["Hinzufügen", "Drehen", "Bearbeiten", "Entfernen"]) {
+    const box = bar().getByRole("button", { name }).element().getBoundingClientRect();
+
+    expect(box.left).toBeGreaterThanOrEqual(canvas.left);
+    expect(box.right).toBeLessThanOrEqual(canvas.right);
+    expect(box.height).toBeGreaterThanOrEqual(44);
+  }
 });

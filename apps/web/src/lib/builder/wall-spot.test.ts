@@ -88,3 +88,33 @@ test("a marker hangs at the spot along the wall, naming the device", () => {
     { device: 4, kind: "battery", block: 0, wall: "front", along: 3.1, inside: false },
   ]);
 });
+
+test("a wall lower than a door still takes it, cut to the wall as the crate cuts any", () => {
+  const low: Scene = { ...house, blocks: [{ ...house.blocks[0]!, eave: 2 }] };
+  const door = openingAt(pv, low, front(5, 1), "frontDoor");
+
+  expect("unfit" in door ? door : door.openings?.[0]).toMatchObject({
+    along: 4.5,
+    sill: 0,
+    height: 2,
+  });
+});
+
+test("a marker past the wall's end is refused; one already off its wall does not refuse the next", () => {
+  const battery = { kind: "battery", device: 4 } as const;
+
+  expect(markerAt(pv, house, front(30, 1.2), battery)).toEqual({ unfit: "room" });
+
+  const stray = {
+    device: 4,
+    kind: "inverter",
+    block: 0,
+    wall: "front",
+    along: 30,
+    inside: false,
+  } as const;
+
+  const hung = markerAt(pv, { ...house, equipment: [stray] }, front(3, 1.2), battery);
+
+  expect("unfit" in hung ? hung : hung.equipment).toHaveLength(2);
+});
