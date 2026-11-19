@@ -4,7 +4,7 @@
   import wasm from "../../../../../target/wasm32-unknown-unknown/release/sunreye_pv_wasm.wasm?url";
   import { Button } from "#lib/components/ui/button/index.js";
   import Builder from "../../lib/builder/Builder.svelte";
-  import { limitsOf } from "../../lib/builder/checks";
+  import { inputsOf, limitsOf } from "../../lib/builder/checks";
   import { emptyDraft } from "../../lib/builder/modules";
   import { loadPv } from "../../lib/builder/pv";
   import { m } from "../../lib/paraglide/messages.js";
@@ -39,6 +39,7 @@
       // Admin only, and unset before setup: the sun then stays put.
       location: "problem" in location ? undefined : location,
       limits: "problem" in capabilities ? {} : limitsOf(capabilities),
+      inputs: "problem" in capabilities ? {} : inputsOf(capabilities),
     };
   }
 </script>
@@ -47,8 +48,8 @@
   {#if webgl2}
     {#await load()}
       <p class="p-6 text-sm text-muted-foreground">{m.builder_loading()}</p>
-    {:then { pv, start, moduleTypes, devices, location, limits }}
-      <Builder {pv} {core} {start} {moduleTypes} {devices} {location} {limits} />
+    {:then { pv, start, moduleTypes, devices, location, limits, inputs }}
+      <Builder {pv} {core} {start} {moduleTypes} {devices} {location} {limits} {inputs} />
     {/await}
   {:else}
     <div class="flex flex-col items-start gap-3 p-6">

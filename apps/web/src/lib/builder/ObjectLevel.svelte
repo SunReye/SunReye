@@ -134,7 +134,7 @@
     {string}
     position={index}
     made={painted(scene, index)}
-    warning={plan.cold.find((cold) => cold.string === index)?.text}
+    warnings={[...plan.cold, ...plan.sized].flatMap((w) => (w.string === index ? [w.text] : []))}
     refused={plan.refused?.string === index ? plan.refused.text : undefined}
     {moduleTypes}
     devices={plan.devices}

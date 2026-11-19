@@ -136,6 +136,8 @@ export interface Exports {
   readonly sun: (input: number, inputLen: number) => bigint;
   readonly clear_sky: (input: number, inputLen: number) => bigint;
   readonly cold_voltages: (input: number, inputLen: number) => bigint;
+  readonly sizing: (input: number, inputLen: number) => bigint;
+  readonly longest: (input: number, inputLen: number) => bigint;
   readonly refit: (input: number, inputLen: number) => bigint;
   readonly place: (input: number, inputLen: number) => bigint;
   readonly glide: (input: number, inputLen: number) => bigint;
@@ -158,6 +160,8 @@ const functions = [
   "sun",
   "clear_sky",
   "cold_voltages",
+  "sizing",
+  "longest",
   "refit",
   "place",
   "glide",

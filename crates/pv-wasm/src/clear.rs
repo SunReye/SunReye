@@ -48,8 +48,8 @@ impl Datasheet {
 #[serde(rename_all = "camelCase")]
 pub struct Wiring {
     pub module_type: u32,
-    device: u32,
-    input: u32,
+    pub device: u32,
+    pub input: u32,
     pub modules: u16,
     optimized: u16,
     tilt: f64,

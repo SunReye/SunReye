@@ -15,7 +15,7 @@
     string,
     position,
     made,
-    warning,
+    warnings,
     refused,
     moduleTypes,
     devices,
@@ -27,8 +27,8 @@
     position: number;
     /** What the scene paints into it. */
     made: Painted;
-    /** Why it is over its inverter's limit in the cold, if it is. */
-    warning: string | undefined;
+    /** Where it leaves its inverter's limits: the cold voltage and its MPPT input's window. */
+    warnings: readonly string[];
     /** Why the last save was refused for it, if it was. */
     refused: string | undefined;
     moduleTypes: readonly ModuleType[];
@@ -106,9 +106,9 @@
       {#if refused !== undefined}
         <p role="alert" class="text-sm text-destructive">{refused}</p>
       {/if}
-      {#if warning !== undefined}
+      {#each warnings as warning (warning)}
         <p role="status" class="text-sm text-warning">{warning}</p>
-      {/if}
+      {/each}
     </Item.Content>
   </Item.Root>
 </Item.Group>

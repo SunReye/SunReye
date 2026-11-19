@@ -23,6 +23,7 @@
     devices,
     location,
     limits = {},
+    inputs = {},
   }: {
     pv: Pv;
     core: Core;
@@ -35,13 +36,15 @@
     location?: Location | undefined;
     /** Each inverter's maximum DC input voltage, by device id; a viewer knows none. */
     limits?: Opening["limits"];
+    /** Each inverter's MPPT inputs' limits, by device id; a viewer knows none. */
+    inputs?: Opening["inputs"];
   } = $props();
 
   // Every width edits (ADR 20): a phone with the inspector as a sheet and "+" on the canvas.
   const phone = new MediaQuery("max-width: 40rem");
   const portrait = new MediaQuery("orientation: portrait");
 
-  const session = new Session(() => ({ pv, core, start, moduleTypes, devices, limits }));
+  const session = new Session(() => ({ pv, core, start, moduleTypes, devices, limits, inputs }));
 
   /** The time slider's instant: it reads the draft, never writes it. */
   const moment = new Moment(
