@@ -59,15 +59,14 @@ export async function open(built: Readonly<Promise<void>> = Promise.resolve()) {
   const seen = { labels: 0 };
   const asked = watched();
 
+  const sky = (): Sky => ({ sun: null, diffuse: null, weather });
+
+  const label = (): void => {
+    seen.labels += 1;
+  };
+
   const unmount = $effect.root(() => {
-    scene = lit(
-      canvas,
-      new PerspectiveCamera(40, 1, 0.1, 5000),
-      (): Sky => ({ sun: null, diffuse: null, weather }),
-      () => {
-        seen.labels += 1;
-      },
-    );
+    scene = lit(canvas, new PerspectiveCamera(40, 1, 0.1, 5000), sky, label);
     scene.studio.setSize(64, 64);
   });
 

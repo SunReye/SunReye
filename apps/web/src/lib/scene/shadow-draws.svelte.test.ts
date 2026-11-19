@@ -45,11 +45,11 @@ test("a moved sun, a new plot, another 3D quality and a new caster each draw it 
 
   frame();
 
-  studio.light(daylight([0.5, -0.5, 0.707]), theme(false), PAGE);
+  studio.light(daylight([0.6, 0, 0.8]), theme(false), PAGE);
   expect(again()).toEqual([1, 0]);
 
   // The same sun in another theme casts the same shadow.
-  studio.light(daylight([0.5, -0.5, 0.707]), theme(true), PAGE);
+  studio.light(daylight([0.6, 0, 0.8]), theme(true), PAGE);
   expect(again()).toEqual([0, 0]);
 
   studio.frame(new Vector3(2, 0, 0), 14);
