@@ -88,10 +88,10 @@ test("a module is a framed body standing 3.5 cm proud of its roof, its cells on 
   // The fixture's module lies level at 3 m.
   expect(min.y).toBeCloseTo(3);
   expect(max.y).toBeCloseTo(3.035);
-  // Its top, its four sides, and the bottom a module wound the other way stands on.
+  // Its top and four sides: no face of it lies in the roof, to show on the roof's underside.
   const points: unknown = body.getAttribute("position");
 
-  expect(points instanceof BufferAttribute ? points.count : 0).toBe(36);
+  expect(points instanceof BufferAttribute ? points.count : 0).toBe(30);
 });
 
 test("a pitched roof is trimmed with ridge caps and gutters, which cast no shadow of their own", () => {

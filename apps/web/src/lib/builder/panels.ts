@@ -142,17 +142,15 @@ function face(into: Triangles, corners: readonly Triple3[], out: Triple3, mapped
 }
 
 /**
- * Every module's body before it is placed: a box one unit each way. Its top and its bottom both
- * carry the cells, as a module laid with its corners wound the other way stands on its top; its
- * four sides take the frame's texel.
+ * Every module's body before it is placed: a box one unit each way, open below. Its top carries
+ * the cells and its four sides take the frame's texel; no face lies in the roof, where it would
+ * show on the roof's underside.
  */
 function body(): BufferGeometry {
   const made: Triangles = { position: [], normals: [], uv: [] };
   const top = SQUARE.map(([x, y]): Triple3 => [x, y, 1]);
-  const bottom = SQUARE.toReversed().map(([x, y]): Triple3 => [x, y, 0]);
 
   face(made, top, [0, 0, 1], true);
-  face(made, bottom, [0, 0, -1], true);
 
   for (const [i, [x, y]] of SQUARE.entries()) {
     const [nextX, nextY] = SQUARE[(i + 1) % SQUARE.length] ?? [0, 0];
@@ -179,7 +177,8 @@ function body(): BufferGeometry {
 /**
  * Where a module's body goes: the unit box onto its corners, its cells' long side along the
  * module's long side from its first corner, and 3.5 cm proud. Never mirrored: three.js lights a
- * mirrored instance from below, so corners wound the other way turn the box over instead.
+ * mirrored instance from below. Corners wound the other way lay the body from the far end of the
+ * short side instead, which mirrors the cells across it: a module is the same either way round.
  */
 function placed([a, b, , d]: readonly Point[], up: Point): Matrix4 {
   if (a === undefined || b === undefined || d === undefined) return new Matrix4();
@@ -189,11 +188,13 @@ function placed([a, b, , d]: readonly Point[], up: Point): Matrix4 {
   const toD = new Vector3(...toThree(d)).sub(origin);
   const [short, long] = toB.length() > toD.length() ? [toD, toB] : [toB, toD];
   const proud = new Vector3(...toThree(up)).multiplyScalar(PROUD);
-  const turned = new Vector3().crossVectors(short, long).dot(proud) < 0;
 
-  return new Matrix4()
-    .makeBasis(short, long, turned ? proud.clone().negate() : proud)
-    .setPosition(turned ? origin.add(proud) : origin);
+  if (new Vector3().crossVectors(short, long).dot(proud) < 0) {
+    origin.add(short);
+    short.negate();
+  }
+
+  return new Matrix4().makeBasis(short, long, proud).setPosition(origin);
 }
 
 /** How three.js's physical material starts its emissive light. */

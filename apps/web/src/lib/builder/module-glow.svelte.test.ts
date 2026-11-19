@@ -82,8 +82,8 @@ test("32 modules are drawn in as many draw calls as one", () => {
   const many = above(row).frame();
 
   expect(many.calls).toBe(one);
-  // And all of them are drawn: 12 triangles each, in the scene's pass and in the occlusion's.
-  expect(many.triangles).toBeGreaterThanOrEqual(32 * 12 * 2);
+  // And all of them are drawn: 10 triangles each, in the scene's pass and in the occlusion's.
+  expect(many.triangles).toBeGreaterThanOrEqual(32 * 10 * 2);
 });
 
 test("each module glows in its own colour: a wired string's brightly, beside one in no string", () => {
@@ -113,4 +113,32 @@ test("each module glows in its own colour: a wired string's brightly, beside one
   expect(full[0]).toBeGreaterThan(idle[0] ?? 0);
   expect(failed).toEqual([]);
   expect(studio.renderer.getContext().getError()).toBe(0);
+});
+
+/** The picture's middle pixel from under the roof, looking straight up at its underside. */
+function fromBelow(panels: readonly Panel[]): number[] {
+  const { studio, frame } = measured("medium");
+  const gl = studio.renderer.getContext();
+  const pixel = new Uint8Array(4);
+
+  studio.camera.position.set(0, 0.5, 0.001);
+  studio.camera.lookAt(0, 3, 0);
+  studio.scene.add(buildScene(house, panels));
+  frame();
+  gl.readPixels(32, 32, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+
+  return [...pixel.subarray(0, 3)];
+}
+
+test("under a carport's roof nothing of the modules on it shows: its underside is the roof's own", () => {
+  const bare = fromBelow([]);
+
+  // Wound either way, and glowing at full strength.
+  for (const corners of [square(0), square(0).toReversed()]) {
+    const under = fromBelow([{ corners, string: 0, bright: true }]);
+
+    for (const [i, value] of under.entries()) {
+      expect(Math.abs(value - (bare[i] ?? 0))).toBeLessThanOrEqual(2);
+    }
+  }
 });
