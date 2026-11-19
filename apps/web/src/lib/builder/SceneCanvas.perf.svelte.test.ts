@@ -8,7 +8,8 @@ import { presetView } from "./camera.ts";
 import type { Geometry } from "./pv.ts";
 import SceneCanvas from "./SceneCanvas.svelte";
 
-// The scene's readout (ADR 21 "Measuring"): asked for with `?perf` on the URL.
+// The scene's readout (ADR 21 "Measuring"): asked for with `?perf` on the URL. Asked for once,
+// it stays for the page's life, so the scene that shows none is the first here.
 
 // Software GL prepares the scene slowly while other suites run.
 const SLOW = { timeout: 12_000 };
@@ -32,7 +33,6 @@ const shown = () =>
   render(SceneCanvas, { geometry: house, view: presetView("isometric", house), onview: () => {} });
 
 afterEach(async () => {
-  perf.on = false;
   perf.trial = {};
   quality.choice = "auto";
   history.replaceState(null, "", location.pathname + location.search);
