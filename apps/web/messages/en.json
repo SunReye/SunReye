@@ -1256,6 +1256,7 @@
   "opening_sill": "Sill height (m)",
   "builder_opening_summary": "Block {block} · {wall} · {width} × {height} m",
   "opening_refused_overlap": "Another opening is already there.",
+  "marker_refused_room": "The marker has no room there on the wall.",
   "opening_refused_room": "The wall has no room for that.",
   "nav_explore": "Explore",
   "explore_device": "Device {id}",

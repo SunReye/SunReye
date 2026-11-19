@@ -1,6 +1,7 @@
 import "../../../app.css";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect } from "../../api/core.ts";
 import Builder from "../Builder.svelte";
@@ -118,6 +119,28 @@ test.each<Pointer>(["mouse", "touch"])(
     await expect.element(east.getByText(/^[1-4](,\d)?$/u)).toBeVisible();
     await undo.click();
     await expect.element(east.getByText(/^0$/u)).toBeVisible();
+    await expect.element(undo).toBeDisabled();
+  },
+);
+
+test.each<Pointer>(["mouse", "touch"])(
+  "after Drehen a %s drag anywhere turns the house about its centre, in steps of 5°, one undo step",
+  async (pointer) => {
+    const scene = await picked();
+    const tools = page.getByRole("toolbar", { name: "Aktionen" });
+    const rotation = inspector().getByRole("button", { name: starts("Drehung (°)") });
+    const undo = inspector().getByRole("button", { name: "Rückgängig" });
+
+    await tools.getByRole("button", { name: "Drehen" }).click();
+    // On the house itself: the ring round it lies outside the canvas.
+    await press(pointer, swipe(onCanvas(scene)([2, 1.5, 8])));
+
+    await expect.element(rotation.getByText(/^[1-9]\d*[05]$|^5$/u)).toBeVisible();
+    await expect.element(tools.getByRole("status").getByText(/^Drehung \d+°$/u)).toBeVisible();
+
+    await tools.getByRole("button", { name: "Fertig" }).click();
+    await undo.click();
+    await expect.element(rotation.getByText(/^0$/u)).toBeVisible();
     await expect.element(undo).toBeDisabled();
   },
 );

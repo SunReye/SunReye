@@ -157,6 +157,7 @@ export class Session {
       return;
     }
 
+    this.stance.spot = undefined;
     this.#drafts.record(next);
     this.saved = undefined;
   }
@@ -175,11 +176,13 @@ export class Session {
   /** Either drops a proposal: a redo back to its draft must not bring it back. */
   undo(): void {
     this.wiring.discard();
+    this.stance.spot = undefined;
     this.#drafts.undo();
   }
 
   redo(): void {
     this.wiring.discard();
+    this.stance.spot = undefined;
     this.#drafts.redo();
   }
 
@@ -254,7 +257,9 @@ export class Session {
     if (this.wiring.aimed(level) || level === null) return;
 
     this.go(level);
-    this.expanded = !peek;
+    this.stance.strike(level, hit, this.laid.walls);
+    // A wall spot's toolbar is on the canvas: the inspector stays where it is.
+    this.expanded = !peek && this.stance.spot === undefined;
   }
 
   /** Adds an object and opens it in the pulled-up inspector. */

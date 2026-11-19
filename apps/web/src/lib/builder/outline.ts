@@ -25,7 +25,7 @@ export interface Plan {
   readonly laid: Modules;
   /** The crate, which places a new opening or roof window, keeps a changed opening on its wall and
    * fills a face. */
-  readonly pv: Pick<Pv, "place" | "refit" | "fillFace" | "placeWindow">;
+  readonly pv: Pick<Pv, "place" | "refit" | "fillFace" | "geometry" | "placeWindow">;
   /** Each module type's size, by its id, as the crate lays modules out. */
   readonly sizes: Sizes;
   readonly devices: readonly Readonly<Device>[];
