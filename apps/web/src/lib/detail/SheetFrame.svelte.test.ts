@@ -78,7 +78,8 @@ test("a chart of one series states no number at rest: the head states it", async
   const legend = sheet.getByRole("tabpanel", { name: "Übersicht" }).getByRole("definition");
 
   await expect.element(head.getByText("4,0 kWh")).toBeVisible();
-  await expect.element(legend.filter({ hasText: "8,0 kWh" })).toBeVisible();
+  // The forecast so far, of 8 kWh from 10:00 to 14:00 at 12:20.
+  await expect.element(legend.filter({ hasText: "4,7 kWh" })).toBeVisible();
   expect(legend.filter({ hasText: "4,0 kWh" }).elements()).toHaveLength(0);
 
   // Titled by its range alone: no sum stands under it.

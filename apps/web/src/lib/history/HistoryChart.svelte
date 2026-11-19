@@ -1,11 +1,12 @@
 <!--
   One series over the route's range, a band per hour, day or month: a power series as its energy,
-  any other as its mean. Today, a series with a forecast marks each hour's forecast on its bar, as
-  History's forecast chart does. A new range tweens the bars from the figures they showed (ADR 21).
+  any other as its mean. Today, a series with a forecast draws it as History's forecast chart does:
+  a tick at each hour's forecast so far, and a faint bar of the whole forecast of each hour not yet
+  over. A new range tweens the bars from the figures they showed (ADR 21).
 -->
 <script lang="ts">
   import type { Core } from "../api/core.ts";
-  import { planned, plannedEnergy, type Planned } from "../forecast/forecast.ts";
+  import { forecastIn, planned } from "../forecast/forecast.ts";
   import { m } from "../paraglide/messages.js";
   import BandChart from "../range/BandChart.svelte";
   import { describe, isSignedFlow, keyOf, sidesOf } from "../roles.ts";
@@ -50,7 +51,7 @@
         Promise.all(expects.map((d) => planned(core, d, s, from, to))),
       ]);
 
-      return { series: s, points, plans: plans.length > 0 ? plans : null };
+      return { series: s, points, plans: plans.length > 0 ? plans.flat() : null };
     },
   );
 
@@ -71,7 +72,7 @@
     up: null,
     down: [],
     sum: { up: [0], down: [], bare: false },
-    expected: null,
+    forecast: null,
   };
 
   /** A figure as the upper side, and the lower side when the series runs both ways. */
@@ -87,6 +88,22 @@
   /** What flowed one way over all bands. */
   const total = (figures: readonly { value: number }[], sign: 1 | -1) =>
     figures.reduce((a, f) => a + Math.max(0, sign * f.value), 0);
+
+  type Weighed = ReturnType<typeof forecastIn> | null;
+
+  /** A band's forecast as History's forecast chart draws it: a tick at what it expected so far, and
+   * a faint bar of all it expects while it is not over. */
+  const drawn = (p: Weighed, past: boolean) => ({
+    mark: p && p.sofar > 0 ? p.sofar : null,
+    ghost: p && !past && p.whole > 0 ? p.whole : null,
+  });
+
+  /** The range's forecast as History's forecast chart sums it: so far, and still expected. */
+  function summed(ps: readonly Weighed[]) {
+    const [sofar, rest] = ps.reduce(([a, b], p) => [a + (p?.sofar ?? 0), b + (p?.rest ?? 0)], [0, 0]);
+
+    return { mark: sofar > 0 ? sofar : null, ghost: rest > 0 ? rest : null };
+  }
 
   const view = $derived.by(() => {
     const got = data.current;
@@ -105,7 +122,7 @@
 
     const figures = got.spans.map(([a, b]) => ({
       ...figure(a, b),
-      planned: expected(plans ?? [], a, b),
+      planned: plans && forecastIn(plans, a, b, got.now),
       elapsed: Math.max(0, Math.min(b, got.now) - a),
     }));
 
@@ -116,12 +133,12 @@
     return {
       loading: false,
       via: got.via,
-      bands: bandsOf(got.list, (_, i) => {
+      bands: bandsOf(got.list, (edge, i) => {
         const f = figures[i]!;
 
-        return { ...f, ...split(f.value), mark: plans && f.planned > 0 ? f.planned : null };
+        return { ...f, ...split(f.value), ...drawn(f.planned, edge.state === "past") };
       }),
-      expected: plans && figures.reduce((a, f) => a + f.planned, 0),
+      forecast: plans && summed(figures.map((f) => f.planned)),
       // A signed flow's sides are named for its sign, as charged and discharged, even on a day
       // that ran one way only.
       up: signed || isSignedFlow(s) ? [sidesOf(s)[0]] : null,
@@ -136,11 +153,6 @@
         : { ...split(figure(...whole(got.spans)).value), bare: false },
     };
   });
-
-  /** What the devices' forecasts expect in [a, b), in kWh. */
-  function expected(plans: readonly (readonly Planned[])[], a: number, b: number): number {
-    return plans.reduce((sum, p) => sum + plannedEnergy(p, a, b), 0);
-  }
 
   const meta = $derived([keyOf(series)]);
 
@@ -162,8 +174,14 @@
   up={view.up ?? meta}
   down={view.down}
   via={view.via}
-  markLabel={view.expected === null ? "" : m.range_forecast()}
-  summary={{ title, ...view.sum, mark: view.expected }}
+  markLabel={view.forecast ? m.range_forecast() : ""}
+  ghostLabel={view.forecast ? m.forecast_expected() : ""}
+  summary={{
+    title,
+    ...view.sum,
+    mark: view.forecast?.mark ?? null,
+    ghost: view.forecast?.ghost ?? null,
+  }}
   fmt={reads.fmt}
   unit={reads.unit}
   loading={view.loading}

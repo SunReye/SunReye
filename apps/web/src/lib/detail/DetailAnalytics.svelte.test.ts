@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "vitest";
-import { userEvent } from "vitest/browser";
+import { userEvent, type Locator } from "vitest/browser";
 import "../../app.css";
 import { asked, PLANT, prepare, restore, rollup, served, show } from "./detail.harness.ts";
 
@@ -18,25 +18,29 @@ test("a sheet's range steps, and History opens at it", async () => {
     .toHaveAttribute("href", "#/history?range=day&at=2026-11-11");
 });
 
-test("today's production marks the inverters' forecast on its hours, as History does; another day does not", async () => {
+/** The figure the legend states beside `term`. */
+const valueOf = (root: Readonly<Locator>, term: string) =>
+  root.getByRole("term").filter({ hasText: term }).element().nextElementSibling?.textContent;
+
+test("today's production states the forecast so far and what is still expected, as History does; another day neither", async () => {
   const { screen } = await show("production");
   const sheet = screen.getByRole("dialog", { name: "Produktion" });
   const overview = sheet.getByRole("tabpanel", { name: "Übersicht" });
   const forecast = overview.getByRole("term").filter({ hasText: "Prognose" });
-  const ticks = () => overview.element().querySelectorAll(".mark.on").length;
+  const drawn = () => overview.element().querySelectorAll(".mark.on, .seg.opacity-30").length;
 
-  await expect.element(forecast).toBeVisible();
-  await expect.element(overview.getByText("8,0 kWh")).toBeVisible();
-  await expect.poll(ticks).toBeGreaterThan(0);
+  // 2 kWh an hour from 10:00 to 14:00, and it is 12:20.
+  await expect.poll(() => valueOf(overview, "Prognose")).toBe("4,7 kWh");
+  await expect.poll(() => valueOf(overview, "noch erwartet")).toBe("3,3 kWh");
   expect(overview.element().querySelector("path[stroke-dasharray]")).toBeNull();
 
   await sheet.getByRole("button", { name: "Früher" }).click();
 
   await expect.element(forecast).not.toBeInTheDocument();
-  await expect.poll(ticks).toBe(0);
+  await expect.poll(drawn).toBe(0);
 });
 
-test("an hour its forecast expects nothing of carries no tick", async () => {
+test("an hour ticks at its forecast so far, and one not over shows its whole forecast faint", async () => {
   const made = ["2026-11-12T08:00:00Z", "2026-11-12T10:00:00Z"].map((at) =>
     rollup(Date.parse(at), 1000),
   );
@@ -55,9 +59,25 @@ test("an hour its forecast expects nothing of carries no tick", async () => {
 
   const sheet = screen.getByRole("dialog", { name: "Produktion" });
   const overview = sheet.getByRole("tabpanel", { name: "Übersicht" });
+  const plot = overview.element().querySelector<HTMLElement>("[data-scrub]")!;
+  const count = (sel: string) => overview.element().querySelectorAll(sel).length;
 
-  // The plan forecasts 10:00 to 14:00 and it is 12:20: 10:00 and the hour under way, not 08:00.
-  await expect.poll(() => overview.element().querySelectorAll(".mark.on").length).toBe(2);
+  // Ticks at 10:00 and the hour under way, none at 08:00, which expects nothing; faint bars for
+  // the hour under way and 13:00.
+  await expect.poll(() => count(".mark.on")).toBe(2);
+  expect(count(".seg.opacity-30")).toBe(2);
+
+  const box = plot.getBoundingClientRect();
+
+  const hover = (h: number) =>
+    userEvent.hover(plot, { position: { x: (box.width * (h + 0.5)) / 24, y: box.height / 2 } });
+
+  await hover(12);
+  await expect.poll(() => valueOf(overview, "Prognose")).toBe("0,7 kWh");
+  await expect.poll(() => valueOf(overview, "noch erwartet")).toBe("2,0 kWh");
+
+  await hover(13);
+  await expect.poll(() => valueOf(overview, "noch erwartet")).toBe("2,0 kWh");
 });
 
 test("a battery's overview names its charge and discharge sides, never its series id", async () => {

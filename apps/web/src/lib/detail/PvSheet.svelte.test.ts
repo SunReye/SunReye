@@ -26,7 +26,9 @@ test("a string's overview sets today against its own forecast, read from its inv
   const overview = sheet.getByRole("tabpanel", { name: "Übersicht" });
 
   await expect.element(overview.getByRole("term").filter({ hasText: "Prognose" })).toBeVisible();
-  await expect.element(overview.getByText("8,0 kWh")).toBeVisible();
+  // Its 8 kWh, 2 kWh an hour from 10:00, at 12:20: so far, and still to come.
+  await expect.element(overview.getByText("4,7 kWh")).toBeVisible();
+  await expect.element(overview.getByText("3,3 kWh")).toBeVisible();
   expect(fetched).toContain(
     "/api/v1/devices/1/forecasts pv.string.power[1] 2026-11-12T00:00:00.000Z",
   );
