@@ -2,7 +2,16 @@ import { afterEach, expect, test } from "vitest";
 // The screen is laid out by the SPA's utilities.
 import "../../app.css";
 import { iso } from "../range/calendar.ts";
-import { asked, plant, reset, show, TODAY, YESTERDAY, zone } from "./statistics.harness.ts";
+import {
+  asked,
+  plant,
+  requested,
+  reset,
+  show,
+  TODAY,
+  YESTERDAY,
+  zone,
+} from "./statistics.harness.ts";
 
 afterEach(reset);
 
@@ -24,6 +33,21 @@ test("the range's answer: production against the day before, and a breakdown tha
   await expect.element(breakdown.getByText("4,0 kWh").first()).toBeVisible();
   await expect.element(breakdown.getByText("13,0 kWh")).toBeVisible();
   await expect.element(breakdown.getByText("11,0 kWh")).toBeVisible();
+});
+
+test("stepping to another day reads only that day: what holds for every range is read once", async () => {
+  const { screen } = await show(DAY);
+
+  await expect.poll(() => requested.filter((name) => name === "corrections")).toHaveLength(1);
+
+  await screen.rerender({ params: new URLSearchParams(`range=day&at=${iso(TODAY - 2)}`) });
+  await expect.poll(() => asked.some(({ from }) => from === (TODAY - 2) * 86_400_000)).toBe(true);
+
+  for (const once of ["corrections", "capabilities", "records", "layout", "payback"])
+    expect(
+      requested.filter((name) => name === once),
+      once,
+    ).toHaveLength(1);
 });
 
 test("the breakdown says what its rows changed against, and the peaks name their hour", async () => {

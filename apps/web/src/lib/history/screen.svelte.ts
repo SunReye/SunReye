@@ -62,8 +62,10 @@ export class Statistics {
     this.data = new StatsData(() => ({ core: input().core, route: this.route, cmp: this.#cmp }));
     this.#shown = untrack(() => ({ metric: this.view.metric, tab: this.view.tab }));
 
+    // `input()` reads the route too: through a derived, a new range leaves the facts as read.
+    const core = $derived(input().core);
+
     $effect(() => {
-      const core = input().core;
       let live = true;
 
       const read = async () => {

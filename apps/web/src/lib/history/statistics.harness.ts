@@ -56,12 +56,16 @@ export const YEAR = new Date(TODAY * DAY).getUTCFullYear();
 
 export const asked: Readonly<{ series: string; from: number; to: number }>[] = [];
 
+/** The last path segment of every request the screen made, in order. */
+export const requested: string[] = [];
+
 /** The plant's timezone was answered, so the range no longer moves under the screen. */
 export const zone = { read: false };
 
 export function reset(): void {
   Object.assign(plant, PLANT_DEFAULTS);
   asked.length = 0;
+  requested.length = 0;
   zone.read = false;
 }
 
@@ -233,7 +237,10 @@ function transport(): Transport {
     base: "http://core.test/",
     fetch: async (request) => {
       const url = new URL(request.url);
-      const read = READS.get(url.pathname.split("/").at(-1) ?? "");
+      const name = url.pathname.split("/").at(-1) ?? "";
+      const read = READS.get(name);
+
+      requested.push(name);
 
       const plantRead = /\/(history|statistics)$/u.test(url.pathname);
 
