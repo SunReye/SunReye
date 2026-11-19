@@ -16,8 +16,8 @@
     index: number;
     scene: Scene;
     onchange: (scene: Scene) => void;
-    /** The scene without the object. */
-    onremove: (scene: Scene) => void;
+    /** Takes the object out of the scene. */
+    onremove: () => void;
   } = $props();
 
   const obstacle = $derived(kind === "obstacle" ? scene.obstacles[index] : undefined);
@@ -33,9 +33,7 @@
     onchange={(next) => {
       onchange({ ...scene, obstacles: scene.obstacles.with(index, next) });
     }}
-    onremove={() => {
-      onremove({ ...scene, obstacles: scene.obstacles.toSpliced(index, 1) });
-    }}
+    {onremove}
   />
 {:else if surface !== undefined}
   <SurfaceFieldset
@@ -43,9 +41,7 @@
     onchange={(next) => {
       onchange({ ...scene, surfaces: surfaces.with(index, next) });
     }}
-    onremove={() => {
-      onremove({ ...scene, surfaces: surfaces.toSpliced(index, 1) });
-    }}
+    {onremove}
   />
 {:else if fence !== undefined}
   <FenceFieldset
@@ -53,8 +49,6 @@
     onchange={(next) => {
       onchange({ ...scene, fences: fences.with(index, next) });
     }}
-    onremove={() => {
-      onremove({ ...scene, fences: fences.toSpliced(index, 1) });
-    }}
+    {onremove}
   />
 {/if}

@@ -6,9 +6,6 @@
 <script lang="ts" module>
   /** What stays in view pulled down: the handle and the inspector's header. */
   export const PEEK = 76;
-
-  /** The inspector's header in that peek. */
-  const HEADER = 48;
 </script>
 
 <script lang="ts">
@@ -20,12 +17,9 @@
 
   let {
     expanded = $bindable(false),
-    bar,
     children,
   }: {
     expanded?: boolean;
-    /** Shown in the peek in place of the inspector's header, and at hand while pulled down. */
-    bar?: Snippet | undefined;
     children: Snippet;
   } = $props();
 
@@ -38,11 +32,7 @@
   /** Pixels below the pulled-up place while the finger or the spring holds it; else at rest. */
   let held = $state<number | null>(null);
 
-  /** The bar's height: the peek grows with a bar taller than the header it stands for. */
-  let tall = $state(0);
-
-  const peek = $derived(bar === undefined ? PEEK : Math.max(PEEK, PEEK - HEADER + tall));
-  const rest = $derived(Math.max(0, height - peek));
+  const rest = $derived(Math.max(0, height - PEEK));
   const y = $derived(held ?? (expanded ? 0 : rest));
 
   const tracker = new VelocityTracker();
@@ -137,9 +127,6 @@
   >
     <span class="h-1.5 w-10 rounded-sm bg-foreground/20"></span>
   </Pressable>
-  {#if bar}
-    <div bind:clientHeight={tall} class="shrink-0">{@render bar()}</div>
-  {/if}
   <div class="min-h-0 flex-1" inert={!expanded}>
     {@render children()}
   </div>

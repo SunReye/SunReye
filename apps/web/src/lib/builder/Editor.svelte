@@ -5,6 +5,7 @@
   import type { Draft, TypeSource } from "./modules.ts";
   import ObjectLevel from "./ObjectLevel.svelte";
   import type { Plan } from "./outline.ts";
+  import { removal } from "./removal.ts";
   import RootLevel from "./RootLevel.svelte";
   import SectionLevel from "./SectionLevel.svelte";
 
@@ -27,6 +28,15 @@
 
   /** A new grid's or string's module type: the first one. */
   const moduleType = $derived(moduleTypes[0]?.id);
+
+  function remove(): void {
+    const gone = removal(plan.draft, level);
+
+    if (gone === null) return;
+
+    onchange(gone.draft);
+    onlevel(gone.level);
+  }
 </script>
 
 {#if level.kind === "root"}
@@ -34,5 +44,5 @@
 {:else if level.kind === "section"}
   <SectionLevel section={level.section} {plan} {moduleType} {onchange} {onlevel} />
 {:else}
-  <ObjectLevel {level} {plan} {moduleTypes} {types} {onchange} {onlevel} />
+  <ObjectLevel {level} {plan} {moduleTypes} {types} {onchange} {onlevel} onremove={remove} />
 {/if}

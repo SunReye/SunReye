@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  export type { Editing, Painting } from "./SceneCanvas.svelte";
+  export type { Editing, Painting, Projector } from "./SceneCanvas.svelte";
 
   export type { Hit, Panel } from "./scene.ts";
 </script>
@@ -16,7 +16,11 @@
   } from "./camera.ts";
   import type { SceneWeather } from "../scene/weather.ts";
   import type { Geometry, Point, RoofFace } from "./pv.ts";
-  import SceneCanvas, { type Editing, type Painting } from "./SceneCanvas.svelte";
+  import SceneCanvas, {
+    type Editing,
+    type Painting,
+    type Projector,
+  } from "./SceneCanvas.svelte";
   import type { Hit, Panel } from "./scene.ts";
   import ViewMenu from "./ViewMenu.svelte";
   import WeatherMenu, { type Trial } from "./WeatherMenu.svelte";
@@ -32,6 +36,7 @@
     onpick,
     editing,
     painting,
+    onrender,
     onto,
     aspect = 1,
     trial = $bindable(null),
@@ -48,6 +53,8 @@
     /** The connected cars. */
     cars: readonly Parked[];
     onpick?: ((hit: Hit) => void) | undefined;
+    /** After each draw: where a point of the scene lands on the canvas. */
+    onrender?: ((project: Projector) => void) | undefined;
     /** The selected object's handles. */
     editing?: Editing | undefined;
     /** The picked string, painted by a drag across modules. */
@@ -93,6 +100,7 @@
   {view}
   onview={keep}
   {onpick}
+  {onrender}
   {editing}
   {painting}
 />

@@ -5,8 +5,8 @@
   import CarPlaceFieldset from "./CarPlaceFieldset.svelte";
   import EquipmentFieldset from "./EquipmentFieldset.svelte";
   import FaceLevel from "./FaceLevel.svelte";
-  import { parent, type Level } from "./levels.ts";
-  import { painted, withoutString, type Draft, type TypeSource } from "./modules.ts";
+  import type { Level } from "./levels.ts";
+  import { painted, type Draft, type TypeSource } from "./modules.ts";
   import type { Plan } from "./outline.ts";
   import StringFieldset from "./StringFieldset.svelte";
   import SurroundingLevel from "./SurroundingLevel.svelte";
@@ -18,6 +18,7 @@
     types,
     onchange,
     onlevel,
+    onremove,
   }: {
     level: Exclude<Level, { kind: "root" | "section" }>;
     plan: Plan;
@@ -26,6 +27,8 @@
     types: TypeSource;
     onchange: (draft: Draft) => void;
     onlevel: (level: Level) => void;
+    /** Takes the level's object out of the draft and shows its group. */
+    onremove: () => void;
   } = $props();
 
   const draft = $derived(plan.draft);
@@ -87,18 +90,6 @@
     onchange({ ...draft, scene: next });
   }
 
-  function sceneRemove(next: Draft["scene"]): void {
-    remove({ ...draft, scene: next });
-  }
-
-  /** The draft without this object, back at its group. */
-  function remove(next: Draft): void {
-    // Read first: once the object is gone, the level shown is already its parent.
-    const up = parent(level);
-
-    onchange(next);
-    onlevel(up);
-  }
 </script>
 
 {#if building !== null}
@@ -110,7 +101,7 @@
     pv={plan.pv}
     onchange={sceneEdit}
     onadd={added}
-    onremove={sceneRemove}
+    {onremove}
   />
 {:else if surrounding !== null}
   <SurroundingLevel
@@ -118,7 +109,7 @@
     {index}
     {scene}
     onchange={sceneEdit}
-    onremove={sceneRemove}
+    {onremove}
   />
 {:else if marker !== undefined}
   <EquipmentFieldset
@@ -128,9 +119,7 @@
     onchange={(next) => {
       sceneChange({ equipment: equipment.with(index, next) });
     }}
-    onremove={() => {
-      remove({ ...draft, scene: { ...scene, equipment: equipment.toSpliced(index, 1) } });
-    }}
+    {onremove}
   />
 {:else if place !== undefined}
   <CarPlaceFieldset
@@ -139,9 +128,7 @@
     onchange={(next) => {
       sceneChange({ carPlaces: places.with(index, next) });
     }}
-    onremove={() => {
-      remove({ ...draft, scene: { ...scene, carPlaces: places.toSpliced(index, 1) } });
-    }}
+    {onremove}
   />
 {:else if string !== undefined}
   <StringFieldset
@@ -156,9 +143,7 @@
     onchange={(next) => {
       onchange({ ...draft, strings: draft.strings.with(index, next) });
     }}
-    onremove={() => {
-      remove({ scene: withoutString(scene, index), strings: draft.strings.toSpliced(index, 1) });
-    }}
+    {onremove}
   />
 {:else if roof !== undefined}
   <FaceLevel
@@ -168,6 +153,6 @@
     {moduleTypes}
     {types}
     {onchange}
-    onremove={remove}
+    {onremove}
   />
 {/if}

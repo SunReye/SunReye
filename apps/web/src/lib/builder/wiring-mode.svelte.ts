@@ -22,7 +22,7 @@ export interface Wired {
 }
 
 /** Auto-stringing's result, shown until it is kept or dropped (ADR 20). */
-interface Proposal {
+export interface Proposal {
   /** The recorded draft it was made of: an undo or an edit ends it. */
   readonly basis: Draft;
   readonly draft: Draft;
@@ -65,7 +65,6 @@ export class WiringMode {
   }
 
   /** How many strings the proposal adds and how many modules it leaves over; none without one. */
-  // fallow-ignore-next-line unused-class-member -- read through `session.wiring` in the components.
   get proposed(): Pick<Proposal, "strings" | "left"> | undefined {
     return this.#proposed;
   }
@@ -95,7 +94,6 @@ export class WiringMode {
   }
 
   /** Records the proposal as one undo step. */
-  // fallow-ignore-next-line unused-class-member -- read through `session.wiring` in the components.
   keep(): void {
     const kept = this.proposal;
 
@@ -109,7 +107,6 @@ export class WiringMode {
   }
 
   /** The grids that hold modules in no string, each with its face and how many. */
-  // fallow-ignore-next-line unused-class-member -- read through `session.wiring` in the components.
   get loose(): { readonly grid: number; readonly face: string; readonly count: number }[] {
     return (this.#session.draft.scene.grids ?? []).flatMap((grid, index) => {
       const count = grid.modules.filter((laid) => (laid.string ?? undefined) === undefined).length;

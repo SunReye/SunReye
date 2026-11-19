@@ -5,6 +5,7 @@
   import { m } from "../paraglide/messages.js";
   import AddButtons from "./AddButtons.svelte";
   import { additions } from "./additions.ts";
+  import ProposalBar from "./ProposalBar.svelte";
   import type { Session } from "./session.svelte.ts";
   import StringRows from "./StringRows.svelte";
 
@@ -24,30 +25,7 @@
 />
 
 {#if session.wiring.proposed !== undefined}
-  <!-- Auto-stringing's result, listed above and drawn on the roof until it is kept or dropped. -->
-  <div class="flex flex-col gap-2 p-3">
-    <p role="status" class="text-sm font-medium">
-      {m.builder_proposal({ count: session.wiring.proposed.strings })}
-      {#if session.wiring.proposed.left > 0}
-        {m.builder_proposal_left({ count: session.wiring.proposed.left })}
-      {/if}
-    </p>
-    <div class="grid grid-cols-2 gap-2">
-      <Button
-        variant="outline"
-        class="min-h-11"
-        onclick={() => {
-          session.wiring.discard();
-        }}>{m.builder_discard()}</Button
-      >
-      <Button
-        class="min-h-11"
-        onclick={() => {
-          session.wiring.keep();
-        }}>{m.builder_keep()}</Button
-      >
-    </div>
-  </div>
+  <ProposalBar wiring={session.wiring} proposed={session.wiring.proposed} />
 {:else}
   <div class="flex flex-col gap-2 p-3">
     {#if unwired.length > 0}

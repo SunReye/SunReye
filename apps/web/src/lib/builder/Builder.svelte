@@ -10,7 +10,7 @@
   import { Moment } from "./moment.svelte.ts";
   import type { Location, Pv } from "./pv.ts";
   import PhoneTools from "./PhoneTools.svelte";
-  import { Session, type Opening } from "./session.svelte.ts";
+  import { Session, type Reads } from "./session.svelte.ts";
   import Templates from "./Templates.svelte";
   import { provideUploader } from "./upload.ts";
   import View from "./View.svelte";
@@ -28,16 +28,16 @@
     pv: Pv;
     core: Core;
     /** The layout in force, or an empty one: nothing to undo before it. */
-    start: Opening["start"];
+    start: Reads["start"];
     moduleTypes: readonly ModuleType[];
     /** What equipment markers may name. */
     devices: readonly Device[];
     /** Unknown to a viewer: the sun stays put and no clear sky is run. */
     location?: Location | undefined;
     /** Each inverter's maximum DC input voltage, by device id; a viewer knows none. */
-    limits?: Opening["limits"];
+    limits?: Reads["limits"];
     /** Each inverter's MPPT inputs' limits, by device id; a viewer knows none. */
-    inputs?: Opening["inputs"];
+    inputs?: Reads["inputs"];
   } = $props();
 
   // Every width edits (ADR 20): a phone with the inspector as a sheet and "+" on the canvas.
@@ -82,6 +82,7 @@
       painting={session.painting}
       onto={phone.current ? session.wiring.onto : undefined}
       tools={phone.current ? tools : undefined}
+      selected={session}
       onpick={(hit) => {
         session.pick(hit, phone.current);
       }}
