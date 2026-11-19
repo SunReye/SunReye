@@ -7,16 +7,16 @@ use std::time::Instant;
 
 use serde_json::json;
 
-use super::fixtures::{MODULE, assert_peak};
+use super::fixtures::MODULE;
 use crate::diode::fit;
 use crate::estimate::{SECONDS_PER_DAY, day_of_year};
 use crate::perez::cos_incidence;
 use crate::shade::Casters;
 use crate::string::Curve;
 use crate::{
-    GridModule, Input, Inverter, Layout, Location, ModuleGrid, MpptLimits, Occluder, Place, Plane,
-    Point, PvString, Scene, Size, Sky, Spot, Sun, Weather, clear_weather, estimate, input_output,
-    plane_irradiance, sun_position,
+    GridModule, Input, Inverter, Layout, Location, Module, ModuleGrid, MpptLimits, Occluder, Place,
+    Plane, Point, PvString, Scene, Size, Sky, Spot, Sun, Weather, clear_weather, estimate,
+    input_output, plane_irradiance, sun_position,
 };
 
 const BERLIN: Location = Location {
@@ -82,8 +82,15 @@ fn scene() -> Scene {
     scene
 }
 
-/// Input 1: strings 0 and 1 in parallel; input 2: string 2.
+/// Input 1: strings 0 and 1 in parallel; input 2: string 2. No optimizers, and a maximum input
+/// current the strings never reach.
 fn layout() -> Layout {
+    plant(|_| false, 26.0)
+}
+
+/// The plant with an optimizer on each module `optimized` picks by its place along its string,
+/// and each input's maximum current.
+fn plant(optimized: impl Fn(usize) -> bool, max_current: f64) -> Layout {
     let scene = scene();
     let size = Size {
         width: MODULE.width,
@@ -95,12 +102,16 @@ fn layout() -> Layout {
         modules: placed
             .iter()
             .filter(|p| p.string == Some(id))
-            .map(|p| p.module)
+            .enumerate()
+            .map(|(along, p)| Module {
+                optimized: optimized(along),
+                ..p.module
+            })
             .collect(),
         loss: 2.0,
     };
     let limits = Some(MpptLimits {
-        max_current: 26.0,
+        max_current,
         min_voltage: 150.0,
         max_voltage: 850.0,
         start_voltage: 180.0,
@@ -161,9 +172,17 @@ fn shaded(layout: &Layout, weather: &Weather) -> Vec<u32> {
         .collect()
 }
 
-/// When, each string's shaded substrings, and each input's watts: the model's own output when
-/// the test was written. It pins the scene's path through the model, which the pvlib fixtures
+/// Within a millionth of the model's own output before its speed-up (commit 4beb7db4), which
+/// the pins below hold: they guard the scene's path through the model, which the pvlib fixtures
 /// (no scene) do not reach.
+fn assert_pinned(actual: f64, pinned: f64, what: &str) {
+    assert!(
+        (actual - pinned).abs() <= 1e-6 * pinned.abs().max(1.0),
+        "{what}: {actual} != {pinned}, the model's output when it was pinned"
+    );
+}
+
+/// When, each string's shaded substrings, and each input's watts.
 type Pinned = (i64, [u32; 3], [f64; 2]);
 
 #[rustfmt::skip]
@@ -190,7 +209,35 @@ fn a_scenes_shade_reaches_each_input_through_the_day() {
 
         assert_eq!(shaded(&layout, &weather), substrings, "at {unix}");
         for (input, power) in estimate.inverters[0].inputs.iter().zip(powers) {
-            assert_peak(input.power, power, &format!("at {unix}"));
+            assert_pinned(input.power, power, &format!("power at {unix}"));
+        }
+    }
+}
+
+/// When, and each input's watts, volts and amperes, with an optimizer on every fourth module
+/// and inputs that take 9 A.
+type Capped = (i64, [[f64; 3]; 2]);
+
+#[rustfmt::skip]
+const CAPPED: [Capped; 3] = [
+    // Both inputs at their 9 A.
+    (JUNE + 11 * HOUR, [[6_021.901_678_933_0, 669.100_186_548_1, 9.0], [4_498.445_151_981_4, 499.827_239_109_0, 9.0]]),
+    // Shade on optimized and plain modules alike, under the cap.
+    (MARCH + 7 * HOUR, [[823.896_388_676_8, 203.606_634_836_0, 4.046_510_514_5], [1_113.981_031_321_9, 310.934_039_102_3, 3.582_692_440_3]]),
+    (DECEMBER + 13 * HOUR, [[1_340.473_972_394_2, 309.254_954_713_4, 4.334_527_068_9], [1_482.041_968_159_9, 367.977_692_971_1, 4.027_532_093_6]]),
+];
+
+#[test]
+fn optimizers_and_a_binding_current_limit_hold_under_a_scenes_shade() {
+    let layout = plant(|along| along % 4 == 1, 9.0);
+
+    for (unix, inputs) in CAPPED {
+        let estimate = estimate(&layout, &clear_weather(unix, BERLIN));
+
+        for (input, [power, voltage, current]) in estimate.inverters[0].inputs.iter().zip(inputs) {
+            assert_pinned(input.power, power, &format!("power at {unix}"));
+            assert_pinned(input.voltage, voltage, &format!("voltage at {unix}"));
+            assert_pinned(input.current, current, &format!("current at {unix}"));
         }
     }
 }
