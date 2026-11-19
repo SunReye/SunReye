@@ -573,7 +573,7 @@ impl Storage {
             .map_err(|_| Error::Stopped)
     }
 
-    async fn request<T>(
+    async fn request<T: Send + 'static>(
         &self,
         make: impl FnOnce(oneshot::Sender<T>) -> Request,
     ) -> Result<T, Error> {
@@ -581,7 +581,7 @@ impl Storage {
     }
 }
 
-async fn request<T>(
+async fn request<T: Send + 'static>(
     commands: &mpsc::Sender<Command>,
     make: impl FnOnce(oneshot::Sender<T>) -> Request,
 ) -> Result<T, Error> {
@@ -590,7 +590,25 @@ async fn request<T>(
         .send(Command::Request(make(reply)))
         .await
         .map_err(|_| Error::Stopped)?;
-    answer.await.map_err(|_| Error::Stopped)
+    replied(answer).await.ok_or(Error::Stopped)
+}
+
+/// The storage thread's answer. Under a test's paused clock a blocking task waits for it, which
+/// holds the clock still: otherwise tokio advances it to the next timer while the thread works,
+/// and a test's timings drift with the host's load.
+/// None once the thread has stopped.
+async fn replied<T: Send + 'static>(answer: oneshot::Receiver<T>) -> Option<T> {
+    #[cfg(test)]
+    {
+        tokio::task::spawn_blocking(move || answer.blocking_recv().ok())
+            .await
+            .ok()
+            .flatten()
+    }
+    #[cfg(not(test))]
+    {
+        answer.await.ok()
+    }
 }
 
 /// The plant timezone days are cut in (ADR 3).
@@ -890,7 +908,7 @@ impl Database {
             .send(Command::Request(Request::Run(job)))
             .await
             .map_err(|_| Error::Stopped)?;
-        Ok(answer.await.map_err(|_| Error::Stopped)??)
+        Ok(replied(answer).await.ok_or(Error::Stopped)??)
     }
 }
 
