@@ -198,6 +198,23 @@ function levelled(slide: Slide, grab: Grab): Dragged | null {
   return body === undefined ? null : slid(grab.grip, slide, body);
 }
 
+/** A drag the crate keeps in its place: an opening slides in its wall's plane, a chimney and a roof
+ * window in their roof face's. */
+function fitted(
+  scene: Scene,
+  target: Target,
+  [grab, now]: readonly [Grab, Ray],
+  crate: Crate,
+): Dragged | null {
+  if (target.kind !== "opening") {
+    return grab.grip === "move" ? onRoof(scene, target, [grab, now], crate) : null;
+  }
+
+  return grab.grip === "move" || grab.grip === "width" || grab.grip === "height"
+    ? slideOpening(scene, target.index, grab.grip, [grab.ray, now], crate)
+    : null;
+}
+
 /** What dragging `grab` to the pointer's ray `now` makes of the scene; null where the ray misses
  * the drag's plane or the grip has nothing to drag. A chimney and an opening go where the `crate`
  * lets them, and nowhere without it. */
@@ -208,18 +225,8 @@ export function drag(
   now: Ray,
   crate?: Crate,
 ): Dragged | null {
-  // An opening slides in its wall's plane, not a level one.
-  if (target.kind === "opening") {
-    return crate !== undefined &&
-      (grab.grip === "move" || grab.grip === "width" || grab.grip === "height")
-      ? slideOpening(scene, target.index, grab.grip, [grab.ray, now], crate)
-      : null;
-  }
-
-  if (target.kind === "chimney" || target.kind === "roofWindow") {
-    return crate !== undefined && grab.grip === "move"
-      ? onRoof(scene, target, [grab, now], crate)
-      : null;
+  if (target.kind === "opening" || target.kind === "chimney" || target.kind === "roofWindow") {
+    return crate === undefined ? null : fitted(scene, target, [grab, now], crate);
   }
 
   const [start, end] = [inScene(scene.north, grab.ray), inScene(scene.north, now)];

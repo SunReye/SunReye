@@ -58,7 +58,7 @@ const SECTIONS: Readonly<Record<Exclude<Level["kind"], "root" | "section">, Sect
 };
 
 /** An object that shows handles in 3D (ADR 20). */
-type Handled = Extract<Level, { index: number }> & {
+export type Handled = Extract<Level, { index: number }> & {
   readonly kind: Exclude<Extract<Level, { index: number }>["kind"], "marker" | "string">;
 };
 

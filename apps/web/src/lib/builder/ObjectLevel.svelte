@@ -39,6 +39,13 @@
   const place = $derived(level.kind === "place" ? places[index] : undefined);
   const string = $derived(level.kind === "string" ? draft.strings[index] : undefined);
 
+  /** Where the string leaves its inverter's limits, and the inputs that inverter has. */
+  const warnings = $derived(
+    [...plan.cold, ...plan.sized].flatMap((warned) => (warned.string === index ? [warned.text] : [])),
+  );
+
+  const inputs = $derived(string && plan.inputs[string.device]);
+
   const roof = $derived(
     level.kind === "face" || level.kind === "module"
       ? plan.laid.roofs.find((r) => r.block === level.block && r.face === level.face)
@@ -52,6 +59,12 @@
 
   function sceneChange(next: Partial<Draft["scene"]>): void {
     onchange({ ...draft, scene: { ...scene, ...next } });
+  }
+
+  /** A scene with one opening more: recorded, and its last opening picked. */
+  function added(next: Draft["scene"]): void {
+    sceneEdit(next);
+    onlevel({ kind: "opening", index: (next.openings?.length ?? 1) - 1 });
   }
 
   /** A building or a surrounding object's level: the kinds that edit the scene alone. */
@@ -96,10 +109,7 @@
     roofs={plan.laid.roofs}
     pv={plan.pv}
     onchange={sceneEdit}
-    onadd={(next) => {
-      sceneEdit(next);
-      onlevel({ kind: "opening", index: (next.openings?.length ?? 1) - 1 });
-    }}
+    onadd={added}
     onremove={sceneRemove}
   />
 {:else if surrounding !== null}
@@ -138,11 +148,11 @@
     {string}
     position={index}
     made={painted(scene, index)}
-    warnings={[...plan.cold, ...plan.sized].flatMap((w) => (w.string === index ? [w.text] : []))}
+    {warnings}
     refused={plan.refused?.string === index ? plan.refused.text : undefined}
     {moduleTypes}
     devices={plan.devices}
-    inputs={plan.inputs[string.device]?.length}
+    inputs={inputs?.length}
     onchange={(next) => {
       onchange({ ...draft, strings: draft.strings.with(index, next) });
     }}

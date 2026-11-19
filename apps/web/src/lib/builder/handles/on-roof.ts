@@ -1,18 +1,13 @@
 // A chimney's or a roof window's drag (ADR 20): in its roof face's plane, so it stays under the
 // pointer from every view. Pure; rays are in three.js's frame, as the crate's roofs lie in it.
 import type { Point, RoofFace, Scene } from "../pv.ts";
+import { cross } from "../vector.ts";
 import type { Target } from "./body.ts";
 import type { Crate, Dragged, Grab } from "./dragging.ts";
 import { level, meet, type Ray, type Triple } from "./frame.ts";
 
 /** East, north, up as three.js has it: x east, y up, z south. */
 const three = ([east, north, up]: Point): Triple => [east, up, 0 - north];
-
-const cross = (a: Triple, b: Triple): Triple => [
-  a[1] * b[2] - a[2] * b[1],
-  a[2] * b[0] - a[0] * b[2],
-  a[0] * b[1] - a[1] * b[0],
-];
 
 /** How far the pointer went from `grab` to `now` in the plane through the grabbed point that lies
  * along `roof`, as the level east and north the crate glides by; null where the ray misses it. */

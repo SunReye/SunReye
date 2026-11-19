@@ -58,7 +58,7 @@ export interface Cold {
 }
 
 /** Each string of the draft over its inverter's limit, its modules counted from the scene. */
-export function coldStrings(
+function coldStrings(
   pv: Readonly<Pick<Pv, "coldVoltages">>,
   draft: Draft,
   moduleTypes: readonly Readonly<ModuleType>[],
