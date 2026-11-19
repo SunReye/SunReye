@@ -61,6 +61,17 @@ impl Casters {
     /// How many of the module's substrings lose their beam. A substring with any shaded sample
     /// is shaded, since its most shaded cell limits its current.
     pub fn shaded_substrings(&self, module: &ModuleType, plane: Plane, at: Place) -> u8 {
+        self.shaded(module, plane, at, true)
+    }
+
+    /// The same with every sample tested against every caster: what ruling casters out must
+    /// never change.
+    #[cfg(test)]
+    pub fn shaded_exhaustively(&self, module: &ModuleType, plane: Plane, at: Place) -> u8 {
+        self.shaded(module, plane, at, false)
+    }
+
+    fn shaded(&self, module: &ModuleType, plane: Plane, at: Place, rule_out: bool) -> u8 {
         let (tilt, azimuth) = (plane.tilt.to_radians(), plane.azimuth.to_radians());
         let up_slope = [
             azimuth.sin() * tilt.cos(),
@@ -77,7 +88,7 @@ impl Casters {
         let near: Vec<&Caster> = self
             .casters
             .iter()
-            .filter(|c| c.reaches(&face, self.toward_sun))
+            .filter(|c| !rule_out || c.reaches(&face, self.toward_sun))
             .collect();
         if near.is_empty() {
             return 0;

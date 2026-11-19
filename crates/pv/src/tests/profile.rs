@@ -14,8 +14,9 @@ use crate::perez::cos_incidence;
 use crate::shade::Casters;
 use crate::string::Curve;
 use crate::{
-    GridModule, Input, Inverter, Layout, Location, ModuleGrid, MpptLimits, PvString, Scene, Size,
-    Sky, Spot, Weather, clear_weather, estimate, input_output, plane_irradiance, sun_position,
+    GridModule, Input, Inverter, Layout, Location, ModuleGrid, MpptLimits, Occluder, Place, Plane,
+    Point, PvString, Scene, Size, Sky, Spot, Sun, Weather, clear_weather, estimate, input_output,
+    plane_irradiance, sun_position,
 };
 
 const BERLIN: Location = Location {
@@ -192,6 +193,98 @@ fn a_scenes_shade_reaches_each_input_through_the_day() {
             assert_peak(input.power, power, &format!("at {unix}"));
         }
     }
+}
+
+/// The point `lift` metres out of the front of a module's centre.
+fn over(on: Plane, at: Place, lift: f64) -> Point {
+    let (tilt, azimuth) = (on.tilt.to_radians(), on.azimuth.to_radians());
+    let normal = [
+        -azimuth.sin() * tilt.sin(),
+        -azimuth.cos() * tilt.sin(),
+        tilt.cos(),
+    ];
+    let [east, north, up] = at.centre;
+    [
+        lift.mul_add(normal[0], east),
+        lift.mul_add(normal[1], north),
+        lift.mul_add(normal[2], up),
+    ]
+}
+
+/// Things lying on modules, a few centimetres over their planes: a pebble, a ball half sunk
+/// into the roof and a leaf.
+fn litter(placed: &[(Plane, Place)]) -> Vec<Occluder> {
+    let [(pebbled, pebble), (sunk, ball), (leafy, leaf)] = [placed[0], placed[2], placed[4]];
+    let [east, north, up] = over(leafy, leaf, 0.02);
+    vec![
+        Occluder::Sphere {
+            centre: over(pebbled, pebble, 0.01),
+            radius: 0.02,
+        },
+        Occluder::Sphere {
+            centre: over(sunk, ball, -0.01),
+            radius: 0.05,
+        },
+        Occluder::Triangle([
+            [east, north, up],
+            [east + 0.1, north, up],
+            [east, north + 0.1, up],
+        ]),
+    ]
+}
+
+#[test]
+fn ruling_casters_out_never_changes_what_is_shaded() {
+    let layout = layout();
+    let modules: Vec<_> = strings(&layout).flat_map(|s| &s.modules).collect();
+    // Every third module, as laid and turned, and one hung on the south wall.
+    let roof = modules
+        .iter()
+        .step_by(3)
+        .filter_map(|m| Some((m.plane, m.place?)));
+    let wall = Plane {
+        tilt: 90.0,
+        azimuth: 0.0,
+    };
+    let hung = Place {
+        centre: [9.0, -10.05, 1.5],
+        landscape: false,
+    };
+    let placed: Vec<(Plane, Place)> = roof
+        .flat_map(|(plane, place)| {
+            let turned = Place {
+                landscape: true,
+                ..place
+            };
+            [(plane, place), (plane, turned)]
+        })
+        .chain([(wall, hung)])
+        .collect();
+    let occluders = [layout.occluders.clone(), litter(&placed)].concat();
+    let mut shaded = 0;
+    let mut lit = 0;
+
+    // Down to a sun grazing the horizon, all around the compass.
+    for zenith in [10.0, 35.0, 60.0, 75.0, 85.0, 89.0, 89.9, 89.999] {
+        for step in 0..24 {
+            let sun = Sun {
+                zenith,
+                azimuth: 15.0f64.mul_add(f64::from(step), -180.0),
+            };
+            let casters = Casters::under(sun, &occluders);
+            for &(plane, place) in &placed {
+                let ruled_out = casters.shaded_substrings(&MODULE, plane, place);
+
+                let exhaustive = casters.shaded_exhaustively(&MODULE, plane, place);
+
+                assert_eq!(ruled_out, exhaustive, "{sun:?} on {place:?}");
+                shaded += u32::from(exhaustive > 0);
+                lit += u32::from(exhaustive == 0);
+            }
+        }
+    }
+    // Both happen often, so the sweep compares shade with shade.
+    assert!(shaded > 500 && lit > 500, "{shaded} shaded, {lit} lit");
 }
 
 /// The best of five runs, in milliseconds.
