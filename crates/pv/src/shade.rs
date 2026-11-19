@@ -29,8 +29,21 @@ struct Caster {
 }
 
 enum Shape {
-    Triangle(Facing),
-    Round(Occluder),
+    Triangle(Triangle),
+    /// About the caster's centre.
+    Sphere {
+        radius: f64,
+    },
+    Cylinder {
+        base: Point,
+        radius: f64,
+        height: f64,
+    },
+    Cone {
+        base: Point,
+        radius: f64,
+        height: f64,
+    },
 }
 
 impl Casters {
@@ -99,11 +112,12 @@ struct Face {
 impl Caster {
     /// `None` for a triangle edge-on to the ray, which blocks nothing.
     fn new(ray: Point, occluder: &Occluder) -> Option<Self> {
-        let upright = |base: Point, radius: f64, height: f64| {
-            let centre = offset(base, [0.0, 0.0, 1.0], height / 2.0);
-            (centre, radius.hypot(height / 2.0))
+        let upright = |base: Point, radius: f64, height: f64, shape: Shape| Self {
+            centre: offset(base, [0.0, 0.0, 1.0], height / 2.0),
+            radius: radius.hypot(height / 2.0),
+            shape,
         };
-        let (centre, radius) = match *occluder {
+        Some(match *occluder {
             Occluder::Triangle(corners) => {
                 let [[ax, ay, az], [bx, by, bz], [cx, cy, cz]] = corners;
                 let centre = [
@@ -112,30 +126,41 @@ impl Caster {
                     (az + bz + cz) / 3.0,
                 ];
                 let far = corners.map(|p| dot(sub(p, centre), sub(p, centre)));
-                (centre, far.into_iter().fold(0.0, f64::max).sqrt())
+                Self {
+                    centre,
+                    radius: far.into_iter().fold(0.0, f64::max).sqrt(),
+                    shape: Shape::Triangle(Triangle::new(ray, corners)?),
+                }
             }
-            Occluder::Sphere { centre, radius } => (centre, radius.abs()),
+            Occluder::Sphere { centre, radius } => Self {
+                centre,
+                radius: radius.abs(),
+                shape: Shape::Sphere { radius },
+            },
             Occluder::Cylinder {
                 base,
                 radius,
                 height,
+            } => {
+                let shape = Shape::Cylinder {
+                    base,
+                    radius,
+                    height,
+                };
+                upright(base, radius, height, shape)
             }
-            | Occluder::Cone {
+            Occluder::Cone {
                 base,
                 radius,
                 height,
-            } => upright(base, radius, height),
-        };
-        let shape = match *occluder {
-            Occluder::Triangle(corners) => Shape::Triangle(Facing::new(ray, corners)?),
-            Occluder::Sphere { .. } | Occluder::Cylinder { .. } | Occluder::Cone { .. } => {
-                Shape::Round(*occluder)
+            } => {
+                let shape = Shape::Cone {
+                    base,
+                    radius,
+                    height,
+                };
+                upright(base, radius, height, shape)
             }
-        };
-        Some(Self {
-            centre,
-            radius,
-            shape,
         })
     }
 
@@ -161,16 +186,33 @@ impl Caster {
                     .map(|p| dot(sub(p, face.centre), face.normal));
                 heights.into_iter().fold(f64::MIN, f64::max)
             }
-            Shape::Round(_) => dot(to, face.normal) + self.radius,
+            Shape::Sphere { .. } | Shape::Cylinder { .. } | Shape::Cone { .. } => {
+                dot(to, face.normal) + self.radius
+            }
         };
         above > CLEARANCE * facing / 2.0
     }
 
     /// Whether the ray from `origin` toward the sun, `ray`, meets it.
     fn blocks(&self, origin: Point, ray: Point) -> bool {
-        match &self.shape {
-            Shape::Triangle(facing) => facing.blocks(origin, ray),
-            Shape::Round(occluder) => blocks(occluder, origin, ray),
+        match self.shape {
+            Shape::Triangle(ref triangle) => triangle.blocks(origin, ray),
+            Shape::Sphere { radius } => {
+                let to = sub(origin, self.centre);
+                let b = dot(ray, to);
+                let discriminant = b.mul_add(b, radius.mul_add(radius, -dot(to, to)));
+                discriminant >= 0.0 && discriminant.sqrt() - b > CLEARANCE
+            }
+            Shape::Cylinder {
+                base,
+                radius,
+                height,
+            } => cylinder(sub(origin, base), ray, radius, height),
+            Shape::Cone {
+                base,
+                radius,
+                height,
+            } => cone(sub(origin, base), ray, radius, height),
         }
     }
 }
@@ -221,33 +263,8 @@ pub fn cross(a: Point, b: Point) -> Point {
     ]
 }
 
-/// Whether the ray from `origin` toward `ray` meets the occluder.
-fn blocks(occluder: &Occluder, origin: Point, ray: Point) -> bool {
-    match *occluder {
-        Occluder::Triangle(corners) => {
-            Facing::new(ray, corners).is_some_and(|facing| facing.blocks(origin, ray))
-        }
-        Occluder::Sphere { centre, radius } => {
-            let to = sub(origin, centre);
-            let b = dot(ray, to);
-            let discriminant = b.mul_add(b, radius.mul_add(radius, -dot(to, to)));
-            discriminant >= 0.0 && discriminant.sqrt() - b > CLEARANCE
-        }
-        Occluder::Cylinder {
-            base,
-            radius,
-            height,
-        } => cylinder(sub(origin, base), ray, radius, height),
-        Occluder::Cone {
-            base,
-            radius,
-            height,
-        } => cone(sub(origin, base), ray, radius, height),
-    }
-}
-
 /// A triangle under one ray direction, by Möller and Trumbore 1997: what every ray shares.
-struct Facing {
+struct Triangle {
     corners: [Point; 3],
     first: Point,
     edge: Point,
@@ -256,7 +273,7 @@ struct Facing {
     det: f64,
 }
 
-impl Facing {
+impl Triangle {
     /// `None` edge-on to the ray, where nothing is blocked.
     fn new(ray: Point, corners: [Point; 3]) -> Option<Self> {
         let [first, second, third] = corners;
