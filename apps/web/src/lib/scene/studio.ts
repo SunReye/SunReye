@@ -165,11 +165,6 @@ export class Studio {
     this.#passes.render();
   }
 
-  /** Counts what each frame draws from here on (ADR 21 "Measuring"); `clock` tells its time. */
-  measure(clock?: () => number) {
-    return this.#passes.measure(() => this.#sun.shadow.map, clock);
-  }
-
   /** Ultra's burst: one more frame into the settled picture; true while more are due. */
   refine(): boolean {
     return this.#passes.refine();
