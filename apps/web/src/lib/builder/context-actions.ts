@@ -2,6 +2,9 @@
 // through the same functions of the draft.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the session is edited through its own methods. */
 import { haptics } from "../haptics.ts";
+import { bodyOf } from "./handles/body.ts";
+import { turnable } from "./handles/offered.ts";
+import { handled } from "./levels.ts";
 import { addGrid, fillGrid } from "./modules.ts";
 import type { Scene } from "./pv.ts";
 import { removal } from "./removal.ts";
@@ -14,6 +17,18 @@ export function gridAt({ level, draft }: Pick<Session, "level" | "draft">): numb
   return level.kind === "face"
     ? (draft.scene.grids ?? []).findIndex((g) => g.block === level.block && g.face === level.face)
     : -1;
+}
+
+/** The selected object's turn in degrees, where it has a ring to turn it by. */
+export function turnAt({
+  level,
+  draft,
+  laid,
+}: Pick<Session, "level" | "draft" | "laid">): number | undefined {
+  const body =
+    handled(level) && turnable(draft.scene, level, laid) ? bodyOf(draft.scene, level) : undefined;
+
+  return body?.kind === "rect" ? body.rotation : undefined;
 }
 
 /** Takes the selected object out of the draft and shows its group; whether there was one to take. */

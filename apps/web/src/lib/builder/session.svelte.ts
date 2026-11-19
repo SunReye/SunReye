@@ -10,13 +10,13 @@ import type {
   Problem,
 } from "../api/core.ts";
 import { checked, stringRefusal, type Checking, type StringRefusal } from "./checks.ts";
-import { haptics } from "../haptics.ts";
 import { Drafts } from "./drafts.svelte.ts";
 import { handled, parent, picked, type Level } from "./levels.ts";
 import { wiredIn, panels, type Draft } from "./modules.ts";
 import { exists, type Plan } from "./outline.ts";
 import type { Geometry, Modules, Pv, Scene, Sizes } from "./pv.ts";
 import { layingOf, type Editing, type Hit, type Roofwork, type Panel } from "./drawing.svelte.ts";
+import { Stance } from "./stance.svelte.ts";
 import { WiringMode } from "./wiring-mode.svelte.ts";
 
 /** Today in the browser's calendar, as a date input holds it: Sweden writes `YYYY-MM-DD`. */
@@ -67,6 +67,9 @@ export class Session {
     ...this.#opening(),
     moduleTypes: this.moduleTypes,
   }));
+
+  /** The turn mode, until anything else is picked. */
+  readonly stance = new Stance();
 
   /** Whether the admin chose to start from nothing. */
   #empty = $state(false);
@@ -192,6 +195,7 @@ export class Session {
       target: { kind: level.kind, index: level.index },
       pv: this.#opening().pv,
       laid: this.laid,
+      turning: this.stance.turning,
       ondrag: (scene) => {
         this.drag(scene);
       },
@@ -237,7 +241,7 @@ export class Session {
   }
 
   go(level: Level): void {
-    haptics.soft();
+    this.stance.left();
     this.wiring.entered(level);
     this.#level = level;
   }

@@ -4,6 +4,7 @@
 // controls, which pan and zoom.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- three.js and the DOM, used in place. */
 import { type Group, type PerspectiveCamera, Raycaster, Vector2 } from "three";
+import { haptics } from "../../haptics.ts";
 import { picked } from "../levels.ts";
 import type { Pv, Scene } from "../pv.ts";
 import { strike, toThree, type Panel } from "../scene.ts";
@@ -32,6 +33,8 @@ export interface Editing {
     "refit" | "glide" | "glideWindow" | "chimneyAt" | "roofWindowAt" | "gridAt"
   >;
   readonly laid: Laid;
+  /** The turn mode: the ring is the only handle, and the object's own surface moves nothing. */
+  readonly turning: boolean;
   /** Each step of a drag, shown at once. */
   readonly ondrag: (scene: Scene) => void;
   /** The drag let go: one undo step. */
@@ -54,8 +57,9 @@ export interface Sources {
   readonly onreading: (reading?: Reading) => void;
 }
 
-/** A move starts once the pointer has travelled this many pixels: a tap still picks. */
-const CLICK = 5;
+/** A drag starts once the pointer has travelled this many pixels: a tap that slips changes
+ * nothing (ADR 20, mistaken drags). */
+const SLIP = 8;
 
 interface Held {
   readonly pointer: number;
@@ -65,6 +69,8 @@ interface Held {
   /** Where the pointer is now. */
   at: readonly [number, number];
   moving: boolean;
+  /** The last step's value, as text: a turn ticks when it changes. */
+  shown: string;
 }
 
 const same = (a: Target, b: { readonly kind: string; readonly index?: number }): boolean =>
@@ -112,11 +118,17 @@ export class Grabbing {
     const handle = this.#handleAt(at);
     const ray = rayAt(this.#camera, at);
 
-    if (handle !== null)
-      return { grip: handle.grip, point: handle.point, ray, height: handle.at[1], at: handle.at };
+    if (handle !== null) {
+      // A block's knob carries it as its footprint would.
+      const grip = handle.grip === "carry" ? "move" : handle.grip;
 
-    // A fence has no footprint to drag.
-    return editing.target.kind === "fence" ? undefined : this.#bodyGrabbed(at, editing, ray);
+      return { grip, point: handle.point, ray, height: handle.at[1], at: handle.at };
+    }
+
+    // A fence has no footprint to drag; a block's surface orbits, and in the turn mode every one.
+    return editing.turning || editing.target.kind === "fence" || editing.target.kind === "block"
+      ? undefined
+      : this.#bodyGrabbed(at, editing, ray);
   }
 
   /** The selected object's own surface under the press, which moves it whole. */
@@ -168,7 +180,8 @@ export class Grabbing {
       editing,
       down: [event.clientX, event.clientY],
       at: [event.clientX, event.clientY],
-      moving: grab.grip !== "move",
+      moving: false,
+      shown: "",
     };
     this.#canvas.style.cursor = "grabbing";
   };
@@ -188,21 +201,29 @@ export class Grabbing {
 
     event.stopImmediatePropagation();
     held.at = [event.clientX, event.clientY];
-    held.moving ||= Math.hypot(event.clientX - held.down[0], event.clientY - held.down[1]) >= CLICK;
+    held.moving ||= Math.hypot(event.clientX - held.down[0], event.clientY - held.down[1]) >= SLIP;
 
     if (held.moving) this.#step(held, rayAt(this.#camera, ndc(this.#canvas, event)));
   };
 
-  #step({ editing, grab }: Held, ray: Ray): void {
+  #step(held: Held, ray: Ray): void {
+    const { editing, grab } = held;
     const dragged = drag(editing.scene, editing.target, grab, ray, editing);
 
     if (dragged === null) return;
 
+    const shown = dragged.value.join(" ");
+
+    // Each snapped step of a turn is felt.
+    if (dragged.unit === "°" && held.shown !== "" && shown !== held.shown) haptics.selection();
+
+    held.shown = shown;
+
     editing.ondrag(dragged.scene);
 
     // Once the step is shown, its handles stand on what the crate laid out for it.
-    const shown = this.#sources.editing();
-    const laid = shown?.scene === dragged.scene ? shown.laid : editing.laid;
+    const now = this.#sources.editing();
+    const laid = now?.scene === dragged.scene ? now.laid : editing.laid;
 
     const at = handles(dragged.scene, editing.target, laid).find(
       (item) => item.grip === grab.grip && item.point === grab.point,

@@ -117,12 +117,34 @@ function outline(handle: Handle, colour: Color): Object3D[] {
   ];
 }
 
+/** A block's knob: a ball with an arrowhead to each side along the ground, the sign for moving. */
+function cross(colour: Color): Object3D[] {
+  const heads = [0, 1, 2, 3].map((quarter) => {
+    const head = new Mesh(new ConeGeometry(CONE.radius, CONE.length, 16), seen(colour));
+    const angle = (quarter * Math.PI) / 2;
+    const out = new Vector3(Math.cos(angle), 0, Math.sin(angle));
+
+    head.position.copy(out).multiplyScalar(KNOB + CONE.length / 2);
+    head.quaternion.setFromUnitVectors(UP, out);
+
+    return head;
+  });
+
+  return [
+    new Mesh(new SphereGeometry(KNOB * 0.6, 16, 12), seen(colour)),
+    ...heads,
+    new Mesh(new SphereGeometry(REACH, 12, 8), unseen()),
+  ];
+}
+
 function parts(handle: Handle, colour: Color): Object3D[] {
   if (handle.grip === "turn") return ring(handle, colour);
 
   if (handle.grip === "move") return outline(handle, colour);
 
-  if (handle.grip !== "pitch" && handle.grip !== "point") return arrow(handle, colour);
+  if (handle.axis !== undefined) return arrow(handle, colour);
+
+  if (handle.grip === "carry") return cross(colour);
 
   return [
     new Mesh(new SphereGeometry(KNOB, 20, 14), seen(colour)),
