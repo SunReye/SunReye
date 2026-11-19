@@ -2,6 +2,7 @@
 // wiring is drawn, a drag across modules selects them, and the selection is wired or unwired. The
 // selection is held here, never stored, and is no undo step.
 import { m } from "../paraglide/messages.js";
+import { strungOn, type Stringing } from "./auto-string.ts";
 import type { Selecting } from "./gestures.ts";
 import { laying, type Level } from "./levels.ts";
 import type { Draft } from "./modules.ts";
@@ -15,7 +16,18 @@ export interface Wired {
   readonly level: Level;
   readonly draft: Draft;
   readonly laid: Modules;
+  /** The draft as recorded, which a proposal is made of. */
+  readonly present: Draft;
   change(draft: Draft): void;
+}
+
+/** Auto-stringing's result, shown until it is kept or dropped (ADR 20). */
+interface Proposal {
+  /** The recorded draft it was made of: an undo or an edit ends it. */
+  readonly basis: Draft;
+  readonly draft: Draft;
+  /** How many strings it adds. */
+  readonly strings: number;
 }
 
 type Face = Readonly<Pick<RoofFace, "block" | "face">>;
@@ -32,8 +44,67 @@ export class WiringMode {
   /** Why the last wiring was refused, until the selection changes. */
   refused = $state<string>();
 
-  constructor(session: Readonly<Wired>) {
+  readonly #limits: () => Stringing;
+
+  #proposal = $state.raw<Proposal>();
+
+  constructor(session: Readonly<Wired>, limits: () => Stringing) {
     this.#session = session;
+    this.#limits = limits;
+  }
+
+  /** The proposal in force: none once the recorded draft is another. */
+  get #proposed(): Proposal | undefined {
+    return this.#proposal?.basis === this.#session.present ? this.#proposal : undefined;
+  }
+
+  /** The draft auto-stringing proposes, shown in place of the recorded one. */
+  get proposal(): Draft | undefined {
+    return this.#proposed?.draft;
+  }
+
+  /** How many strings the proposal adds; none without one. */
+  get proposed(): number | undefined {
+    return this.#proposed?.strings;
+  }
+
+  /** Proposes grid `grid`'s modules in no string as new strings on the first inverter that lists
+   * its inputs, else the first string's. */
+  auto(grid: number): void {
+    const { draft, present } = this.#session;
+
+    const strung = strungOn(draft, grid, this.#limits(), (number) =>
+      m.builder_string_default({ number }),
+    );
+
+    if (strung === null) return;
+
+    const strings = strung.strings.length - present.strings.length;
+
+    this.#proposal = { basis: present, draft: strung, strings };
+  }
+
+  /** Records the proposal as one undo step. */
+  keep(): void {
+    const kept = this.proposal;
+
+    this.#proposal = undefined;
+
+    if (kept !== undefined) this.#session.change(kept);
+  }
+
+  discard(): void {
+    this.#proposal = undefined;
+  }
+
+  /** The grids that hold modules in no string, each with its face and how many. */
+  get loose(): { readonly grid: number; readonly face: string; readonly count: number }[] {
+    return (this.#session.draft.scene.grids ?? []).flatMap((grid, index) => {
+      const count = grid.modules.filter((laid) => (laid.string ?? undefined) === undefined).length;
+      const face = m.builder_face_item({ block: grid.block + 1, face: grid.face + 1 });
+
+      return count === 0 ? [] : [{ grid: index, face, count }];
+    });
   }
 
   /** Whether the Strings group or a string is open. */
@@ -73,12 +144,13 @@ export class WiringMode {
     this.refused = undefined;
   }
 
-  /** Leaving the mode drops the selection and the face. */
+  /** Leaving the mode drops the selection, a proposal and the face. */
   entered(level: Level): void {
     if (level.kind === "string" || (level.kind === "section" && level.section === "strings"))
       return;
 
     this.select([]);
+    this.discard();
     this.#face = undefined;
   }
 
