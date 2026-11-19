@@ -80,6 +80,11 @@ export class Studio {
     return Math.min(window.devicePixelRatio, this.#look.pixelRatio);
   }
 
+  /** What it draws now. */
+  get look(): Look {
+    return this.#look;
+  }
+
   /** The sun's shadow map, in texels a side. */
   get shadowMap(): number {
     return this.#sun.shadow.mapSize.x;

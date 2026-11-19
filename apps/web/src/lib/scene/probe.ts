@@ -1,8 +1,15 @@
 // What a frame of the scene costs, counted (ADR 21 "Measuring"): its draws, its passes with the
 // size of what each drew into, how often the sun's shadow map was drawn, the script's time and,
 // where the browser measures it, the GPU's. Installed on a renderer only when asked for.
-import type { WebGLRenderer, WebGLRenderTarget } from "three";
+import type { WebGLRenderer } from "three";
 import { GpuTimer } from "./gpu-timer.ts";
+
+/** What is drawn into, whatever its textures: a target's size and multisampling. */
+interface Target {
+  readonly width: number;
+  readonly height: number;
+  readonly samples: number;
+}
 
 /** One binding of a target that drew something. */
 export interface Pass {
@@ -28,7 +35,7 @@ export interface Frame {
 
 export class Probe {
   readonly #renderer: WebGLRenderer;
-  readonly #shadow: () => WebGLRenderTarget | null;
+  readonly #shadow: () => object | null;
   readonly #clock: () => number;
   readonly #gpu: GpuTimer;
   readonly #restore: () => void;
@@ -36,14 +43,14 @@ export class Probe {
   #drawn: number[] = [];
   #passes: Pass[] = [];
   /** What is bound, and the renderer's draw calls when it was. */
-  #bound: { readonly target: WebGLRenderTarget | null; readonly from: number } | undefined;
+  #bound: { readonly target: Target | null; readonly from: number } | undefined;
   #last: Frame | undefined;
 
   /** Counts what `renderer` draws; `shadow` is the sun's shadow map, once it has one. */
   constructor(
     // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own, watched.
     renderer: WebGLRenderer,
-    shadow: () => WebGLRenderTarget | null,
+    shadow: () => object | null,
     clock: () => number = () => performance.now(),
   ) {
     this.#renderer = renderer;
@@ -116,7 +123,7 @@ export class Probe {
 
   /** Closes the pass into what was bound, if it drew, and opens one into `target`. */
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own target.
-  #bind(target: WebGLRenderTarget | null): void {
+  #bind(target: Target | null): void {
     const { calls } = this.#renderer.info.render;
     const bound = this.#bound;
 
@@ -128,7 +135,7 @@ export class Probe {
   }
 
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own target.
-  #told(target: WebGLRenderTarget | null): Omit<Pass, "calls"> {
+  #told(target: Target | null): Omit<Pass, "calls"> {
     if (target === null) {
       const { width, height } = this.#renderer.domElement;
 

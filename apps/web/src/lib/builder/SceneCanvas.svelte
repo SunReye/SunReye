@@ -11,6 +11,7 @@
   import { openGarage, type Garage, type ModelLoader } from "../cars/garage.ts";
   import type { Parked } from "../cars/parked.ts";
   import { m } from "../paraglide/messages.js";
+  import PerfOverlay from "../scene/PerfOverlay.svelte";
   import { Ghost, lit, type Lit, type SceneFailure, type Sky } from "../scene/stage.svelte.ts";
   import { FOV, type View } from "./camera.ts";
   import {
@@ -21,12 +22,13 @@
     picking,
     projector,
     type Editing,
+    type Geometry,
     type Hit,
+    type Point,
     type Roofwork,
     type Panel,
     type Projector,
   } from "./drawing.svelte.ts";
-  import type { Geometry, Point } from "./pv.ts";
 
   let {
     geometry,
@@ -295,6 +297,7 @@
     ontransitionend={() => (ghost.phase = "off")}
     aria-hidden="true"
   ></canvas>
+  <PerfOverlay />
   {#if handled.label !== undefined}
     {@const { text, left, top } = handled.label}
     <!-- The same ambient glass chip as the live scene's labels; it never takes the pointer. -->

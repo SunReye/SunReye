@@ -141,7 +141,7 @@ export class Passes {
   }
 
   /** Counts what each frame draws from here on; `shadow` is the sun's shadow map. */
-  measure(shadow: () => WebGLRenderTarget | null, clock?: () => number): Probe {
+  measure(shadow: () => object | null, clock?: () => number): Probe {
     this.#probe ??= new Probe(this.#renderer, shadow, clock);
 
     return this.#probe;
