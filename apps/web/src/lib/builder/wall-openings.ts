@@ -112,9 +112,23 @@ function travel(
   return [dot([to[0] - from[0], 0, to[2] - from[2]], wall.right), to[1] - from[1]];
 }
 
-/** What a grip changes by a drag of `across` metres along the wall and `up` metres. */
+/** A window's sill `up` metres higher, the window whole between the ground and the `eave`; any
+ * other opening stays on the ground (ADR 20). */
+function lifted(opening: Opening, up: number, eave: number): Partial<Opening> {
+  if (opening.kind !== "window") return {};
+
+  const sill = snap((opening.sill ?? 0) + up, STEP);
+
+  return { sill: Math.max(0, Math.min(sill, snap(eave - opening.height, 0.01))) };
+}
+
+/** What a grip changes by a drag of `across` metres along the wall and `up` metres, under a wall
+ * `eave` metres high. */
 const GRIPS = {
-  move: (opening: Opening, across: number) => ({ along: snap(opening.along + across, STEP) }),
+  move: (opening: Opening, across: number, up: number, eave: number) => ({
+    along: snap(opening.along + across, STEP),
+    ...lifted(opening, up, eave),
+  }),
   width: (opening: Opening, across: number) => ({ width: snap(opening.width + across, STEP) }),
   height: (opening: Opening, _: number, up: number) => ({
     height: snap(opening.height + up, STEP),
@@ -123,13 +137,18 @@ const GRIPS = {
 
 export type OpeningGrip = keyof typeof GRIPS;
 
-/** The dragged scene and what the grip's handle shows of opening `index`. */
+/** The dragged scene and what the grip's handle shows of opening `index`: a moved window its place
+ * along the wall and its sill. */
 function reading(scene: Scene, index: number, grip: OpeningGrip): Dragged | null {
   const opening = scene.openings?.[index];
 
-  return opening === undefined
-    ? null
-    : { scene, value: [opening[grip === "move" ? "along" : grip]], unit: "m" };
+  if (opening === undefined) return null;
+
+  if (grip !== "move") return { scene, value: [opening[grip]], unit: "m" };
+
+  const value = opening.kind === "window" ? [opening.along, opening.sill ?? 0] : [opening.along];
+
+  return { scene, value, unit: "m" };
 }
 
 /** What an opening's drag asks the crate: its fit, and the walls it laid out. */
@@ -159,7 +178,8 @@ export function slide(
 
   if (moved === null) return null;
 
-  const next = refit(pv, scene, index, GRIPS[grip](opening, ...moved));
+  const eave = scene.blocks[opening.block]?.eave ?? 0;
+  const next = refit(pv, scene, index, GRIPS[grip](opening, ...moved, eave));
 
   return "unfit" in next ? null : reading(next, index, grip);
 }
