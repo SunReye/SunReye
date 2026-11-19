@@ -1519,6 +1519,11 @@ export interface components {
              */
             estimated: string[];
             /**
+             * @description An inverter's MPPT inputs' limits from its profile, in the inputs' order from 1: what the
+             *     builder offers a string and warns against (ADR 20).
+             */
+            inputs?: components["schemas"]["InputSupport"][];
+            /**
              * Format: double
              * @description An inverter's maximum DC input voltage in volts, from its profile: what a string's
              *     open-circuit voltage at −10 °C is checked against (ADR 20).
@@ -1828,6 +1833,29 @@ export interface components {
              */
             input: number;
             recent?: components["schemas"]["RecentEnergy"] | null;
+        };
+        /** @description One MPPT input's limits (ADR 5). */
+        InputSupport: {
+            /**
+             * Format: double
+             * @description Amperes.
+             */
+            maxCurrent: number;
+            /**
+             * Format: double
+             * @description The top of its voltage window, in volts.
+             */
+            maxVoltage: number;
+            /**
+             * Format: double
+             * @description The bottom of its voltage window, in volts.
+             */
+            minVoltage: number;
+            /**
+             * Format: double
+             * @description Volts.
+             */
+            startVoltage: number;
         };
         /** @description The investment payback is measured against. */
         Investment: {

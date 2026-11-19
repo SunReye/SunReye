@@ -1157,6 +1157,13 @@
             },
             "type": "array"
           },
+          "inputs": {
+            "description": "An inverter's MPPT inputs' limits from its profile, in the inputs' order from 1: what the\nbuilder offers a string and warns against (ADR 20).",
+            "items": {
+              "$ref": "#/components/schemas/InputSupport"
+            },
+            "type": "array"
+          },
           "maxInputVoltage": {
             "description": "An inverter's maximum DC input voltage in volts, from its profile: what a string's\nopen-circuit voltage at −10 °C is checked against (ADR 20).",
             "format": "double",
@@ -1934,6 +1941,38 @@
           "device",
           "input",
           "factors"
+        ],
+        "type": "object"
+      },
+      "InputSupport": {
+        "description": "One MPPT input's limits (ADR 5).",
+        "properties": {
+          "maxCurrent": {
+            "description": "Amperes.",
+            "format": "double",
+            "type": "number"
+          },
+          "maxVoltage": {
+            "description": "The top of its voltage window, in volts.",
+            "format": "double",
+            "type": "number"
+          },
+          "minVoltage": {
+            "description": "The bottom of its voltage window, in volts.",
+            "format": "double",
+            "type": "number"
+          },
+          "startVoltage": {
+            "description": "Volts.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "maxCurrent",
+          "minVoltage",
+          "maxVoltage",
+          "startVoltage"
         ],
         "type": "object"
       },

@@ -602,6 +602,11 @@ async fn capabilities_report_the_profile_table_the_wasm_reports() {
                 "1": {
                     "estimated": [], "series": [], "writes": false, "settings": [],
                     "maxInputVoltage": 800.0,
+                    // Its MPPT inputs' limits, in their order (ADR 9).
+                    "inputs": [
+                        { "maxCurrent": 36.0, "minVoltage": 160.0, "maxVoltage": 650.0, "startVoltage": 160.0 },
+                        { "maxCurrent": 36.0, "minVoltage": 160.0, "maxVoltage": 650.0, "startVoltage": 160.0 },
+                    ],
                 },
                 // The weather device's fixed role set (ADR 15, 23).
                 "4294967295": {
