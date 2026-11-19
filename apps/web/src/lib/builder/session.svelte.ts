@@ -145,7 +145,15 @@ export class Session {
     return exists(this.#level, this.plan) ? this.#level : parent(this.#level);
   }
 
+  /** Records `next` as one undo step. While a proposal shows, the edit was made of it: the
+   * proposal is dropped and nothing recorded, for only Keep or a save keeps one (ADR 20). */
   change(next: Draft): void {
+    if (this.wiring.proposal !== undefined) {
+      this.wiring.discard();
+
+      return;
+    }
+
     this.#drafts.record(next);
     this.saved = undefined;
   }
