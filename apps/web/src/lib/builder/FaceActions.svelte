@@ -6,14 +6,14 @@
   import Grid2x2Plus from "@lucide/svelte/icons/grid-2x2-plus";
   import X from "@lucide/svelte/icons/x";
   import { m } from "../paraglide/messages.js";
-  import { fillAt, freeAt, gridAt } from "./context-actions.ts";
+  import { fillable, fillAt, gridAt } from "./context-actions.ts";
   import type { Session } from "./session.svelte.ts";
   import ToolButton from "./ToolButton.svelte";
 
   let { session, onrefuse }: { session: Session; onrefuse: (reason?: string) => void } = $props();
 
   const grid = $derived(gridAt(session));
-  const full = $derived(freeAt(session).length === 0);
+  const full = $derived(!fillable(session));
   const proposed = $derived(session.wiring.proposed);
   const loose = $derived(session.wiring.loose.some((face) => face.grid === grid));
 </script>

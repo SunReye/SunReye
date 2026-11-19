@@ -2,7 +2,7 @@
 // through the same functions of the draft.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the session is edited through its own methods. */
 import { haptics } from "../haptics.ts";
-import { fillGrid } from "./modules.ts";
+import { addGrid, fillGrid } from "./modules.ts";
 import { removal } from "./removal.ts";
 import type { Session } from "./session.svelte.ts";
 import { duplicate, refit } from "./wall-openings.ts";
@@ -55,19 +55,36 @@ export function lightAt(session: Session, light: Light): void {
   if (!("unfit" in lit)) session.change({ ...draft, scene: lit });
 }
 
-/** Where the selected face's free roof still takes a module; none off a face with a grid. */
-export function freeAt(session: Session): (readonly [number, number])[] {
-  const { draft, plan } = session;
-  const grid = gridAt(session);
+/** The selected face's grid, or one of the first module type on a face that has none, and where
+ * its free roof still takes a module; null off a face, or without a module type to lay. */
+function filling(session: Session) {
+  const { level, draft, plan, moduleTypes } = session;
+  const at = gridAt(session);
+  const type = moduleTypes[0]?.id;
 
-  return grid < 0 ? [] : plan.pv.fillFace({ scene: draft.scene, sizes: plan.sizes, grid });
+  if (level.kind !== "face" || (at < 0 && type === undefined)) return null;
+
+  const scene =
+    at < 0 && type !== undefined
+      ? addGrid(draft.scene, level.block, level.face, type)
+      : draft.scene;
+
+  const grid = at < 0 ? (scene.grids?.length ?? 1) - 1 : at;
+
+  return { scene, grid, free: plan.pv.fillFace({ scene, sizes: plan.sizes, grid }) };
 }
 
-/** Fills the selected face's free roof with modules, as "Fläche füllen" does. */
-export function fillAt(session: Session): void {
-  const free = freeAt(session);
-  const { draft } = session;
+/** Whether the selected face's free roof still takes a module. */
+export function fillable(session: Session): boolean {
+  return (filling(session)?.free.length ?? 0) > 0;
+}
 
-  if (free.length > 0)
-    session.change({ ...draft, scene: fillGrid(draft.scene, gridAt(session), free) });
+/** Fills the selected face's free roof with modules, as "Fläche füllen" does; a face without a
+ * grid gets one of the first module type with them, in the same step. */
+export function fillAt(session: Session): void {
+  const filled = filling(session);
+
+  if (filled === null || filled.free.length === 0) return;
+
+  session.change({ ...session.draft, scene: fillGrid(filled.scene, filled.grid, filled.free) });
 }

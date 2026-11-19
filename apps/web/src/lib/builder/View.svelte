@@ -10,7 +10,7 @@
   import type { Moment } from "./moment.svelte.ts";
   import type { Draft } from "./modules.ts";
   import type { Geometry, Location, RoofFace } from "./pv.ts";
-  import ContextBar, { type Room, type Selected } from "./ContextBar.svelte";
+  import ContextBar, { type Selected } from "./ContextBar.svelte";
   import Stage, {
     type Editing,
     type Hit,
@@ -67,6 +67,7 @@
 
   let width = $state(0);
   let height = $state(0);
+  let canvas = $state<HTMLDivElement>();
 
   /** Where a point of the scene lands on the canvas, as last drawn. */
   let project = $state.raw<Projector>();
@@ -74,17 +75,12 @@
   /** A pointer is down on the canvas: it orbits or drags, and the toolbar is out of its way. */
   let held = $state(false);
 
-  /** The canvas between the time slider and the status line, and the weather button in it. */
-  const room = $derived<Room>({
-    bounds: { left: 12, top: 64, right: width - 12, bottom: height - clear - 68 },
-    avoid: [{ left: width - 56, top: 12, right: width - 12, bottom: 108 }],
-  });
-
   const cars = $derived(parkedNow(draft.scene.carPlaces ?? [], geometry.stands));
 </script>
 
 <!-- Edge to edge on a phone. -->
 <div
+  bind:this={canvas}
   bind:clientWidth={width}
   bind:clientHeight={height}
   onpointerdowncapture={(event) => {
@@ -120,13 +116,13 @@
     />
   {/if}
 
-  {#if selected !== undefined && project !== undefined && !held && !covered}
-    <ContextBar session={selected} {project} {room} />
+  {#if selected !== undefined && project !== undefined && canvas !== undefined && !held && !covered}
+    <ContextBar session={selected} {project} {canvas} {clear} />
   {/if}
 
   <!-- Beside the views' button, which the stage keeps at the top right. -->
   <div class="pointer-events-none absolute top-3 right-16 left-3 flex">
-    <div class="pointer-events-auto w-full max-w-md">
+    <div data-canvas-zone class="pointer-events-auto w-full max-w-md">
       <TimeSlider bind:day={moment.day} bind:minutes={moment.minutes} />
     </div>
   </div>
@@ -150,7 +146,7 @@
       />
     </div>
     {#if tools}
-      <div class="pointer-events-auto shrink-0">
+      <div data-canvas-zone class="pointer-events-auto shrink-0">
         {@render tools()}
       </div>
     {/if}

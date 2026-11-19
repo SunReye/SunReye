@@ -104,7 +104,7 @@
   {editing}
   {painting}
 />
-<div class="absolute top-3 right-3 flex flex-col gap-2">
+<div data-canvas-zone class="absolute top-3 right-3 flex flex-col gap-2">
   <ViewMenu
     onpick={(preset) => {
       keep(presetView(preset, geometry, aspect));

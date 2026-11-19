@@ -104,6 +104,17 @@ test("a roof face is filled and auto-strung from the toolbar, its proposal kept 
     .toBeVisible();
 });
 
+test("a roof face without a grid carries the toolbar too: Füllen lays its first modules", async () => {
+  await built();
+  await drill("Module", SOUTH);
+
+  await act("Füllen").click();
+  await expect.element(inspector().getByText("16 Module gesetzt")).toBeVisible();
+  // One step: the grid and its modules go together.
+  await inspector().getByRole("button", { name: "Rückgängig" }).click();
+  await expect.element(inspector().getByRole("button", { name: "Rückgängig" })).toBeDisabled();
+});
+
 test("an auto-stringing the inverter has no free input for says so in the toolbar, inside the canvas and off the status line", async () => {
   const start = house();
   const scene = addGrid(addGrid(start.scene, 0, 1, MODULE.id), 0, 0, MODULE.id);

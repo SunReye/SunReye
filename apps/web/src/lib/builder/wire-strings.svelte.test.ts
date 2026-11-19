@@ -172,6 +172,20 @@ test("a selection of another module type than the string is refused in the bar, 
   await expect.element(made(0)).toBeVisible();
 });
 
+test("with a string open the bar still offers a new string for the selection", async () => {
+  const draft = filled([wired("Ost", OTHER.id)]);
+
+  await opened(draft);
+  await press("mouse", three(draft));
+  await act("Neuer String").click();
+
+  await expect.element(bar()).not.toBeInTheDocument();
+  await drill("Strings");
+  await expect
+    .element(inspector().getByRole("button", { name: /^String 2.*3 Module/u }))
+    .toBeVisible();
+});
+
 test("from the Strings group a selection is wired into a string of the menu, or a new one", async () => {
   const draft = filled([wired("Süd", MODULE.id)]);
   const draws = vi.spyOn(EffectComposer.prototype, "render");
