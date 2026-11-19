@@ -99,12 +99,7 @@ impl SolarForecast {
         location: Location,
         issued: SystemTime,
     ) -> Result<(), storage::Error> {
-        let since = issued
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-        // Whole seconds: a sub-second left on `from` would skip the hour's first target.
-        let from = UNIX_EPOCH + Duration::from_secs(since - since % HOUR.as_secs());
+        let from = hour_of(issued);
         let weather = self.weather(storage, from, from + HORIZON).await?;
         let versions = self.layouts.versions().await?;
         let mut series: BTreeMap<Key, Vec<(SystemTime, f64)>> = versions
@@ -229,6 +224,16 @@ pub(crate) async fn estimates(
             std::panic::resume_unwind(panic)
         })
     })
+}
+
+/// The start of `time`'s hour, in whole seconds: a sub-second left on it would skip the hour's
+/// first target.
+fn hour_of(time: SystemTime) -> SystemTime {
+    let since = time
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    UNIX_EPOCH + Duration::from_secs(since - since % HOUR.as_secs())
 }
 
 /// A string's inverter device and MPPT input.
