@@ -71,6 +71,9 @@ export class MotionStore {
     if (left > 0) {
       this.#strain = parseStrain(read(STRAIN_KEY));
       this.#lasts(left);
+    } else {
+      // Forgotten for good: a later strain's date must not bring this one back.
+      forget(STRAIN_KEY);
     }
   }
 

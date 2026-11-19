@@ -222,6 +222,22 @@ test("a strain kept without its date, from before strains were dated, counts as 
   expect(loadedAt(1000)).toBe("full high");
 });
 
+test("a strain that no longer counts is forgotten for good: a later strain cannot bring it back", () => {
+  // Kept undated by an earlier version: a tier strain and two levels off Auto.
+  localStorage.setItem("sunreye.motion-strain", "1");
+  localStorage.setItem("sunreye.3d-strain", "2");
+
+  const quality = new QualityStore(() => 1000);
+
+  quality.see(RTX);
+  quality.show();
+  expect(new MotionStore(quality, () => 1000).tier).toBe("full");
+
+  // One fresh strain, which dates itself: only it counts at the next load.
+  quality.relieve("full");
+  expect(loadedAt(2000)).toBe("full medium");
+});
+
 test("a page that never reloads forgets its strain as the seven days end, and measures anew", async () => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   vi.stubGlobal("requestAnimationFrame", () => 1);

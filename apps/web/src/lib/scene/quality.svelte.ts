@@ -37,7 +37,10 @@ export class QualityStore {
   /** `now` dates a strain: it lasts seven days (ADR 21). */
   constructor(now: () => number = () => Date.now()) {
     this.#now = now;
-    this.#steps = strainLeft(read(STRAINED_AT), now()) > 0 ? parseSteps(read(STEPS)) : 0;
+
+    if (strainLeft(read(STRAINED_AT), now()) > 0) this.#steps = parseSteps(read(STEPS));
+    // Forgotten for good: a later strain's date must not bring these steps back.
+    else forget(STEPS);
   }
 
   get choice(): Quality {
