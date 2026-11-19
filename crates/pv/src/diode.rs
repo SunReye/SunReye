@@ -232,13 +232,15 @@ impl Diode {
         let mut high = a.mul_add(((il - current).max(0.0) / io).ln_1p(), f64::EPSILON);
         let mut x = high;
         for _ in 0..200 {
-            let value = balance(x);
+            // One exponential serves the balance and its slope.
+            let growth = (x / a).exp();
+            let value = x.mul_add(-conductance, io.mul_add(-(growth - 1.0), il)) - current;
             if value > 0.0 {
                 low = x;
             } else {
                 high = x;
             }
-            let slope = (-io / a).mul_add((x / a).exp(), -conductance);
+            let slope = (-io / a).mul_add(growth, -conductance);
             let newton = x - value / slope;
             let precision = 1e-14 * x.abs().max(1.0);
             if (newton - x).abs() <= precision {
