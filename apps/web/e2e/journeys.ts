@@ -109,7 +109,8 @@ const DESK: readonly Journey[] = [
   {
     name: "2D flow, lite tier",
     route: "",
-    storage: { ...TWO_D, "sunreye.motion-strain": "1" },
+    // Chosen, not strained: a kept strain needs its date, and lasts a week (ADR 21).
+    storage: { ...TWO_D, "sunreye.motion": "lite" },
     act: ticks,
   },
   {
