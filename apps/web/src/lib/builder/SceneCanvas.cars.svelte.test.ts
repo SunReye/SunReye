@@ -1,0 +1,85 @@
+import "../../app.css";
+import { afterEach, expect, test, vi } from "vitest";
+import { render } from "vitest-browser-svelte";
+import type { Parked } from "../cars/parked.ts";
+import { Opening } from "../scene/opening.svelte.ts";
+import { presetView } from "./camera.ts";
+import type { Geometry } from "./pv.ts";
+import SceneCanvas from "./SceneCanvas.svelte";
+
+// Software GL prepares the scene slowly while other suites run.
+const SLOW = { timeout: 15_000 };
+
+const house: Geometry = {
+  faces: [
+    {
+      surface: "roof",
+      corners: [
+        [0, 0, 3],
+        [10, 0, 3],
+        [10, -8, 3],
+        [0, -8, 3],
+      ],
+    },
+  ],
+  solids: [],
+};
+
+const car: Parked = {
+  device: 7,
+  at: [4, -3, 0],
+  forward: [0, 1, 0],
+  above: [4, -3, 2.5],
+  length: 5,
+  width: 2.5,
+  colour: "#f2f2ee",
+  model: null,
+  watts: 7360,
+  soc: 63,
+};
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+type Settled = () => readonly { readonly type: string }[];
+
+/** Whether an arrival still runs. */
+function running(settledResults: Settled): boolean {
+  let some = false;
+
+  for (const { type } of settledResults()) some ||= type === "incomplete";
+
+  return some;
+}
+
+/** Each arrival so far has finished, and a later one had its chance to start. */
+async function settled(settledResults: Settled): Promise<void> {
+  await expect.poll(() => running(settledResults), SLOW).toBe(false);
+  await new Promise<void>((done) => {
+    setTimeout(done, 50);
+  });
+}
+
+test("a live tick that changes only a car's power or SOC brings no car anew", async () => {
+  // Each arrival snapshots the canvas for its fade: a stutter on every tick.
+  const arrive = vi.spyOn(Opening.prototype, "arrive");
+  const results = () => arrive.mock.settledResults;
+
+  const screen = await render(SceneCanvas, {
+    geometry: house,
+    view: presetView("isometric", house),
+    onview: () => {},
+    cars: [car],
+  });
+
+  await expect.poll(() => arrive.mock.calls.length, SLOW).toBe(1);
+  await settled(results);
+
+  await screen.rerender({ cars: [{ ...car, watts: 0, soc: 64 }] });
+  await screen.rerender({ cars: [] });
+
+  await expect.poll(() => arrive.mock.calls.length, SLOW).toBeGreaterThanOrEqual(2);
+  await settled(results);
+  expect(arrive).toHaveBeenCalledTimes(2);
+});
