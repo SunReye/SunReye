@@ -25,7 +25,7 @@
   );
 
   // With "Hinzufügen" beside them, a phone's width takes the last two as icons only.
-  const compact = $derived(session.stance.spot !== undefined);
+  const compact = $derived(session.picking.spot !== undefined);
   const narrow = $derived(compact ? "w-11 px-0" : "");
   const edit = $derived(compact ? "" : m.builder_edit_object());
   const remove = $derived(compact ? "" : m.builder_remove());
@@ -39,7 +39,7 @@
 {#if opening !== undefined}
   <OpeningActions {session} {opening} {onrefuse} />
 {:else}
-  {#if session.stance.spot !== undefined}
+  {#if session.picking.spot !== undefined}
     <WallAdds {session} {onrefuse} />
   {/if}
   {#if turnable}
@@ -47,7 +47,7 @@
       icon={RotateCw}
       label={m.builder_turn()}
       onclick={() => {
-        session.stance.turning = true;
+        session.picking.turning = true;
       }}
     />
   {/if}

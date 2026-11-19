@@ -5,8 +5,11 @@ import type { Scene } from "../pv.ts";
 import { bodyOf, onWorld } from "./body.ts";
 import { handles, type Handle, type Laid, type Target } from "./grips.ts";
 
-/** Metres from a block's front wall to its knob, on the ground: clear of the wall's arrow. */
-const KNOB = 1.2;
+/** Metres a block's knob stands before its front wall and above the ground, and left of the
+ * wall's middle, where the depth arrow is: clear of the wall's face, and in sight on a phone. */
+const BEFORE = 0.8;
+const LOW = 0.3;
+const ASIDE = 1.6;
 
 /** The knob before block `target`'s front wall; none for anything else. */
 function knob(scene: Scene, target: Target): Handle[] {
@@ -14,7 +17,9 @@ function knob(scene: Scene, target: Target): Handle[] {
 
   if (body === undefined || body.kind === "round") return [];
 
-  return [{ grip: "carry", at: onWorld(scene.north, body, body.width / 2, 0, body.depth + KNOB) }];
+  const across = Math.max(body.width / 2 - ASIDE, 0);
+
+  return [{ grip: "carry", at: onWorld(scene.north, body, across, LOW, body.depth + BEFORE) }];
 }
 
 /** The handles to show and to grab for `target`, in the turn mode or out of it. */

@@ -8,10 +8,12 @@
 
   let { angle, ondone }: { angle: number; ondone: () => void } = $props();
 
-  const format = new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 1 });
+  const shown = $derived(
+    new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 1 }).format(angle),
+  );
 </script>
 
 <span role="status" class="shrink-0 px-2 text-sm font-medium tabular-nums">
-  {m.builder_turn_angle({ angle: format.format(angle) })}
+  {m.builder_turn_angle({ angle: shown })}
 </span>
 <ToolButton variant="default" icon={Check} label={m.builder_turn_done()} onclick={ondone} />

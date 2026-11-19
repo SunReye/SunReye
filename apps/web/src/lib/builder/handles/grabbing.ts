@@ -3,11 +3,12 @@
 // Mouse, pen and touch alike. A second finger lets the drag go and hands both fingers to the orbit
 // controls, which pan and zoom.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- three.js and the DOM, used in place. */
-import { type Group, type PerspectiveCamera, Raycaster, Vector2 } from "three";
+import { type Group, type PerspectiveCamera, Raycaster, Vector2, Vector3 } from "three";
 import { haptics } from "../../haptics.ts";
 import { picked } from "../levels.ts";
 import type { Pv, Scene } from "../pv.ts";
 import { strike, toThree, type Panel } from "../scene.ts";
+import { PER_PIXEL, sense, turnOf } from "./dial.ts";
 import { handleOf } from "./gizmo.ts";
 import {
   drag,
@@ -58,12 +59,13 @@ export interface Sources {
   readonly onreading: (reading?: Reading) => void;
 }
 
-/** Degrees the dial turns for each pixel the pointer goes sideways: a quarter turn in 180 px. */
-const PER_PIXEL = 0.5;
-
 /** A drag starts once the pointer has travelled this many pixels: a tap that slips changes
  * nothing (ADR 20, mistaken drags). */
 const SLIP = 8;
+
+/** How far the held pointer has gone, in pixels: a dial counts its travel sideways alone. */
+const travel = ({ down, at, dial }: Held): number =>
+  dial === 0 ? Math.hypot(at[0] - down[0], at[1] - down[1]) : Math.abs(at[0] - down[0]);
 
 interface Held {
   readonly pointer: number;
@@ -73,9 +75,10 @@ interface Held {
   /** Where the pointer is now. */
   at: readonly [number, number];
   moving: boolean;
-  /** The turn mode's dial: the pointer's travel sideways turns, wherever it was pressed. */
-  readonly dial: boolean;
-  /** The last step's value, as text: a turn ticks when it changes. */
+  /** The turn mode's dial: the pointer's travel sideways turns, wherever it was pressed; with
+   * the clock for each pixel to the right where this is 1, against it where −1, else no dial. */
+  readonly dial: -1 | 0 | 1;
+  /** The turn as last shown, as text: a turn ticks when it changes. */
   shown: string;
 }
 
@@ -116,7 +119,9 @@ export class Grabbing {
     this.#camera.updateMatrixWorld();
     shown?.updateMatrixWorld();
 
-    return shown === undefined ? null : handleOf(shown, this.#camera, at, this.#canvas);
+    return shown === undefined
+      ? null
+      : handleOf(shown, this.#camera, at, this.#canvas, this.#sources.drawn());
   }
 
   /** A handle, or the selected object's own surface: what the press grabbed. */
@@ -190,8 +195,11 @@ export class Grabbing {
       at: [event.clientX, event.clientY],
       moving: false,
       // Off the ring nothing was grabbed at a point.
-      dial: editing.turning && grab.at === undefined,
-      shown: "",
+      dial:
+        editing.turning && grab.at === undefined
+          ? sense(editing, grab.ray, this.#camera.getWorldDirection(new Vector3()).toArray())
+          : 0,
+      shown: String(turnOf(editing)),
     };
     this.#canvas.style.cursor = "grabbing";
   }
@@ -211,27 +219,20 @@ export class Grabbing {
 
     event.stopImmediatePropagation();
     held.at = [event.clientX, event.clientY];
-    held.moving ||= Math.hypot(event.clientX - held.down[0], event.clientY - held.down[1]) >= SLIP;
+    held.moving ||= travel(held) >= SLIP;
 
     if (held.moving) this.#step(held, rayAt(this.#camera, ndc(this.#canvas, event)));
   };
 
-  /** What the held drag makes of the scene now; a turn's every snapped step is felt. */
+  /** What the held drag makes of the scene now. */
   #dragged(held: Held, ray: Ray): Dragged | null {
     const { editing, grab } = held;
 
-    // The side nearest the camera follows the finger: to the right is against the clock.
-    const dragged = held.dial
-      ? turned(editing.scene, editing.target, (held.down[0] - held.at[0]) * PER_PIXEL)
-      : drag(editing.scene, editing.target, grab, ray, editing);
+    const sweep = (held.at[0] - held.down[0]) * PER_PIXEL * held.dial;
 
-    const shown = dragged?.value.join(" ") ?? held.shown;
-
-    if (grab.grip === "turn" && held.shown !== "" && shown !== held.shown) haptics.selection();
-
-    held.shown = shown;
-
-    return dragged;
+    return held.dial === 0
+      ? drag(editing.scene, editing.target, grab, ray, editing)
+      : turned(editing.scene, editing.target, sweep);
   }
 
   #step(held: Held, ray: Ray): void {
@@ -239,6 +240,13 @@ export class Grabbing {
     const dragged = this.#dragged(held, ray);
 
     if (dragged === null) return;
+
+    const shown = dragged.value.join(" ");
+
+    // Each snapped step of a turn is felt.
+    if (grab.grip === "turn" && shown !== held.shown) haptics.selection();
+
+    held.shown = shown;
 
     editing.ondrag(dragged.scene);
 

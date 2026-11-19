@@ -100,10 +100,8 @@ test("a wall lower than a door still takes it, cut to the wall as the crate cuts
   });
 });
 
-test("a marker past the wall's end is refused; one already off its wall does not refuse the next", () => {
+test("each marker is judged on its own: past the wall's end it is refused, whatever the others are", () => {
   const battery = { kind: "battery", device: 4 } as const;
-
-  expect(markerAt(pv, house, front(30, 1.2), battery)).toEqual({ unfit: "room" });
 
   const stray = {
     device: 4,
@@ -114,7 +112,28 @@ test("a marker past the wall's end is refused; one already off its wall does not
     inside: false,
   } as const;
 
-  const hung = markerAt(pv, { ...house, equipment: [stray] }, front(3, 1.2), battery);
+  const strayed = { ...house, equipment: [stray] };
+  const hung = markerAt(pv, strayed, front(3, 1.2), battery);
 
+  expect(markerAt(pv, house, front(30, 1.2), battery)).toEqual({ unfit: "room" });
   expect("unfit" in hung ? hung : hung.equipment).toHaveLength(2);
+  // Another off its wall excuses none.
+  expect(markerAt(pv, strayed, front(30, 1.2), battery)).toEqual({ unfit: "room" });
+});
+
+test("a window that would lie over another at the finger's height is refused, not moved to its usual sill", () => {
+  // A fanlight high on the wall: a window at 0.9 m would pass under it, one at the finger does not.
+  const fanlight: Opening = {
+    kind: "window",
+    block: 0,
+    wall: "front",
+    along: 2.4,
+    width: 1.2,
+    height: 0.4,
+    sill: 2.5,
+  };
+
+  expect(openingAt(pv, { ...house, openings: [fanlight] }, front(3, 2.1), "window")).toEqual({
+    unfit: "overlap",
+  });
 });

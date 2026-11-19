@@ -3,7 +3,8 @@
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the session is edited through its own methods. */
 import { haptics } from "../haptics.ts";
 import { m } from "../paraglide/messages.js";
-import type { Equipment, OpeningKind, Unfit } from "./pv.ts";
+import { UNFIT } from "./names.ts";
+import type { Equipment, OpeningKind } from "./pv.ts";
 import type { Session } from "./session.svelte.ts";
 import { markerAt, openingAt } from "./wall-spot.ts";
 
@@ -11,15 +12,10 @@ export type WallAdd =
   | { readonly opening: OpeningKind }
   | { readonly marker: Equipment["kind"]; readonly device: number };
 
-const REFUSED: Readonly<Record<Unfit, () => string>> = {
-  overlap: m.opening_refused_overlap,
-  room: m.opening_refused_room,
-};
-
 /** Adds `add` at the session's wall spot and picks it; the reason, where it does not fit. */
 export function addOnWall(session: Session, add: WallAdd): string | undefined {
   const { draft, plan } = session;
-  const { spot } = session.stance;
+  const { spot } = session.picking;
 
   if (spot === undefined) return undefined;
 
@@ -31,7 +27,7 @@ export function addOnWall(session: Session, add: WallAdd): string | undefined {
   if ("unfit" in scene) {
     haptics.error();
 
-    return "opening" in add ? REFUSED[scene.unfit]() : m.marker_refused_room();
+    return "opening" in add ? UNFIT[scene.unfit]() : m.marker_refused_room();
   }
 
   session.change({ ...draft, scene });

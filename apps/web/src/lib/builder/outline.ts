@@ -16,7 +16,14 @@ import {
 } from "./names.ts";
 import type { Fence, Modules, Pv, Sizes } from "./pv.ts";
 
-export { FENCE_FINISHES, GROUND_FINISHES, OPENING_KINDS, ROOFS, WALL_NAMES } from "./names.ts";
+export {
+  FENCE_FINISHES,
+  GROUND_FINISHES,
+  OPENING_KINDS,
+  ROOFS,
+  UNFIT,
+  WALL_NAMES,
+} from "./names.ts";
 
 /** What the inspector reads besides the level. */
 export interface Plan {

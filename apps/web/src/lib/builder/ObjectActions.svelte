@@ -12,11 +12,11 @@
   const angle = $derived(turnAt(session));
 </script>
 
-{#if angle !== undefined && session.stance.turning}
+{#if angle !== undefined && session.picking.turning}
   <TurnActions
     {angle}
     ondone={() => {
-      session.stance.turning = false;
+      session.picking.turning = false;
     }}
   />
 {:else}

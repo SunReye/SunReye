@@ -127,16 +127,19 @@ test.each<Pointer>(["mouse", "touch"])(
 test.each<Pointer>(["mouse", "touch"])(
   "after Drehen a %s drag sideways anywhere turns the house about its centre, one undo step",
   async (pointer) => {
-    const scene = await picked();
+    await picked();
     const tools = page.getByRole("toolbar", { name: "Aktionen" });
     const rotation = inspector().getByRole("button", { name: starts("Drehung (°)") });
     const undo = inspector().getByRole("button", { name: "Rückgängig" });
 
     await tools.getByRole("button", { name: "Drehen" }).click();
-    // On the house itself, by its middle: the ring round it lies outside the canvas.
-    await press(pointer, swipe(onCanvas(scene)([2, 1.5, 8])));
+    const canvas = page.getByLabelText("3D-Szene des Hauses").element().getBoundingClientRect();
 
-    // 80 px to the right is 40° against the clock: the near side follows the pointer.
+    // Off the ring, low on the canvas, before the house's middle: what is under the pointer
+    // follows it.
+    await press(pointer, swipe([canvas.left + 120, canvas.bottom - 160]));
+
+    // 80 px to the right is 40° against the clock.
     await expect.element(rotation.getByText(/^320$/u)).toBeVisible();
     await expect.element(tools.getByRole("status").getByText("Drehung 320°")).toBeVisible();
 

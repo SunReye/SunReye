@@ -115,6 +115,7 @@ test("a battery's marker is hung at the tapped place on the wall", async () => {
   await tapWall("mouse", 6, 1.2);
   await add().click();
   await page.getByRole("menuitem", { name: "Batterie" }).click();
+  await page.getByRole("menuitem", { name: "Speicher" }).click();
 
   await expect.element(heading("Batterie 1")).toBeVisible();
   await expect
@@ -124,6 +125,43 @@ test("a battery's marker is hung at the tapped place on the wall", async () => {
         .getByText(/^6$/u),
     )
     .toBeVisible();
+});
+
+test("with several devices the marker's menu asks which one it names", async () => {
+  const tapWall = await bare();
+
+  await tapWall("mouse", 6, 1.2);
+  await add().click();
+  await page.getByRole("menuitem", { name: "Batterie" }).click();
+  await page.getByRole("menuitem", { name: DEVICES[1]?.name ?? "" }).click();
+
+  await expect.element(heading("Batterie 1")).toBeVisible();
+  await expect
+    .element(
+      inspector()
+        .getByRole("button", { name: starts("Gerät") })
+        .getByText(DEVICES[1]?.name ?? "", { exact: true }),
+    )
+    .toBeVisible();
+});
+
+test("an undo and a redo forget the wall spot", async () => {
+  const tapWall = await bare();
+
+  await tapWall("mouse", 3, 1.6);
+  await add().click();
+  await page.getByRole("menuitem", { name: "Fenster", exact: true }).click();
+  await expect.element(heading("Fenster 1")).toBeVisible();
+
+  await tapWall("mouse", 7, 1.6);
+  await expect.element(add()).toBeVisible();
+  await undo().click();
+  await expect.element(add()).not.toBeInTheDocument();
+
+  await tapWall("mouse", 7, 1.6);
+  await expect.element(add()).toBeVisible();
+  await page.getByRole("button", { name: "Wiederholen" }).first().click();
+  await expect.element(add()).not.toBeInTheDocument();
 });
 
 test("on a phone the toolbar stands by the tapped spot and adding leaves the sheet down", async () => {

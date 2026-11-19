@@ -1,6 +1,6 @@
 // What the builder calls each kind of roof, obstacle, finish, opening and wall (ADR 20).
 import { m } from "../paraglide/messages.js";
-import type { FenceFinish, GroundFinish, Obstacle, OpeningKind, Roof, Wall } from "./pv.ts";
+import type { FenceFinish, GroundFinish, Obstacle, OpeningKind, Roof, Unfit, Wall } from "./pv.ts";
 
 export const ROOFS: readonly (readonly [Roof["kind"], () => string])[] = [
   ["flat", m.roof_flat],
@@ -29,6 +29,12 @@ export const FENCE_FINISHES: readonly (readonly [FenceFinish, () => string])[] =
   ["metal", m.finish_metal],
   ["wall", m.finish_wall],
 ];
+
+/** Why an opening cannot be as asked, in words. */
+export const UNFIT: Readonly<Record<Unfit, () => string>> = {
+  overlap: m.opening_refused_overlap,
+  room: m.opening_refused_room,
+};
 
 export const OPENING_KINDS: readonly (readonly [OpeningKind, () => string])[] = [
   ["window", m.opening_window],

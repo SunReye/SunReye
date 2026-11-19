@@ -24,6 +24,7 @@ import {
   type Camera,
 } from "three";
 import type { Handle } from "./grips.ts";
+import { CLEAR, hidden, reachOf } from "./sight.ts";
 
 /** Metres: big enough to read on a house, small enough not to hide its walls. */
 const CONE = { radius: 0.22, length: 0.5 };
@@ -47,7 +48,6 @@ function seen(colour: Color): MeshBasicMaterial {
   return new MeshBasicMaterial({
     color: colour,
     transparent: true,
-    depthTest: false,
     depthWrite: false,
     toneMapped: false,
   });
@@ -218,20 +218,28 @@ function reach(
   return nearest;
 }
 
+/** Whether `scene` hides the handle `group`; a ring lies round its object and is never wholly
+ * hidden. */
+const unsighted = (group: Object3D, camera: Camera, scene: Object3D | undefined): boolean =>
+  scene !== undefined && HANDLES.get(group)?.grip !== "turn" && hidden(group, camera, scene);
+
 /** The handle the ray from `camera` through `at` (−1 to 1, y up) strikes; else the nearest drawn
- * within half a fingertip on `canvas`; null for none. */
+ * within half a fingertip on `canvas`; null for none. One that `scene` hides is passed over. */
 export function handleOf(
   handles: Group,
   camera: Camera,
   at: readonly [number, number],
   canvas: Readonly<Pick<HTMLCanvasElement, "clientWidth" | "clientHeight">>,
+  scene?: Object3D,
 ): Handle | null {
   const ray = new Raycaster();
 
   ray.setFromCamera(new Vector2(...at), camera);
 
   const meshes = handles.children.filter((group) => HANDLES.get(group)?.grip !== "move");
-  const [first] = ray.intersectObjects(meshes, true);
+  // Under the pointer, and not behind what the scene shows there.
+  const far = reachOf(ray, scene) + CLEAR;
+  const first = ray.intersectObjects(meshes, true).find(({ distance }) => distance <= far);
   let part = first?.object ?? null;
 
   while (part !== null && part.parent !== handles) part = part.parent;
@@ -239,6 +247,7 @@ export function handleOf(
   if (part !== null) return HANDLES.get(part) ?? null;
 
   const near = meshes
+    .filter((group) => !unsighted(group, camera, scene))
     .map((group) => ({ group, pixels: reach(group, camera, at, canvas) }))
     .filter(({ pixels }) => pixels <= TOUCH)
     .toSorted((a, b) => a.pixels - b.pixels)[0];
