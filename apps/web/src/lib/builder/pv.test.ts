@@ -129,6 +129,7 @@ test("on a house turned by the compass a marker hangs on the turned wall, facing
     north: 90,
     equipment: [{ device: 1, kind: "inverter", block: 0, wall: "front", along: 2, inside: false }],
   };
+
   const [mount] = pv.geometry(turned).mounts ?? [];
   const front = pv.modules(turned, {}).walls[0]?.front;
 
