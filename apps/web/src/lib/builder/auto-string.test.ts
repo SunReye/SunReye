@@ -43,6 +43,12 @@ const first: StringDraft = {
 const draft: Draft = { scene, strings: [first] };
 const name = (number: number) => `String ${String(number)}`;
 
+/** Free inputs that all share one limit. */
+const even = (longest: number | null, free: readonly number[], parallel: number | null): Limit => ({
+  device: 1,
+  free: free.map((input) => ({ input, longest, parallel })),
+});
+
 /** The modules of string `string` in their wiring order, by their position in the grid. */
 function run(of: Draft | null, string: number): number[] {
   const modules = of?.scene.grids?.[0]?.modules ?? [];
@@ -64,7 +70,7 @@ const strung = (limit: Limit, from: Draft = draft) => {
 };
 
 test("with an input free for each, a face's modules run in a serpentine into as few even strings as the limit allows", () => {
-  const result = strung({ longest: 6, device: 1, free: [2, 3, 4], parallel: 2 });
+  const result = strung(even(6, [2, 3, 4], 2));
 
   // 16 modules at most 6 long: three strings of 6, 5 and 5, each alone on its input.
   expect(made(result?.draft)).toEqual([
@@ -77,7 +83,7 @@ test("with an input free for each, a face's modules run in a serpentine into as 
 });
 
 test("strings that share an input are all one length: the fewest that leave no module over", () => {
-  const result = strung({ longest: 6, device: 1, free: [2, 3], parallel: 2 });
+  const result = strung(even(6, [2, 3], 2));
 
   // Three strings would be 6, 5 and 5 with two in parallel: four of four share the two inputs.
   expect(made(result?.draft)).toEqual([
@@ -92,7 +98,7 @@ test("strings that share an input are all one length: the fewest that leave no m
 test("where no equal cut holds every module the rest stays unwired, and is counted", () => {
   const partly = wiredInto(draft, [{ grid: 0, module: 3 }], 0) ?? draft;
   // 15 modules at most 7 long on one input that carries two strings: two of seven, one over.
-  const result = strung({ longest: 7, device: 1, free: [2], parallel: 2 }, partly);
+  const result = strung(even(7, [2], 2), partly);
 
   expect(made(result?.draft)).toEqual([
     [2, [0, 1, 2, 4, 5, 6, 7]],
@@ -104,13 +110,42 @@ test("where no equal cut holds every module the rest stays unwired, and is count
 });
 
 test("without a limit the face is one string; no free input, no proposal; none unwired, nothing", () => {
-  const whole = strung({ longest: null, device: 1, free: [2], parallel: null });
+  const whole = strung(even(null, [2], null));
 
   expect(made(whole?.draft)).toEqual([[2, [0, 1, 2, 3, 4, 5, 6, 7, 15, 14, 13, 12, 11, 10, 9, 8]]]);
-  expect(autoStrung(draft, 0, { longest: 6, device: 1, free: [], parallel: 2 }, name)).toEqual({
+  expect(autoStrung(draft, 0, even(6, [], 2), name)).toEqual({
     refused: "input",
   });
-  expect(
-    whole && autoStrung(whole.draft, 0, { longest: 6, device: 1, free: [3], parallel: 2 }, name),
-  ).toBeNull();
+  expect(whole && autoStrung(whole.draft, 0, even(6, [3], 2), name)).toBeNull();
+});
+
+test("each free input is sized by its own limits: a short window takes a shorter string", () => {
+  const result = strung({
+    device: 1,
+    free: [
+      { input: 2, longest: 6, parallel: 1 },
+      { input: 3, longest: 10, parallel: 1 },
+    ],
+  });
+
+  expect(made(result?.draft)).toEqual([
+    [2, [0, 1, 2, 3, 4, 5]],
+    [3, [6, 7, 15, 14, 13, 12, 11, 10, 9, 8]],
+  ]);
+  expect(result?.left).toBe(0);
+});
+
+test("an input carries no more strings in parallel than its own current allows", () => {
+  const result = strung({
+    device: 1,
+    free: [
+      { input: 2, longest: 6, parallel: 2 },
+      { input: 3, longest: 6, parallel: 1 },
+    ],
+  });
+
+  // Four of four would put two on input 3: three of five fit, and one module stays over.
+  expect(result?.draft.strings.slice(1).map(({ input }) => input)).toEqual([2, 2, 3]);
+  expect([1, 2, 3].map((string) => run(result?.draft ?? null, string).length)).toEqual([5, 5, 5]);
+  expect(result?.left).toBe(1);
 });

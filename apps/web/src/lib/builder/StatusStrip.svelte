@@ -36,6 +36,7 @@
 {#if shown}
   <div
     role="group"
+    data-canvas-zone
     aria-label={m.builder_status()}
     class="glass-ambient pointer-events-auto flex h-9 max-w-full min-w-0 rounded-md pl-2.5 text-xs text-muted-foreground ring-1 ring-border/60 elevation-1"
   >

@@ -1,15 +1,8 @@
 // The Strings group's rows (ADR 20): each inverter, under it its MPPT inputs, and under each input
 // its strings, with the warnings that belong to each. Pure.
 import type { Device, StringDraft } from "../api/core.ts";
+import type { Sized } from "./checks.ts";
 import type { Inverters } from "./sizing.ts";
-
-/** A warning of a string, by its position, or of an inverter's input. */
-export interface Warned {
-  readonly string?: number;
-  readonly device?: number;
-  readonly input?: number;
-  readonly text: string;
-}
 
 export interface StringRow {
   /** Its position in the layout. */
@@ -37,7 +30,7 @@ export interface Listed {
   readonly devices: readonly Readonly<Device>[];
   /** Each inverter's inputs, where its profile lists them. */
   readonly inputs: Inverters;
-  readonly warnings: readonly Warned[];
+  readonly warnings: readonly Sized[];
 }
 
 /** The inputs of inverter `device` to list: those its profile has, else those its strings name. */

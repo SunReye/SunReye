@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { addGrid, apply, paint, strokeOf, withoutString } from "./modules.ts";
+import { addGrid, wire, withoutString } from "./modules.ts";
 import { place } from "./placing.ts";
 import type { Scene } from "./pv.ts";
 import { wiring } from "./wiring.ts";
@@ -29,15 +29,11 @@ const spots = (count: number) => Array.from({ length: count }, (_, i) => spot(i)
 const laid = place(gridded, 0, spots(4));
 const [first, second, third, fourth] = [spot(0), spot(1), spot(2), spot(3)];
 
-test("wiring numbers a string's modules in the order a stroke crosses them, after those it holds", () => {
-  const stroke = strokeOf(laid, 0, 2, { kind: "paint", string: 0 });
+test("wiring numbers a string's modules in the order they are wired, after those it holds", () => {
   let scene = laid;
 
-  for (const module of [2, 0, 1, 2]) scene = paint(scene, 0, module, stroke);
-
-  const next = strokeOf(scene, 0, 3, { kind: "paint", string: 0 });
-
-  scene = paint(scene, 0, 3, next);
+  // The third again: wired into its own string, it keeps its place.
+  for (const module of [2, 0, 1, 2, 3]) scene = wire(scene, 0, module, 0);
 
   expect(scene.grids?.[0]?.modules).toEqual([
     { ...first, string: 0, optimized: false, order: 1 },
@@ -48,11 +44,11 @@ test("wiring numbers a string's modules in the order a stroke crosses them, afte
 });
 
 test("an unwired module loses its place in the wiring; a later string's modules keep theirs", () => {
-  let scene = apply(laid, 0, 0, { kind: "paint", string: 0 });
+  let scene = wire(laid, 0, 0, 0);
 
-  scene = apply(scene, 0, 1, { kind: "paint", string: 1 });
+  scene = wire(scene, 0, 1, 1);
 
-  expect(apply(scene, 0, 0, { kind: "paint", string: 0 }).grids?.[0]?.modules[0]).toEqual({
+  expect(wire(scene, 0, 0).grids?.[0]?.modules[0]).toEqual({
     ...first,
     optimized: false,
   });

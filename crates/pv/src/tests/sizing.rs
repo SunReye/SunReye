@@ -35,13 +35,18 @@ fn a_string_inside_its_inputs_window_passes() {
 }
 
 #[test]
-fn a_string_too_short_to_start_in_the_cold_never_starts() {
-    // 3 × 41 V × (1 + 0.27 % × 35 K) = 134.6 V under the 160 V start.
+fn a_string_too_short_to_start_in_the_cold_never_starts_and_runs_low_too() {
+    // 3 × 41 V × (1 + 0.27 % × 35 K) = 134.6 V under the 160 V start; each limit left is told.
     let [
         Sizing::Start {
             string: 0,
             volts,
             limit,
+        },
+        Sizing::Low {
+            string: 0,
+            volts: hot,
+            ..
         },
     ] = warnings(&[string(1, 3)])[..]
     else {
@@ -49,6 +54,8 @@ fn a_string_too_short_to_start_in_the_cold_never_starts() {
     };
     assert!((volts - 134.6235).abs() < 1e-9);
     assert!((limit - 160.0).abs() < 1e-9);
+    // 3 × 34 V × (1 − 0.27 % × 45 K) = 89.6 V under the window's 160 V.
+    assert!((hot - 89.607).abs() < 1e-9);
 }
 
 #[test]
@@ -115,6 +122,11 @@ fn parallel_strings_of_different_lengths_warn() {
 fn a_string_on_an_input_the_inverter_lacks_warns() {
     assert_eq!(
         warnings(&[string(3, 10)]),
+        vec![Sizing::NoInput { string: 0 }]
+    );
+    // Inputs count from 1.
+    assert_eq!(
+        warnings(&[string(0, 10)]),
         vec![Sizing::NoInput { string: 0 }]
     );
 }

@@ -5,7 +5,7 @@
   import { m } from "../paraglide/messages.js";
   import { choices } from "./fields.ts";
   import type { GridModule, Scene } from "./pv.ts";
-  import { addString, paint, type Draft } from "./modules.ts";
+  import { addString, optimize, wire, type Draft } from "./modules.ts";
   import { move } from "./placing.ts";
   import RemoveButton from "./RemoveButton.svelte";
   import SwitchRow from "./SwitchRow.svelte";
@@ -61,9 +61,9 @@
   }
 
   /** Into choice `value`'s string: none, a joinable one, or a new one of its grid's type. */
-  function wire(value: number): void {
+  function rewire(value: number): void {
     if (value === 0) {
-      onchange(edited(paint(draft.scene, grid, module, { kind: "paint", erase: false })));
+      onchange(edited(wire(draft.scene, grid, module)));
 
       return;
     }
@@ -71,7 +71,7 @@
     const joined = joinable[value - 1];
 
     if (joined !== undefined) {
-      onchange(edited(paint(draft.scene, grid, module, { kind: "paint", string: joined, erase: false })));
+      onchange(edited(wire(draft.scene, grid, module, joined)));
 
       return;
     }
@@ -83,13 +83,13 @@
 
     onchange({
       ...added,
-      scene: paint(added.scene, grid, module, { kind: "paint", string: index, erase: false }),
+      scene: wire(added.scene, grid, module, index),
     });
   }
 </script>
 
 <Item.Group class="gap-0 divide-y divide-border/60">
-  <ValueRow edit={pick} value={picked} onchange={wire} />
+  <ValueRow edit={pick} value={picked} onchange={rewire} />
   <ValueRow
     edit={orientation}
     value={laid.landscape ? 1 : 0}
@@ -101,7 +101,7 @@
     label={m.builder_optimizer()}
     checked={laid.optimized === true}
     onchange={(on) => {
-      onchange(edited(paint(draft.scene, grid, module, { kind: "optimizer", on })));
+      onchange(edited(optimize(draft.scene, grid, module, on)));
     }}
   />
 </Item.Group>

@@ -1,8 +1,9 @@
 <!-- The context toolbar for the wiring mode's selection (ADR 20): how many modules are picked, and
-  what becomes of them: wired into the open string or one of the menu, into a new string, unwired,
+  what becomes of them: wired into the open string or one of the menu, into a new string either way, unwired,
   or dropped. -->
 <script lang="ts">
   import Cable from "@lucide/svelte/icons/cable";
+  import Plus from "@lucide/svelte/icons/plus";
   import Unplug from "@lucide/svelte/icons/unplug";
   import X from "@lucide/svelte/icons/x";
   import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
@@ -30,6 +31,15 @@
     aria-label={m.builder_wire_into({ name })}
     onclick={() => {
       wiring.into(picked);
+    }}
+  />
+  <ToolButton
+    icon={Plus}
+    label=""
+    class="w-11 px-0"
+    aria-label={m.builder_module_new_string()}
+    onclick={() => {
+      wiring.intoNew();
     }}
   />
 {:else}

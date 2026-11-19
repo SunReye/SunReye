@@ -1,5 +1,6 @@
 import "../../app.css";
 import { afterEach, beforeEach, expect, test } from "vitest";
+import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect } from "../api/core.ts";
 import Builder from "./Builder.svelte";
@@ -104,6 +105,24 @@ test("an undo drops a proposal, and the redo does not bring it back", async () =
   await expect.element(input(1).getByRole("button", { name: /^String 1/u })).toBeVisible();
   await expect.element(proposal()).not.toBeInTheDocument();
   await expect.element(input(2).getByText("Kein String")).toBeVisible();
+});
+
+test("an edit while a proposal shows drops the proposal and records nothing of it", async () => {
+  await proposing();
+
+  // The string that was there before the proposal, renamed.
+  await input(1)
+    .getByRole("button", { name: /^String 1/u })
+    .click();
+  await userEvent.fill(inspector().getByLabelText("Name"), "Ost");
+  await drill("Strings");
+
+  await expect.element(proposal()).not.toBeInTheDocument();
+  await expect.element(input(2).getByText("Kein String")).toBeVisible();
+  await expect.element(input(3).getByText("Kein String")).toBeVisible();
+  // Nothing was recorded: the one step to undo is the string's adding.
+  await act("Rückgängig").click();
+  await expect.element(act("Rückgängig")).toBeDisabled();
 });
 
 test("saving keeps a proposal: what is saved is what is shown, and it is recorded", async () => {

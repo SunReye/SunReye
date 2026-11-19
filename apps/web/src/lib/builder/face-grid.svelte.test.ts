@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import { render } from "vitest-browser-svelte";
 import { connect } from "../api/core.ts";
 import Builder from "./Builder.svelte";
-import { addGrid, paint, type Draft } from "./modules.ts";
+import { addGrid, wire, type Draft } from "./modules.ts";
 import {
   desk,
   DEVICES,
@@ -46,16 +46,14 @@ test("fill face lays a module in every free place the face holds, and clear take
   await expect.element(count(0)).toBeVisible();
 });
 
-/** The template house with both roof faces filled and painted into one string. */
+/** The template house with both roof faces filled and wired into one string. */
 function overVoltage(): Draft {
   const { scene } = house();
   let gridded = addGrid(addGrid(scene, 0, 0, MODULE.id), 0, 1, MODULE.id);
   gridded = filledFace(filledFace(gridded, 0), 1);
 
-  const into = { kind: "paint", string: 0, erase: false } as const;
-
   for (const [index, { modules }] of (gridded.grids ?? []).entries()) {
-    for (const module of modules.keys()) gridded = paint(gridded, index, module, into);
+    for (const module of modules.keys()) gridded = wire(gridded, index, module, 0);
   }
 
   return {

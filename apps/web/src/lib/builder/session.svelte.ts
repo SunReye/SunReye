@@ -13,10 +13,10 @@ import { checked, stringRefusal, type Checking, type StringRefusal } from "./che
 import { haptics } from "../haptics.ts";
 import { Drafts } from "./drafts.svelte.ts";
 import { handled, parent, picked, type Level } from "./levels.ts";
-import { painted, panels, type Draft } from "./modules.ts";
+import { wiredIn, panels, type Draft } from "./modules.ts";
 import { exists, type Plan } from "./outline.ts";
 import type { Geometry, Modules, Pv, Scene, Sizes } from "./pv.ts";
-import { paintingOf, type Editing, type Hit, type Painting, type Panel } from "./drawing.svelte.ts";
+import { layingOf, type Editing, type Hit, type Roofwork, type Panel } from "./drawing.svelte.ts";
 import { WiringMode } from "./wiring-mode.svelte.ts";
 
 /** Today in the browser's calendar, as a date input holds it: Sweden writes `YYYY-MM-DD`. */
@@ -145,7 +145,15 @@ export class Session {
     return exists(this.#level, this.plan) ? this.#level : parent(this.#level);
   }
 
+  /** Records `next` as one undo step. While a proposal shows, the edit was made of it: the
+   * proposal is dropped and nothing recorded, for only Keep or a save keeps one (ADR 20). */
   change(next: Draft): void {
+    if (this.wiring.proposal !== undefined) {
+      this.wiring.discard();
+
+      return;
+    }
+
     this.#drafts.record(next);
     this.saved = undefined;
   }
@@ -195,10 +203,10 @@ export class Session {
 
   /** The selected face's grid, on whose roof a press in 3D lays modules, or the wiring mode, in
    * which a drag across modules selects them (ADR 20). */
-  get painting(): Painting | undefined {
+  get roofwork(): Roofwork | undefined {
     return (
-      this.wiring.painting ??
-      paintingOf(this.level, {
+      this.wiring.roofwork ??
+      layingOf(this.level, {
         draft: this.draft,
         laid: this.laid,
         pv: this.#opening().pv,
@@ -255,7 +263,7 @@ export class Session {
   /** One configuration change from the chosen day on (ADR 20); nothing left to undo after. */
   async save(): Promise<void> {
     const { draft } = this;
-    const strings = draft.strings.map((string, i) => ({ ...string, ...painted(draft.scene, i) }));
+    const strings = draft.strings.map((string, i) => ({ ...string, ...wiredIn(draft.scene, i) }));
 
     const saved = await this.#opening().core.changeLayout({
       appliesFrom: new Date(`${this.appliesFrom}T00:00`).toISOString(),

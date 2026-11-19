@@ -4,7 +4,7 @@ import { m } from "../paraglide/messages.js";
 import { getLocale } from "../paraglide/runtime.js";
 import type { Cold, Inverters, Sized, StringRefusal } from "./checks.ts";
 import { moduleOf, parent, type Level, type Section } from "./levels.ts";
-import { painted, type Draft } from "./modules.ts";
+import { inNoString, wiredIn, type Draft } from "./modules.ts";
 import {
   FENCE_FINISHES,
   GROUND_FINISHES,
@@ -81,7 +81,7 @@ export function placed(draft: Draft) {
 
   return {
     count: cells.length,
-    unassigned: cells.filter((cell) => (cell.string ?? undefined) === undefined).length,
+    unassigned: cells.filter((cell) => inNoString(cell)).length,
   };
 }
 
@@ -226,7 +226,7 @@ function strings({ draft }: Plan): Entry[] {
   return draft.strings.map((string, index) => ({
     level: { kind: "string", index },
     label: string.name,
-    summary: m.builder_string_modules(painted(draft.scene, index)),
+    summary: m.builder_string_modules(wiredIn(draft.scene, index)),
   }));
 }
 

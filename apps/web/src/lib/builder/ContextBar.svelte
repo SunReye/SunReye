@@ -7,27 +7,29 @@
   import type { Session } from "./session.svelte.ts";
 
   export type Selected = Session;
-
-  export type { Room } from "./toolbar-place.ts";
 </script>
 
 <script lang="ts">
   import { m } from "../paraglide/messages.js";
   import ContextActions from "./ContextActions.svelte";
+  import { measured } from "./canvas-zones.ts";
   import type { Point } from "./pv.ts";
   import { boxOf, carried } from "./toolbar-anchor.ts";
-  import { placed, type Room } from "./toolbar-place.ts";
+  import { placed } from "./toolbar-place.ts";
 
   let {
     session,
     project,
-    room,
+    canvas,
+    clear,
   }: {
     session: Session;
     /** Where a point of the scene lands on the canvas, as last drawn; null behind the camera. */
     project: (point: Point) => readonly [number, number] | null;
-    /** The canvas the toolbar may stand in, and the buttons in it to keep clear of. */
-    room: Room;
+    /** The canvas the toolbar stands in, whose zones it keeps clear of. */
+    canvas: HTMLElement;
+    /** Pixels at the canvas's bottom a peeking sheet covers. */
+    clear: number;
   } = $props();
 
   let width = $state(0);
@@ -41,7 +43,9 @@
 
   const kind = $derived(carried(session.level, selecting));
   const box = $derived(boxOf(session, project));
-  const place = $derived(box && placed(box, { width, height }, room));
+
+  // Measured anew with every drawn frame, which `project` stands for: the zones come and go.
+  const place = $derived(box && placed(box, { width, height }, measured(canvas, clear)));
 
   const own = $derived(refused?.at === key ? refused.reason : undefined);
   const reason = $derived(selecting ? session.wiring.refused : own);

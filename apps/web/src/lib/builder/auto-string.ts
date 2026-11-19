@@ -2,19 +2,23 @@
 // the lower left and cut into as few new strings as the inverter's limits allow. Pure.
 import type { ModuleType } from "../api/core.ts";
 import type { Checking } from "./checks.ts";
-import { addString, type Draft } from "./modules.ts";
+import { addString, inNoString, type Draft } from "./modules.ts";
 import type { GridModule } from "./pv.ts";
 import { wiredInto, type Cell } from "./selecting.ts";
 
-/** What the cut reads of the inverter the new strings go to. */
-export interface Limit {
-  /** The most modules in series, as the crate reckons it; null without the inverter's limits. */
+/** An MPPT input that carries no string, and what it takes. */
+export interface Free {
+  readonly input: number;
+  /** The most modules in series on it, as the crate reckons it; null without its limits. */
   readonly longest: number | null;
-  readonly device: number;
-  /** Its MPPT inputs that carry no string, in order. */
-  readonly free: readonly number[];
-  /** How many strings an input's maximum current carries in parallel; null where unknown. */
+  /** How many strings its maximum current carries in parallel; null where unknown. */
   readonly parallel: number | null;
+}
+
+/** What the cut reads of the inverter the new strings go to: its free inputs, in order. */
+export interface Limit {
+  readonly device: number;
+  readonly free: readonly Free[];
 }
 
 /** A proposal: the draft with the new strings, and how many modules no equal cut could hold. */
@@ -51,37 +55,94 @@ function rows(cells: readonly Loose[]): Loose[][] {
 /** Each new string's length and input, in turn. */
 type Cut = readonly (readonly [length: number, input: number])[];
 
-/** `count` modules cut into strings no longer than the limit, never unequal in parallel (ADR 20):
- * one on each free input and at most one apart where the inputs suffice; else all of one length,
- * the fewest that leave none over, shared out over the inputs; else the fewest of the longest
- * equal length, the rest left over. */
-function cut(count: number, { longest, free, parallel }: Readonly<Limit>): Cut {
-  const most = longest === null || longest < 1 ? count : longest;
-  const fewest = Math.ceil(count / most);
+const most = ({ longest }: Free): number => (longest === null || longest < 1 ? Infinity : longest);
 
-  if (fewest <= free.length) {
-    const [short, longer] = [Math.floor(count / fewest), count % fewest];
+const sum = (numbers: readonly number[]): number => numbers.reduce((a, b) => a + b, 0);
 
-    return free.slice(0, fewest).map((input, i) => [short + (i < longer ? 1 : 0), input]);
+/** One string on each of the fewest inputs that hold `count` between them, each no longer than
+ * its own input takes and as even as that allows; null where the inputs do not hold them. */
+function alone(count: number, free: readonly Free[]): Cut | null {
+  // The roomiest inputs first: the fewest strings.
+  const roomy = free.toSorted((a, b) => most(b) - most(a));
+
+  const enough = roomy.findIndex(
+    (_, i) => sum(roomy.slice(0, i + 1).map((input) => most(input))) >= count,
+  );
+
+  if (enough < 0) return null;
+
+  const used = new Set(roomy.slice(0, enough + 1));
+  const lengths = new Map<Free, number>();
+  let rest = count;
+
+  // The tightest input first: what it cannot take, the roomier ones share.
+  const tightest = free.filter((input) => used.has(input)).toSorted((a, b) => most(a) - most(b));
+
+  for (const [i, input] of tightest.entries()) {
+    const length = Math.min(most(input), Math.ceil(rest / (used.size - i)));
+
+    lengths.set(input, length);
+    rest -= length;
   }
 
-  const carried = parallel === null ? Infinity : free.length * parallel;
-  const runs = Array.from({ length: fewest + 1 }, (_, i) => fewest + i);
-  const even = runs.find((strings) => strings <= carried && count % strings === 0);
-  const strings = even ?? Math.min(fewest, carried);
-  const length = Math.min(most, Math.floor(count / Math.max(strings, 1)));
+  return free.flatMap((input): Cut =>
+    used.has(input) ? [[lengths.get(input) ?? 0, input.input]] : [],
+  );
+}
 
-  return Array.from({ length: strings }, (_, i) => [
-    length,
-    free[Math.floor((i * free.length) / strings)] ?? 0,
-  ]);
+/** `strings` strings of `length` shared out over the inputs that take that length, none carrying
+ * more than its current allows; null where they do not carry that many. */
+function shared(strings: number, length: number, free: readonly Free[]): Cut | null {
+  const fit = free.filter((input) => most(input) >= length);
+  const carried = new Map(fit.map((input) => [input, 0]));
+  let left = strings;
+
+  // In turn, an input at a time, until each is full.
+  while (left > 0) {
+    const open = fit.filter((input) => (carried.get(input) ?? 0) < (input.parallel ?? Infinity));
+
+    if (open.length === 0) return null;
+
+    for (const input of open.slice(0, left)) carried.set(input, (carried.get(input) ?? 0) + 1);
+
+    left -= Math.min(left, open.length);
+  }
+
+  return fit.flatMap((input): Cut =>
+    Array.from({ length: carried.get(input) ?? 0 }, () => [length, input.input]),
+  );
+}
+
+/** `count` modules cut into strings no longer than each input takes, never unequal in parallel
+ * (ADR 20): one on each free input where the inputs suffice; else all of one length, the fewest
+ * that leave none over, shared out over the inputs; else the fewest of the longest equal length,
+ * the rest left over. */
+function cut(count: number, free: readonly Free[]): Cut {
+  const single = alone(count, free);
+
+  if (single !== null) return single;
+
+  const fewest = Math.ceil(count / Math.max(...free.map((input) => most(input))));
+  const runs = Array.from({ length: fewest + 1 }, (_, i) => fewest + i);
+
+  const even = runs
+    .filter((strings) => count % strings === 0)
+    .map((strings) => shared(strings, count / strings, free))
+    .find((made) => made !== null);
+
+  if (even !== undefined) return even;
+
+  // No longer than the tightest input takes, on as many strings as the inputs carry.
+  const carried = sum(free.map((input) => input.parallel ?? Infinity));
+  const strings = Math.min(fewest, carried);
+  const length = Math.min(...free.map((input) => most(input)), Math.floor(count / strings));
+
+  return shared(strings, length, free) ?? [];
 }
 
 /** The modules of a grid that are in no string, each with its place in the grid. */
 function unwiredOf(modules: readonly Readonly<GridModule>[]): Loose[] {
-  return modules.flatMap((module, at): Loose[] =>
-    (module.string ?? undefined) === undefined ? [[at, module]] : [],
-  );
+  return modules.flatMap((module, at): Loose[] => (inNoString(module) ? [[at, module]] : []));
 }
 
 /** Each of the `strings` from `first` takes its run of the serpentine, in turn. */
@@ -125,7 +186,7 @@ export function autoStrung(
     (i % 2 === 0 ? row : row.toReversed()).map(([module]) => ({ grid, module })),
   );
 
-  const strings = cut(serpentine.length, limit);
+  const strings = cut(serpentine.length, limit.free);
   const before = draft.strings.length;
 
   const made = strings.map(([, input], nth) => ({
@@ -165,14 +226,18 @@ export function strungOn(
   const device = Number(Object.keys(inputs)[0] ?? draft.strings[0]?.device ?? 1);
   const type = moduleTypes.find(({ id }) => id === draft.scene.grids?.[grid]?.moduleType);
   const listed = inputs[device];
-  const free = freeOn(draft, device, listed?.length);
 
-  if (type === undefined)
-    return autoStrung(draft, grid, { longest: null, device, free, parallel: null }, name);
+  const free = freeOn(draft, device, listed?.length).map((input): Free => {
+    const own = listed?.[input - 1];
 
-  const input = listed?.[0];
-  const longest = pv.longest(type, limits[device] ?? null, input ?? null);
-  const parallel = input ? Math.max(1, Math.floor(input.maxCurrent / type.isc)) : null;
+    if (type === undefined) return { input, longest: null, parallel: null };
 
-  return autoStrung(draft, grid, { longest, device, free, parallel }, name);
+    return {
+      input,
+      longest: pv.longest(type, limits[device] ?? null, own ?? null),
+      parallel: own ? Math.max(1, Math.floor(own.maxCurrent / type.isc)) : null,
+    };
+  });
+
+  return autoStrung(draft, grid, { device, free }, name);
 }

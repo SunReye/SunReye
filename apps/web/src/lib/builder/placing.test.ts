@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { addGrid, apply, editGrid, fillGrid, uncovered } from "./modules.ts";
+import { addGrid, editGrid, fillGrid, uncovered, wire } from "./modules.ts";
 import { move, place, removeModule } from "./placing.ts";
 import { loadPv, type Scene } from "./pv.ts";
 
@@ -36,25 +36,23 @@ const laid = (count: number) => place(gridded, 0, spots(count));
 
 const [first, second] = [spot(0), spot(1)];
 
-test("a placed module lies where it is put, unwired, and painting assigns it to a string", () => {
+test("a placed module lies where it is put, unwired, and wiring puts it into a string", () => {
   const placed = place(gridded, 0, [{ across: 2.5, up: 1, landscape: true }]);
 
   expect(placed.grids?.[0]?.modules).toEqual([
     { across: 2.5, up: 1, landscape: true, optimized: false },
   ]);
 
-  const into = apply(placed, 0, 0, { kind: "paint", string: 1 });
+  const into = wire(placed, 0, 0, 1);
 
   expect(into.grids?.[0]?.modules).toEqual([
     { across: 2.5, up: 1, landscape: true, string: 1, optimized: false, order: 0 },
   ]);
-  expect(apply(into, 0, 0, { kind: "paint" }).grids?.[0]?.modules).toEqual(
-    placed.grids?.[0]?.modules,
-  );
+  expect(wire(into, 0, 0).grids?.[0]?.modules).toEqual(placed.grids?.[0]?.modules);
 });
 
 test("a module moves to another place or turns, keeping its string; a removed one takes none along", () => {
-  const wired = apply(laid(2), 0, 1, { kind: "paint", string: 0 });
+  const wired = wire(laid(2), 0, 1, 0);
   const moved = move(wired, 0, 1, { across: 4, up: 2 });
 
   expect(moved.grids?.[0]?.modules[1]).toEqual({
@@ -92,7 +90,7 @@ test("the modules a chimney stands on leave the scene; the others keep their ord
 });
 
 test("fill face lays a module in every place the crate finds free, keeping the ones there", () => {
-  const started = apply(laid(1), 0, 0, { kind: "paint", string: 0 });
+  const started = wire(laid(1), 0, 0, 0);
   const free = pv.fillFace({ scene: started, sizes: SIZES, grid: 0 });
   const filled = fillGrid(started, 0, free);
 

@@ -4,7 +4,7 @@ import type { Selecting } from "./gestures.ts";
 import { handles } from "./handles/grips.ts";
 import { handled, type Level } from "./levels.ts";
 import type { Draft } from "./modules.ts";
-import type { Geometry, Modules, Point } from "./pv.ts";
+import type { Geometry, Modules, Point, RoofFace } from "./pv.ts";
 
 /** What the anchor reads of a session. */
 export interface Anchored {
@@ -13,10 +13,22 @@ export interface Anchored {
   readonly laid: Modules;
   readonly geometry: Pick<Geometry, "mounts">;
   /** The wiring mode's selection, while it is on. */
-  readonly painting: Pick<Selecting, "kind" | "chosen"> | { readonly kind: "modules" } | undefined;
+  readonly roofwork: Pick<Selecting, "kind" | "chosen"> | { readonly kind: "modules" } | undefined;
 }
 
-/** The outline of the grid on the face `level` names, or of its tapped module. */
+/** A roof face's outline in the scene, out of its own frame. */
+function cornersOf({ outline, origin, across, up }: RoofFace): Point[] {
+  const [oe, on, ou] = origin;
+
+  return outline.map(([x, y]): Point => [
+    oe + across[0] * x + up[0] * y,
+    on + across[1] * x + up[1] * y,
+    ou + across[2] * x + up[2] * y,
+  ]);
+}
+
+/** The outline of the grid on the face `level` names, or of its tapped module; of the roof face
+ * itself while it holds no grid. */
 function onFace({ draft, laid }: Anchored, level: Extract<Level, { kind: "face" | "module" }>) {
   const grid = (draft.scene.grids ?? []).findIndex(
     (item) => item.block === level.block && item.face === level.face,
@@ -24,7 +36,11 @@ function onFace({ draft, laid }: Anchored, level: Extract<Level, { kind: "face" 
 
   const shade = laid.grids[grid];
 
-  if (shade === undefined || shade === null) return [];
+  if (shade === undefined || shade === null) {
+    const roof = laid.roofs.find((face) => face.block === level.block && face.face === level.face);
+
+    return roof === undefined ? [] : cornersOf(roof);
+  }
 
   return level.kind === "module" ? (shade.modules[level.module]?.corners ?? []) : shade.outline;
 }
@@ -32,9 +48,9 @@ function onFace({ draft, laid }: Anchored, level: Extract<Level, { kind: "face" 
 /** The points of the selection: the selected modules, a face's grid or its module, an object's
  * handles and outline, or a marker's mount; none for a group, a string or the root. */
 function anchorOf(session: Anchored): readonly Point[] {
-  const { level, draft, laid, geometry, painting } = session;
+  const { level, draft, laid, geometry, roofwork } = session;
 
-  if (painting?.kind === "wiring") return painting.chosen.flatMap(({ corners }) => corners);
+  if (roofwork?.kind === "wiring") return roofwork.chosen.flatMap(({ corners }) => corners);
 
   if (level.kind === "face" || level.kind === "module") return onFace(session, level);
 

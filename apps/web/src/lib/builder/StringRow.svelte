@@ -4,7 +4,7 @@
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import { Pressable } from "../components/ui/pressable/index.js";
   import { m } from "../paraglide/messages.js";
-  import type { Painted } from "./modules.ts";
+  import type { WiredIn } from "./modules.ts";
   import { stringCss } from "./scene.ts";
 
   let {
@@ -18,7 +18,7 @@
     /** Its position in the layout, which picks its colour. */
     position: number;
     /** What the scene wires into it. */
-    made: Painted;
+    made: WiredIn;
     warnings: readonly string[];
     onclick: () => void;
   } = $props();

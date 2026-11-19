@@ -6,7 +6,7 @@
   import EquipmentFieldset from "./EquipmentFieldset.svelte";
   import FaceLevel from "./FaceLevel.svelte";
   import type { Level } from "./levels.ts";
-  import { painted, type Draft, type TypeSource } from "./modules.ts";
+  import { wiredIn, type Draft, type TypeSource } from "./modules.ts";
   import type { Plan } from "./outline.ts";
   import StringFieldset from "./StringFieldset.svelte";
   import SurroundingLevel from "./SurroundingLevel.svelte";
@@ -134,7 +134,7 @@
   <StringFieldset
     {string}
     position={index}
-    made={painted(scene, index)}
+    made={wiredIn(scene, index)}
     {warnings}
     refused={plan.refused?.string === index ? plan.refused.text : undefined}
     {moduleTypes}

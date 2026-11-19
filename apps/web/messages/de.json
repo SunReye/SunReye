@@ -1218,7 +1218,7 @@
   "settings_connection_remove_note": "Nur eine Verbindung, die kein Gerät nutzt, lässt sich entfernen.",
   "devices_known": "{count} gefundene Geräte liest SunReye schon.",
   "builder_required": "Pflichtangabe",
-  "refused_string_modules": "Noch kein Modul gehört zu {name}. Male Module hinein, dann speichere.",
+  "refused_string_modules": "Noch kein Modul gehört zu {name}. Verdrahte Module hinein, dann speichere.",
   "refused_string_value": "{name}: {field} liegt außerhalb seines physikalischen Bereichs.",
   "refused_value": "{field} liegt außerhalb seines physikalischen Bereichs.",
   "field_optimized": "Module mit Optimierer",
