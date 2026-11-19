@@ -3,8 +3,8 @@
 
 use crate::diode::{BYPASS_DROP, Diode, fit};
 use crate::perez::cos_incidence;
-use crate::shade::shaded_substrings;
-use crate::{Module, ModuleType, Occluder, PvString, Sky, cell_temperature, plane_irradiance};
+use crate::shade::Casters;
+use crate::{Module, ModuleType, PvString, Sky, cell_temperature, plane_irradiance};
 
 /// Martin and Ruiz 2001, pvlib's default for glass-fronted modules.
 const MARTIN_RUIZ_AR: f64 = 0.16;
@@ -32,17 +32,19 @@ pub struct Curve {
     pub top: f64,
     /// What the loss leaves, of 1.
     keep: f64,
+    /// Its current and voltage before the loss at each sample, from no current up to `top`.
+    sampled: Vec<(f64, f64)>,
 }
 
 impl Curve {
     #[must_use]
-    pub fn new(string: &PvString, sky: &Sky, occluders: &[Occluder]) -> Self {
+    pub fn new(string: &PvString, sky: &Sky, casters: &Casters) -> Self {
         let mut curve = Self::empty(1.0 - string.loss / 100.0);
         let Some(reference) = fit(&string.module) else {
             return curve;
         };
         for module in &string.modules {
-            let groups = substrings(&reference, &string.module, module, sky, occluders);
+            let groups = substrings(&reference, &string.module, module, sky, casters);
             if module.optimized {
                 let mut own = Self::empty(1.0);
                 own.add_all(groups);
@@ -52,6 +54,12 @@ impl Curve {
             } else {
                 curve.add_all(groups);
             }
+        }
+        if curve.top > 0.0 {
+            curve.sampled = (0..=SAMPLES)
+                .map(|k| sample(curve.top, k))
+                .map(|i| (i, curve.voltage(i)))
+                .collect();
         }
         curve
     }
@@ -63,6 +71,7 @@ impl Curve {
             optimized: 0.0,
             top: 0.0,
             keep,
+            sampled: Vec::new(),
         }
     }
 
@@ -118,28 +127,44 @@ impl Curve {
     /// Amperes at `voltage`, after the loss.
     #[must_use]
     pub fn current(&self, voltage: f64) -> f64 {
-        if self.top <= 0.0 || voltage >= self.voltage(0.0) {
+        let (Some(&open), Some(&short)) = (self.sampled.first(), self.sampled.last()) else {
+            return 0.0;
+        };
+        if voltage >= open.1 {
             return 0.0;
         }
-        if voltage <= self.voltage(self.top) {
+        if voltage <= short.1 {
             return self.top * self.keep;
         }
+        // The voltage falls as the current rises: the samples on either side of it hold the
+        // current, so the search starts a sample wide.
+        let after = self.sampled.partition_point(|(_, v)| *v > voltage);
+        let before = after.checked_sub(1).and_then(|k| self.sampled.get(k));
+        let low = before.copied().unwrap_or(open);
+        let high = self.sampled.get(after).copied().unwrap_or(short);
         let excess = |i: f64| self.voltage(i) - voltage;
         let tolerance = 1e-13 * voltage.abs().max(1.0);
-        illinois(&excess, self.top, tolerance) * self.keep
+        let ends = [(low.0, low.1 - voltage), (high.0, high.1 - voltage)];
+        illinois(&excess, ends, tolerance) * self.keep
     }
 
     /// Voltages along the curve, from the highest current down.
     pub fn voltages(&self) -> impl Iterator<Item = f64> + '_ {
-        samples(self.top).into_iter().rev().map(|i| self.voltage(i))
+        self.sampled.iter().skip(1).rev().map(|(_, v)| *v)
     }
 }
 
-/// Where the falling `f` crosses zero in `[0, top]`, by the Illinois method: false position
-/// that halves the weight of an end that keeps its place.
-fn illinois(f: &impl Fn(f64) -> f64, top: f64, tolerance: f64) -> f64 {
-    let (mut low, mut high) = (0.0, top);
-    let (mut at_low, mut at_high) = (f(low), f(high));
+/// Where the falling `f` crosses zero between two `ends`, each a point and `f` there, by the
+/// Illinois method: false position that halves the weight of an end that keeps its place.
+fn illinois(f: &impl Fn(f64) -> f64, ends: [(f64, f64); 2], tolerance: f64) -> f64 {
+    let [(mut low, mut at_low), (mut high, mut at_high)] = ends;
+    if at_high.abs() <= tolerance {
+        return high;
+    }
+    if at_low.abs() <= tolerance {
+        return low;
+    }
+    let top = high;
     let mut moved_low = None;
     let mut x = high;
     for _ in 0..100 {
@@ -175,7 +200,7 @@ fn substrings(
     module_type: &ModuleType,
     module: &Module,
     sky: &Sky,
-    occluders: &[Occluder],
+    casters: &Casters,
 ) -> Vec<(Option<Diode>, u32)> {
     let poa = plane_irradiance(module.plane, sky);
     let diffuse_light = poa.sky_diffuse + poa.ground_diffuse;
@@ -185,7 +210,7 @@ fn substrings(
     let parts = module_type.bypass_diodes.max(1);
     let shaded = if beam > 0.0 {
         module.place.map_or(0, |place| {
-            shaded_substrings(module_type, module.plane, place, sky.sun, occluders)
+            casters.shaded_substrings(module_type, module.plane, place)
         })
     } else {
         0
@@ -213,11 +238,14 @@ const fn same(a: &Diode, b: &Diode) -> bool {
         && a.ideality.to_bits() == b.ideality.to_bits()
 }
 
+/// The `k`th of the evenly spaced currents from zero up to `top`.
+fn sample(top: f64, k: u32) -> f64 {
+    top * f64::from(k) / f64::from(SAMPLES)
+}
+
 /// Evenly spaced currents above zero up to `top`.
 fn samples(top: f64) -> Vec<f64> {
-    (1..=SAMPLES)
-        .map(|k| top * f64::from(k) / f64::from(SAMPLES))
-        .collect()
+    (1..=SAMPLES).map(|k| sample(top, k)).collect()
 }
 
 /// Where `f` peaks among ascending `points` admitted by `admit`, each local peak refined by

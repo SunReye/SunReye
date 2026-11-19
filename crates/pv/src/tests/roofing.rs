@@ -4,7 +4,7 @@
 use serde_json::{Value, json};
 
 use super::fixtures::MODULE;
-use crate::shade::shaded_substrings;
+use super::fixtures::shaded_substrings;
 use crate::{Misplaced, ModuleType, Place, Plane, Point, Scene, Size, Sun, Surface};
 
 const SIZE: Size = Size {
