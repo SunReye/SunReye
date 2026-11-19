@@ -119,10 +119,13 @@ function hedges(faces: readonly Face[]): Mesh[] {
   return faces.length === 0 ? [] : [surface("hedge", faces, finish.foliage())];
 }
 
-function marker({ at }: Mount): Mesh {
+/** A marker's body, its back to its wall: it turns with its house (ADR 20). */
+function marker({ at, out }: Mount): Mesh {
   const box = new Mesh(new RoundedBoxGeometry(0.5, 0.6, 0.5, 3, 0.03), finish.equipment());
+  const [x, , z] = toThree(out);
 
   box.position.set(...toThree(at));
+  box.rotation.y = Math.atan2(x, z);
   box.name = "equipment";
 
   return box;

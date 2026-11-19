@@ -101,6 +101,8 @@ pub struct Mount {
     pub at: Point,
     /// Its label's anchor, straight above it and clear of its block.
     pub above: Point,
+    /// A metre out of its wall, level: the way its body faces, so it turns with its house.
+    pub out: Point,
 }
 
 impl Scene {
@@ -157,9 +159,13 @@ impl Scene {
         let frame = self.prism(block.x, block.z, block.rotation);
         let at = frame.place([across, HEAD.min(block.eave / 2.0), deep]);
         let [east, north, _] = at;
+        let [east0, north0, _] = frame.place([0.0; 3]);
+        let [out_east, out_north, _] = frame.place([run.out[0], 0.0, run.out[1]]);
         Some(Mount {
             at,
             above: [east, north, block.top() + CLEAR],
+            // Never −0, which JSON keeps.
+            out: [out_east - east0 + 0.0, out_north - north0 + 0.0, 0.0],
         })
     }
 }

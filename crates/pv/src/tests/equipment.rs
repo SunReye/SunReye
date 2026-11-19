@@ -59,7 +59,7 @@ fn a_marker_hangs_on_its_wall_at_head_height_with_its_label_above_the_ridge() {
         .mounts()
         .unwrap();
 
-    let [Mount { at, above }] = mounts.as_slice() else {
+    let [Mount { at, above, .. }] = mounts.as_slice() else {
         panic!("{mounts:?}");
     };
     assert_near(*at, [2.0, -8.1, 1.5]);
@@ -118,4 +118,27 @@ fn a_wall_carries_its_frame_from_its_left_end_seen_from_outside() {
     near(front.left, [-8.0, 0.0, 0.0]);
     near(front.right, [0.0, -1.0, 0.0]);
     near(front.out, [-1.0, 0.0, 0.0]);
+}
+
+#[test]
+fn a_marker_turns_with_its_house_and_faces_out_of_its_wall() {
+    // The scene's forward axis bears east: the front wall, which faced south, now faces west.
+    let turned = Scene {
+        north: 90.0,
+        ..house(vec![marker(Wall::Front, 2.0, false)])
+    };
+    let mounts = turned.mounts().unwrap();
+
+    let [Mount { at, out, .. }] = mounts.as_slice() else {
+        panic!("{mounts:?}");
+    };
+    // 2 m along the wall is 2 m south of its corner, 10 cm west of the wall 8 m west.
+    assert_near(*at, [-8.1, -2.0, 1.5]);
+    assert_near(*out, [-1.0, 0.0, 0.0]);
+
+    // Unturned it faces south, out of the front wall.
+    let mounts = house(vec![marker(Wall::Front, 2.0, false)])
+        .mounts()
+        .unwrap();
+    assert_near(mounts[0].out, [0.0, -1.0, 0.0]);
 }

@@ -117,7 +117,9 @@ test("an equipment marker hangs on its wall with its label above the ridge", () 
     equipment: [{ device: 1, kind: "inverter", block: 0, wall: "front", along: 2, inside: false }],
   };
 
-  expect(pv.geometry(marked).mounts).toEqual([{ at: [2, -8.1, 1.5], above: [2, -8.1, 8] }]);
+  expect(pv.geometry(marked).mounts).toEqual([
+    { at: [2, -8.1, 1.5], above: [2, -8.1, 8], out: [0, -1, 0] },
+  ]);
   expect(pv.geometry(house).mounts).toEqual([]);
 });
 
