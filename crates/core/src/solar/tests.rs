@@ -2,6 +2,7 @@
 //! owner's layout (`crates/pv/fixtures/estimate.csv`, the 2026-06-21 11:00 UTC row).
 
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -613,7 +614,7 @@ async fn it_issues_on_start_after_each_weather_issue_and_after_a_layout_change()
 }
 
 /// Counts each turn the I/O thread gives it, forever.
-async fn count(turns: std::sync::Arc<AtomicU64>) {
+async fn count(turns: Arc<AtomicU64>) {
     loop {
         turns.fetch_add(1, Ordering::Relaxed);
         tokio::task::yield_now().await;
@@ -647,8 +648,8 @@ async fn the_model_leaves_the_io_thread_free_while_it_runs() {
         wind: Some(3.0),
     };
     let weather = (0..200).map(|_| (at(NOON), noon)).collect();
-    let turns = std::sync::Arc::new(AtomicU64::new(0));
-    let spinning = tokio::spawn(count(std::sync::Arc::clone(&turns)));
+    let turns = Arc::new(AtomicU64::new(0));
+    let spinning = tokio::spawn(count(Arc::clone(&turns)));
 
     let modelled = super::estimates(&plant.layouts, &versions, BERLIN, weather)
         .await

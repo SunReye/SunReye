@@ -218,8 +218,13 @@ pub(crate) async fn estimates(
             .collect()
     })
     .await
-    // Only a runtime shutting down cancels it: the release build aborts on panic (ADR 2).
-    .map_err(|_| storage::Error::Stopped)
+    // A panic in the model stays one, as it would have been on the I/O thread; only a runtime
+    // shutting down cancels it.
+    .map_err(|e| {
+        e.try_into_panic().map_or(storage::Error::Stopped, |panic| {
+            std::panic::resume_unwind(panic)
+        })
+    })
 }
 
 /// A string's inverter device and MPPT input.

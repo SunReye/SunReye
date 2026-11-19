@@ -2,16 +2,7 @@ import { afterEach, expect, test } from "vitest";
 // The screen is laid out by the SPA's utilities.
 import "../../app.css";
 import { iso } from "../range/calendar.ts";
-import {
-  asked,
-  plant,
-  requested,
-  reset,
-  show,
-  TODAY,
-  YESTERDAY,
-  zone,
-} from "./statistics.harness.ts";
+import { asked, plant, reset, show, TODAY, YESTERDAY, zone } from "./statistics.harness.ts";
 
 afterEach(reset);
 
@@ -35,44 +26,43 @@ test("the range's answer: production against the day before, and a breakdown tha
   await expect.element(breakdown.getByText("11,0 kWh")).toBeVisible();
 });
 
-test("stepping to another day reads only that day: what holds for every range is read once", async () => {
-  const { screen } = await show(DAY);
+/** How often `urls` asked for the route ending in `name`. */
+const times = (urls: readonly string[], name: string) =>
+  urls.filter((url) => (url.split("?")[0] ?? "").endsWith(`/${name}`)).length;
 
-  await expect.poll(() => requested.filter((name) => name === "corrections")).toHaveLength(1);
+test("stepping to another day reads only that day: what holds for every range is read once", async () => {
+  const { screen, urls } = await show(DAY);
+
+  await expect.poll(() => times(urls, "corrections")).toBe(1);
 
   await screen.rerender({ params: new URLSearchParams(`range=day&at=${iso(TODAY - 2)}`) });
   await expect.poll(() => asked.some(({ from }) => from === (TODAY - 2) * 86_400_000)).toBe(true);
 
   for (const once of ["corrections", "capabilities", "records", "layout", "payback"])
-    expect(
-      requested.filter((name) => name === once),
-      once,
-    ).toHaveLength(1);
+    expect(times(urls, once), once).toBe(1);
 });
 
 test("a step the router then catches up with reads the new day once", async () => {
-  const { screen, went } = await show(DAY);
+  const { screen, went, urls } = await show(DAY);
 
   // The first day is drawn: its reads are done.
   await expect.element(screen.getByText(/^Gestern hat die Anlage 6,0 kWh erzeugt/u)).toBeVisible();
-  asked.length = 0;
+  urls.length = 0;
 
   await screen.getByRole("button", { name: "Früher" }).first().click();
   // The address follows once the movement is over; the router hands the screen its params.
   await expect.poll(() => went.length, { timeout: 2000 }).toBeGreaterThan(0);
   await screen.rerender({ params: new URLSearchParams(`range=day&at=${iso(TODAY - 2)}`) });
+  // A second load would start as the screen takes the params; give it a moment to show.
   await new Promise((done) => {
     setTimeout(done, 300);
   });
 
-  // The days around the step: an earlier test's screen may still be reading its own.
-  const reads = asked
-    .filter(({ from }) => from >= (TODAY - 4) * 86_400_000)
-    .map(({ series, from, to, period }) => `${series} ${period} ${from} ${to}`);
+  const reads = urls.filter((url) => /\/(statistics|history)\?/u.test(url));
 
   expect(reads.length).toBeGreaterThan(0);
   expect(reads.filter((read, i) => reads.indexOf(read) !== i)).toEqual([]);
-  expect(requested.filter((name) => name === "timezone")).toHaveLength(1);
+  expect(times(urls, "timezone")).toBe(0);
 });
 
 test("the breakdown says what its rows changed against, and the peaks name their hour", async () => {

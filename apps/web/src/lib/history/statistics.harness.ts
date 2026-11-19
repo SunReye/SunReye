@@ -54,11 +54,7 @@ export const plant: Plant = { ...PLANT_DEFAULTS };
 /** This year, by UTC. */
 export const YEAR = new Date(TODAY * DAY).getUTCFullYear();
 
-/** Each plant read: its series, span, and `period`, or `history` for the history route. */
-export const asked: Readonly<{ series: string; from: number; to: number; period: string }>[] = [];
-
-/** The last path segment of every request the screen made, in order. */
-export const requested: string[] = [];
+export const asked: Readonly<{ series: string; from: number; to: number }>[] = [];
 
 /** The plant's timezone was answered, so the range no longer moves under the screen. */
 export const zone = { read: false };
@@ -66,7 +62,6 @@ export const zone = { read: false };
 export function reset(): void {
   Object.assign(plant, PLANT_DEFAULTS);
   asked.length = 0;
-  requested.length = 0;
   zone.read = false;
 }
 
@@ -78,7 +73,7 @@ function history(q: Query): Response {
 
   const [from, to] = [Date.parse(q("from")!), Date.parse(q("to")!)];
 
-  asked.push({ series: name, from, to, period: "history" });
+  asked.push({ series: name, from, to });
 
   const points = (new Map(Object.entries(series())).get(name) ?? []).filter(
     (p: Readonly<{ start: string; end: string }>) =>
@@ -174,7 +169,7 @@ function statistics(q: Query): Response {
   const period = q("period") ?? "";
   const recorded = period === "day" || period === "hour" ? rollups(name, period, from, to) : [];
 
-  asked.push({ series: name, from, to, period });
+  asked.push({ series: name, from, to });
 
   return Response.json({
     period,
@@ -233,15 +228,16 @@ const READS = new Map<string, (q: Query) => Response>(
   }),
 );
 
-function transport(): Transport {
+/** A core that answers from the synthetic plant and records the path and query of each request in `urls`. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- it collects into `urls`.
+function transport(urls: string[]): Transport {
   return {
     base: "http://core.test/",
     fetch: async (request) => {
       const url = new URL(request.url);
-      const name = url.pathname.split("/").at(-1) ?? "";
-      const read = READS.get(name);
 
-      requested.push(name);
+      urls.push(`${url.pathname}${url.search}`);
+      const read = READS.get(url.pathname.split("/").at(-1) ?? "");
 
       const plantRead = /\/(history|statistics)$/u.test(url.pathname);
 
@@ -250,23 +246,24 @@ function transport(): Transport {
       if (plant.gate && plantRead) await plant.gate;
 
       return read
-        ? read((key) => url.searchParams.get(key))
+        ? read((name) => url.searchParams.get(name))
         : Response.json({ problem: { code: "request.route" } }, { status: 404 });
     },
   };
 }
 
-/** The screen at `query`, and every route change it makes. */
+/** The screen at `query`, every route change it makes, and every URL it asks its core. */
 export async function show(query: string) {
   const went: Readonly<{ patch: Readonly<Record<string, string | null>>; push: boolean }>[] = [];
+  const urls: string[] = [];
 
   const screen = await render(StatisticsScreen, {
-    core: connect(transport()),
+    core: connect(transport(urls)),
     params: new URLSearchParams(query),
     go: (patch: Readonly<Record<string, string | null>>, push: boolean) => {
       went.push({ patch, push });
     },
   });
 
-  return { screen, went };
+  return { screen, went, urls };
 }
