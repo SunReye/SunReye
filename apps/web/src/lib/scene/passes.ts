@@ -14,6 +14,7 @@ import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { LensPass } from "./lens-pass.ts";
+import { Probe } from "./probe.ts";
 import type { Look } from "./quality.ts";
 import { jitter, Refiner } from "./refine.ts";
 import type { Glass } from "./weather.ts";
@@ -64,6 +65,8 @@ export class Passes {
   /** Whether the look has the glass, and whether anything is on it. */
   #glass = false;
   #glazed = false;
+  /** Counts each frame, once asked for (ADR 21 "Measuring"). */
+  #probe: Probe | undefined;
 
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws with them.
   constructor(renderer: WebGLRenderer, scene: Scene, camera: PerspectiveCamera) {
@@ -128,7 +131,20 @@ export class Passes {
   /** Draws the scene as it is now. */
   render(): void {
     this.#refiner.reset();
-    this.#composer.render();
+
+    if (this.#probe === undefined) this.#composer.render();
+    else {
+      this.#probe.frame(() => {
+        this.#composer.render();
+      });
+    }
+  }
+
+  /** Counts what each frame draws from here on; `shadow` is the sun's shadow map. */
+  measure(shadow: () => WebGLRenderTarget | null, clock?: () => number): Probe {
+    this.#probe ??= new Probe(this.#renderer, shadow, clock);
+
+    return this.#probe;
   }
 
   /** Draws once with every pass, the glass too: each makes and first uses its programs. */
@@ -169,5 +185,6 @@ export class Passes {
     this.#occlusion.dispose();
     this.#lens.dispose();
     this.#refiner.dispose();
+    this.#probe?.dispose();
   }
 }
