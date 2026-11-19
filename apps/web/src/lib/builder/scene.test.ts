@@ -4,7 +4,6 @@ import {
   Box3,
   BufferAttribute,
   BufferGeometry,
-  Color,
   DataTexture,
   InstancedMesh,
   Mesh,
@@ -13,7 +12,7 @@ import {
   type Object3D,
 } from "three";
 import type { Geometry } from "./pv.ts";
-import { buildScene, buildSliced, stringColour, tint } from "./scene.ts";
+import { buildScene, buildSliced, stringColour } from "./scene.ts";
 
 const house: Geometry = {
   faces: [
@@ -183,18 +182,15 @@ test("a crown is one soft ball and the trunk beneath it a tone of its own; a lon
   expect(standard(crown).color.getHex()).not.toBe(standard(trunk).color.getHex());
 });
 
-test("modules are full black under glass that mirrors the sky more than the lights; the builder tells strings by glow", () => {
-  const [painted, unassigned] = buildScene(house, [
-    { corners, string: 0 },
-    { corners },
-  ]).getObjectsByProperty("name", "module");
+test("modules are full black under glass that mirrors the sky more than the lights", () => {
+  const painted = buildScene(house, [{ corners, string: 0 }, { corners }]).getObjectByName(
+    "module",
+  );
 
   // Plain glass reflects at a specular intensity of 1: the sun and the moon leave no glare.
   expect(glass(painted).specularIntensity).toBeLessThanOrEqual(0.25);
   expect(glass(painted).envMapIntensity).toBeGreaterThan(1);
   expect(glass(painted).color.getHex()).toBe(0xffffff);
-  expect(glass(painted).emissive.getHex()).toBe(new Color(stringColour(0)).getHex());
-  expect(glass(unassigned).emissive.getHex()).toBe(new Color(stringColour(null)).getHex());
   expect(stringColour(null)).not.toBe(stringColour(0));
 });
 
@@ -205,47 +201,6 @@ test("each equipment marker is drawn where the crate hung it, turned to face out
 
   expect(marker?.position.toArray()).toEqual([-8.1, 1.5, 2]);
   expect(marker?.rotation.y).toBeCloseTo(-Math.PI / 2, 9);
-});
-
-test("live, each module's cells glow in the solar colour by its string's share of peak", () => {
-  const group = buildScene(house, [{ corners, string: 0 }, { corners, string: 1 }, { corners }]);
-  const solar = 0xffa63a;
-
-  tint(group, [1, 0.5, null], { colour: solar, daylight: 1 });
-
-  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own objects.
-  const glows = group.getObjectsByProperty("name", "module").map((mesh) => glass(mesh));
-
-  expect(glows[0]?.emissive.getHex()).toBe(new Color(solar).getHex());
-  expect(glows[0]?.emissiveIntensity).toBeGreaterThan(glows[1]?.emissiveIntensity ?? 1);
-  expect(glows[1]?.emissiveIntensity).toBeGreaterThan(0);
-  expect(glows[2]?.emissiveIntensity).toBe(0);
-
-  tint(group, [1, 0.5, null], { colour: solar, daylight: 0 });
-
-  expect(glows[0]?.emissiveIntensity).toBe(0);
-});
-
-test("under a closed sky a string that makes little keeps its cell grid: a faint glow, and none without production", () => {
-  const group = buildScene(house, [
-    { corners, string: 0 },
-    { corners, string: 1 },
-    { corners, string: 2 },
-    { corners, string: 3 },
-  ]);
-
-  tint(group, [0.12, 0.02, 0, 0.8], { colour: 0xffa63a, daylight: 1 });
-
-  const [little, less, none, much] = group
-    .getObjectsByProperty("name", "module")
-    // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own objects.
-    .map((mesh) => glass(mesh).emissiveIntensity);
-
-  expect(little).toBeGreaterThan(0);
-  expect(less).toBe(little);
-  expect(none).toBe(0);
-  // Far under a good day's glow: it tells the cells apart, not the production.
-  expect(little).toBeLessThan((much ?? 0) / 2);
 });
 
 /** Each part's name, in order. */

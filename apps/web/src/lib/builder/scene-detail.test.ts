@@ -2,7 +2,7 @@
 // What the realism pass adds to the drawn scene (ADR 20 Look): which parts cast a shadow, a
 // module's body and a pitched roof's trim.
 import { expect, test } from "bun:test";
-import { BufferAttribute, BufferGeometry, InstancedMesh, Mesh } from "three";
+import { Box3, BufferAttribute, BufferGeometry, InstancedMesh, Mesh } from "three";
 import type { Geometry } from "./pv.ts";
 import { buildScene } from "./scene.ts";
 
@@ -77,26 +77,21 @@ test("all of it casts and catches shadows, but what lies flat casts none: a modu
 });
 
 test("a module is a framed body standing 3.5 cm proud of its roof, its cells on top", () => {
-  const [module] = buildScene(house, [{ corners, string: 0 }]).getObjectsByProperty(
-    "name",
-    "module",
-  );
+  const module = buildScene(house, [{ corners, string: 0 }]).getObjectByName("module");
 
-  if (!(module instanceof Mesh) || !(module.geometry instanceof BufferGeometry)) {
-    throw new TypeError("no module");
-  }
+  const body: unknown = module instanceof InstancedMesh ? module.geometry : null;
 
-  module.geometry.computeBoundingBox();
+  if (module === undefined || !(body instanceof BufferGeometry)) throw new TypeError("no module");
 
-  const { min, max } = module.geometry.boundingBox ?? {};
+  const { min, max } = new Box3().setFromObject(module);
 
   // The fixture's module lies level at 3 m.
-  expect(min?.y).toBeCloseTo(3);
-  expect(max?.y).toBeCloseTo(3.035);
-  // Its top and four sides.
-  const position: unknown = module.geometry.getAttribute("position");
+  expect(min.y).toBeCloseTo(3);
+  expect(max.y).toBeCloseTo(3.035);
+  // Its top, its four sides, and the bottom a module wound the other way stands on.
+  const points: unknown = body.getAttribute("position");
 
-  expect(position instanceof BufferAttribute ? position.count : 0).toBe(30);
+  expect(points instanceof BufferAttribute ? points.count : 0).toBe(36);
 });
 
 test("a pitched roof is trimmed with ridge caps and gutters, which cast no shadow of their own", () => {
