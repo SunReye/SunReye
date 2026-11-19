@@ -355,12 +355,24 @@
   backdrop-filter: var(--glass-filter-strong) saturate(140%);
 }
 
-/* A canvas chip (ADR 21): what floats over the 3D canvas, a live label or the camera lock. No
-   backdrop blur: the browser would make it again for every frame the canvas draws. The card
-   colour, nearly opaque instead; shape, ring and elevation come from what it sits on. */
+/* A canvas chip (ADR 21): what lies over the 3D canvas, from a live label to the builder's
+   sheets. No backdrop blur: the browser would make it again for every frame the canvas draws.
+   The card colour, nearly opaque instead; shape, ring and elevation come from what it sits on.
+   On a sheet that brings a glass of its own it takes that glass's blur off. A refusal's red
+   leans to the foreground as on the kit's glass: alone it falls short of AA over a dark scene. */
 @utility canvas-chip {
   background-color: color-mix(in oklab, var(--card) var(--chip-opacity), transparent) !important;
   background-image: var(--noise);
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  --glass-destructive-base: var(--destructive);
+  & > * {
+    --destructive: color-mix(
+      in oklab,
+      var(--foreground) var(--glass-destructive-mix),
+      var(--glass-destructive-base)
+    );
+  }
 }
 
 /* One section's rows on a drill-in page (ADR 21): on the phone's level screens an inset glass card
@@ -451,6 +463,11 @@
 }
 
 /* On ambient glass and a canvas chip the registry's muted pressed box disappears; lift it a step. */
-:is(.glass-ambient, .glass-ambient *, .canvas-chip)[data-slot="toggle-group"]::before {
+:is(
+    .glass-ambient,
+    .glass-ambient *,
+    .canvas-chip,
+    .canvas-chip *
+  )[data-slot="toggle-group"]::before {
   background-color: color-mix(in oklab, var(--foreground) 13%, transparent);
 }

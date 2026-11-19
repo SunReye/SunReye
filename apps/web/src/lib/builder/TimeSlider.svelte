@@ -29,7 +29,7 @@
 <div
   role="group"
   aria-label={m.builder_moment()}
-  class="glass-ambient flex h-11 items-center gap-2 rounded-lg pr-3 pl-1.5 ring-1 ring-border/60 elevation-1"
+  class="canvas-chip flex h-11 items-center gap-2 rounded-lg pr-3 pl-1.5 ring-1 ring-border/60 elevation-1"
 >
   <DateField
     variant="compact"

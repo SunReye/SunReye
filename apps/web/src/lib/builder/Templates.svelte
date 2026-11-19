@@ -3,7 +3,6 @@
   what it places. The nearest shape is one tap; "start empty" leaves the scene to the inspector.
 -->
 <script lang="ts">
-  import GlassCard from "../components/glass-card.svelte";
   import { Pressable } from "../components/ui/pressable/index.js";
   import Plus from "@lucide/svelte/icons/plus";
   import { m } from "../paraglide/messages.js";
@@ -53,14 +52,17 @@
 
 <section
   aria-labelledby="builder-templates"
-  class="absolute inset-0 overflow-hidden rounded-lg bg-background/50 backdrop-blur-[2px]"
+  class="absolute inset-0 overflow-hidden rounded-lg bg-background/50"
 >
-  <!-- The scroller is inside the veil: a mask on the veil would fade its blur too (ADR 21). -->
+  <!-- The scroller is inside the veil: a mask on the veil would fade its tint too (ADR 21). The
+    veil and the card lie over the 3D canvas: neither blurs it. -->
   <div
     class="grid size-full place-items-center overflow-y-auto p-6 scroll-fade-y no-scrollbar"
     style:padding-bottom="{clear + 24}px"
   >
-    <GlassCard class="w-full max-w-3xl p-5">
+    <div
+      class="canvas-chip w-full max-w-3xl overflow-hidden rounded-lg border border-border/60 p-5 elevation-1"
+    >
       <h2 id="builder-templates" class="text-[15px] font-semibold">{m.builder_templates()}</h2>
       <p class="mt-1 text-sm text-muted-foreground">{m.builder_templates_hint()}</p>
       <ul class="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3">
@@ -94,6 +96,6 @@
           </li>
         {/each}
       </ul>
-    </GlassCard>
+    </div>
   </div>
 </section>

@@ -381,7 +381,7 @@ A browser's choice of the most frames a second the 3D scene draws, *Bildrate*: U
 _Avoid_: FPS cap, refresh rate
 
 **Canvas chip**:
-A small surface floating over the 3D scene, such as a live label: the card colour, nearly opaque, without blur.
+A surface lying over the 3D scene, from a live label to the builder's inspector sheet: the card colour, nearly opaque, without blur.
 _Avoid_: Glass chip, badge
 
 **Motion setting**:

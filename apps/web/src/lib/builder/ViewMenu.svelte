@@ -25,7 +25,7 @@
         {...props}
         variant="ghost"
         aria-label={m.builder_views()}
-        class="glass-ambient size-11 ring-1 ring-border/60 elevation-1"
+        class="canvas-chip size-11 ring-1 ring-border/60 elevation-1"
       >
         <Rotate3d />
       </Button>

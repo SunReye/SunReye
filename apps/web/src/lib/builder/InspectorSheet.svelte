@@ -1,5 +1,5 @@
 <!--
-  The inspector on a portrait tablet (ADR 20): a glass sheet over the canvas's lower edge that is
+  The inspector on a portrait tablet (ADR 20): a sheet over the canvas's lower edge that is
   pulled up to edit and down to look. The finger moves it 1:1, then a spring takes over at the
   release velocity and settles at the nearer snap (ADR 21). A tap on the handle toggles it.
 -->
@@ -92,13 +92,13 @@
   }
 </script>
 
-<!-- A second layer of card behind the glass: its rows are read over a busy scene. -->
+<!-- Over the 3D canvas: the canvas chip's card, nearly opaque and without blur (ADR 21). -->
 <section
   id="{uid}-sheet"
   aria-label={m.builder_edit()}
   bind:clientHeight={height}
   class={[
-    "glass-ambient absolute inset-x-0 bottom-0 z-10 flex h-[min(78%,760px)] before:pointer-events-none before:absolute before:inset-0 before:-z-10 before:bg-card/60 flex-col overflow-hidden rounded-t-lg border border-b-0 border-border/60 elevation-4",
+    "canvas-chip absolute inset-x-0 bottom-0 z-10 flex h-[min(78%,760px)] flex-col overflow-hidden rounded-t-lg border border-b-0 border-border/60 elevation-4",
     held === null && "transition-transform duration-(--motion-move) ease-(--motion-ease-in-out)",
   ]}
   style:transform="translateY({y}px)"

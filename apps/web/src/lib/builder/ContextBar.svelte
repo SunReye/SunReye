@@ -58,7 +58,7 @@
     bind:clientWidth={width}
     bind:clientHeight={height}
     class={[
-      "glass-ambient pointer-events-auto absolute top-0 left-0 flex max-w-[calc(100%-1.5rem)] flex-col rounded-md p-0.5 ring-1 ring-border/60 elevation-1",
+      "canvas-chip pointer-events-auto absolute top-0 left-0 flex max-w-[calc(100%-1.5rem)] flex-col rounded-md p-0.5 ring-1 ring-border/60 elevation-1",
       // Measured before it is shown: it never jumps into place.
       width === 0 && "invisible",
     ]}
