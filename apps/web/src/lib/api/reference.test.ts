@@ -1,30 +1,13 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { connect, type Transport } from "./core.ts";
-import { BASE } from "./core.harness.ts";
-
-/** A core that answers every request with `response` and keeps what it was sent. */
-function answering(response: Response): Transport & { readonly sent: Request[] } {
-  const sent: Request[] = [];
-
-  return {
-    base: BASE,
-    sent,
-    fetch: (request) => {
-      sent.push(request);
-
-      return Promise.resolve(response);
-    },
-  };
-}
-
-const DOCUMENT = { openapi: "3.1.0", info: { title: "SunReye", version: "1" }, paths: {} };
+import { connect } from "./core.ts";
+import { answering, API_DOCUMENT, BASE } from "./core.harness.ts";
 
 test("the API reference reads the core's document under its prefix, and names that prefix its server", async () => {
-  const core = answering(Response.json(DOCUMENT));
+  const core = answering(Response.json(API_DOCUMENT));
 
   expect(await connect(core).reference()).toEqual({
-    ...DOCUMENT,
+    ...API_DOCUMENT,
     servers: [{ url: "http://core.test/prefix" }],
   });
   expect(core.sent[0]?.url).toBe(`${BASE}openapi.json`);

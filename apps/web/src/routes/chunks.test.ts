@@ -1,7 +1,7 @@
 /// <reference types="bun" />
 // three.js loads up front only on the builder route (ADR 11, 20); the dashboard loads it lazily,
-// once a scene exists and WebGL2 is there. Scalar loads only with the API reference (ADR 11). Read from the SPA build's Vite manifest: its chunks and
-// their static and dynamic imports.
+// once a scene exists and WebGL2 is there. Scalar loads only with the API reference (ADR 11).
+// Read from the SPA build's Vite manifest: its chunks and their static and dynamic imports.
 // The gate builds the SPA before `bun test`; run `bun run --cwd apps/web build` first by hand.
 import { expect, test } from "bun:test";
 

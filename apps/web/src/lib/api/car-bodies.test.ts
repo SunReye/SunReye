@@ -1,23 +1,7 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { connect, type Transport } from "./core.ts";
-
-const BASE = "http://core.test/prefix/";
-
-/** A core that answers every request with `response` and keeps what it was sent. */
-function answering(response: Response): Transport & { readonly sent: Request[] } {
-  const sent: Request[] = [];
-
-  return {
-    base: BASE,
-    sent,
-    fetch: (request) => {
-      sent.push(request);
-
-      return Promise.resolve(response);
-    },
-  };
-}
+import { connect } from "./core.ts";
+import { answering, BASE } from "./core.harness.ts";
 
 test("a car body uploads as a GLB under the prefix and answers its id", async () => {
   const transport = answering(Response.json({ id: "ab".repeat(32) }, { status: 201 }));

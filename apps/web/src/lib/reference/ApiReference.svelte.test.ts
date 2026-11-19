@@ -3,28 +3,15 @@ import { setMode } from "mode-watcher";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { render } from "vitest-browser-svelte";
 import type { Problem } from "../api/client.ts";
+import { API_DOCUMENT } from "../api/core.harness.ts";
 import type { ApiDocument } from "../api/reference.ts";
 import ApiReference from "./ApiReference.svelte";
 
 // Scalar draws the reference slowly while other suites run.
 const SLOW = { timeout: 15_000 };
 
-const DOCUMENT = {
-  openapi: "3.1.0",
-  servers: [{ url: "http://core.test/prefix" }],
-  info: { title: "SunReye", version: "1" },
-  tags: [{ name: "views" }],
-  paths: {
-    "/api/v1/views": {
-      get: {
-        tags: ["views"],
-        summary: "Every saved view",
-        operationId: "list_views",
-        responses: { 200: { description: "The views" } },
-      },
-    },
-  },
-};
+/** The document as the core client hands it: its server the core's root. */
+const SERVED = { ...API_DOCUMENT, servers: [{ url: "http://core.test/prefix" }] };
 
 /** A core that answers the reference with `answer`. */
 const core = (answer: ApiDocument | Problem) => ({ reference: () => Promise.resolve(answer) });
@@ -40,7 +27,7 @@ afterEach(() => {
 });
 
 test("the reference shows the core's operations, and reaches nothing past the page", async () => {
-  const screen = await render(ApiReference, { core: core(DOCUMENT) });
+  const screen = await render(ApiReference, { core: core(SERVED) });
 
   await expect
     .element(screen.getByRole("heading", { name: "Every saved view" }), SLOW)
@@ -55,7 +42,7 @@ test("the reference shows the core's operations, and reaches nothing past the pa
 });
 
 test("following the reference leaves the router's hash as it was", async () => {
-  const screen = await render(ApiReference, { core: core(DOCUMENT) });
+  const screen = await render(ApiReference, { core: core(SERVED) });
 
   await expect
     .element(screen.getByRole("heading", { name: "Every saved view" }), SLOW)
@@ -69,7 +56,7 @@ test("following the reference leaves the router's hash as it was", async () => {
 
 test("the reference wears the app's theme, follows it, and leaves the page's body as it was", async () => {
   const before = document.body.className;
-  const screen = await render(ApiReference, { core: core(DOCUMENT) });
+  const screen = await render(ApiReference, { core: core(SERVED) });
 
   await expect
     .element(screen.getByRole("heading", { name: "Every saved view" }), SLOW)

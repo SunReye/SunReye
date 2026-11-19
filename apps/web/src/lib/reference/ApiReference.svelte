@@ -7,6 +7,7 @@
   import "@scalar/api-reference/style.css";
   import { mode } from "mode-watcher";
   import { untrack } from "svelte";
+  import LoadingRows from "../components/loading-rows.svelte";
   import ProblemAlert from "../components/problem-alert.svelte";
   import type { Core } from "../api/core.ts";
   import type { ApiDocument } from "../api/reference.ts";
@@ -32,7 +33,6 @@
       persistAuth: false,
       agent: { disabled: true },
       showDeveloperTools: "never",
-      showToolbar: "never",
       hideClientButton: true,
       hideTestRequestButton: true,
       documentDownloadType: "json",
@@ -64,7 +64,9 @@
   }
 </script>
 
-{#await answer then got}
+{#await answer}
+  <LoadingRows rows={6} />
+{:then got}
   {#if "problem" in got}
     <ProblemAlert problem={got.problem} />
   {:else}
