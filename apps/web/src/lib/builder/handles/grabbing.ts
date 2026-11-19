@@ -6,7 +6,7 @@
 import { type Group, type PerspectiveCamera, Raycaster, Vector2 } from "three";
 import { picked } from "../levels.ts";
 import type { Pv, Scene } from "../pv.ts";
-import { strike, type Panel } from "../scene.ts";
+import { strike, toThree, type Panel } from "../scene.ts";
 import { handleOf } from "./gizmo.ts";
 import {
   drag,
@@ -113,7 +113,7 @@ export class Grabbing {
     const ray = rayAt(this.#camera, at);
 
     if (handle !== null)
-      return { grip: handle.grip, point: handle.point, ray, height: handle.at[1] };
+      return { grip: handle.grip, point: handle.point, ray, height: handle.at[1], at: handle.at };
 
     // A fence has no footprint to drag.
     return editing.target.kind === "fence" ? undefined : this.#bodyGrabbed(at, editing, ray);
@@ -136,7 +136,7 @@ export class Grabbing {
     const level = picked(editing.scene, hit, editing.pv);
 
     return level !== null && same(editing.target, level)
-      ? { grip: "move", ray, height: hit.point[2] }
+      ? { grip: "move", ray, height: hit.point[2], at: toThree(hit.point) }
       : undefined;
   }
 
