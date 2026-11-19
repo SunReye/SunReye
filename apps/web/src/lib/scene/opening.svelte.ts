@@ -1,18 +1,17 @@
-// When a studio draws (ADR 20): once per frame on a change and while the camera flies, in a loop
-// only while the weather's moves (ADR 23 "Motion"), and nothing before it is prepared, so the
-// first frame never waits on a compile. Ported from the prototype's background load.
+// When a studio draws (ADR 20): once per frame on a change and while the camera flies or a tint
+// glides, in a loop only while the weather's moves (ADR 23 "Motion"), every frame held to the
+// frame limit (ADR 21), and nothing before it is prepared, so the first frame never waits on a
+// compile. Ported from the prototype's background load.
 import { motion } from "../motion/tier.svelte.ts";
+import { Burst } from "./burst.ts";
 import { Flight } from "./flight.ts";
-import { Fade } from "./lens.ts";
+import { frameLimit } from "./frame-limit.svelte.ts";
 import { Loop, pauseUnseen } from "./loop.ts";
 import { ahead, gpuIdle, nextFrame, pause, prepare } from "./prepare.ts";
 import type { Ghost } from "./stage.svelte.ts";
 import type { Studio } from "./studio.ts";
-import type { Falling, Glass } from "./weather.ts";
 import { idle } from "./warm.ts";
-
-/** A burst frame slower than this ends the burst: three frames at 60 Hz. */
-const BURST_FRAME_MS = 50;
+import { weatherMoves, type Moving } from "./weather-moves.svelte.ts";
 
 export class Opening {
   readonly #studio: Studio;
@@ -20,25 +19,30 @@ export class Opening {
   readonly flight = new Flight(() => motion.still);
   readonly #drawn: () => void;
   #frame = 0;
-  /** The pending frame of a settled picture's refining burst (ADR 20 Rendering quality). */
-  #refining = 0;
-  /** Counts the bursts begun and ended, so a frame can tell its own is still the current one. */
-  #burst = 0;
+  /** A settled picture's refining burst (ADR 20 Rendering quality). */
+  readonly #burst: Burst;
   #held = true;
   #gone = false;
   #later: ReturnType<typeof setTimeout> | undefined;
   /** A change waits for the loop's next frame: the picture is not the last one moved on. */
   #changed = false;
+  /** Holds every frame drawn here to this browser's frame limit (ADR 21). */
+  readonly #pace = frameLimit.pace();
+  /** What moves besides the flight, each stepped in a drawn frame until it says it rests. */
+  readonly #moving = new Set<(now: number) => boolean>();
   readonly #unwatch: () => void;
-  /** The lens glass as it fades, and its hold on the loop while anything on it moves or fades. */
-  readonly #lens = new Fade();
-  #glazing: (() => void) | undefined;
+  /** Lets the loop go of what moved with the weather. */
+  #unmove: (() => void) | undefined;
+  /** The frame watch's leave of its idle watch while the loop runs. */
+  #looping: (() => void) | undefined;
+  /** Told once the first frame is drawn, or never will be: the frame watch settles from then. */
+  readonly #settle: () => void;
 
   /**
    * The weather loop (ADR 23 "Motion"): the one loop this studio is drawn in. What moves keeps
    * it running with `keep`, and it draws while anything is kept, the picture is prepared, the
-   * tier is full, the tab is shown and the canvas is on screen. Every change asked for with
-   * `render` is drawn in its frames while it runs.
+   * tier is full, the tab is shown and the canvas is on screen, in every frame the frame limit
+   * allows. Every change asked for with `render` is drawn in its frames while it runs.
    */
   readonly loop: Loop = new Loop({
     frames: {
@@ -47,21 +51,31 @@ export class Opening {
         cancelAnimationFrame(id);
       },
     },
-    draw: (now) => this.#paint(now),
+    due: (now) => this.#pace.take(now),
+    draw: (now) => {
+      this.#paint(now);
+    },
     count: (now) => {
       motion.frame(now);
     },
+    // The frame watch judges the loop by its own frames while it runs (ADR 21).
+    started: () => {
+      this.#looping = motion.loop();
+    },
     // One frame more: it places the labels and starts the burst the loop's frames went without.
     stopped: () => {
+      this.#looping?.();
       this.#changed = false;
       this.render();
     },
   });
 
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws with it.
-  constructor(studio: Studio, drawn: () => void) {
+  constructor(studio: Studio, drawn: () => void, settle: () => void) {
     this.#studio = studio;
     this.#drawn = drawn;
+    this.#settle = settle;
+    this.#burst = new Burst(studio, () => this.#held || this.#gone);
     this.loop.pause("held", true);
     this.#unwatch = pauseUnseen(this.loop, studio.renderer.domElement);
   }
@@ -71,62 +85,77 @@ export class Opening {
     if (this.#held || this.#gone) return;
 
     // The picture is about to change: what refined the last one is void.
-    this.#rest();
+    this.#burst.rest();
 
-    // One frame, one draw: the loop's own is the next, whatever its cap.
+    // One frame, one draw: the loop's own is the next.
     if (this.loop.running) {
       this.#changed = true;
-      this.loop.ask();
 
       return;
     }
 
     this.#frame ||= requestAnimationFrame((now) => {
       this.#frame = 0;
+
+      // Not in this frame, by the limit: the next one allowed draws what changed.
+      if (!this.#pace.take(now)) {
+        this.render();
+
+        return;
+      }
+
       this.#changed = true;
 
       if (this.#paint(now)) this.render();
     });
   };
 
-  /**
-   * Shows what moves with the `weather`, read as it changes (ADR 23). What falls is shown as
-   * the motion tier does: it moves in the loop on full, lite draws a sparse still field, still
-   * draws none. The glass is put on the lens: it fades in and out in the loop, which it keeps
-   * until the lens is clear again or frost alone stands on it; off the full tier, where nothing
-   * loops, the lens is cleared at once. Call during a component's set-up.
-   */
-  moves(weather: { readonly falling: Falling | null; readonly glass: Glass | null }): void {
-    $effect(() => {
-      const target = weather.glass;
+  /** Steps `step` in each frame drawn, the loop's or its own, until it returns false: a tint's
+   * glide (ADR 20 Motion). The release ends it early. */
+  // fallow-ignore-next-line unused-class-member -- the live glow calls it through `Lit`.
+  animate(step: (now: number) => boolean): () => void {
+    this.#moving.add(step);
+    this.render();
 
-      if (motion.tier === "full") this.#glaze(target);
-      else this.#clear();
-    });
+    return () => {
+      this.#moving.delete(step);
+    };
+  }
 
-    $effect(() => {
-      const fell = weather.falling;
-      const { tier } = motion;
+  /** What casts a shadow changed, as when a car parks: draws in the next frame, the sun's shadow
+   * map with it (ADR 20 Rendering). */
+  // fallow-ignore-next-line unused-class-member -- SceneCanvas calls it through `Lit["opening"]`.
+  readonly recast = (): void => {
+    this.#studio.recast();
+    this.render();
+  };
 
-      this.#studio.fall(tier === "still" ? null : fell, tier === "lite");
-      this.render();
-
-      return fell !== null && tier === "full"
-        ? this.loop.keep((seconds) => {
-            this.#studio.drift(seconds);
-          })
-        : undefined;
-    });
-
-    // The loop is the full tier's, whoever keeps it.
-    $effect(() => {
-      this.loop.pause("tier", motion.tier !== "full");
-    });
+  /** Shows what moves with the `weather`, read as it changes (ADR 23): what falls and the lens
+   * glass, each in the loop while it moves. Call during a component's set-up. */
+  moves(weather: Moving): void {
+    this.#unmove = weatherMoves(this.#studio, this.loop, this.render, weather);
   }
 
   /** Once `built`, prepares, draws the first frame, calls `ready` once it is drawn, and `due`
    * when idle after. */
   async open(built: Readonly<Promise<void>>, ready: () => void, due: () => void): Promise<void> {
+    try {
+      await this.#first(built);
+    } finally {
+      this.#settle();
+    }
+
+    if (this.#gone || this.#held) return;
+
+    ready();
+    // After the fade, when nothing else is waiting.
+    this.#later = setTimeout(() => {
+      idle(due, 2000);
+    }, 450);
+  }
+
+  /** Prepares and draws the first frame; held still if it could not be. */
+  async #first(built: Readonly<Promise<void>>): Promise<void> {
     await built;
     await pause();
 
@@ -139,14 +168,6 @@ export class Opening {
     // Not before the GPU has drawn it: a fade over a frame still rasterising is a cut.
     await gpuIdle(this.#studio.renderer);
     await nextFrame();
-
-    if (this.#gone) return;
-
-    ready();
-    // After the fade, when nothing else is waiting.
-    this.#later = setTimeout(() => {
-      idle(due, 2000);
-    }, 450);
   }
 
   /** Runs `park`, its programs compiled first; on screen, the change fades in. */
@@ -190,54 +211,28 @@ export class Opening {
     this.#gone = true;
     this.#unwatch();
     this.loop.pause("gone", true);
-    this.#unglaze();
+    this.#unmove?.();
     clearTimeout(this.#later);
     cancelAnimationFrame(this.#frame);
-    this.#rest();
+    this.#burst.rest();
   }
 
   readonly #isGone = (): boolean => this.#gone;
 
-  #glaze(target: Glass | null): void {
-    this.#lens.aim(target);
-
-    if (this.#resting()) return;
-
-    this.#glazing ??= this.loop.keep((seconds) => {
-      this.#studio.lens(this.#lens.at(seconds), seconds);
-
-      // The loop's last frame is drawn through the lens as it stands.
-      if (this.#resting()) this.#unglaze();
-    });
-  }
-
-  /** Whether the lens owes no frame: it is clear, or frost alone has faded in and stands drawn
-   * (ADR 23 "Motion": the loop stops when the weather turns dry). */
-  #resting(): boolean {
-    return this.#lens.clear || this.#lens.still;
-  }
-
-  #unglaze(): void {
-    this.#glazing?.();
-    this.#glazing = undefined;
-  }
-
-  #clear(): void {
-    this.#lens.cut();
-    this.#studio.lens(null, 0);
-    this.#unglaze();
-    this.render();
-  }
-
-  /** A frame at `now`: where the flight moved the camera is drawn in it, not the next. True
-   * while the flight goes on. */
+  /** A frame at `now`: where the flight moved the camera, and what else moves, is drawn in it,
+   * not the next. True while anything goes on. */
   #paint(now: number): boolean {
-    const flying = this.flight.step(now);
+    let moving = this.flight.step(now);
 
-    this.#changed ||= flying;
+    for (const step of this.#moving) {
+      if (step(now)) moving = true;
+      else this.#moving.delete(step);
+    }
+
+    this.#changed ||= moving;
     this.#draw();
 
-    return flying;
+    return moving;
   }
 
   /** Draws; `drawn` hears of a changed picture alone, and not of rain that fell on. */
@@ -249,40 +244,10 @@ export class Opening {
 
     if (changed) this.#drawn();
 
-    this.#rest();
+    this.#burst.rest();
 
-    // A picture that moves on in a 30th of a second is never settled.
-    if (!this.loop.running) this.#refine();
-  }
-
-  /** A frame of the burst in each of the next frames, until the studio has had its fill, the
-   * picture changes, or the GPU takes long over one: a device that cannot hold the burst keeps
-   * the picture it has. Where the look has no burst, none is asked for. */
-  #refine(): void {
-    const burst = (this.#burst += 1);
-
-    this.#refining = requestAnimationFrame((start) => {
-      this.#refining = 0;
-
-      if (this.#held || this.#gone || !this.#studio.refine()) return;
-
-      void this.#next(burst, start);
-    });
-  }
-
-  /** The burst's next frame, once the GPU has drawn the one begun at `start`, and in time. */
-  async #next(burst: number, start: number): Promise<void> {
-    // Not before the GPU has drawn it: frames queued faster than they are drawn pile up.
-    await gpuIdle(this.#studio.renderer);
-
-    if (performance.now() - start < BURST_FRAME_MS && burst === this.#burst) this.#refine();
-  }
-
-  /** Ends the burst: a frame of it still on the GPU starts no other. */
-  #rest(): void {
-    this.#burst += 1;
-    cancelAnimationFrame(this.#refining);
-    this.#refining = 0;
+    // A picture that moves on with the next frame is never settled.
+    if (!this.loop.running) this.#burst.start();
   }
 
   #hold(on: boolean): void {

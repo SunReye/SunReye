@@ -19,7 +19,7 @@
   role="toolbar"
   aria-label={m.builder_tools()}
   aria-orientation="vertical"
-  class="glass-ambient flex flex-col gap-0.5 rounded-md p-0.5 ring-1 ring-border/60 elevation-1"
+  class="canvas-chip flex flex-col gap-0.5 rounded-md p-0.5 ring-1 ring-border/60 elevation-1"
 >
   <Button
     variant="ghost"

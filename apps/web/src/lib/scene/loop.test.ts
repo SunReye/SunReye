@@ -1,5 +1,6 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
+import { frameInterval, Pace, type FrameLimit } from "./frame-limit.ts";
 import { Loop, type Frames } from "./loop.ts";
 
 /** A display at 60 Hz, each frame run by hand. */
@@ -41,19 +42,23 @@ function display() {
   };
 }
 
-function open() {
+/** A loop on a 60 Hz display, held to `limit`. */
+function open(limit: FrameLimit = "unlimited") {
   const screen = display();
-  const seen = { draws: 0, counted: 0, stopped: 0 };
+  const seen = { draws: 0, counted: 0, started: 0, stopped: 0 };
+  const pace = new Pace(() => frameInterval(limit));
 
   const loop = new Loop({
     frames: screen.frames,
+    due: (now) => pace.take(now),
     draw() {
       seen.draws += 1;
-
-      return false;
     },
     count() {
       seen.counted += 1;
+    },
+    started() {
+      seen.started += 1;
     },
     stopped() {
       seen.stopped += 1;
@@ -63,7 +68,7 @@ function open() {
   return { screen, seen, loop };
 }
 
-test("nothing loops until something kept shows; then it draws 30 times a second on a 60 Hz display", () => {
+test("nothing loops until something kept shows; then it draws in every frame the display gives", () => {
   const { screen, seen, loop } = open();
 
   expect([loop.running, screen.asked]).toEqual([false, false]);
@@ -73,30 +78,26 @@ test("nothing loops until something kept shows; then it draws 30 times a second 
   loop.keep((seconds) => {
     times.push(seconds);
   });
-  expect(loop.running).toBe(true);
+  expect([loop.running, seen.started]).toEqual([true, 1]);
   screen.run(60);
-  expect(seen.draws).toBe(30);
+  expect(seen.draws).toBe(60);
   // Each keeper steps before each draw, by the loop's own clock.
-  expect(times.length).toBe(30);
-  expect(times.at(-1)).toBeCloseTo(29 / 30, 2);
+  expect(times.length).toBe(60);
+  expect(times.at(-1)).toBeCloseTo(59 / 60, 2);
 });
 
-test("the cap holds on a 120 Hz display and bears a frame that comes early", () => {
-  const { screen, seen, loop } = open();
+test("the frame limit holds the loop: under 30 it draws in every other frame of a 60 Hz display", () => {
+  const { screen, seen, loop } = open("30");
+  const times: number[] = [];
 
-  loop.keep(() => {});
-  screen.run(120, 1000 / 120);
+  loop.keep((seconds) => {
+    times.push(seconds);
+  });
+  screen.run(60);
   expect(seen.draws).toBe(30);
-
-  seen.draws = 0;
-
-  // 60 Hz with a jitter of 2 ms either way.
-  for (let i = 0; i < 30; i++) {
-    screen.run(1, 1000 / 60 - 2);
-    screen.run(1, 1000 / 60 + 2);
-  }
-
-  expect(seen.draws).toBe(30);
+  // What moves steps only for a frame that is drawn, and by the time that passed.
+  expect(times.length).toBe(30);
+  expect(times.at(-1)).toBeCloseTo(58 / 60, 2);
 });
 
 test("the loop runs while any keeper holds it and stops with the last", () => {
@@ -163,46 +164,11 @@ test("a frame that stalls moves the clock a tenth of a second at most", () => {
 });
 
 test("the frame watch is told of every frame the display gives, drawn in or not", () => {
-  const { screen, seen, loop } = open();
+  const { screen, seen, loop } = open("30");
 
   loop.keep(() => {});
   screen.run(60);
-  expect(seen.counted).toBe(60);
-});
-
-test("a picture that changed besides is drawn in the next frame, and on while the draw says so", () => {
-  const screen = display();
-  let flying = 0;
-  let draws = 0;
-
-  const loop = new Loop({
-    frames: screen.frames,
-    draw() {
-      draws += 1;
-      flying -= 1;
-
-      return flying > 0;
-    },
-    count() {},
-    stopped() {},
-  });
-
-  loop.keep(() => {});
-  screen.run(1);
-  expect(draws).toBe(1);
-
-  loop.ask();
-  screen.run(1);
-  expect(draws).toBe(2);
-
-  // A flight of five frames, each drawn.
-  flying = 5;
-  loop.ask();
-  screen.run(5);
-  expect(draws).toBe(7);
-  // Then the cap again.
-  screen.run(1);
-  expect(draws).toBe(7);
+  expect([seen.counted, seen.draws]).toEqual([60, 30]);
 });
 
 test("a keeper that lets go in its own step ends the loop there, and the stop is told", () => {

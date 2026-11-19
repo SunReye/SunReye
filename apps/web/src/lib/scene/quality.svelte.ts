@@ -2,8 +2,9 @@
  * The 3D quality as reactive state: the rune shell over `./quality`. The choice, the GPU last
  * seen and the levels strain has taken off Auto are kept per browser (ADR 20 Look).
  */
+import { MediaQuery } from "svelte/reactivity";
 import { forget, read, write } from "../kept.ts";
-import type { MotionTier } from "../motion/tier.ts";
+import { STRAINED_AT, strainLeft, type MotionTier } from "../motion/tier.ts";
 import {
   capable,
   drawn,
@@ -18,16 +19,28 @@ import {
 /** Where each browser keeps its 3D quality. */
 export const QUALITY = "sunreye.3d-quality";
 
-const STEPS = "sunreye.3d-strain";
+/** Where each browser keeps the levels strain has taken off Auto. */
+export const STEPS = "sunreye.3d-strain";
 const GPU = "sunreye.gpu";
+
+/** A touch device, a phone or a tablet: its primary pointer is coarse (ADR 20). */
+const touch = new MediaQuery("(pointer: coarse)");
 
 export class QualityStore {
   #choice = $state(parseQuality(read(QUALITY)));
-  #steps = $state(parseSteps(read(STEPS)));
+  #steps = $state(0);
   #gpu = $state(read(GPU));
   /** Studios on show: only a strain measured over a drawn scene says anything about its cost.
    * Asked when a strain is measured, never rendered: plain, so a studio's set-up tracks nothing. */
   #shown = 0;
+
+  /** The levels kept count while their strain lasts: seven days from its date, which the frame
+   * watch keeps (ADR 21). `now` tells the time at load. */
+  constructor(now: () => number = () => Date.now()) {
+    if (strainLeft(read(STRAINED_AT), now()) > 0) this.#steps = parseSteps(read(STEPS));
+    // Forgotten for good: a later strain's date must not bring these steps back.
+    else forget(STEPS);
+  }
 
   get choice(): Quality {
     return this.#choice;
@@ -92,7 +105,7 @@ export class QualityStore {
   }
 
   #device(tier: MotionTier) {
-    return { capable: capable(this.#gpu), steps: this.#steps, tier };
+    return { capable: capable(this.#gpu), touch: touch.current, steps: this.#steps, tier };
   }
 }
 

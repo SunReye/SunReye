@@ -2,22 +2,19 @@
 // backdrop in the page colour, a floor that fades into it, and the passes its 3D quality asks for.
 // It draws only when asked: the loop is the weather's (ADR 23 "Motion"), and not the studio's.
 import {
-  Color,
+  type Color,
   DirectionalLight,
   HemisphereLight,
   NeutralToneMapping,
   type Object3D,
   type PerspectiveCamera,
-  PMREMGenerator,
   Scene,
   SRGBColorSpace,
-  type Texture,
   Vector3,
   WebGLRenderer,
-  type WebGLRenderTarget,
 } from "three";
 import { toThree } from "../builder/scene.ts";
-import { aim, backdrop, sky } from "./backdrop.ts";
+import { Environment } from "./environment.ts";
 import { Fall } from "./falling.ts";
 import type { Daylight, Theme } from "./light.ts";
 import { Passes } from "./passes.ts";
@@ -35,24 +32,15 @@ export class Studio {
   readonly #sun = new DirectionalLight(0xffffff, 3);
   /** A faint sky and ground bounce on top of the image-based light; at night, the sky itself. */
   readonly #fill = new HemisphereLight();
-  readonly #pmrem: PMREMGenerator;
-  readonly #sky = sky(1000);
-  readonly #skyScene = new Scene();
+  readonly #environment: Environment;
   readonly #plot = new Plot();
   /** Rain and snow in the air: the studio's own, like the floor, and no part of what is built. */
   readonly #fall = new Fall();
-  #environment: WebGLRenderTarget | undefined;
-  /** What the environment and the backdrop were made for: either is made again only on change. */
-  #environed = "";
-  #backdrop: Texture | undefined;
-  #backdropped = "";
   /** The plot's centre in three.js's frame and its radius in metres. */
   readonly #centre = new Vector3();
   #radius = 10;
   readonly #toward = new Vector3(0, 1, 0);
   readonly camera: PerspectiveCamera;
-  /** The environment waits for `environ`: made at once, it would compile its programs blocking. */
-  #held: readonly [Daylight, Theme] | null | undefined = null;
   #size: readonly [number, number] = [1, 1];
 
   /** `look` is asked once, with the GPU this canvas draws on, where the browser tells. */
@@ -66,15 +54,18 @@ export class Studio {
     this.camera = camera;
     this.renderer = new WebGLRenderer({
       canvas,
-      antialias: true,
+      // The scene is antialiased in its own target (passes.ts); the canvas takes the picture alone.
+      antialias: false,
       powerPreference: "high-performance",
     });
     this.#look = look(gpuOf(this.renderer.getContext()));
     this.renderer.shadowMap.enabled = true;
+    // Drawn on `recast` alone (ADR 20 Rendering): three.js would draw it with every render, the
+    // occlusion's own among them, under a sun that stands still.
+    this.renderer.shadowMap.autoUpdate = false;
     this.renderer.toneMapping = NeutralToneMapping;
     this.renderer.outputColorSpace = SRGBColorSpace;
-    this.#pmrem = new PMREMGenerator(this.renderer);
-    this.#skyScene.add(this.#sky);
+    this.#environment = new Environment(this.renderer, this.scene);
     soften(this.#sun);
     this.scene.add(this.#sun, this.#sun.target, this.#fill, this.#plot.floor, this.#fall.object);
     this.scene.fog = this.#plot.fog;
@@ -91,6 +82,12 @@ export class Studio {
   /** Device pixels drawn per CSS pixel. */
   get pixelRatio(): number {
     return Math.min(window.devicePixelRatio, this.#look.pixelRatio);
+  }
+
+  /** What it draws now. */
+  // fallow-ignore-next-line unused-class-member -- the readout reads it through the perf store.
+  get look(): Look {
+    return this.#look;
   }
 
   /** The sun's shadow map, in texels a side. */
@@ -123,12 +120,24 @@ export class Studio {
     camera.updateProjectionMatrix();
     this.#place();
     this.#shade();
+    this.recast();
+  }
+
+  /** What casts a shadow changed, or where from: the sun's shadow map is drawn again with the
+   * next frame. */
+  recast(): void {
+    this.renderer.shadowMap.needsUpdate = true;
   }
 
   /** Sun or moon, sky, environment, backdrop, fog and exposure for the time and the theme, and
    * the `weather`'s fog, which greys backdrop and fog alike, and floor (ADR 23). */
   light(day: Daylight, look: Theme, page: Readonly<Color>, weather?: SceneWeather): void {
-    this.#toward.set(...toThree(day.toward));
+    const toward = toThree(day.toward);
+
+    // The map is the sun's view: its colour and strength are not in it.
+    if (!this.#toward.equals({ x: toward[0], y: toward[1], z: toward[2] })) this.recast();
+
+    this.#toward.set(...toward);
     this.#sun.color.setRGB(day.colour.r, day.colour.g, day.colour.b);
     this.#sun.intensity = day.intensity;
     this.#sun.shadow.intensity = day.shadow;
@@ -137,23 +146,12 @@ export class Studio {
     this.#fill.intensity = day.fill.intensity;
     this.#place();
 
-    if (this.#held === undefined) this.#environ(day, look);
-    else this.#held = [day, look];
-
     // The air's colour: the page's, greyed by the weather's fog, a twentieth at a time.
     const given = weather ?? DRY;
     const air = fogColour([page.r, page.g, page.b], look.dark, Math.round(given.fog * 20) / 20);
-    const backdropped = JSON.stringify([air, look]);
 
     this.renderer.toneMappingExposure = look.exposure;
-
-    if (backdropped !== this.#backdropped) {
-      this.#backdropped = backdropped;
-      this.#backdrop?.dispose();
-      this.#backdrop = backdrop(new Color(...air), look.exposure, look.dark);
-      this.scene.background = this.#backdrop;
-    }
-
+    this.#environment.light(day, look, air);
     this.#plot.weather(given, air, look.exposure);
     this.#fall.tint(look.dark, look.exposure);
     this.#passes.tint(look.dark);
@@ -189,6 +187,17 @@ export class Studio {
     this.#passes.render();
   }
 
+  /** Counts what each frame draws from here on (ADR 21 "Measuring"); `clock` tells its time. */
+  measure(clock?: () => number) {
+    return this.#passes.measure(() => this.#sun.shadow.map, clock);
+  }
+
+  /** Counts no more, and draws as before `measure`. */
+  // fallow-ignore-next-line unused-class-member -- the readout calls it through the perf store.
+  unmeasure(): void {
+    this.#passes.unmeasure();
+  }
+
   /** Ultra's burst: one more frame into the settled picture; true while more are due. */
   refine(): boolean {
     return this.#passes.refine();
@@ -215,14 +224,8 @@ export class Studio {
 
   /** Makes the environment held since: its programs first, used on a map of a few pixels. */
   async environ(): Promise<void> {
-    await this.compileAsync(this.#skyScene);
-    this.#pmrem.fromScene(this.#skyScene, 0, 0.1, 2000, { size: 16 }).dispose();
-
-    const held = this.#held;
-
-    this.#held = undefined;
-
-    if (held !== null && held !== undefined) this.#environ(...held);
+    await this.compileAsync(this.#environment.sky);
+    this.#environment.open();
   }
 
   /** A frame of a few pixels: every pass makes and first uses its programs. */
@@ -237,37 +240,8 @@ export class Studio {
   dispose(): void {
     this.#passes.dispose();
     this.#fall.dispose();
-    this.#environment?.dispose();
-    this.#backdrop?.dispose();
-    this.#pmrem.dispose();
+    this.#environment.dispose();
     this.renderer.dispose();
-  }
-
-  /**
-   * The sky model at the sun, as the scene's environment. Made again only once the sun has moved
-   * a degree, the clouds have changed or the theme has: a dragged time slider moves it by far
-   * less per step.
-   */
-  #environ(day: Daylight, { dark, environment }: Theme): void {
-    const environed = JSON.stringify([
-      day.sun.map((v) => Math.round(v * 60)),
-      dark,
-      Math.round(day.clouds.coverage * 20),
-    ]);
-
-    this.scene.environmentIntensity = day.environment * environment;
-
-    if (environed === this.#environed) return;
-
-    this.#environed = environed;
-    aim(this.#sky, new Vector3(...toThree(day.sun)), {
-      dark,
-      low: day.haze,
-      clouds: day.clouds,
-    });
-    this.#environment?.dispose();
-    this.#environment = this.#pmrem.fromScene(this.#skyScene, 0, 0.1, 2000);
-    this.scene.environment = this.#environment.texture;
   }
 
   /** The look's passes and shadow map. */
@@ -275,6 +249,7 @@ export class Studio {
     this.#passes.follow(this.#look);
     shadowFor(this.renderer, this.#sun, this.#look);
     this.#shade();
+    this.recast();
   }
 
   #shade(): void {

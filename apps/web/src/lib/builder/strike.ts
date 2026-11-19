@@ -52,18 +52,20 @@ export function strike(
   if (nearest === undefined) return onFloor(ray);
 
   // A module lies on its roof: a tie in depth goes to the module.
-  const { object, point } =
+  const { object, point, instanceId } =
     hits.find(
       // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's hit, read only.
       (hit) => hit.object.name === "module" && hit.distance <= nearest.distance + ON_ROOF,
     ) ?? nearest;
 
-  const index = group.getObjectsByProperty("name", object.name).indexOf(object);
-  const { grid, module } = panels[index] ?? {};
+  // The modules are one instanced mesh, in the panels' order (ADR 20 Rendering).
+  const { grid, module } = (object.name === "module" ? panels[instanceId ?? -1] : undefined) ?? {};
 
-  if (object.name === "module" && grid !== undefined) {
+  if (grid !== undefined) {
     return module === undefined ? { kind: "grid", grid } : { kind: "grid", grid, module };
   }
+
+  const index = group.getObjectsByProperty("name", object.name).indexOf(object);
 
   if (object.name === "equipment" || object.name === "opening") return { kind: object.name, index };
 

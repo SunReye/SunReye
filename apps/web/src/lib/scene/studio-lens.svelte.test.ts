@@ -23,7 +23,7 @@ function open(dark = false, level: Level = "medium"): Studio {
   camera.lookAt(0, 4, 0);
   document.body.append(canvas);
   studio = new Studio(canvas, camera, () =>
-    drawn(level, { capable: false, steps: 0, tier: "full" }),
+    drawn(level, { capable: false, touch: false, steps: 0, tier: "full" }),
   );
   studio.setSize(SIDE, SIDE);
   studio.frame(new Vector3(), 10);
@@ -175,7 +175,7 @@ test("Niedrig draws no glass", () => {
   expect(differing(picture(opened), clear)).toEqual({ middle: 0, around: 0 });
 
   // Chosen higher, it shows at once.
-  opened.follow(drawn("medium", { capable: false, steps: 0, tier: "full" }));
+  opened.follow(drawn("medium", { capable: false, touch: false, steps: 0, tier: "full" }));
   opened.setSize(SIDE, SIDE);
 
   const sharper = picture(opened);

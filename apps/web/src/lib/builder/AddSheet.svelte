@@ -37,7 +37,8 @@
   );
 </script>
 
-<ResponsiveSheet bind:open label={m.builder_add()}>
+<!-- Over the 3D canvas: the sheet and its groups are canvas chips, without blur (ADR 21). -->
+<ResponsiveSheet bind:open label={m.builder_add()} class="canvas-chip">
   <div class="flex min-h-0 touch-pan-y flex-col gap-3 overflow-y-auto px-4 pt-1 pb-2 scroll-fade-y no-scrollbar"
     data-vaul-no-drag>
     <h2 class="px-1 text-lg font-semibold">{m.builder_add()}</h2>
@@ -47,7 +48,7 @@
           {SECTIONS[section]()}
         </h3>
         <Item.Group
-          class="glass-ambient gap-0 divide-y divide-border/60 overflow-hidden rounded-lg border border-border/60"
+          class="canvas-chip gap-0 divide-y divide-border/60 overflow-hidden rounded-lg border border-border/60"
         >
           {#each adds as add (add.label)}
             <Item.Root class="rounded-none border-0">

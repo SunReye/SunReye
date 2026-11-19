@@ -13,7 +13,7 @@ export type Level = Exclude<Quality, "auto">;
 
 const LEVELS: readonly Level[] = ["low", "medium", "high", "ultra"];
 
-/** What a studio draws at a level. Levels from Mittel up differ in sharpness alone. */
+/** What a studio draws at a level. Levels differ in sharpness alone. */
 export interface Look {
   readonly level: Level;
   /** The most device pixels drawn per CSS pixel. */
@@ -22,42 +22,60 @@ export interface Look {
   readonly shadowMap: number;
   /** The ambient-occlusion pass: the full motion tier's, from Mittel up. */
   readonly occlusion: boolean;
+  /** The most device pixels the occlusion pass draws per CSS pixel, and its samples a pixel: it
+   * is wide and soft, and the largest single cost of a frame. */
+  readonly occluded: number;
+  readonly samples: number;
   /** The lens glass (ADR 23): the full motion tier's, from Mittel up. */
   readonly glass: boolean;
   /** Hoch's: shadows that harden where they touch their caster. */
   readonly contact: boolean;
-  /** Ultra's: the antialiasing burst, and occlusion at full resolution. */
+  /** Ultra's: the antialiasing burst. */
   readonly finest: boolean;
 }
 
 const BARE = { occlusion: false, glass: false } as const;
 const FULL = { occlusion: true, glass: true } as const;
 
+/** Mittel's occlusion: at half its pixel ratio, from 8 samples. */
+const COARSE = { occluded: 0.75, samples: 8 } as const;
+
+/** Hoch's: at up to Mittel's pixel ratio, from 12. */
+const FINE = { occluded: 1.5, samples: 12 } as const;
+
+const MEDIUM: Look = {
+  level: "medium",
+  pixelRatio: 1.5,
+  shadowMap: 2048,
+  ...FULL,
+  ...COARSE,
+  contact: false,
+  finest: false,
+};
+
+const HIGH: Look = {
+  ...MEDIUM,
+  level: "high",
+  pixelRatio: 2,
+  shadowMap: 4096,
+  ...FINE,
+  contact: true,
+};
+
 const LOOKS: Readonly<Record<Level, Look>> = {
-  low: { level: "low", pixelRatio: 1, shadowMap: 1024, ...BARE, contact: false, finest: false },
-  medium: {
-    level: "medium",
-    pixelRatio: 1.5,
-    shadowMap: 2048,
-    ...FULL,
-    contact: false,
-    finest: false,
-  },
-  high: { level: "high", pixelRatio: 2, shadowMap: 4096, ...FULL, contact: true, finest: false },
-  ultra: {
-    level: "ultra",
-    pixelRatio: Infinity,
-    shadowMap: 4096,
-    ...FULL,
-    contact: true,
-    finest: true,
-  },
+  low: { ...MEDIUM, level: "low", pixelRatio: 1, shadowMap: 1024, ...BARE },
+  medium: MEDIUM,
+  high: HIGH,
+  ultra: { ...HIGH, level: "ultra", pixelRatio: Infinity, occluded: Infinity, finest: true },
 };
 
 /** What Auto goes by. */
 export interface Device {
   /** Whether WebGL2 reports a discrete or capable GPU. */
   readonly capable: boolean;
+  /** A touch device, one whose primary pointer is coarse: a phone or a tablet. Its GPU's name
+   * does not tell it from a desktop's, and its screen is more than it fills at Hoch (ADR 20). */
+  readonly touch: boolean;
   /** Levels the frame watch has taken off Auto. */
   readonly steps: number;
   readonly tier: MotionTier;
@@ -66,9 +84,10 @@ export interface Device {
 /** The most levels strain takes off Auto: Hoch down to Niedrig. */
 export const MAX_STEPS = 2;
 
-/** Auto's level before the motion tier caps it. */
-function measured({ capable: strong, steps }: Device): number {
-  return Math.max(0, (strong ? 2 : 1) - steps);
+/** Auto's level before the motion tier caps it: from Hoch on a capable desktop GPU, from Mittel
+ * elsewhere. */
+function measured({ capable: strong, touch, steps }: Device): number {
+  return Math.max(0, (strong && !touch ? 2 : 1) - steps);
 }
 
 /** Auto's level: the measured one, on the lite and still tiers at most Mittel. */

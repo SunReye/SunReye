@@ -18,7 +18,7 @@
       locked = !moving;
     }
   }
-  class="glass-ambient size-9 ring-1 ring-border/60 elevation-1"
+  class="canvas-chip size-9 ring-1 ring-border/60 elevation-1"
   aria-label={m.dash_camera_move()}
   title={m.dash_camera_move()}
 >

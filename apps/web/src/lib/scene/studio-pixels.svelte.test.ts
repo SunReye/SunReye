@@ -12,7 +12,8 @@ import type { Face, Point } from "../builder/pv.ts";
 import { buildScene } from "../builder/scene.ts";
 import { daylight, theme } from "./light.ts";
 import * as finish from "./materials.ts";
-import { drawn, type Level } from "./quality.ts";
+import { look } from "./probe.harness.ts";
+import type { Level } from "./quality.ts";
 import { Studio } from "./studio.ts";
 
 let studio: Studio | undefined;
@@ -21,9 +22,6 @@ afterEach(() => {
   studio?.dispose();
   studio = undefined;
 });
-
-/** What a level draws, on any device. */
-const look = (level: Level) => drawn(level, { capable: false, steps: 0, tier: "full" });
 
 const mean = (some: readonly number[]): number => some.reduce((sum, v) => sum + v, 0) / some.length;
 
@@ -174,13 +172,15 @@ test("Hoch and Ultra draw every finish in Mittel's colours: a level adds sharpne
   expect(window.devicePixelRatio).toBe(1);
 
   const medium = sheets("medium");
+  const high = sheets("high");
 
-  // What two studios at one level differ by: the occlusion's noise.
-  expect(apart(sheets("medium"), medium)).toBeLessThan(1);
+  // What two studios at one level differ by: the occlusion's noise, coarser at Mittel (ADR 20).
+  expect(apart(sheets("medium"), medium)).toBeLessThan(2);
+  expect(apart(sheets("ultra"), high)).toBeLessThan(1);
 
-  for (const level of ["high", "ultra"] as const) {
-    expect([level, apart(sheets(level), medium) < 1]).toEqual([level, true]);
-  }
+  // A block of Mittel's is 1.3 of 255 off Hoch's, measured, and the whole no lighter or darker.
+  expect(apart(high, medium)).toBeLessThan(2.5);
+  expect(Math.abs(mean(high) - mean(medium))).toBeLessThan(0.25);
 
   // Niedrig, as a control: it draws without the occlusion that sets the sheets on the floor.
   expect(apart(sheets("low"), medium)).toBeGreaterThan(3);

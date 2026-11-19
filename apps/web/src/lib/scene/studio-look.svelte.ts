@@ -4,6 +4,7 @@
 import { untrack } from "svelte";
 import type { PerspectiveCamera } from "three";
 import { motion } from "../motion/tier.svelte.ts";
+import { perf } from "./perf.svelte.ts";
 import { weatherEffects } from "./weather-effects.svelte.ts";
 import { quality } from "./quality.svelte.ts";
 import type { Look } from "./quality.ts";
@@ -17,12 +18,16 @@ export interface Opened {
   /** What the studio is to draw of `given`: read in an effect, it follows the Wettereffekte
    * switch. */
   readonly weather: (given: SceneWeather | undefined) => SceneWeather | undefined;
+  /** The studio's first frame is drawn, or never will be: the frame watch settles from here
+   * (ADR 21). */
+  readonly settle: () => void;
   /** The studio is off show. */
   readonly close: () => void;
 }
 
-/** What this browser draws now: its 3D quality on its motion tier. */
-const look = (): Look => quality.look(motion.tier);
+/** What this browser draws now: its 3D quality on its motion tier, and what the readout's
+ * switches try in its place (ADR 21 "Measuring"). */
+const look = (): Look => perf.tried(quality.look(motion.tier));
 
 /** What this browser draws of `given`: its light alone while the Wettereffekte switch is off. */
 const weather = (given: SceneWeather | undefined): SceneWeather | undefined =>
@@ -45,13 +50,19 @@ export function openStudio(
   );
 
   const hide = quality.show();
+  const unmeasure = perf.show(studio);
+  // Preparing the scene is no evidence of what the device holds.
+  const settle = motion.hold();
   const unwatch = motion.watch();
 
   return {
     studio,
     look,
     weather,
+    settle,
     close() {
+      settle();
+      unmeasure();
       unwatch();
       hide();
     },

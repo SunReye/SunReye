@@ -18,7 +18,7 @@ import { conifer, crown, fan, level } from "../scene/surfaces.ts";
 import { roofWindows } from "../scene/roof-windows.ts";
 import { openings } from "../scene/wall-openings.ts";
 import { trim } from "../scene/trim.ts";
-import { panel, toThree, type Panel } from "./panels.ts";
+import { modules, toThree, type Panel } from "./panels.ts";
 import type { Face, Geometry, Mount, Solid } from "./pv.ts";
 
 /** Each convex face as a fan of triangles. */
@@ -179,7 +179,7 @@ function sections(geometry: Geometry, panels: readonly Panel[]): (() => Object3D
       ...(geometry.fences ?? []).map((item) => fence(item)),
     ],
     () => geometry.solids.map((obstacle) => solid(obstacle, geometry.solids)),
-    () => panels.map((item) => panel(item)),
+    () => modules(panels),
     () => (geometry.mounts ?? []).map((mount) => marker(mount)),
     () => openings(geometry.openings ?? [], roofs),
     () => roofWindows(geometry.roofWindows ?? []),
@@ -251,6 +251,7 @@ export async function buildSliced(
 export { strike, type Hit } from "./strike.ts";
 
 export {
+  glowShift,
   stringColour,
   stringCss,
   tint,

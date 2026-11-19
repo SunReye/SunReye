@@ -1,6 +1,6 @@
 # 23. Weather detail and scene weather
 
-Status: accepted (2026-11-17), amended (2026-11-18)
+Status: accepted (2026-11-17), amended (2026-11-18, 2026-11-19)
 
 ## Context
 
@@ -44,7 +44,7 @@ One Open-Meteo request asks for `minutely_15` and `hourly` together. Sunshine is
 - *Thunder:* codes 95–99 close the sky and dim the whole scene's light by about a third. No lightning flashes.
 - On every tier the light, fog, wet ground and lying snow carry the weather.
 
-**Motion.** Amending ADR 20's "no continuous loop": while moving particles or glass are shown, on the full tier, the scene renders in a loop capped at 30 fps. The loop pauses while the tab is hidden or the canvas is off screen, and stops when the weather turns dry. The frame watch (ADR 21) counts its frames, so a device that struggles drops to lite, where nothing loops.
+**Motion.** Amending ADR 20's "no continuous loop": while moving particles or glass are shown, on the full tier, the scene renders in a loop at the display's rate, held to the browser's frame limit (ADR 21: *Bildrate*, unlimited by default). The loop pauses while the tab is hidden or the canvas is off screen, and stops when the weather turns dry. The frame watch (ADR 21) judges its frames against 30 a second, so a device that struggles drops to lite, where nothing loops.
 
 **Builder.** While the admin edits, the builder leaves out glass, particles, fog and wet ground, so faces and edges stay exact. The light and lying snow follow the instant shown. Outside editing, its time slider shows the weather as the dashboard does. A *Wetter* button under the views' button sets a trial weather in place of the stored one, to see how the plant looks in it: *Gespeichert* (the default), *Klar*, *Bewölkt*, *Regen*, *Gewitter*, *Schnee* or *Nebel*. A trial weather is a whole instant's weather, light included; the page holds it, nothing saves it, and the editing rule above still applies, so it shows in full only while nothing is picked.
 
@@ -62,6 +62,7 @@ One Open-Meteo request asks for `minutely_15` and `hourly` together. Sunshine is
 - **The clear-sky index computed in the browser.** Rejected: the core has the model and the corrections, and a stored series serves past instants and every client.
 - **Cloud layers (low, mid, high).** Rejected: the forecast and the archive draw their bounds at different heights.
 - **Stepped particles, a few times a second.** Rejected: rain stutters.
+- **A loop capped at 30 fps (until 2026-11-19).** Replaced by the owner with the frame limit: rain at 30 reads as stutter on a display that shows 60 or 120, and a browser that wants the saving chooses it.
 - **Light and fog only.** Rejected by the owner: the scene should show rain and snow.
 - **Lightning flashes.** Rejected: flashes can trigger photosensitive seizures.
 

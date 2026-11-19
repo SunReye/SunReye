@@ -51,23 +51,22 @@ function onScreen(): HTMLCanvasElement {
   return canvas;
 }
 
-/** A lit studio on a canvas on screen, opened, under a weather the test sets. */
-export async function open() {
+/** A lit studio on a canvas on screen, opened once `built`, under a weather the test sets. */
+export async function open(built: Readonly<Promise<void>> = Promise.resolve()) {
   const canvas = onScreen();
   let weather = $state.raw(DRY);
   let scene: Lit | undefined;
   const seen = { labels: 0 };
   const asked = watched();
 
+  const sky = (): Sky => ({ sun: null, diffuse: null, weather });
+
+  const label = (): void => {
+    seen.labels += 1;
+  };
+
   const unmount = $effect.root(() => {
-    scene = lit(
-      canvas,
-      new PerspectiveCamera(40, 1, 0.1, 5000),
-      (): Sky => ({ sun: null, diffuse: null, weather }),
-      () => {
-        seen.labels += 1;
-      },
-    );
+    scene = lit(canvas, new PerspectiveCamera(40, 1, 0.1, 5000), sky, label);
     scene.studio.setSize(64, 64);
   });
 
@@ -79,7 +78,7 @@ export async function open() {
 
   if (scene === undefined) throw new TypeError("no scene");
 
-  await scene.opening.open(Promise.resolve(), noop, noop);
+  await scene.opening.open(built, noop, noop);
 
   /** The weather turns to what it was but for `next`. */
   const turn = (next: Partial<SceneWeather>): void => {
@@ -89,6 +88,7 @@ export async function open() {
 
   return {
     canvas,
+    scene,
     /** Whether the weather loop runs: the studio draws on its own. */
     looping: async (): Promise<boolean> => (await draws(asked.drawn)) > 0,
     seen,

@@ -1,5 +1,5 @@
 <!--
-  One 3D label chip (ADR 20): ambient glass, a flow-colour dot, an icon and the gliding value.
+  One 3D label chip (ADR 20): a canvas chip (ADR 21), a flow-colour dot, an icon and the gliding value.
   Ported from the prototype's Scene3d chips. Tapping opens the equipment's detail sheet.
 -->
 <script lang="ts">
@@ -38,7 +38,7 @@
     onselect(chip.id);
   }}
   class={[
-    "glass-ambient h-7 gap-1.5 px-2 text-xs ring-1 ring-border/60 elevation-1",
+    "canvas-chip h-7 gap-1.5 px-2 text-xs ring-1 ring-border/60 elevation-1",
     chip.stale && "opacity-60",
   ]}
   title={chip.stale ? m.live_stale_short() : undefined}

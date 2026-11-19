@@ -3,17 +3,17 @@
 // lens glass over it all while the weather puts something on it (ADR 23).
 import {
   DoubleSide,
-  HalfFloatType,
   type PerspectiveCamera,
   type Scene,
   type WebGLRenderer,
-  WebGLRenderTarget,
+  type WebGLRenderTarget,
 } from "three";
-import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { Composer } from "./composer.ts";
 import { LensPass } from "./lens-pass.ts";
+import { Probe } from "./probe.ts";
 import type { Look } from "./quality.ts";
 import { jitter, Refiner } from "./refine.ts";
 import type { Glass } from "./weather.ts";
@@ -31,12 +31,19 @@ function ambientOcclusion(scene: Scene, camera: PerspectiveCamera): GTAOPass {
   pass.normalMaterial.side = DoubleSide;
 
   pass.blendIntensity = 1;
+
+  return pass;
+}
+
+/** The occlusion and its denoising, each from `samples` a pixel: a look's own (ADR 20). */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js sets it in place.
+function sample(pass: GTAOPass, samples: number): void {
   pass.updateGtaoMaterial({
     radius: 2,
     distanceExponent: 1.5,
     thickness: 1.5,
     scale: 1.5,
-    samples: 12,
+    samples,
   });
   pass.updatePdMaterial({
     lumaPhi: 10,
@@ -44,36 +51,32 @@ function ambientOcclusion(scene: Scene, camera: PerspectiveCamera): GTAOPass {
     normalPhi: 3,
     radius: 6,
     rings: 2,
-    samples: 12,
+    samples,
   });
-
-  return pass;
 }
-
-/** The most device pixels the occlusion pass draws per CSS pixel below Ultra: Mittel's. */
-const OCCLUSION_RATIO = 1.5;
 
 export class Passes {
   readonly #renderer: WebGLRenderer;
   readonly #camera: PerspectiveCamera;
-  readonly #composer: EffectComposer;
+  readonly #composer: Composer;
   readonly #occlusion: GTAOPass;
   readonly #lens = new LensPass();
   readonly #refiner = new Refiner();
   #finest = false;
+  /** The most device pixels the occlusion pass draws per CSS pixel: the look's. */
+  #occluded = 1;
   /** Whether the look has the glass, and whether anything is on it. */
   #glass = false;
   #glazed = false;
+  /** Counts each frame, once asked for (ADR 21 "Measuring"). */
+  #probe: Probe | undefined;
 
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws with them.
   constructor(renderer: WebGLRenderer, scene: Scene, camera: PerspectiveCamera) {
     this.#renderer = renderer;
     this.#camera = camera;
     // Multisampled HDR, then ambient occlusion, then tone mapping and sRGB.
-    this.#composer = new EffectComposer(
-      renderer,
-      new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples: 4 }),
-    );
+    this.#composer = new Composer(renderer);
     this.#occlusion = ambientOcclusion(scene, camera);
     this.#composer.addPass(new RenderPass(scene, camera));
     this.#composer.addPass(this.#occlusion);
@@ -90,12 +93,14 @@ export class Passes {
 
   /** The target the scene pass draws into: a program differs by it. */
   get target(): WebGLRenderTarget {
-    return this.#composer.readBuffer;
+    return this.#composer.scene;
   }
 
   /** The passes `look` asks for. */
-  follow({ occlusion, finest, glass }: Look): void {
+  follow({ occlusion, occluded, samples, finest, glass }: Look): void {
     this.#occlusion.enabled = occlusion;
+    this.#occluded = occluded;
+    sample(this.#occlusion, samples);
     this.#finest = finest;
     this.#glass = glass;
     this.#lens.enabled = glass && this.#glazed;
@@ -115,8 +120,8 @@ export class Passes {
   }
 
   setSize(width: number, height: number, ratio: number): void {
-    // Occlusion is soft: below Ultra it is drawn no finer than Mittel draws it.
-    const occluded = this.#finest ? ratio : Math.min(ratio, OCCLUSION_RATIO);
+    // Occlusion is soft: it is drawn no finer than the look asks.
+    const occluded = Math.min(ratio, this.#occluded);
 
     this.#composer.setPixelRatio(ratio);
     this.#composer.setSize(width, height);
@@ -128,7 +133,26 @@ export class Passes {
   /** Draws the scene as it is now. */
   render(): void {
     this.#refiner.reset();
-    this.#composer.render();
+
+    if (this.#probe === undefined) this.#composer.render();
+    else {
+      this.#probe.frame(() => {
+        this.#composer.render();
+      });
+    }
+  }
+
+  /** Counts what each frame draws from here on; `shadow` is the sun's shadow map. */
+  measure(shadow: () => object | null, clock?: () => number): Probe {
+    this.#probe ??= new Probe(this.#renderer, shadow, clock);
+
+    return this.#probe;
+  }
+
+  /** Counts no more: the renderer is as it was before `measure`. */
+  unmeasure(): void {
+    this.#probe?.dispose();
+    this.#probe = undefined;
   }
 
   /** Draws once with every pass, the glass too: each makes and first uses its programs. */
@@ -152,12 +176,9 @@ export class Passes {
     const [x, y] = jitter(this.#refiner.taken);
 
     this.#camera.setViewOffset(width, height, x, y, width, height);
-    // Nothing moved: the shadow map of the settled frame holds.
-    this.#renderer.shadowMap.autoUpdate = false;
     this.#composer.renderToScreen = false;
     this.#composer.render();
     this.#composer.renderToScreen = true;
-    this.#renderer.shadowMap.autoUpdate = true;
     this.#camera.clearViewOffset();
     this.#refiner.add(this.#renderer, this.#composer.readBuffer.texture, width, height);
 
@@ -169,5 +190,6 @@ export class Passes {
     this.#occlusion.dispose();
     this.#lens.dispose();
     this.#refiner.dispose();
+    this.unmeasure();
   }
 }

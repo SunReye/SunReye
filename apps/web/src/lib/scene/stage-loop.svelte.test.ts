@@ -21,6 +21,8 @@ test("the scene loops while rain falls and stops when the weather turns dry", as
   weather(RAIN);
   expect(await looping()).toBe(true);
   expect(fell.mock.lastCall).toEqual([RAIN, false]);
+  // The frame watch is told: beside a loop its idle watch does not run (ADR 21).
+  expect(motion.looping).toBe(true);
 
   const labels = seen.labels;
 
@@ -32,6 +34,7 @@ test("the scene loops while rain falls and stops when the weather turns dry", as
   weather(null);
   expect(await looping()).toBe(false);
   expect(fell.mock.lastCall).toEqual([null, false]);
+  expect(motion.looping).toBe(false);
   expect(await draws(drawn)).toBe(0);
 });
 
@@ -69,4 +72,21 @@ test("still draws nothing that falls and never loops", async () => {
   flushSync();
   expect(fell.mock.lastCall).toEqual([RAIN, false]);
   expect(await looping()).toBe(true);
+});
+
+test("the frame watch waits while the scene is prepared, until its first frame is drawn", async () => {
+  const drawn = vi.fn<() => void>();
+  const held = vi.spyOn(motion, "hold").mockReturnValue(drawn);
+  const built = Promise.withResolvers<void>();
+  const opening = open(built.promise);
+
+  await new Promise((resolve) => {
+    setTimeout(resolve, 50);
+  });
+  expect(held).toHaveBeenCalledTimes(1);
+  expect(drawn).not.toHaveBeenCalled();
+
+  built.resolve();
+  await opening;
+  expect(drawn).toHaveBeenCalledTimes(1);
 });

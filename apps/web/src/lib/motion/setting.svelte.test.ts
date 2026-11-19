@@ -15,6 +15,7 @@ afterEach(async () => {
 
 test("the motion setting starts on Automatisch, where the frame watch decides", () => {
   localStorage.setItem("sunreye.motion-strain", "1");
+  localStorage.setItem("sunreye.strained-at", String(Date.now()));
   const motion = new MotionStore();
 
   expect(motion.setting).toBe("auto");
@@ -34,6 +35,7 @@ test("Reduziert renders lite, and the choice is kept per browser", () => {
 
 test("a chosen Voll holds over a kept strain, which Automatisch still shows", () => {
   localStorage.setItem("sunreye.motion-strain", "1");
+  localStorage.setItem("sunreye.strained-at", String(Date.now()));
   const motion = new MotionStore();
 
   motion.setting = "full";
@@ -85,6 +87,7 @@ test("a loop's dropped frames leave a chosen tier where it is", () => {
 
 test("Neu messen forgets the strain: the tier is full again and the watch measures anew", async () => {
   localStorage.setItem("sunreye.motion-strain", "1");
+  localStorage.setItem("sunreye.strained-at", String(Date.now()));
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   jank();
   const motion = new MotionStore();

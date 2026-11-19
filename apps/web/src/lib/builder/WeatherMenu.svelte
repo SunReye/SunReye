@@ -32,7 +32,7 @@
         variant="ghost"
         aria-label={m.builder_weather()}
         class={[
-          "glass-ambient size-11 ring-1 ring-border/60 elevation-1",
+          "canvas-chip size-11 ring-1 ring-border/60 elevation-1",
           trial !== null && "text-primary",
         ]}
       >

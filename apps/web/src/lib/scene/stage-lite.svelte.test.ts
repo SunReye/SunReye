@@ -23,6 +23,7 @@ afterAll(() => {
 test("lite draws a sparse still field and never loops", async () => {
   // A device the frame watch found struggling, before the motion tier is read.
   localStorage.setItem("sunreye.motion-strain", "1");
+  localStorage.setItem("sunreye.strained-at", String(Date.now()));
 
   const { lit } = await import("./stage.svelte.ts");
   const canvas = document.createElement("canvas");
