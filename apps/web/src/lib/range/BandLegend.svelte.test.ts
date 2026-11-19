@@ -38,7 +38,6 @@ const legendOf = (reference: boolean, ghost: Key | null) => ({
   ],
   mark: { label: "Vortag", on: reference, value: reference ? 1.6 : null },
   ghost,
-  line: null,
   gap: null,
   blank: false,
   bare: false,

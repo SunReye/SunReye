@@ -234,3 +234,12 @@ export async function planned(
 export function plannedEnergy(items: readonly Planned[], from: number, to: number): number {
   return spread(items, from, to, (p) => (p.power * (p.end - p.start)) / 3_600_000_000).sum;
 }
+
+/** The kWh a forecast expects in [a, b): up to `now`, over all of it, and from `now` on. */
+export function forecastIn(items: readonly Planned[], a: number, b: number, now: number) {
+  return {
+    sofar: plannedEnergy(items, a, Math.min(b, now)),
+    whole: plannedEnergy(items, a, b),
+    rest: b > now ? plannedEnergy(items, Math.max(a, now), b) : 0,
+  };
+}

@@ -9,7 +9,7 @@ import type { Edge } from "../range/edges.ts";
 import { bandsOf, spread } from "../range/fill.ts";
 import { kwh } from "../range/format.ts";
 import { hourInstant, t0Of, t1Of, type Calendar, type Range } from "../range/range.ts";
-import { plannedEnergy, type Planned } from "./forecast.ts";
+import { forecastIn, type Planned } from "./forecast.ts";
 
 /** What one line's range holds: its bands, and the sums the headline and the legend share. */
 export interface Judged {
@@ -77,13 +77,14 @@ function weigh(j: Readonly<Judging>, a: number, b: number) {
   // how long it was read, not when, so readings over fewer hours prove nothing.
   const forecast = spread(j.forecast, a, until, () => 0).covered;
   const comparable = measured && forecast >= (until - a) * 0.95;
+  const planned = forecastIn(j.forecast, a, b, j.now);
 
   return {
     covered: f.covered,
     value: measured ? Math.max(0, f.value) : 0,
-    sofar: comparable ? plannedEnergy(j.forecast, a, until) : 0,
-    whole: plannedEnergy(j.forecast, a, b),
-    rest: b > j.now ? plannedEnergy(j.forecast, Math.max(a, j.now), b) : 0,
+    sofar: comparable ? planned.sofar : 0,
+    whole: planned.whole,
+    rest: planned.rest,
   };
 }
 

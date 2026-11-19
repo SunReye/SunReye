@@ -115,34 +115,6 @@ test("on touch, a tap opens its band", async () => {
   expect(drilled).toEqual([1]);
 });
 
-test("a line layer draws a dashed curve over the bands, and the legend reads it", async () => {
-  const lined = [band("b0", 2), band("b1", 4)].map((b, i) =>
-    Object.assign({}, b, { line: [1.5, 3.5][i]! }),
-  );
-
-  const screen = await render(
-    BandChart,
-    Object.assign(props(lined), {
-      lineLabel: "Prognose",
-      summary: { title: "Summe", up: [6], down: [], line: 5 },
-    }),
-  );
-
-  const plot = screen.getByRole("group");
-
-  await expect.element(screen.getByRole("term").filter({ hasText: "Prognose" })).toBeVisible();
-  await expect.element(screen.getByText("5.0 kWh")).toBeVisible();
-  await expect
-    .poll(() => plot.element().querySelector("path[stroke-dasharray='3 4']")?.getAttribute("d"))
-    .toMatch(/^M/u);
-
-  const box = plot.element().getBoundingClientRect();
-
-  await userEvent.hover(plot, { position: { x: box.width * 0.75, y: box.height / 2 } });
-
-  await expect.element(screen.getByText("3.5 kWh")).toBeVisible();
-});
-
 /** Two days measured against their forecast, then one still to come. */
 function forecastProps() {
   const bands: Band[] = [
