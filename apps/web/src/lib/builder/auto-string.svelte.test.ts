@@ -17,6 +17,7 @@ import {
   undesk,
 } from "./builder.harness.ts";
 import { addGrid } from "./modules.ts";
+import { saveFrom } from "./moment.harness.ts";
 
 beforeEach(desk);
 
@@ -68,4 +69,54 @@ test("auto-stringing proposes a face's strings on the free inputs; kept, they ar
 
   await act("Rückgängig").click();
   await expect.element(input(2).getByText("Kein String")).toBeVisible();
+});
+
+/** The builder on the template house, its south face filled, with one string wired nowhere. */
+async function proposing() {
+  const transport = testCore();
+
+  const { scene } = house();
+  await render(Builder, {
+    pv,
+    core: connect(transport),
+    start: { scene: filledFace(addGrid(scene, 0, 1, MODULE.id), 0), strings: [] },
+    moduleTypes: [MODULE],
+    devices: DEVICES,
+    limits: { 1: 400 },
+    inputs: { 1: [INPUT, INPUT, INPUT] },
+  });
+  await drill("Strings", "String hinzufügen", "Strings");
+  await act(`${SOUTH}: 16 Module automatisch verdrahten`).click();
+  await expect.element(proposal()).toBeVisible();
+
+  return { transport };
+}
+
+const proposal = () => inspector().getByRole("status").filter({ hasText: "Vorschlag:" });
+
+test("an undo drops a proposal, and the redo does not bring it back", async () => {
+  await proposing();
+
+  await act("Rückgängig").click();
+  await expect.element(proposal()).not.toBeInTheDocument();
+
+  await act("Wiederholen").click();
+  await expect.element(input(1).getByRole("button", { name: /^String 1/u })).toBeVisible();
+  await expect.element(proposal()).not.toBeInTheDocument();
+  await expect.element(input(2).getByText("Kein String")).toBeVisible();
+});
+
+test("saving keeps a proposal: what is saved is what is shown, and it is recorded", async () => {
+  const { transport } = await proposing();
+
+  await saveFrom("2026-11-01");
+
+  await expect.poll(() => transport.puts).toHaveLength(1);
+  expect(transport.puts[0]).toMatchObject({
+    strings: [
+      { name: "String 1", modules: 0 },
+      { name: "String 2", modules: 8 },
+      { name: "String 3", modules: 8 },
+    ],
+  });
 });

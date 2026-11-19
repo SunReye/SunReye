@@ -2,18 +2,11 @@
 // east, south and west views stand, the plane is nearly edge-on and a finger's width up the screen
 // would be tens of metres. There the pointer's travel up the screen moves the object as far away
 // from the camera as that travel is long at the grab's distance. Pure and three.js-free.
+import { cross, dot } from "../vector.ts";
 import { level, meet, type Ray, type Triple } from "./frame.ts";
 
 /** The sine of the lowest view a level drag still follows the pointer's ray from. */
 const SHALLOW = Math.sin((15 * Math.PI) / 180);
-
-const dot = (a: Triple, b: Triple): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-
-const cross = (a: Triple, b: Triple): Triple => [
-  a[1] * b[2] - a[2] * b[1],
-  a[2] * b[0] - a[0] * b[2],
-  a[0] * b[1] - a[1] * b[0],
-];
 
 /** Where a drag from `start` to `end` began and stands now in the level plane at `height`: where
  * the rays meet it, or from a shallow view the point `grabbed` moved by the pointer's travel

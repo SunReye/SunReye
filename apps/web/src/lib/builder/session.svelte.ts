@@ -183,11 +183,14 @@ export class Session {
     }
   }
 
+  /** Either drops a proposal: a redo back to its draft must not bring it back. */
   undo(): void {
+    this.wiring.discard();
     this.#history = undo(this.#history);
   }
 
   redo(): void {
+    this.wiring.discard();
     this.#history = redo(this.#history);
   }
 

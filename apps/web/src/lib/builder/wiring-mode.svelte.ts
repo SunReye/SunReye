@@ -64,12 +64,14 @@ export class WiringMode {
   }
 
   /** How many strings the proposal adds; none without one. */
+  // fallow-ignore-next-line unused-class-member -- read through `session.wiring` in the components.
   get proposed(): number | undefined {
     return this.#proposed?.strings;
   }
 
   /** Proposes grid `grid`'s modules in no string as new strings on the first inverter that lists
    * its inputs, else the first string's. */
+  // fallow-ignore-next-line unused-class-member -- read through `session.wiring` in the components.
   auto(grid: number): void {
     const { draft, present } = this.#session;
 
@@ -85,6 +87,7 @@ export class WiringMode {
   }
 
   /** Records the proposal as one undo step. */
+  // fallow-ignore-next-line unused-class-member -- read through `session.wiring` in the components.
   keep(): void {
     const kept = this.proposal;
 
@@ -98,6 +101,7 @@ export class WiringMode {
   }
 
   /** The grids that hold modules in no string, each with its face and how many. */
+  // fallow-ignore-next-line unused-class-member -- read through `session.wiring` in the components.
   get loose(): { readonly grid: number; readonly face: string; readonly count: number }[] {
     return (this.#session.draft.scene.grids ?? []).flatMap((grid, index) => {
       const count = grid.modules.filter((laid) => (laid.string ?? undefined) === undefined).length;
@@ -139,7 +143,10 @@ export class WiringMode {
     );
   }
 
+  /** Picking modules drops a proposal: what is wired next is wired into the recorded layout. */
   select(selection: readonly Cell[]): void {
+    if (selection.length > 0) this.discard();
+
     this.#selection = selection;
     this.refused = undefined;
   }
@@ -166,6 +173,7 @@ export class WiringMode {
 
   /** The roof face a phone's camera flies onto: a selected face's while its modules are laid, and
    * while wiring the face a tap named, else the one with the most modules in no string. */
+  // fallow-ignore-next-line unused-class-member -- read through `session.wiring` in the components.
   get onto(): RoofFace | undefined {
     const { level, laid, draft } = this.#session;
     const face = this.active ? (this.#face ?? mostUnwired(draft.scene)) : undefined;
