@@ -111,7 +111,7 @@ Energy flow shows as tint and label arrows.
   - arrows on its walls drag width and depth; an opening's drag its width and height;
   - a handle on the ridge or high eave drags the pitch;
   - a roof chimney or a roof window is dragged in its roof face's plane, so it stays under the pointer from every view (2026-11-19, replacing a level plane, which ran ahead of the finger on a pitched face);
-  - a ring rotates it, in the turn mode only (2026-11-20, below);
+  - a ring shows it can be turned, in the turn mode only (2026-11-20, below);
   - dragging its footprint moves it; a block is moved by a knob on the ground before its front wall instead (2026-11-20, below);
   - each point of a fence has its own handle that drags that point.
 - **Shallow views** (2026-11-19). A drag on the ground follows the pointer in a level plane. Seen from under 15° above that plane, as from the north, east, south and west views, the plane is nearly edge-on and a finger's width up the screen was tens of metres; there, the pointer's travel up and down the screen moves the object away from and toward the camera by the same metres that travel covers across the screen at the grab's distance.
@@ -124,9 +124,9 @@ Energy flow shows as tint and label arrows.
   | a handle of the picked object | nothing | drags it, once the pointer has gone 8 px |
   | the picked object itself, any but a block | nothing | moves it, once the pointer has gone 8 px |
   | the picked block itself | picks the wall spot, or the roof face, under it | orbits |
-  | the ring, in the turn mode | nothing | turns the object, once the pointer has gone 8 px |
+  | anywhere, in the turn mode | nothing | turns the picked object about its centre, once the pointer has gone 8 px |
 
-  - *The turn mode.* The ring shows only after "Drehen" in the context toolbar, for whatever has one: a block, a box, a ground surface, a car place. In it the ring is the only handle and the object's own surface moves nothing; the toolbar reads the angle and offers "Fertig". Picking anything else leaves it. Turning is rare and its mistake costly, since a house's turn is its roofs' azimuth, so it pays one tap; the angle's own row in the inspector stays for an exact figure.
+  - *The turn mode.* The ring shows only after "Drehen" in the context toolbar, for whatever has one: a block, a box, a ground surface, a car place. In it the ring is the only handle drawn and a one-finger drag anywhere turns the object about its centre, by the angle the pointer sweeps round it on the ground: round a house that fills the canvas the ring itself lies outside it, so the whole canvas is the dial. Two fingers still pan and zoom; to orbit, leave the mode. The toolbar reads the angle and offers "Fertig". Picking anything else leaves it. Turning is rare and its mistake costly, since a house's turn is its roofs' azimuth, so it pays one tap; the angle's own row in the inspector stays for an exact figure.
   - *A block's knob.* A block fills a phone's canvas, so a drag that starts on it is far more often an orbit than a move: its surface no longer moves it, and a knob on the ground before its front wall does. Every smaller object is still moved by its own surface, where a drag is nearly always meant for it.
   - *The threshold.* No handle and no surface drags before the pointer has gone 8 px, where the handles started at once and a surface after 5 px: a tap that slips changes nothing.
   - *Snapping stays.* A turn still snaps to 5° and, within 3°, to the compass and to other blocks' turns, with a haptic tick at each step. A 15° step, as drawing tools use, would put a real roof's azimuth out of the ring's reach.

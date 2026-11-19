@@ -12,7 +12,10 @@ export interface Anchored {
   readonly draft: Draft;
   readonly laid: Modules;
   readonly geometry: Pick<Geometry, "mounts">;
-  readonly stance: { readonly turning: boolean };
+  readonly stance: {
+    readonly turning: boolean;
+    readonly spot?: { readonly at: Point } | undefined;
+  };
   /** The wiring mode's selection, while it is on. */
   readonly roofwork: Pick<Selecting, "kind" | "chosen"> | { readonly kind: "modules" } | undefined;
 }
@@ -54,6 +57,9 @@ function anchorOf(session: Anchored): readonly Point[] {
   if (roofwork?.kind === "wiring") return roofwork.chosen.flatMap(({ corners }) => corners);
 
   if (level.kind === "face" || level.kind === "module") return onFace(session, level);
+
+  // A wall spot carries the toolbar where the finger was.
+  if (session.stance.spot !== undefined) return [session.stance.spot.at];
 
   if (level.kind === "marker")
     return [geometry.mounts?.[level.index]?.at].filter((at) => at !== undefined);

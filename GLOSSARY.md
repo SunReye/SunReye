@@ -269,7 +269,7 @@ Where a tap struck a block's wall: the block, the wall, the metres along it and 
 _Avoid_: Wall selection, anchor, drop point
 
 **Turn mode**:
-The builder's state in which the picked object's ring shows and turns it, entered by "Drehen" and left by "Fertig" or by picking anything else. German UI: Drehen.
+The builder's state in which the picked object's ring shows and a drag turns it, entered by "Drehen" and left by "Fertig" or by picking anything else. German UI: Drehen.
 _Avoid_: Rotate tool, rotation lock
 
 **MPPT window**:

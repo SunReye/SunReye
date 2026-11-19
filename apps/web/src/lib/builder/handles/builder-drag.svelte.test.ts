@@ -164,36 +164,31 @@ test("dragging a car place moves it in one undo step", SLOW, async () => {
   await expect.element(undo).toBeDisabled();
 });
 
-test(
-  "a car place's ring shows after Drehen and turns it; its surface then moves nothing",
-  SLOW,
-  async () => {
-    const { scene, undo } = await placePicked();
-    const place: Target = { kind: "place", index: 0 };
-    const ring = handles(scene, place).find(({ grip }) => grip === "turn");
+test("a car place's ring shows after Drehen and turns it", SLOW, async () => {
+  const { scene, undo } = await placePicked();
+  const place: Target = { kind: "place", index: 0 };
+  const ring = handles(scene, place).find(({ grip }) => grip === "turn");
 
-    if (ring?.radius === undefined) throw new Error("no ring");
+  if (ring?.radius === undefined) throw new Error("no ring");
 
-    const [cx, , cz] = ring.at;
-    const rotation = inspector().getByRole("button", { name: starts("Drehung (°)") });
-    const tools = page.getByRole("toolbar", { name: "Aktionen" });
+  const [cx, , cz] = ring.at;
+  const rotation = inspector().getByRole("button", { name: starts("Drehung (°)") });
+  const tools = page.getByRole("toolbar", { name: "Aktionen" });
 
-    await tools.getByRole("button", { name: "Drehen" }).click();
-    await mouseDrag(scene, [cx + ring.radius, 0, cz], [cx, 0, cz + ring.radius]);
+  await tools.getByRole("button", { name: "Drehen" }).click();
+  await mouseDrag(scene, [cx + ring.radius, 0, cz], [cx, 0, cz + ring.radius]);
 
-    await expect.element(rotation.getByText(/^90$/u)).toBeVisible();
-    await expect.element(tools.getByRole("status")).toHaveTextContent("Drehung 90°");
+  await expect.element(rotation.getByText(/^90$/u)).toBeVisible();
+  await expect.element(tools.getByRole("status")).toHaveTextContent("Drehung 90°");
 
-    await mouseDrag(scene, [-3.75, 0, 3.5], [-3.75, 0, 5.5]);
-    await tools.getByRole("button", { name: "Fertig" }).click();
-    await expect.element(tools.getByRole("button", { name: "Drehen" })).toBeVisible();
+  await tools.getByRole("button", { name: "Fertig" }).click();
+  await expect.element(tools.getByRole("button", { name: "Drehen" })).toBeVisible();
 
-    // The turn is the one step there is to undo.
-    await undo.click();
-    await expect.element(rotation.getByText(/^0$/u)).toBeVisible();
-    await expect.element(undo).toBeDisabled();
-  },
-);
+  // The turn is the one step there is to undo.
+  await undo.click();
+  await expect.element(rotation.getByText(/^0$/u)).toBeVisible();
+  await expect.element(undo).toBeDisabled();
+});
 
 /** The house with a chimney on its south face, 3 m across and 1.5 m up it. */
 function chimneyed() {

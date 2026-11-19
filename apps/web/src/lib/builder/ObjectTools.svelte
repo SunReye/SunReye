@@ -9,6 +9,7 @@
   import { removeAt } from "./context-actions.ts";
   import OpeningActions from "./OpeningActions.svelte";
   import type { Session } from "./session.svelte.ts";
+  import WallAdds from "./WallAdds.svelte";
   import ToolButton from "./ToolButton.svelte";
 
   let {
@@ -32,6 +33,9 @@
 {#if opening !== undefined}
   <OpeningActions {session} {opening} {onrefuse} />
 {:else}
+  {#if session.stance.spot !== undefined}
+    <WallAdds {session} {onrefuse} />
+  {/if}
   {#if turnable}
     <ToolButton
       icon={RotateCw}

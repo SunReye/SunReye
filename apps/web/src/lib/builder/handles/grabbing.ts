@@ -33,7 +33,7 @@ export interface Editing {
     "refit" | "glide" | "glideWindow" | "chimneyAt" | "roofWindowAt" | "gridAt"
   >;
   readonly laid: Laid;
-  /** The turn mode: the ring is the only handle, and the object's own surface moves nothing. */
+  /** The turn mode: a drag anywhere turns the object, and nothing else of it drags. */
   readonly turning: boolean;
   /** Each step of a drag, shown at once. */
   readonly ondrag: (scene: Scene) => void;
@@ -115,8 +115,12 @@ export class Grabbing {
 
   /** A handle, or the selected object's own surface: what the press grabbed. */
   #grabbed(at: readonly [number, number], editing: Editing): Grab | undefined {
-    const handle = this.#handleAt(at);
     const ray = rayAt(this.#camera, at);
+
+    // The turn mode: the whole canvas is the dial, for the ring may lie outside it.
+    if (editing.turning) return { grip: "turn", ray, height: 0 };
+
+    const handle = this.#handleAt(at);
 
     if (handle !== null) {
       // A block's knob carries it as its footprint would.
@@ -125,8 +129,8 @@ export class Grabbing {
       return { grip, point: handle.point, ray, height: handle.at[1], at: handle.at };
     }
 
-    // A fence has no footprint to drag; a block's surface orbits, and in the turn mode every one.
-    return editing.turning || editing.target.kind === "fence" || editing.target.kind === "block"
+    // A fence has no footprint to drag, and a block's surface orbits.
+    return editing.target.kind === "fence" || editing.target.kind === "block"
       ? undefined
       : this.#bodyGrabbed(at, editing, ray);
   }
