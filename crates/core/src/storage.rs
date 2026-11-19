@@ -590,25 +590,22 @@ async fn request<T: Send + 'static>(
         .send(Command::Request(make(reply)))
         .await
         .map_err(|_| Error::Stopped)?;
-    replied(answer).await.ok_or(Error::Stopped)
+    await_reply(answer).await
 }
 
 /// The storage thread's answer. Under a test's paused clock a blocking task waits for it, which
 /// holds the clock still: otherwise tokio advances it to the next timer while the thread works,
 /// and a test's timings drift with the host's load.
-/// None once the thread has stopped.
-async fn replied<T: Send + 'static>(answer: oneshot::Receiver<T>) -> Option<T> {
+/// `Stopped` once the thread has stopped.
+async fn await_reply<T: Send + 'static>(answer: oneshot::Receiver<T>) -> Result<T, Error> {
     #[cfg(test)]
-    {
-        tokio::task::spawn_blocking(move || answer.blocking_recv().ok())
-            .await
-            .ok()
-            .flatten()
-    }
+    let reply = tokio::task::spawn_blocking(move || answer.blocking_recv().ok())
+        .await
+        .ok()
+        .flatten();
     #[cfg(not(test))]
-    {
-        answer.await.ok()
-    }
+    let reply = answer.await.ok();
+    reply.ok_or(Error::Stopped)
 }
 
 /// The plant timezone days are cut in (ADR 3).
@@ -908,7 +905,7 @@ impl Database {
             .send(Command::Request(Request::Run(job)))
             .await
             .map_err(|_| Error::Stopped)?;
-        Ok(replied(answer).await.ok_or(Error::Stopped)??)
+        Ok(await_reply(answer).await??)
     }
 }
 
