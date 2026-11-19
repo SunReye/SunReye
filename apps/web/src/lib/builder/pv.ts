@@ -125,6 +125,8 @@ export type Solid =
 export interface Mount {
   readonly at: Point;
   readonly above: Point;
+  /** A metre out of its wall, level: the way it faces. */
+  readonly out: Point;
 }
 
 /** What the crate draws and shades. */

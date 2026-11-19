@@ -198,12 +198,13 @@ test("modules are full black under glass that mirrors the sky more than the ligh
   expect(stringColour(null)).not.toBe(stringColour(0));
 });
 
-test("each equipment marker is drawn where the crate hung it", () => {
-  const marked: Geometry = { ...house, mounts: [{ at: [2, -8.1, 1.5], above: [2, -8.1, 8] }] };
+test("each equipment marker is drawn where the crate hung it, turned to face out of its wall", () => {
+  // On a house turned to face west: out of its front wall is west.
+  const mounts = [{ at: [-8.1, -2, 1.5], above: [-8.1, -2, 8], out: [-1, 0, 0] }] as const;
+  const [marker] = buildScene({ ...house, mounts }).getObjectsByProperty("name", "equipment");
 
-  const [marker] = buildScene(marked).getObjectsByProperty("name", "equipment");
-
-  expect(marker?.position.toArray()).toEqual([2, 1.5, 8.1]);
+  expect(marker?.position.toArray()).toEqual([-8.1, 1.5, 2]);
+  expect(marker?.rotation.y).toBeCloseTo(-Math.PI / 2, 9);
 });
 
 test("live, each module's cells glow in the solar colour by its string's share of peak", () => {

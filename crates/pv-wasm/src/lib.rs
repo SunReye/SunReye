@@ -28,7 +28,7 @@ fn geometry(scene: &[u8]) -> String {
             "faces": scene.faces().iter().map(face).collect::<Vec<_>>(),
             "solids": scene.solids().iter().map(solid).collect::<Vec<_>>(),
             "mounts": scene.mounts().ok().map(|mounts| {
-                mounts.iter().map(|m| json!({ "at": m.at, "above": m.above })).collect::<Vec<_>>()
+                mounts.iter().map(|m| json!({ "at": m.at, "above": m.above, "out": m.out })).collect::<Vec<_>>()
             }),
             "stands": scene.stands().ok().map(|stands| {
                 stands.iter().map(|s| json!({ "at": s.at, "forward": s.forward, "above": s.above }))

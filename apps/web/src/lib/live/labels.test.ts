@@ -149,7 +149,7 @@ function marker(kind: Equipment["kind"]): Equipment {
 }
 
 test("a marker carries its device's chip on a leader line; the rest has none", () => {
-  const mount: Mount = { at: [2, -8.1, 1.5], above: [2, -8.1, 8] };
+  const mount: Mount = { at: [2, -8.1, 1.5], above: [2, -8.1, 8], out: [0, -1, 0] };
 
   const chips = equipment({
     ...scene,
@@ -203,7 +203,7 @@ test("an inverter's chip reads its AC power, as its sheet does, and its PV witho
       ...scene,
       values,
       equipment: [marker("inverter")],
-      mounts: [{ at: [0, 0, 0], above: [0, 0, 1] }],
+      mounts: [{ at: [0, 0, 0], above: [0, 0, 1], out: [0, -1, 0] }],
     }).find(({ kind }) => kind === "inverter")?.watts,
   ).toBe(650);
 });
