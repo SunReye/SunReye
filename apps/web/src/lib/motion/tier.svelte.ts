@@ -19,6 +19,8 @@ import {
   parseMotionSetting,
   parseStrain,
   resolveTier,
+  STRAINED_AT,
+  strainLeft,
 } from "./tier.ts";
 
 const STRAIN_KEY = "sunreye.motion-strain";
@@ -33,7 +35,7 @@ const SETTLE_MS = 4000;
 const WATCH_WINDOWS = 3;
 
 export class MotionStore {
-  #strain = $state(parseStrain(read(STRAIN_KEY)));
+  #strain = $state(0);
   #reduce = new MediaQuery("(prefers-reduced-motion: reduce)");
   /** The low-power switch (ADR 21): all of it is instant and nothing moves. */
   #lowPower = $state(read(LOW_POWER) === "on");
@@ -45,12 +47,31 @@ export class MotionStore {
   #raf: number | null = null;
   #settleTimer: ReturnType<typeof setTimeout> | null = null;
   #leases = 0;
+  /** Loops that draw on their own: beside one the idle watch does not run (ADR 21). */
+  #loops = 0;
+  /** Scenes being prepared: nothing is evidence until their first frame is drawn (ADR 21). */
+  #holds = 0;
   /** A strain measured over a scene drawn richly takes a level off its 3D quality first (ADR 20). */
   readonly #quality: QualityStore;
+  readonly #now: () => number;
+  /** Forgets both strains as their seven days end, on a page that never reloads. */
+  #fresh: ReturnType<typeof setTimeout> | null = null;
 
-  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- its steps are taken.
-  constructor(quality: QualityStore = sceneQuality) {
+  /** `now` dates a strain: it lasts seven days. */
+  constructor(
+    // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- its steps are taken.
+    quality: QualityStore = sceneQuality,
+    now: () => number = () => Date.now(),
+  ) {
     this.#quality = quality;
+    this.#now = now;
+
+    const left = strainLeft(read(STRAINED_AT), now());
+
+    if (left > 0) {
+      this.#strain = parseStrain(read(STRAIN_KEY));
+      this.#lasts(left);
+    }
   }
 
   /** What to render. Everything on the page branches on this and nothing else. */
@@ -106,8 +127,12 @@ export class MotionStore {
   /** Neu messen: forgets both strains, so the device is on full, Auto draws from its start and
    * the watch starts over. */
   remeasure(): void {
+    if (this.#fresh !== null) clearTimeout(this.#fresh);
+
+    this.#fresh = null;
     this.#strain = 0;
     forget(STRAIN_KEY);
+    forget(STRAINED_AT);
     this.#quality.remeasure();
     this.#sync();
   }
@@ -115,15 +140,40 @@ export class MotionStore {
   /** Watch this device's frames while the shell is mounted; the disposer stops the loop. */
   watch(): () => void {
     this.#leases += 1;
-    this.#sync();
-    let released = false;
 
-    return () => {
-      if (released) return;
-      released = true;
+    return this.#leased(() => {
       this.#leases -= 1;
-      this.#sync();
-    };
+    });
+  }
+
+  /** Whether a loop draws on its own now. Asked, never rendered: plain, so a loop that starts in
+   * an effect tracks nothing. */
+  get looping(): boolean {
+    return this.#loops > 0;
+  }
+
+  /**
+   * A loop draws on its own until the release (ADR 23 "Motion"): its frames, told with `frame`,
+   * are the evidence, and the idle watch, which would judge them by its own stricter measure,
+   * does not run beside it. It starts over, through the settle delay, once the last loop stops.
+   */
+  loop(): () => void {
+    this.#loops += 1;
+    this.#idle();
+
+    return this.#leased(() => {
+      this.#loops -= 1;
+    });
+  }
+
+  /** A scene is being prepared until the release, its first frame drawn: compiling it is no
+   * evidence, so the watch waits and settles from then. */
+  hold(): () => void {
+    this.#holds += 1;
+
+    return this.#leased(() => {
+      this.#holds -= 1;
+    });
   }
 
   /**
@@ -133,13 +183,28 @@ export class MotionStore {
    */
   frame(ts: number): void {
     // Settling is no evidence, and the still tier has nothing to give.
-    if (this.#settleTimer !== null || this.still || !this.#gives()) return;
+    if (this.#settleTimer !== null || this.#holds > 0 || this.still || !this.#gives()) return;
 
     if (this.#looped.sample(ts)) this.#strained();
   }
 
+  /** Syncs now, and once more after `release`, which runs once. */
+  #leased(release: () => void): () => void {
+    this.#sync();
+    let released = false;
+
+    return () => {
+      if (released) return;
+
+      released = true;
+      release();
+      this.#sync();
+    };
+  }
+
   #sync(): void {
-    const wanted = this.#leases > 0 && !this.#lowPower && !this.#reduce.current && this.#gives();
+    const free = this.#holds === 0 && !this.#lowPower && !this.#reduce.current;
+    const wanted = this.#leases > 0 && free && this.#gives();
 
     if (wanted) this.#start();
     else this.#stop();
@@ -157,8 +222,16 @@ export class MotionStore {
     this.#settleTimer = setTimeout(() => {
       this.#settleTimer = null;
       this.#frames = new FrameStrain();
-      this.#tick();
+
+      if (this.#loops === 0) this.#tick();
     }, SETTLE_MS);
+  }
+
+  /** Ends the idle watch's frames; a settle delay that runs goes on. */
+  #idle(): void {
+    if (this.#raf !== null) cancelAnimationFrame(this.#raf);
+
+    this.#raf = null;
   }
 
   #tick(): void {
@@ -190,8 +263,21 @@ export class MotionStore {
       write(STRAIN_KEY, String(this.#strain));
     }
 
+    // Dated by this strain, whichever it lowered: both last seven days from the last one.
+    write(STRAINED_AT, String(this.#now()));
+    this.#lasts(strainLeft(String(this.#now()), this.#now()));
+
     // Through the settle delay again: the tier change rebuilds part of the hero, which is not evidence.
     this.#sync();
+  }
+
+  /** Both strains are forgotten `ms` from now, as Neu messen does. */
+  #lasts(ms: number): void {
+    if (this.#fresh !== null) clearTimeout(this.#fresh);
+
+    this.#fresh = setTimeout(() => {
+      this.remeasure();
+    }, ms);
   }
 
   #stop(): void {
@@ -200,10 +286,7 @@ export class MotionStore {
       this.#settleTimer = null;
     }
 
-    if (this.#raf !== null) {
-      cancelAnimationFrame(this.#raf);
-      this.#raf = null;
-    }
+    this.#idle();
   }
 }
 

@@ -107,6 +107,8 @@ test("a loop's frames are judged for as long as it runs: held ones leave the tie
 
   expect(motion.tier).toBe("lite");
   expect(localStorage.getItem("sunreye.motion-strain")).toBe("1");
+  // Dated, so it can be forgotten in a week.
+  expect(Number(localStorage.getItem("sunreye.strained-at"))).toBeGreaterThan(Date.now() - 60_000);
 });
 
 test("a loop's frames are no evidence while the page settles or on the still tier", () => {
@@ -129,4 +131,120 @@ test("a loop's frames are no evidence while the page settles or on the still tie
 
   motion.lowPower = false;
   expect(motion.tier).toBe("full");
+});
+
+test("the idle watch does not run beside a loop, and starts over once the loop stops", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const now = jank();
+  const motion = new MotionStore();
+  const release = motion.watch();
+  const stop = motion.loop();
+
+  expect(motion.looping).toBe(true);
+  // Settled, and long after: the loop's own frames are the evidence, and none is asked for.
+  vi.advanceTimersByTime(60_000);
+  expect(now()).toBe(0);
+
+  let frame = 0;
+
+  // A draw of 40 ms would be felt by the idle watch's 32, and holds the loop's 30 a second.
+  for (let drawn = 0; drawn < 600; drawn++) motion.frame((frame += 40));
+
+  expect(motion.tier).toBe("full");
+
+  stop();
+  expect(motion.looping).toBe(false);
+  // Through the settle delay again.
+  vi.advanceTimersByTime(3900);
+  expect(now()).toBe(0);
+  vi.advanceTimersByTime(100);
+  vi.useRealTimers();
+
+  await expect.poll(() => motion.tier).toBe("lite");
+  release();
+});
+
+test("a scene being prepared is no evidence: the watch settles from its first frame", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const now = jank();
+  const motion = new MotionStore();
+  const release = motion.watch();
+  const drawn = motion.hold();
+  let frame = 0;
+
+  // The page settled long ago; the scene still compiles, and a loop waits to draw in it.
+  vi.advanceTimersByTime(30_000);
+
+  for (let given = 0; given < 600; given++) motion.frame((frame += 60));
+
+  expect(now()).toBe(0);
+  expect(motion.tier).toBe("full");
+
+  // The first frame is drawn: the 4 s start here.
+  drawn();
+  vi.advanceTimersByTime(3900);
+  expect(now()).toBe(0);
+  vi.advanceTimersByTime(100);
+  vi.useRealTimers();
+
+  await expect.poll(() => motion.tier).toBe("lite");
+  release();
+});
+
+const DAY = 86_400_000;
+
+const RTX = "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)";
+
+/** The tier and Auto's level of a browser that loads at `now`. */
+function loadedAt(now: number): string {
+  const quality = new QualityStore(() => now);
+
+  quality.see(RTX);
+
+  const motion = new MotionStore(quality, () => now);
+
+  return `${motion.tier} ${quality.look(motion.tier).level}`;
+}
+
+test("a strain lasts seven days: then both are forgotten and the device starts from full", () => {
+  localStorage.setItem("sunreye.motion-strain", "1");
+  localStorage.setItem("sunreye.3d-strain", "2");
+  localStorage.setItem("sunreye.strained-at", "1000");
+
+  expect(loadedAt(1000 + 7 * DAY - 1)).toBe("lite low");
+  expect(loadedAt(1000 + 7 * DAY)).toBe("full high");
+});
+
+test("a strain kept without its date, from before strains were dated, counts as that old", () => {
+  localStorage.setItem("sunreye.motion-strain", "1");
+  localStorage.setItem("sunreye.3d-strain", "2");
+
+  expect(loadedAt(1000)).toBe("full high");
+});
+
+test("a page that never reloads forgets its strain as the seven days end, and measures anew", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  vi.stubGlobal("requestAnimationFrame", () => 1);
+  localStorage.setItem("sunreye.motion-strain", "1");
+  localStorage.setItem("sunreye.strained-at", String(-6 * DAY));
+
+  const motion = new MotionStore(new QualityStore(() => 0), () => 0);
+  const release = motion.watch();
+
+  expect(motion.tier).toBe("lite");
+
+  vi.advanceTimersByTime(DAY - 1);
+  expect(motion.tier).toBe("lite");
+
+  vi.advanceTimersByTime(1);
+  expect(motion.tier).toBe("full");
+  expect(localStorage.getItem("sunreye.motion-strain")).toBeNull();
+  expect(localStorage.getItem("sunreye.strained-at")).toBeNull();
+
+  // The watch measures anew, after the settle delay.
+  jank();
+  vi.advanceTimersByTime(4000);
+  vi.useRealTimers();
+  await expect.poll(() => motion.tier).toBe("lite");
+  release();
 });
