@@ -18,6 +18,11 @@ function drawing({ at, forward, length, width, colour, model }: Parked): string 
   return JSON.stringify([at, forward, length, width, colour, model]);
 }
 
+/** What decides the cars' drawing: a live tick's power and SOC leave it as it was. */
+export function parkedKey(cars: readonly Parked[]): string {
+  return JSON.stringify(cars.map((car) => drawing(car)));
+}
+
 /** Frees each car's own paint; the default body's meshes and an upload's stay with their loader. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js frees in place.
 function release(object: Object3D): void {
@@ -67,7 +72,7 @@ export function garage(
 
   return {
     park(cars) {
-      const next = JSON.stringify(cars.map((car) => drawing(car)));
+      const next = parkedKey(cars);
 
       if (next === key) return;
 
