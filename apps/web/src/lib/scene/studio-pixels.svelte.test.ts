@@ -174,13 +174,15 @@ test("Hoch and Ultra draw every finish in Mittel's colours: a level adds sharpne
   expect(window.devicePixelRatio).toBe(1);
 
   const medium = sheets("medium");
+  const high = sheets("high");
 
   // What two studios at one level differ by: the occlusion's noise.
   expect(apart(sheets("medium"), medium)).toBeLessThan(1);
+  expect(apart(sheets("ultra"), high)).toBeLessThan(1);
 
-  for (const level of ["high", "ultra"] as const) {
-    expect([level, apart(sheets(level), medium) < 1]).toEqual([level, true]);
-  }
+  // Mittel's occlusion is coarser (ADR 20): a block is 1.3 of 255 off Hoch's, the whole no lighter.
+  expect(apart(high, medium)).toBeLessThan(2);
+  expect(Math.abs(mean(high) - mean(medium))).toBeLessThan(0.25);
 
   // Niedrig, as a control: it draws without the occlusion that sets the sheets on the floor.
   expect(apart(sheets("low"), medium)).toBeGreaterThan(3);

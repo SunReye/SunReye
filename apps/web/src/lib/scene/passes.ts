@@ -32,12 +32,19 @@ function ambientOcclusion(scene: Scene, camera: PerspectiveCamera): GTAOPass {
   pass.normalMaterial.side = DoubleSide;
 
   pass.blendIntensity = 1;
+
+  return pass;
+}
+
+/** The occlusion and its denoising, each from `samples` a pixel: a look's own (ADR 20). */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js sets it in place.
+function sample(pass: GTAOPass, samples: number): void {
   pass.updateGtaoMaterial({
     radius: 2,
     distanceExponent: 1.5,
     thickness: 1.5,
     scale: 1.5,
-    samples: 12,
+    samples,
   });
   pass.updatePdMaterial({
     lumaPhi: 10,
@@ -45,14 +52,9 @@ function ambientOcclusion(scene: Scene, camera: PerspectiveCamera): GTAOPass {
     normalPhi: 3,
     radius: 6,
     rings: 2,
-    samples: 12,
+    samples,
   });
-
-  return pass;
 }
-
-/** The most device pixels the occlusion pass draws per CSS pixel below Ultra: Mittel's. */
-const OCCLUSION_RATIO = 1.5;
 
 export class Passes {
   readonly #renderer: WebGLRenderer;
@@ -62,6 +64,8 @@ export class Passes {
   readonly #lens = new LensPass();
   readonly #refiner = new Refiner();
   #finest = false;
+  /** The most device pixels the occlusion pass draws per CSS pixel: the look's. */
+  #occluded = 1;
   /** Whether the look has the glass, and whether anything is on it. */
   #glass = false;
   #glazed = false;
@@ -97,8 +101,10 @@ export class Passes {
   }
 
   /** The passes `look` asks for. */
-  follow({ occlusion, finest, glass }: Look): void {
+  follow({ occlusion, occluded, samples, finest, glass }: Look): void {
     this.#occlusion.enabled = occlusion;
+    this.#occluded = occluded;
+    sample(this.#occlusion, samples);
     this.#finest = finest;
     this.#glass = glass;
     this.#lens.enabled = glass && this.#glazed;
@@ -118,8 +124,8 @@ export class Passes {
   }
 
   setSize(width: number, height: number, ratio: number): void {
-    // Occlusion is soft: below Ultra it is drawn no finer than Mittel draws it.
-    const occluded = this.#finest ? ratio : Math.min(ratio, OCCLUSION_RATIO);
+    // Occlusion is soft: it is drawn no finer than the look asks.
+    const occluded = Math.min(ratio, this.#occluded);
 
     this.#composer.setPixelRatio(ratio);
     this.#composer.setSize(width, height);

@@ -10,30 +10,36 @@ test("Niedrig draws as the lite tier did, at a pixel ratio of 1 from a 1024 shad
     pixelRatio: 1,
     shadowMap: 1024,
     occlusion: false,
+    occluded: 0.75,
+    samples: 8,
     glass: false,
     contact: false,
     finest: false,
   });
 });
 
-test("Mittel draws what the full tier drew: a 2048 map, occlusion, up to 1.5", () => {
+test("Mittel draws from a 2048 map at up to 1.5, its occlusion at half that from 8 samples", () => {
   expect(drawn("medium", strong)).toEqual({
     level: "medium",
     pixelRatio: 1.5,
     shadowMap: 2048,
     occlusion: true,
+    occluded: 0.75,
+    samples: 8,
     glass: true,
     contact: false,
     finest: false,
   });
 });
 
-test("Hoch only sharpens Mittel: contact-hardening shadows from a 4096 map, up to 2", () => {
+test("Hoch only sharpens Mittel: contact shadows from a 4096 map, up to 2, finer occlusion", () => {
   expect(drawn("high", weak)).toEqual({
     ...drawn("medium", weak),
     level: "high",
     pixelRatio: 2,
     shadowMap: 4096,
+    occluded: 1.5,
+    samples: 12,
     contact: true,
   });
 });
@@ -43,6 +49,7 @@ test("Ultra only sharpens Hoch: its burst and full occlusion at the device's pix
     ...drawn("high", weak),
     level: "ultra",
     pixelRatio: Infinity,
+    occluded: Infinity,
     finest: true,
   });
 });
@@ -50,6 +57,18 @@ test("Ultra only sharpens Hoch: its burst and full occlusion at the device's pix
 test("Auto starts at Hoch on a capable GPU and at Mittel elsewhere", () => {
   expect(drawn("auto", strong).level).toBe("high");
   expect(drawn("auto", weak).level).toBe("medium");
+});
+
+test("Auto starts a touch device at Mittel, whatever its GPU is called; Hoch stays a choice", () => {
+  const phone: Device = { ...strong, touch: true };
+
+  expect(drawn("auto", phone).level).toBe("medium");
+  expect(drawn("auto", { ...weak, touch: true }).level).toBe("medium");
+  expect(drawn("high", phone).level).toBe("high");
+  // Its first strain is the motion tier's, as at Mittel anywhere; the next takes Niedrig.
+  expect(relief("auto", phone)).toBe(false);
+  expect(relief("auto", { ...phone, tier: "lite" })).toBe(true);
+  expect(drawn("auto", { ...phone, steps: 1, tier: "lite" }).level).toBe("low");
 });
 
 test("Auto steps down a level per measured strain, never under Niedrig", () => {

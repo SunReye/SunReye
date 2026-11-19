@@ -1,5 +1,6 @@
-import { afterEach, expect, test } from "vitest";
-import { measured, PHONE, screen, shut, told } from "./probe.harness.ts";
+import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
+import { afterEach, expect, test, vi } from "vitest";
+import { look, measured, PHONE, screen, shut, told } from "./probe.harness.ts";
 
 // What a frame of the scene draws, counted (ADR 21 "Measuring"): this host has no GPU, so a
 // frame's cost is told by its passes, their sizes and its draws, never by its time.
@@ -77,4 +78,48 @@ test("the scene is antialiased in its own target, and the canvas it is copied on
   // Only the finished picture reaches the canvas: samples of its own would be filled for nothing.
   expect(studio.renderer.getContext().getContextAttributes()?.antialias).toBe(false);
   expect(scene?.samples).toBe(4);
+});
+
+test("on a phone Mittel draws its occlusion at half its pixel ratio, and Hoch at Mittel's", async () => {
+  await screen(PHONE.ratio);
+
+  const size = [PHONE.width, PHONE.height] as const;
+
+  expect(told(measured("medium", size).frame())).toEqual([
+    "shadow 2048×2048",
+    "target 585×900 ×4",
+    // The occlusion's normals, its samples and their denoising.
+    "target 293×450",
+    "target 293×450",
+    "target 293×450",
+    "target 585×900 ×4",
+    "target 585×900 ×4",
+    "canvas 585×900",
+  ]);
+  expect(told(measured("high", size).frame())).toEqual([
+    "shadow 4096×4096",
+    "target 780×1200 ×4",
+    "target 585×900",
+    "target 585×900",
+    "target 585×900",
+    "target 780×1200 ×4",
+    "target 780×1200 ×4",
+    "canvas 780×1200",
+  ]);
+});
+
+test("Mittel's occlusion takes 8 samples a pixel and Hoch's 12", () => {
+  const sampled = vi.spyOn(GTAOPass.prototype, "updateGtaoMaterial");
+  const denoised = vi.spyOn(GTAOPass.prototype, "updatePdMaterial");
+  const last = () => [sampled.mock.lastCall?.[0].samples, denoised.mock.lastCall?.[0].samples];
+  const { studio } = measured("medium");
+
+  expect(last()).toEqual([8, 8]);
+
+  studio.follow(look("high"));
+  expect(last()).toEqual([12, 12]);
+
+  studio.follow(look("medium"));
+  expect(last()).toEqual([8, 8]);
+  vi.restoreAllMocks();
 });

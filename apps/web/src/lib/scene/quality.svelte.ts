@@ -2,6 +2,7 @@
  * The 3D quality as reactive state: the rune shell over `./quality`. The choice, the GPU last
  * seen and the levels strain has taken off Auto are kept per browser (ADR 20 Look).
  */
+import { MediaQuery } from "svelte/reactivity";
 import { forget, read, write } from "../kept.ts";
 import { STRAINED_AT, strainLeft, type MotionTier } from "../motion/tier.ts";
 import {
@@ -20,6 +21,9 @@ export const QUALITY = "sunreye.3d-quality";
 
 const STEPS = "sunreye.3d-strain";
 const GPU = "sunreye.gpu";
+
+/** A touch device, a phone or a tablet: its primary pointer is coarse (ADR 20). */
+const touch = new MediaQuery("(pointer: coarse)");
 
 export class QualityStore {
   readonly #now: () => number;
@@ -100,7 +104,7 @@ export class QualityStore {
   }
 
   #device(tier: MotionTier) {
-    return { capable: capable(this.#gpu), steps: this.#steps, tier };
+    return { capable: capable(this.#gpu), touch: touch.current, steps: this.#steps, tier };
   }
 }
 
