@@ -220,27 +220,34 @@ impl Diode {
 
     /// The voltage at `current`, held at the bypass diode's drop below zero.
     #[must_use]
+    #[expect(
+        clippy::suboptimal_flops,
+        reason = "the model's innermost loop: where the target's baseline has no FMA (x86-64, \
+                  WASM) each mul_add is a call into libm"
+    )]
     pub fn voltage(&self, current: f64) -> f64 {
         let (il, io, a) = (self.photocurrent, self.saturation_current, self.ideality);
         let conductance = 1.0 / self.shunt_resistance;
-        // Across the diode: x = V + I·Rs, and the current balance falls as x rises.
-        let balance = |x: f64| x.mul_add(-conductance, io.mul_add(-(x / a).exp_m1(), il)) - current;
-        let mut low = current.mul_add(self.series_resistance, -BYPASS_DROP);
-        if balance(low) <= 0.0 {
+        // Across the diode: x = V + I·Rs, and the current balance falls as x rises. With it, the
+        // exponential its slope shares.
+        let balance = |x: f64| {
+            let growth = (x / a).exp();
+            (il - io * (growth - 1.0) - x * conductance - current, growth)
+        };
+        let mut low = current * self.series_resistance - BYPASS_DROP;
+        if balance(low).0 <= 0.0 {
             return -BYPASS_DROP;
         }
-        let mut high = a.mul_add(((il - current).max(0.0) / io).ln_1p(), f64::EPSILON);
+        let mut high = a * ((il - current).max(0.0) / io).ln_1p() + f64::EPSILON;
         let mut x = high;
         for _ in 0..200 {
-            // One exponential serves the balance and its slope.
-            let growth = (x / a).exp();
-            let value = x.mul_add(-conductance, io.mul_add(-(growth - 1.0), il)) - current;
+            let (value, growth) = balance(x);
             if value > 0.0 {
                 low = x;
             } else {
                 high = x;
             }
-            let slope = (-io / a).mul_add(growth, -conductance);
+            let slope = -io / a * growth - conductance;
             let newton = x - value / slope;
             let precision = 1e-14 * x.abs().max(1.0);
             if (newton - x).abs() <= precision {
@@ -256,6 +263,6 @@ impl Diode {
                 break;
             }
         }
-        current.mul_add(-self.series_resistance, x)
+        x - current * self.series_resistance
     }
 }
