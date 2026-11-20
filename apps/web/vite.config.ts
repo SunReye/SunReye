@@ -21,6 +21,16 @@ function icons(): string[] {
   return [...found].toSorted();
 }
 
+/** Test files that draw the 3D scene, or a page that may; they run one at a time, after the rest. */
+const SCENE = [
+  "src/routes/**/*.svelte.test.ts",
+  "src/lib/builder/**/*.svelte.test.ts",
+  "src/lib/scene/**/*.svelte.test.ts",
+  "src/lib/live/**/*.svelte.test.ts",
+  "src/lib/cars/**/*.svelte.test.ts",
+  "src/lib/dashboard/**/*.svelte.test.ts",
+];
+
 export default defineConfig({
   plugins: [
     tailwindcss(),
@@ -55,15 +65,33 @@ export default defineConfig({
     ],
   },
   test: {
-    include: ["src/**/*.svelte.test.ts"],
-    // Without a GPU every page's WebGL runs through one software renderer: the studio scenes of
-    // files run side by side starve each other into timeouts.
-    fileParallelism: false,
     browser: {
       enabled: true,
       headless: true,
       provider: playwright(),
       instances: [{ browser: "chromium" }],
     },
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: "dom",
+          include: ["src/**/*.svelte.test.ts"],
+          exclude: SCENE,
+          sequence: { groupOrder: 0 },
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "scene",
+          include: SCENE,
+          // Without a GPU every page's WebGL runs through one software renderer: the studio scenes
+          // of files run side by side starve each other into timeouts.
+          fileParallelism: false,
+          sequence: { groupOrder: 1 },
+        },
+      },
+    ],
   },
 });
