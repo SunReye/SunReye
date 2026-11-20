@@ -171,7 +171,7 @@
 
 <style>
   .key {
-    transition: opacity 200ms var(--motion-ease);
+    transition: opacity var(--motion-base) var(--motion-ease);
   }
   .key.off {
     opacity: 0;

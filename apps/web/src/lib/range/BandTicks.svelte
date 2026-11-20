@@ -32,7 +32,7 @@
     pointer-events: none;
     transition:
       transform var(--move),
-      opacity 200ms var(--motion-ease);
+      opacity var(--motion-base) var(--motion-ease);
   }
   .tick.out {
     opacity: 0;

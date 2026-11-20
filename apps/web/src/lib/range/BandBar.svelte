@@ -116,8 +116,8 @@
   .bar.out {
     opacity: 0;
     transition:
-      transform 150ms ease-in,
-      opacity 150ms ease-in;
+      transform var(--motion-exit) var(--motion-ease-exit),
+      opacity var(--motion-exit) var(--motion-ease-exit);
   }
   /* A zoom is a movement between two places: both sides travel on ease-in-out. */
   .bar.zoom {
@@ -146,13 +146,13 @@
     pointer-events: none;
     transition:
       transform var(--move),
-      opacity 200ms var(--motion-ease);
+      opacity var(--motion-base) var(--motion-ease);
   }
   /* A reference draws in once its bar is nearly there. */
   .mark.on {
     transition:
       transform var(--move),
-      opacity 200ms var(--motion-ease) 140ms;
+      opacity var(--motion-base) var(--motion-ease) calc(var(--motion-move) / 2);
   }
   @starting-style {
     .mark {
@@ -166,13 +166,13 @@
     inset: 0 auto 0 0;
     transition:
       transform var(--move),
-      opacity 200ms var(--motion-ease);
+      opacity var(--motion-base) var(--motion-ease);
   }
   .gap.out {
     opacity: 0;
     transition:
       transform var(--move),
-      opacity 150ms ease-in;
+      opacity var(--motion-exit) var(--motion-ease-exit);
   }
   @starting-style {
     .gap.fresh {

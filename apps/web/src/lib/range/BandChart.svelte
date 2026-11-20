@@ -4,8 +4,8 @@
   so every change is interruptible and never touches layout (ADR 21). Bars, labels and gridlines
   are keyed by what they stand for:
   - bars are keyed by place: a new range moves each bar to its new value, place and width; a bar the
-    new range has no place for shrinks to the baseline and fades (150 ms); an extra one grows in,
-    staggered (`--motion-stagger`);
+    new range has no place for shrinks to the baseline and fades (`--motion-exit`); an extra one
+    grows in, staggered (`--motion-stagger`);
   - a drill or a brush (`via.kind === "zoom"`) is a FLIP along the time axis: the old bars spread out
     of the plot from the chosen span, the new ones start inside it;
   - a gridline keeps its value: it travels to that value's place on the new scale.
@@ -16,6 +16,7 @@
   import { untrack } from "svelte";
   import ChartEntrance from "../chart-entrance/ChartEntrance.svelte";
   import { motion } from "../motion/tier.svelte.ts";
+  import { FIGURE_GLIDE_MS } from "../motion/values.ts";
   import { m } from "../paraglide/messages.js";
   import {
     place,
@@ -271,7 +272,7 @@
     approx: estimated,
     // A band still to come has its forecast, but nothing measured yet.
     unmeasured: shown?.state === "future",
-    duration: shown ? 0 : 320,
+    duration: shown ? 0 : FIGURE_GLIDE_MS,
   });
 </script>
 
@@ -388,8 +389,8 @@
     pointer-events: none;
     background: color-mix(in oklab, var(--foreground) 11%, transparent);
     transition:
-      transform 100ms var(--motion-ease),
-      opacity 100ms var(--motion-ease);
+      transform var(--motion-fast) var(--motion-ease),
+      opacity var(--motion-fast) var(--motion-ease);
   }
   .brush {
     position: absolute;
