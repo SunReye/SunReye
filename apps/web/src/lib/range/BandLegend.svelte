@@ -34,8 +34,8 @@
     approx: boolean;
     /** The series' figures show a dash: a band still to come, read for its forecast only. */
     unmeasured: boolean;
-    /** Reading a band is instant; a new range rolls. */
-    duration: number;
+    /** A new range's figures glide to it; a band being read shows at once. */
+    glide: boolean;
   }
 </script>
 
@@ -43,6 +43,7 @@
   import ArrowRight from "@lucide/svelte/icons/arrow-right";
   import { Button } from "#lib/components/ui/button/index.js";
   import AnimatedNumber from "../components/animated-number.svelte";
+  import { FIGURE_GLIDE_MS } from "../motion/values.ts";
 
   let {
     legend,
@@ -82,7 +83,7 @@
     value={legend.blank || (series && legend.unmeasured) ? null : (v ?? 0)}
     format={series && legend.approx ? approx : fmt}
     placeholder="–"
-    duration={legend.duration}
+    duration={legend.glide ? FIGURE_GLIDE_MS : 0}
     appear={false}
   />
 {/snippet}

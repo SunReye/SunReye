@@ -43,7 +43,4 @@
       opacity: 0;
     }
   }
-  :global(.still) .tick {
-    transition: none;
-  }
 </style>

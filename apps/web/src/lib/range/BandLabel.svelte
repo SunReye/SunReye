@@ -59,7 +59,4 @@
       opacity: 0;
     }
   }
-  :global(.still) .label {
-    transition: none;
-  }
 </style>

@@ -15,8 +15,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import ChartEntrance from "../chart-entrance/ChartEntrance.svelte";
-  import { motion } from "../motion/tier.svelte.ts";
-  import { FIGURE_GLIDE_MS } from "../motion/values.ts";
   import { m } from "../paraglide/messages.js";
   import {
     place,
@@ -272,7 +270,7 @@
     approx: estimated,
     // A band still to come has its forecast, but nothing measured yet.
     unmeasured: shown?.state === "future",
-    duration: shown ? 0 : FIGURE_GLIDE_MS,
+    glide: !shown,
   });
 </script>
 
@@ -305,7 +303,7 @@
   <BandLegend {legend} {fmt} {drillLabel} onopen={reading.open} />
 
   <ChartEntrance build="grow" ready={!loading && bars.list.length > 0}>
-    <div class={["grid grid-cols-[2.25rem_minmax(0,1fr)] gap-x-1", motion.still && "still"]}>
+    <div class="grid grid-cols-[2.25rem_minmax(0,1fr)] gap-x-1">
       <!-- Above the top gridline's figure, which sits half above the plot. -->
       <span class="mb-2.5 text-right text-[11px] leading-none text-muted-foreground opacity-70"
         >{unit}</span
@@ -396,9 +394,5 @@
     position: absolute;
     inset: 0 auto 0 0;
     pointer-events: none;
-  }
-
-  .still .hl {
-    transition: none;
   }
 </style>

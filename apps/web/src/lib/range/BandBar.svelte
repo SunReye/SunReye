@@ -187,8 +187,4 @@
       transparent 1px 5px
     );
   }
-
-  :global(.still) :is(.bar, .seg, .mark, .gap) {
-    transition: none;
-  }
 </style>
