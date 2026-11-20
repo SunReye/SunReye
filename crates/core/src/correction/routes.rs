@@ -1,11 +1,8 @@
 //! The learned corrections route (ADR 17, 20): each MPPT input's grid and its last 30 days
 //! against the model, so the builder shows where the scene is wrong. Read by viewers, as history.
 
-use std::time::SystemTime;
-
 use axum::Json;
 use axum::extract::State;
-use jiff::tz::TimeZone;
 use serde::Serialize;
 use tokio::sync::watch;
 use utoipa::ToSchema;
@@ -13,27 +10,17 @@ use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
 use super::{Corrections, InputReport};
-use crate::api::{Clock, Problem, ProblemDetails, internal};
+use crate::api::{Problem, ProblemDetails, internal};
 use crate::location::Location;
 
-type Routed = (
-    Corrections,
-    watch::Receiver<Option<Location>>,
-    watch::Receiver<TimeZone>,
-    Clock,
-);
+type Routed = (Corrections, watch::Receiver<Option<Location>>);
 
 impl Corrections {
-    /// At the plant's `location`, with hours cut in the plant `zone`; `clock` gives now.
-    pub fn routes(
-        self,
-        location: watch::Receiver<Option<Location>>,
-        zone: watch::Receiver<TimeZone>,
-        clock: Clock,
-    ) -> OpenApiRouter {
+    /// The last 30 days are reported while the plant has a `location`.
+    pub fn routes(self, location: watch::Receiver<Option<Location>>) -> OpenApiRouter {
         OpenApiRouter::new()
             .routes(routes!(corrections))
-            .with_state((self, location, zone, clock))
+            .with_state((self, location))
     }
 }
 
@@ -51,7 +38,8 @@ struct InputCorrection {
     input: u32,
     /// The learned cells; an unlearned month and hour applies 1.
     factors: Vec<LearnedCell>,
-    /// The last 30 days measured against the model, absent until both exist.
+    /// The last 30 days measured against the model as the learner last stored them, absent until
+    /// both exist.
     recent: Option<RecentEnergy>,
 }
 
@@ -103,13 +91,11 @@ impl From<InputReport> for InputCorrection {
     ),
 )]
 async fn corrections(
-    State((corrections, location, zone, clock)): State<Routed>,
+    State((corrections, location)): State<Routed>,
 ) -> Result<Json<CorrectionList>, Problem> {
-    let now: SystemTime = clock();
-    let at = *location.borrow();
-    let plant_zone = zone.borrow().clone();
+    let located = location.borrow().is_some();
     let reports = corrections
-        .report(at, &plant_zone, now)
+        .report(located)
         .await
         .map_err(|e| internal(format_args!("corrections: {e}")))?;
     Ok(Json(CorrectionList {
