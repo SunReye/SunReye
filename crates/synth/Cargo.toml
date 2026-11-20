@@ -1,0 +1,33 @@
+[package]
+name = "sunreye-synth"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+# Dev-only (ADR 24): the image builds the core alone.
+publish = false
+
+[dependencies]
+# The API's request types, to register the reference plant through the core's router.
+axum = { version = "0.8.9", default-features = false }
+# Plant-local days, as the core cuts them; the same features, so the core's build is unchanged.
+jiff = { version = "0.2.41", default-features = false, features = [
+  "std",
+  "tzdb-bundle-always",
+  "tzdb-concatenated",
+  "tzdb-zoneinfo",
+] }
+serde_json.workspace = true
+sunreye-core = { path = "../core" }
+sunreye-profile.workspace = true
+sunreye-pv.workspace = true
+tokio = { version = "1.54.1", default-features = false, features = ["rt"] }
+# Calls the router in process, as the core's API tests do; axum already depends on it.
+tower = { version = "0.5.3", default-features = false, features = ["util"] }
+
+[dev-dependencies]
+# Reads the generated file back to compare two runs.
+rusqlite = { version = "0.41.1", features = ["bundled"] }
+tempfile = "3.27.0"
+
+[lints]
+workspace = true

@@ -1,10 +1,10 @@
 # 1. Scope and stages
 
-Status: accepted (2026-11-08), amended (2026-11-09)
+Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-19)
 
 ## Context
 
-v4 ported a 3.x system and kept surfacing seams. v5 restarts from specs. The audience is single-household homeowners who monitor their home now and want it energy-managed later; Businesses that sold the software can watch their customers' installs through the relay, with each homeowner's consent. The goal is an all-in-one energy monitoring workspace for a home, with energy management (EMS) as a later stage. YAGNI governs features, not the founding seams: a seam added later means migrating every table, profile and adapter.
+v4 ported a 3.x system and kept surfacing seams. v5 restarts from specs. The audience is single-household homeowners who monitor their home now and want it energy-managed later; installers that sold the software can watch their customers' installs through the relay, with each homeowner's consent. The goal is an all-in-one energy monitoring workspace for a home, with energy management (EMS) as a later stage. YAGNI governs features, not the founding seams: a seam added later means migrating every table, profile and adapter.
 
 ## Decision
 
@@ -16,6 +16,7 @@ First release:
 - EVCC and custom profiles; a CLI to create, lint and publish profiles.
 - A plant topology (ADR 14), which every plant-level value needs.
 - A solar forecast per string, and estimates for strings in parallel (ADR 17).
+- Importing a plant an installer planned in SunReye Plan (ADRs 25, 26).
 
 Designed for, not in the first release:
 
@@ -25,7 +26,7 @@ Designed for, not in the first release:
 - EMS plans (ADR 15).
 - The 3D house builder and the live 3D dashboard (ADR 20), built with three.js and loaded only on the builder and on a dashboard whose plant has a scene.
 
-Out of scope: device vendor clouds, and local accounts beyond one admin and the read-only viewers it creates. Cloud accounts and business roles come with the relay build (ADR 16).
+Out of scope: planning for installers, which is SunReye Plan, a separate hosted product on the same layout (ADR 25); device vendor clouds, and local accounts beyond one admin and the read-only viewers it creates. Cloud accounts and organisations come with the relay build (ADR 16).
 
 ## Considered options
 

@@ -1,6 +1,6 @@
 # 17. Solar forecast and string model
 
-Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12, 2026-11-13, 2026-11-15, 2026-11-16, 2026-11-17, 2026-11-18, 2026-11-20)
+Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12, 2026-11-13, 2026-11-15, 2026-11-16, 2026-11-17, 2026-11-18, 2026-11-19, 2026-11-20)
 
 ## Context
 
@@ -10,14 +10,14 @@ Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12, 2026-11-13, 2026
 
 **Layout.** The PV layout is the wiring.
 
-- An MPPT input belongs to an inverter. Its count, maximum input current, voltage window and start voltage come from the inverter profile (ADR 5).
+- An MPPT input belongs to an inverter. Its count, maximum input current, voltage window and start voltage come from the inverter profile (ADR 5), or from the inverter's inverter type where it has one (2026-11-19, ADR 27).
 - A string is a series of modules of one module type, with an optional loss in %. Each module has a plane (tilt, and azimuth with 0 = south, −90 = east, 90 = west) and may have an optimizer, so a string may span roof faces. Entered by form, a string has one plane for all its modules and a count of optimized modules; a scene (ADR 20) places each module. Strings on one MPPT input are in parallel.
 - A module type holds datasheet values: Pmax, Vmp, Imp, Voc, Isc, the temperature coefficients of power, voltage and current, width, height and the number of bypass diodes. The admin enters them or copies them from the module catalogue.
 - The module catalogue is bundled with the core, like the official profiles (ADR 8), one sheet per maker's datasheet: maker, series, the datasheet's title, revision and URL, and each power class it prints. Every value is copied from that datasheet; a power class or series whose datasheet lacks a value, the bypass diodes included, is left out, never estimated. The core refuses at build time, by test, a sheet without its source or with a value out of range or inconsistent (Vmp above Voc, Imp above Isc, Vmp × Imp more than 2 % off Pmax, a coefficient of the wrong sign, a size outside 0.2–3 m). Admins read it at `GET /api/v1/module-catalogue`. Picking an entry adds a module type with its values (`POST /api/v1/module-types`), so a layout never depends on the catalogue and keeps working when it changes.
 - kWp is derived: modules × Pmax.
 - A lint warns when parallel strings on one MPPT input differ in module count.
 - Strings and module types have stable ids that are never reused; `pv.string.power` is indexed by string id. A layout change applies from its date, and past estimates keep the layout they were computed with, as for topology (ADR 14).
-- The admin adds module types (`POST /api/v1/module-types`) and puts every string with the instant the change applies from (`PUT /api/v1/layout`); a string without an id is new and gets one. A layout keeps one version per date it applies from: a change from a date that already has one replaces it, and a change equal to the version in force at that date stores nothing. Each stored change appends a change-log entry (ADR 19) with its author, time and date, and the counts of strings and modules, not the layout itself. `GET /api/v1/layout?at=` returns the version in force at an instant, now by default. Until device configuration exists, a string may name only an inverter the core knows with its profile.
+- The admin adds module types (`POST /api/v1/module-types`) and puts every string with the instant the change applies from (`PUT /api/v1/layout`); a string without an id is new and gets one. A layout keeps one version per date it applies from: a change from a date that already has one replaces it, and a change equal to the version in force at that date stores nothing. Each stored change appends a change-log entry (ADR 19) with its author, time and date, and the counts of strings and modules, not the layout itself. `GET /api/v1/layout?at=` returns the version in force at an instant, now by default. A string may name only an inverter device that has a profile describing its DC side or an inverter type (2026-11-19, ADR 27); a pending device (ADR 26) counts.
 - The plant's location (latitude, longitude) is entered at first-run setup. The admin sets it with `PUT /api/v1/location`; the location module stores it rounded to 0.01° and appends each change to the change log (ADR 19).
 
 **Weather.** A weather computed device stores global, direct and diffuse irradiance, temperature and wind as `weather.*` forecasts (ADR 15) for the plant's location, rounded to 0.01° (about 1 km) before it leaves the home, at 15-minute resolution for today and two more days. Its task fetches on start and hourly while the location is set, and at once when it changes; a handler never fetches. Without a location nothing is fetched. The provider is an adapter at this seam: Open-Meteo forecast, Open-Meteo archive (past weather for learning) and a fake for tests. Archive weather is stored as `weather.*` history, so learning, charts and re-learning after a layout change read it locally. Once the archive is stored for a day, the weather forecasts of that day are deleted: the archive answers for it, and visibility, which it lacks, is not kept for the past. ADR 23 (2026-11-17) adds the weather code, precipitation, snow, visibility, humidity, wind direction, gusts, apparent temperature, sunshine, cloud cover and snow depth, and the measured clear-sky index `weather.clearness`.
@@ -36,7 +36,7 @@ Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12, 2026-11-13, 2026
 
 **Correction.** Carried over from 3.x and v4: an exponentially weighted grid by month and plant-local hour of measured ÷ modelled, with the model run on archive weather so cloud-prediction error is not learned, and a half-life of 30 observations. Each MPPT input learns against `pv.mppt.power`, else the inverter's `pv.power`; parallel strings share their input's factor. Hours with the inverter at its AC limit are skipped. Learning runs twice a day. The 3.x and v4 learner cases are oracles.
 
-- Each run learns the UTC days, settled 3 days, it has not learned, reaching 90 days back at first, as in 3.x and v4. A day counts as learned once one of its hours is modelled and measured, so a day the archive has not settled is fetched again. It also runs at once when the location changes.
+- Each run learns the UTC days, settled 3 days, it has not learned, reaching 90 days back at first, as in 3.x and v4. A day counts as learned once one of its hours is modelled and measured, so a day the archive has not settled is fetched again. It also runs at once when the location changes. Each run, and each layout change, also stores each input's residual over the last 30 days (ADR 20, 2026-11-20).
 - An hour is the hourly rollup's mean against the model's mean at the hour's two ends, as archive weather is instantaneous and hourly.
 - An input learns against `pv.mppt.power` while it has that history in the run's days, else against `pv.power` and the inverter's model.
 - Not every inverter profile declares an AC rating (ADR 5), so the AC limit is observed: an hour is at it when the inverter's `pv.power` peaks within 2 % of the highest hourly peak it stored in the past year while the model expects more than that peak. v4's rules stay as well: an hour is skipped when the input's model is under 3 % of its kWp, or the input's or the inverter's model or measurement reaches 85 % of its kWp.
@@ -47,6 +47,7 @@ Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12, 2026-11-13, 2026
 
 ## Open
 
+- Yield an installer can put in an offer (2026-11-19, ADR 25), after the first release: diffuse shading by a sky-view factor per substring; a horizon profile; soiling and snow; degradation per year; mismatch, cable and inverter-efficiency losses; a reference weather year and P50/P90 from the spread of a multi-year archive; and reference plants checked against pvlib and PVsyst, committed as fixtures. Each changes no stored contract. The licence of the reference year's source is unchecked.
 - Calibrating cell temperature from measured `pv.mppt.voltage`, once a season of voltage history exists.
 
 ## Considered options

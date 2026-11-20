@@ -205,11 +205,7 @@ fn stored_routes(api: &Api) -> OpenApiRouter {
         OpenApiRouter::new()
             .routes(routes!(battery::capacity))
             .with_state((api.history.clone(), Clock::clone(&api.clock))),
-        api.corrections.clone().routes(
-            api.location.watch(),
-            api.storage.zones.watch(),
-            Clock::clone(&api.clock),
-        ),
+        api.corrections.clone().routes(api.location.watch()),
     ])
 }
 
