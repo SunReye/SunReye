@@ -23,7 +23,7 @@ export function built(): Built[] {
   return document.getAnimations().flatMap((a) => {
     const effect = a.effect;
 
-    if (!(a instanceof CSSAnimation) || !(effect instanceof KeyframeEffect)) return [];
+    if (!(a instanceof CSSAnimation) || !(effect instanceof KeyframeEffect) || !ends(a)) return [];
 
     const [from] = effect.getKeyframes();
 
@@ -40,9 +40,12 @@ export function built(): Built[] {
   });
 }
 
-/** Every animation on the page run to its end. */
+/** Whether `a` comes to an end: a live dot pulses for good. */
+const ends = (a: Animation) => a.effect?.getComputedTiming().endTime !== Infinity;
+
+/** Every animation on the page that ends run to its end. */
 export function finish(): void {
-  for (const a of document.getAnimations()) a.finish();
+  for (const a of document.getAnimations()) if (ends(a)) a.finish();
 }
 
 const builds = () => built().map((b) => b.build);

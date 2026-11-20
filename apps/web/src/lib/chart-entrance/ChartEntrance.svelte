@@ -48,10 +48,13 @@
 
     el.dataset["entrance"] = "in";
 
-    // Over once every part has built: from then on a bar keyed anew appears in place.
+    // Over once every part has built: from then on a bar keyed anew appears in place. A live dot
+    // pulses for good and would hold it open.
     const built = el
       .getAnimations({ subtree: true })
-      .filter((a) => a instanceof CSSAnimation)
+      .filter(
+        (a) => a instanceof CSSAnimation && a.effect?.getComputedTiming().endTime !== Infinity,
+      )
       .map((a) => a.finished);
 
     void Promise.allSettled(built).then(() => delete el.dataset["entrance"]);
