@@ -1,30 +1,51 @@
 // One forecast line's figures over the route's range: its measurement and forecast read from the
-// core, then judged into bands, sums and the headline (ADR 17, 21).
+// core, then judged into bands, sums and the headline (ADR 17, 21). The judging is a function of one
+// load, so each pane of the card judges its own.
 import type { Core } from "../api/core.ts";
 import { periodOf, rollups } from "../history/history.ts";
-import { RangeData } from "../range/range-data.svelte.ts";
+import { RangeData, sumTitle, type Loaded } from "../range/range-data.svelte.ts";
 import { rangeKey } from "../range/range.ts";
 import type { RangeRoute } from "../range/route.svelte.ts";
 import { planned, type Part } from "./forecast.ts";
 import { headline, judge, pastDays, summaryOf } from "./judge.ts";
 
+/** One load of a line's figures. */
+export type ForecastRead = Loaded<Awaited<ReturnType<typeof read>>>;
+
+/**
+ * What a pane draws of a load: its bands, sums and headline, with a key that changes with range and
+ * line; with none, it draws loading.
+ */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- a load is never written.
+export function forecastPane(got: Readonly<ForecastRead> | null) {
+  if (!got)
+    return {
+      loading: true,
+      key: "",
+      said: null,
+      bands: [],
+      kept: null,
+      summary: summaryOf("", null),
+      accuracy: null,
+      via: undefined,
+    };
+
+  const judged = judge({ ...got.data, list: got.list, spans: got.spans, now: got.now });
+
+  return {
+    loading: false,
+    key: `${rangeKey(got.range)}|${got.data.series}`,
+    said: headline(got.cal, got.range, judged),
+    bands: judged.bands,
+    kept: judged.kept,
+    summary: summaryOf(sumTitle(got), judged),
+    accuracy: judged.accuracy,
+    via: got.via,
+  };
+}
+
 export class ForecastData {
   readonly #data: RangeData<Awaited<ReturnType<typeof read>>>;
-
-  /** The judged line with its headline and a key that changes with range and line; null while loading. */
-  readonly view = $derived.by(() => {
-    const got = this.#data.current;
-
-    if (!got) return null;
-
-    const judged = judge({ ...got.data, list: got.list, spans: got.spans, now: got.now });
-
-    return {
-      ...judged,
-      key: `${rangeKey(got.range)}|${got.data.series}`,
-      said: headline(got.cal, got.range, judged),
-    };
-  });
 
   constructor(
     input: () => {
@@ -46,23 +67,8 @@ export class ForecastData {
     );
   }
 
-  /** The chart's bands; none while loading. */
-  get bands() {
-    return this.view?.bands ?? [];
-  }
-
-  /** Which stacked parts show: an optional one only while it holds energy. */
-  get kept(): readonly number[] | null {
-    return this.view?.kept ?? null;
-  }
-
-  /** The chart's sums while no band is read. */
-  get summary() {
-    return summaryOf(this.#data.title, this.view);
-  }
-
-  get via() {
-    return this.#data.current?.via;
+  get travel() {
+    return this.#data.travel;
   }
 
   drill = (i: number): void => {

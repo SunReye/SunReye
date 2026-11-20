@@ -1,6 +1,7 @@
-// A finger dragging a pager (ADR 21): horizontal movement past 10 px is the pager's, vertical
-// stays the page's scroll, and a drag that starts on a chart (`data-scrub`) reads the chart. On the
-// still tier nothing moves and a swipe just steps.
+// The one swipe of the range (ADR 21): a finger dragging a pager, where horizontal movement past
+// 10 px is the pager's, vertical stays the page's scroll, and a drag that starts on a chart
+// (`data-scrub`) reads the chart. On the still tier, or for a swipe that only steps, nothing moves.
+import type { Attachment } from "svelte/attachments";
 import { VelocityTracker } from "../animate.ts";
 
 export interface DragHandlers {
@@ -128,3 +129,17 @@ export function drag(node: HTMLElement, h: DragHandlers): () => void {
 }
 
 const pick = (e: At): At => ({ clientX: e.clientX, clientY: e.clientY, pointerId: e.pointerId });
+
+/** A swipe that only steps, as on a stepper's label: nothing moves. */
+export function swipe(onstep: (dir: -1 | 1) => void): Attachment<HTMLElement> {
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- it sets the node's touch action.
+  return (node) =>
+    drag(node, {
+      enabled: () => true,
+      still: () => true,
+      start: () => 0,
+      move: () => {},
+      release: () => {},
+      step: onstep,
+    });
+}

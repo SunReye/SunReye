@@ -1,19 +1,20 @@
 <!--
   Savings and costs over the route's range, a band per day, week or month, from the core's
   plant-local days (ADR 12): savings above the baseline, the import bill below it. The savings
-  sheet's chart leaves the standing charge out, and reads a day by its hours (ADR 21).
+  sheet's chart leaves the standing charge out, and reads a day by its hours (ADR 21). In a range
+  card a finger drags it to the next range.
 -->
 <script lang="ts">
   import { untrack } from "svelte";
   import ProblemAlert from "../components/problem-alert.svelte";
   import type { Core } from "../api/core";
   import BandChart from "../range/BandChart.svelte";
-  import { bandsOf } from "../range/fill.ts";
   import { money } from "../range/format.ts";
-  import { RangeData } from "../range/range-data.svelte.ts";
+  import { RangeData, sumTitle, type Loaded } from "../range/range-data.svelte.ts";
+  import RangePane from "../range/RangePane.svelte";
   import type { RangeRoute } from "../range/route.svelte.ts";
   import { costsOver } from "./cost-hours.ts";
-  import { COST_CHARTS, costBands } from "./costs.ts";
+  import { COST_CHARTS, costsView } from "./costs.ts";
 
   let {
     core,
@@ -36,37 +37,36 @@
     untrack(() => COST_CHARTS[chart]().hourly) ? "hour" : "day",
   );
 
-  const view = $derived.by(() => {
-    const got = data.current;
-
-    if (!got) return null;
-
-    if ("problem" in got.data)
-      return { problem: got.data.problem, bands: [], total: laid.sides() };
-
-    return {
-      problem: null,
-      bands: bandsOf(got.list, costBands(got.data.days, got.spans, got.now, laid.sides)),
-      total: laid.sides(got.data.total),
-    };
-  });
+  type Read = Loaded<Awaited<ReturnType<typeof costsOver>>>;
 </script>
 
-{#if view?.problem}
-  <ProblemAlert problem={view.problem} />
-{:else}
-  <BandChart
-    bands={view?.bands ?? []}
-    up={laid.up}
-    down={laid.down}
-    groups={laid.groups}
-    via={data.current?.via}
-    summary={{ title: data.title, ...(view?.total ?? laid.sides()) }}
-    fmt={money}
-    unit="€"
-    loading={!view}
-    label={laid.label}
-    ondrill={data.drill}
-    onbrush={data.brush}
-  />
-{/if}
+{#snippet pane(got: Read | null)}
+  {@const view = got && costsView(got, laid)}
+  {#if view?.problem}
+    <ProblemAlert problem={view.problem} />
+  {:else}
+    <BandChart
+      bands={view?.bands ?? []}
+      up={laid.up}
+      down={laid.down}
+      groups={laid.groups}
+      via={got?.via}
+      summary={{ title: got ? sumTitle(got) : "", ...(view?.total ?? laid.sides()) }}
+      fmt={money}
+      unit="€"
+      loading={!view}
+      label={laid.label}
+      ondrill={data.drill}
+      onbrush={data.brush}
+    />
+  {/if}
+{/snippet}
+
+<RangePane model={data.travel}>
+  {#snippet children(p)}
+    {@render pane(p.got)}
+  {/snippet}
+  {#snippet waiting()}
+    {@render pane(null)}
+  {/snippet}
+</RangePane>

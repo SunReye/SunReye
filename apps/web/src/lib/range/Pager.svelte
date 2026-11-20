@@ -8,18 +8,12 @@
   A pane that is asked for again while it leaves is taken back, so a reversed switch continues from
   where it is. Only `transform` and `opacity` move.
 -->
-<script lang="ts" module>
-  export interface Travel {
-    kind: "slide" | "shift" | "keep";
-    dir: -1 | 0 | 1;
-  }
-</script>
-
 <script lang="ts" generics="T">
   import { untrack, type Snippet } from "svelte";
   import { spring, tween } from "../animate.ts";
   import { motion } from "../motion/tier.svelte.ts";
   import Pane from "./Pane.svelte";
+  import type { Travel } from "./travel.svelte.ts";
   import { drag } from "./pager-drag.ts";
 
   const GAP = 24;

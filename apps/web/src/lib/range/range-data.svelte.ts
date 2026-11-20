@@ -14,6 +14,7 @@ import {
   type Via,
 } from "./range.ts";
 import type { RangeRoute } from "./route.svelte.ts";
+import { RangeTravel } from "./travel.svelte.ts";
 
 /** One load: its range and how the chart got there, its bands and their instants, and the figures. */
 export interface Loaded<T> {
@@ -33,12 +34,19 @@ export interface Place {
   readonly cal: Calendar;
 }
 
+/** A load's legend title while no band is read. */
+export const sumTitle = (got: Readonly<Pick<Loaded<unknown>, "cal" | "range">>): string =>
+  m.range_sum({ range: rangeLabel(got.cal, got.range) });
+
 export class RangeData<T> {
   current = $state.raw<Loaded<T> | undefined>();
   failed = $state(false);
   #attempt = $state(0);
 
   readonly #route: () => RangeRoute;
+
+  /** How the chart's card travels: a range not yet read is drawn loading, so it reads only the range it shows. */
+  readonly travel: RangeTravel<Loaded<T>, null>;
 
   /**
    * @param load reads the figures from `from` to before `to`; what it reads before its first
@@ -51,6 +59,12 @@ export class RangeData<T> {
     finest: Grain = "hour",
   ) {
     this.#route = route;
+    this.travel = new RangeTravel(() => ({
+      route: route(),
+      got: this.current,
+      loading: false,
+      pending: () => null,
+    }));
 
     $effect(() => {
       const r: RangeRoute = route();
@@ -95,7 +109,7 @@ export class RangeData<T> {
   get title(): string {
     const got = this.current;
 
-    return got ? m.range_sum({ range: rangeLabel(got.cal, got.range) }) : "";
+    return got ? sumTitle(got) : "";
   }
 
   /** Opens the range band `i` stands for, if any. */
