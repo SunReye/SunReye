@@ -15,7 +15,8 @@ import {
   type Target,
   type Today,
 } from "./today.ts";
-import { readWeather, weatherAt, type Weather } from "../weather/weather.ts";
+import { weatherNow } from "../weather/now.ts";
+import { weatherAt, type Weather } from "../weather/weather.ts";
 
 const HOUR = 3_600_000;
 
@@ -32,7 +33,7 @@ export interface Day {
   readonly pv: { readonly total: number; readonly remaining: number };
   /** The day's spot prices in EUR/kWh, each from its slot's start; none without the spot-price device. */
   readonly prices: readonly Target[];
-  /** As of `now`. */
+  /** As of the quarter's read of the weather now, which the scene shares. */
   readonly weather: Weather;
   /** EUR; null when the core refused, as without a tariff. */
   readonly money: Readonly<CostDays["total"]> | null;
@@ -104,10 +105,9 @@ async function inverters(core: Reader): Promise<readonly number[]> {
   return [...devices];
 }
 
-async function weatherNow(core: Reader, now: Readonly<Date>): Promise<Weather> {
-  const around = [new Date(now.getTime() - HOUR), new Date(now.getTime() + HOUR)] as const;
-
-  return weatherAt(await readWeather(core, ...around), now.getTime());
+/** The weather now, as the scene shows it: both share the quarter's read. */
+async function weatherOf(core: Reader, now: Readonly<Date>): Promise<Weather> {
+  return weatherAt(...(await weatherNow(core, now.getTime())));
 }
 
 /** Today in the plant's zone, as of `now`. */
@@ -128,7 +128,7 @@ export async function readDay(core: Reader, now: Readonly<Date>): Promise<Day> {
       combined(await Promise.all(ids.map((id) => forecast(core, id, "pv.power", start, end)))),
     ),
     forecast(core, SPOT, "price.spot", start, end),
-    weatherNow(core, read),
+    weatherOf(core, read),
     core.costs(start, end),
   ]);
 

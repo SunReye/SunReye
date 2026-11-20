@@ -1,6 +1,7 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
 import { at, fake, intervals, read, targets, WEATHER } from "./weather.harness.ts";
+import { weatherNow } from "./now.ts";
 import { readWeather, weatherAt, type Weather } from "./weather.ts";
 
 const NONE: Weather = {
@@ -164,4 +165,46 @@ test("an instant knows how long it has been dry: 0 while it falls, then since it
   expect(dry("13:59")).toBe((4 * 60 + 29) * 60_000);
   expect(dry("14:05")).toBe(0);
   expect(dry("14:45")).toBe(30 * 60_000);
+});
+
+test("every reader of the weather now within a quarter shares one read, as of the first", async () => {
+  const { core, asked } = fake({ forecasts: { "weather.code": targets(["12:00", 61]) } });
+
+  const [first, second] = await Promise.all([
+    weatherNow(core, at("12:01")),
+    weatherNow(core, at("12:02")),
+  ]);
+
+  const later = await weatherNow(core, at("12:14"));
+
+  expect(asked).toHaveLength(24);
+  expect(second).toBe(first);
+  expect(later).toBe(first);
+  expect(first[1]).toBe(at("12:01"));
+  expect(weatherAt(...first).code).toBe(61);
+});
+
+test("the weather now is read again a minute into the next quarter, once the core closed it", async () => {
+  const { core, asked } = fake({ forecasts: { "weather.code": targets(["12:00", 61]) } });
+
+  const first = await weatherNow(core, at("12:14"));
+  // The core stores the closed quarter's clear-sky index half a minute after its end.
+  const closing = await weatherNow(core, at("12:15") + 59_000);
+
+  expect(closing).toBe(first);
+  expect(asked).toHaveLength(24);
+
+  const next = await weatherNow(core, at("12:16"));
+
+  expect(asked).toHaveLength(48);
+  expect(next[1]).toBe(at("12:16"));
+});
+
+test("a read with no weather at all is not shared: the core may answer the next", async () => {
+  const { core, asked } = fake({});
+
+  await weatherNow(core, at("12:01"));
+  await weatherNow(core, at("12:02"));
+
+  expect(asked).toHaveLength(48);
 });

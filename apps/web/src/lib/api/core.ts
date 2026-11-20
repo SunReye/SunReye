@@ -1,8 +1,8 @@
+import { remembering } from "./cache";
 import { open, refusal, type Client, type components, type Problem } from "./client";
 import { imports, type Imports } from "./imports";
 import { shared, type Live, type Visibility } from "./live";
 import { layouts, type Layouts } from "./layouts";
-import { pvModel, type PvModel } from "./model";
 import { setup, type Connection, type Setup } from "./setup";
 import { reference, type Reference } from "./reference";
 import { plantRecords, type PlantRecords } from "./records";
@@ -84,8 +84,7 @@ export function http(base: string): Transport {
 }
 
 /** A core's API: what the SPA reads, through one transport. */
-export interface Core
-  extends Setup, Imports, PvModel, Tariffs, PlantRecords, Layouts, Views, Reference {
+export interface Core extends Setup, Imports, Tariffs, PlantRecords, Layouts, Views, Reference {
   /** Calls `listener` with every value on connect and after each change, until the returned stop. */
   live(listener: (live: Live) => void): () => void;
   /** Time-weighted means of one series from `from` to before `to`, at the tier the core picks. */
@@ -133,6 +132,11 @@ export function connect(
 ): Core {
   const client = open(transport.base, transport.fetch);
 
+  return remembering(unremembered(client, transport, page), page);
+}
+
+/** Every read asks the core. */
+function unremembered(client: Client, transport: Transport, page: Visibility | undefined): Core {
   return {
     live: shared(client, page),
     history: async (device, series, from, to) => {
@@ -164,7 +168,6 @@ export function connect(
     ...trust(client),
     ...setup(client),
     ...imports(client),
-    ...pvModel(client),
     ...status(client),
     ...tariffs(client),
     ...plantRecords(client),
