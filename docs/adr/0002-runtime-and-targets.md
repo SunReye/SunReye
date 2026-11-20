@@ -1,10 +1,10 @@
 # 2. Runtime and targets
 
-Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-19)
+Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-19, 2026-11-20)
 
 ## Context
 
-The tool is small, runs for years on low-power hardware, and must stay fast for live values. Efficiency is decided by a few choices, made here from known costs rather than measured.
+The tool is small, runs for years on low-power hardware, and must stay fast for live values. Efficiency is decided by a few choices, made here from known costs rather than measured; ADR 24 measures them at ten years.
 
 ## Decision
 
