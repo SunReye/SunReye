@@ -2,8 +2,7 @@
 <script lang="ts">
   import Box from "@lucide/svelte/icons/box";
   import { Button } from "#lib/components/ui/button/index.js";
-  import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
-  import { haptics } from "../haptics.ts";
+  import Segmented from "../components/segmented.svelte";
   import type { View } from "../live/dashboard.ts";
   import { m } from "../paraglide/messages.js";
 
@@ -21,26 +20,14 @@
     onchoose: (view: View) => void;
   } = $props();
 
-  function set(next: string): void {
-    if ((next !== "3d" && next !== "2d") || next === shows) return;
-
-    haptics.selection();
-    onchoose(next);
-  }
+  const VIEWS = [
+    ["3d", "3D"],
+    ["2d", "2D"],
+  ] as const satisfies readonly (readonly [View, string])[];
 </script>
 
 {#if toggles}
-  <ToggleGroup.Root
-    type="single"
-    size="sm"
-    spacing={1}
-    bind:value={() => shows, set}
-    class="canvas-chip rounded-md p-0.5 ring-1 ring-border/60 elevation-1"
-    aria-label={m.dash_view()}
-  >
-    <ToggleGroup.Item value="3d" class="px-3 text-xs">3D</ToggleGroup.Item>
-    <ToggleGroup.Item value="2d" class="px-3 text-xs">2D</ToggleGroup.Item>
-  </ToggleGroup.Root>
+  <Segmented options={VIEWS} value={shows} label={m.dash_view()} canvas onchange={onchoose} />
 {:else if build}
   <Button
     variant="outline"

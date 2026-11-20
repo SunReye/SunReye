@@ -54,7 +54,7 @@
   aria-labelledby={labelledby}
 >
   {#each options as [option, text] (option)}
-    <ToggleGroup.Item value={option} class={fill ? "min-w-0 px-2 text-xs" : "px-3 text-xs"}>
+    <ToggleGroup.Item value={option} class={fill ? "min-w-0 px-1 text-xs" : "px-3 text-xs"}>
       {text}
     </ToggleGroup.Item>
   {/each}
