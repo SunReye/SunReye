@@ -366,7 +366,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * One series' figures for each hour, or plant-local period, starting in the range, from its
+         * Each series' figures for each hour, or plant-local period, starting in the range, from its
          *     hourly rollups or folded from its daily ones.
          */
         get: operations["statistics"];
@@ -1681,6 +1681,12 @@ export interface components {
         Forecasts: {
             /** @description By target. */
             points: components["schemas"]["ForecastPoint"][];
+            /** @description As asked. */
+            series: string;
+        };
+        /** @description Each series asked, in the order asked. */
+        ForecastsRead: {
+            series: components["schemas"]["Forecasts"][];
         };
         /** @description An endpoint that took a connection, and the devices proposed behind it. */
         Found: {
@@ -1758,12 +1764,18 @@ export interface components {
         History: {
             /** @description In time order; a gap has no point. */
             points: components["schemas"]["Point"][];
+            /** @description As asked. */
+            series: string;
             tier: components["schemas"]["Tier"];
             /**
              * Format: int64
              * @description A `bucket`'s width in seconds.
              */
             width?: number | null;
+        };
+        /** @description Each series asked, in the order asked. */
+        HistoryRead: {
+            series: components["schemas"]["History"][];
         };
         /** @description The v3 devices an archive holds. */
         ImportArchive: {
@@ -2257,6 +2269,8 @@ export interface components {
              *     `/strings/0/modules`, where the core can name it.
              */
             pointer?: string | null;
+            /** @description The series a range read refuses, where it reads several. */
+            series?: string | null;
             /**
              * Format: int32
              * @description The HTTP status.
@@ -2568,6 +2582,12 @@ export interface components {
             period: components["schemas"]["Period"];
             /** @description In time order; a period without rolled-up history has none. */
             points: components["schemas"]["Figures"][];
+            /** @description As asked. */
+            series: string;
+        };
+        /** @description Each series asked, in the order asked. */
+        StatisticsRead: {
+            series: components["schemas"]["Statistics"][];
         };
         /**
          * @description What became of one entry of an index.
@@ -3397,8 +3417,8 @@ export interface operations {
     forecasts: {
         parameters: {
             query: {
-                /** @description A series such as `pv.string.power[3]`. */
-                series: string;
+                /** @description Series such as `pv.string.power[3]`, repeated: 1 to 16 of the device. */
+                series: string[];
                 /** @description The first target, RFC 3339. */
                 from: string;
                 /** @description The instant after the last target, RFC 3339. */
@@ -3418,7 +3438,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Forecasts"];
+                    "application/json": components["schemas"]["ForecastsRead"];
                 };
             };
             400: {
@@ -3450,8 +3470,8 @@ export interface operations {
     history: {
         parameters: {
             query: {
-                /** @description A series such as `pv.mppt.power[2]`. */
-                series: string;
+                /** @description Series such as `pv.mppt.power[2]`, repeated: 1 to 16 of the device. */
+                series: string[];
                 /** @description The first instant, RFC 3339. */
                 from: string;
                 /** @description The instant after the last, RFC 3339. */
@@ -3471,7 +3491,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["History"];
+                    "application/json": components["schemas"]["HistoryRead"];
                 };
             };
             400: {
@@ -3623,8 +3643,8 @@ export interface operations {
     statistics: {
         parameters: {
             query: {
-                /** @description A series such as `pv.mppt.power[2]`. */
-                series: string;
+                /** @description Series such as `pv.mppt.power[2]`, repeated: 1 to 16 of the device. */
+                series: string[];
                 period: components["schemas"]["Period"];
                 /** @description The first instant, RFC 3339: each period starting from it on is read. */
                 from: string;
@@ -3645,7 +3665,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Statistics"];
+                    "application/json": components["schemas"]["StatisticsRead"];
                 };
             };
             "4XX": {

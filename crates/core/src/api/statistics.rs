@@ -17,9 +17,9 @@ use tokio::sync::watch;
 use utoipa::{IntoParams, ToSchema};
 
 use super::history::{DAY_SPAN, HOUR_SPAN};
-use super::{Code, Problem, ProblemDetails};
+use super::{Code, Problem, ProblemDetails, Refused, range};
 use crate::api::{internal, rfc3339};
-use crate::bus::{DeviceId, Series};
+use crate::bus::DeviceId;
 use crate::storage::{Aggregate, Reader, Rollup, Tier};
 
 const QUERY: Problem = Problem {
@@ -51,8 +51,9 @@ pub enum Period {
 #[derive(Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct Params {
-    /// A series such as `pv.mppt.power[2]`.
-    series: String,
+    /// Series such as `pv.mppt.power[2]`, repeated: 1 to 16 of the device.
+    #[param(min_items = 1, max_items = 16)]
+    series: Vec<String>,
     period: Period,
     /// The first instant, RFC 3339: each period starting from it on is read.
     from: String,
@@ -60,9 +61,17 @@ pub struct Params {
     to: String,
 }
 
+/// Each series asked, in the order asked.
+#[derive(Serialize, ToSchema)]
+pub struct StatisticsRead {
+    series: Vec<Statistics>,
+}
+
 /// One series' figures per period.
 #[derive(Serialize, ToSchema)]
 pub struct Statistics {
+    /// As asked.
+    series: String,
     period: Period,
     /// In time order; a period without rolled-up history has none.
     points: Vec<Figures>,
@@ -95,61 +104,64 @@ struct Figures {
     delta: Option<f64>,
 }
 
-/// One series' figures for each hour, or plant-local period, starting in the range, from its
+/// Each series' figures for each hour, or plant-local period, starting in the range, from its
 /// hourly rollups or folded from its daily ones.
 #[utoipa::path(get, path = "/api/v1/devices/{id}/statistics",
     params(("id" = u32, Path, description = "The device id."), Params),
     responses(
-        (status = 200, body = Statistics),
+        (status = 200, body = StatisticsRead),
         (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
     ),
 )]
 pub async fn statistics(
     State((reader, zone)): StatisticsState,
     device: Result<Path<u32>, PathRejection>,
-    params: Result<Query<Params>, QueryRejection>,
-) -> Result<Json<Statistics>, Problem> {
+    params: Result<Query<Vec<(String, String)>>, QueryRejection>,
+) -> Result<Json<StatisticsRead>, Refused> {
     let Path(device) = device.map_err(|_| PATH)?;
-    let Query(params) = params.map_err(|_| QUERY)?;
-    let series = Series::parse(&params.series).ok_or(QUERY)?;
+    let params: Params = range::query(params)?;
+    let names = range::parse(&params.series)?;
     let range = instant(&params.from)?..instant(&params.to)?;
     let span = range.end.duration_since(range.start).map_err(|_| RANGE)?;
-    let cap = if params.period == Period::Hour {
-        HOUR_SPAN
+    let (cap, tier) = if params.period == Period::Hour {
+        (HOUR_SPAN, Tier::Hour)
     } else {
-        DAY_SPAN
+        (DAY_SPAN, Tier::Day)
     };
     if span.is_zero() || span > cap {
-        return Err(RANGE);
+        return Err(RANGE.into());
     }
     let zone = zone.borrow().clone();
     let periods = periods(&zone, params.period, &range).ok_or(RANGE)?;
-    let (Some(first), Some(last)) = (periods.first(), periods.last()) else {
-        return Ok(Json(Statistics {
+    // Every period's bounds together, none where no period starts in the range.
+    let window = periods
+        .first()
+        .zip(periods.last())
+        .map(|(a, b)| a.1.start..b.1.end);
+    let mut list = Vec::with_capacity(names.len());
+    // One series after another, each its own request to the storage thread (ADR 24).
+    for (name, series) in names {
+        let rollups = match &window {
+            Some(window) => reader
+                .rollups(DeviceId(device), &series, tier, window.clone())
+                .await
+                .map_err(|e| range::named(internal(e), &name))?,
+            None => Vec::new(),
+        };
+        let points = periods
+            .iter()
+            .filter_map(|(date, bounds)| {
+                let days = rollups.iter().filter(|r| bounds.contains(&r.start));
+                Some(figures(*date, bounds, fold(days)?))
+            })
+            .collect();
+        list.push(Statistics {
+            series: name,
             period: params.period,
-            points: Vec::new(),
-        }));
-    };
-    let tier = if params.period == Period::Hour {
-        Tier::Hour
-    } else {
-        Tier::Day
-    };
-    let rollups = reader
-        .rollups(DeviceId(device), &series, tier, first.1.start..last.1.end)
-        .await
-        .map_err(internal)?;
-    let points = periods
-        .iter()
-        .filter_map(|(date, bounds)| {
-            let days = rollups.iter().filter(|r| bounds.contains(&r.start));
-            Some(figures(*date, bounds, fold(days)?))
-        })
-        .collect();
-    Ok(Json(Statistics {
-        period: params.period,
-        points,
-    }))
+            points,
+        });
+    }
+    Ok(Json(StatisticsRead { series: list }))
 }
 
 /// Each period of `zone` starting in `range`, by its first plant-local date, with its bounds.

@@ -34,11 +34,86 @@ impl Core {
         self.storage.forecast(DEVICE, series, issue).await.unwrap();
     }
 
+    /// `pv.power`'s forecasts without its name, or the refusal.
     async fn forecasts(&self, set_cookie: &str, query: &str) -> (StatusCode, Value) {
-        let uri = format!("/api/v1/devices/1/forecasts?series=pv.power&{query}");
+        let (status, mut body) = self
+            .forecasts_of(set_cookie, &format!("series=pv.power&{query}"))
+            .await;
+        if status != StatusCode::OK {
+            return (status, body);
+        }
+        let mut list = body["series"].take();
+        assert_eq!(list.as_array().map(Vec::len), Some(1), "{list}");
+        let mut one = list[0].take();
+        assert_eq!(one["series"], "pv.power");
+        one.as_object_mut().unwrap().remove("series");
+        (status, one)
+    }
+
+    async fn forecasts_of(&self, set_cookie: &str, query: &str) -> (StatusCode, Value) {
+        let uri = format!("/api/v1/devices/1/forecasts?{query}");
         let response = self.send(with_cookie(set_cookie, get(&uri))).await;
         (response.status(), json(response).await)
     }
+}
+
+#[tokio::test]
+async fn one_request_reads_several_series_each_by_name() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    core.issue(0, &[(4500, 100.0)]).await;
+
+    let (status, body) = core
+        .forecasts_of(
+            &set_cookie,
+            &format!("series=pv.power&series=load.power&{}", range(3600, 7200)),
+        )
+        .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        body,
+        json!({ "series": [
+            { "series": "pv.power", "points": [
+                { "target": instant(4500), "issued": instant(0), "value": 100.0 },
+            ]},
+            { "series": "load.power", "points": [] },
+        ]})
+    );
+}
+
+#[tokio::test]
+async fn one_series_past_1500_points_refuses_the_request_and_is_named() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let values: Vec<(u64, f64)> = (0..1501).map(|i| (60 * i, 1.0)).collect();
+    core.issue(0, &values).await;
+    let many = (1..=17)
+        .map(|i| format!("series=pv.string.power%5B{i}%5D&"))
+        .collect::<Vec<_>>()
+        .concat();
+
+    let (status, body) = core
+        .forecasts_of(
+            &set_cookie,
+            &format!("series=load.power&series=pv.power&{}", range(0, 100_000)),
+        )
+        .await;
+    let (over, seventeen) = core
+        .forecasts_of(&set_cookie, &format!("{many}{}", range(0, 60)))
+        .await;
+
+    assert_eq!(
+        (status, body),
+        (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            json!({ "status": 422, "code": "forecast.range", "series": "pv.power" })
+        )
+    );
+    assert_eq!(
+        (over, &seventeen["code"]),
+        (StatusCode::BAD_REQUEST, &json!("request.query"))
+    );
 }
 
 fn range(from: u64, to: u64) -> String {

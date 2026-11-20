@@ -64,10 +64,84 @@ impl Core {
         self.set_clock(later);
     }
 
+    /// The statistics of the one series `query` names, without its name, or the refusal.
     async fn statistics(&self, set_cookie: &str, query: &str) -> (StatusCode, Value) {
+        let (status, mut body) = self.statistics_of(set_cookie, query).await;
+        if status != StatusCode::OK {
+            return (status, body);
+        }
+        let mut list = body["series"].take();
+        assert_eq!(list.as_array().map(Vec::len), Some(1), "{list}");
+        let mut one = list[0].take();
+        one.as_object_mut().unwrap().remove("series");
+        (status, one)
+    }
+
+    async fn statistics_of(&self, set_cookie: &str, query: &str) -> (StatusCode, Value) {
         let uri = format!("/api/v1/devices/7/statistics?{query}");
         self.ask(set_cookie, get(&uri)).await
     }
+}
+
+#[tokio::test]
+async fn one_request_reads_several_series_each_by_name() {
+    let (_dir, core, set_cookie) = berlin("pv.power", RoleKind::Measurement).await;
+    core.hourly_until(
+        "pv.power",
+        ("2026-10-24T22:00:00Z", "2026-10-25T22:00:00Z"),
+        |_| 100.0,
+    )
+    .await;
+    let range = "period=day&from=2026-10-24T22:00:00Z&to=2026-10-25T23:00:00Z";
+
+    let (status, body) = core
+        .statistics_of(
+            &set_cookie,
+            &format!("series=load.power&series=pv.power&{range}"),
+        )
+        .await;
+
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let list = body["series"].as_array().unwrap();
+    assert_eq!(list.len(), 2);
+    assert_eq!(
+        list[0],
+        json!({ "series": "load.power", "period": "day", "points": [] })
+    );
+    assert_eq!(list[1]["series"], "pv.power");
+    assert_eq!(list[1]["points"][0]["integral"], json!(2500.0));
+}
+
+#[tokio::test]
+async fn seventeen_series_or_one_malformed_refuse_the_request() {
+    let (_dir, core, set_cookie) = berlin("pv.power", RoleKind::Measurement).await;
+    let range = "period=day&from=2026-10-24T22:00:00Z&to=2026-10-25T23:00:00Z";
+    let many = (1..=17)
+        .map(|i| format!("series=pv.string.power%5B{i}%5D&"))
+        .collect::<Vec<_>>()
+        .concat();
+
+    let (over, seventeen) = core
+        .statistics_of(&set_cookie, &format!("{many}{range}"))
+        .await;
+    let (bad, malformed) = core
+        .statistics_of(
+            &set_cookie,
+            &format!("series=pv.power&series=pv.power%5Bx%5D&{range}"),
+        )
+        .await;
+
+    assert_eq!(
+        (over, &seventeen["code"]),
+        (StatusCode::BAD_REQUEST, &json!("request.query"))
+    );
+    assert_eq!(
+        (bad, malformed),
+        (
+            StatusCode::BAD_REQUEST,
+            json!({ "status": 400, "code": "request.query", "series": "pv.power[x]" })
+        )
+    );
 }
 
 #[tokio::test]
