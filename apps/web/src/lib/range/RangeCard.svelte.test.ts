@@ -42,7 +42,8 @@ test("let go past the threshold, the pane slides to the next range with one sele
 
   await expect.poll(() => steps).toEqual([1]);
   expect(selection).toHaveBeenCalledOnce();
-  await expect.poll(offset).toBe(0);
+  // The spring settles to a thousandth of a pixel: most of a second.
+  await expect.poll(offset, { timeout: 2000 }).toBe(0);
   await expect.element(screen.getByText("Tag -1")).toBeVisible();
   expect(screen.getByText("Tag -2").query()).toBeNull();
 });

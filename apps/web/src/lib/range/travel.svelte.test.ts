@@ -10,7 +10,14 @@ interface Got {
   readonly figures: string;
 }
 
-const via = (dir: Via["dir"]): Via => ({ id: 0, kind: "morph", a: 0, b: 1, inward: true, dir });
+const via = (id: number, dir: Via["dir"]): Via => ({
+  id,
+  kind: "morph",
+  a: 0,
+  b: 1,
+  inward: true,
+  dir,
+});
 
 /** What a card has read. */
 interface Shown {
@@ -21,11 +28,11 @@ interface Shown {
 function card(range: Range = rangeFor("day", TODAY - 1)) {
   const route: TravelRoute & { range: Range; via: Via } = {
     range,
-    via: via(0),
+    via: via(0, 0),
     place: { cal: CAL },
     step: (dir) => {
       route.range = step(CAL, route.range, dir);
-      route.via = via(dir);
+      route.via = via(route.via.id + 1, dir);
     },
   };
 
@@ -68,6 +75,19 @@ test("an arrow's step keeps the last figures while the next range loads", () => 
   const { route, shown, travel } = card();
 
   route.step(1);
+  expect(travel.pane).toEqual({ got: shown.got, loading: false });
+});
+
+test("an arrow's step back to a range a drag once reached morphs it in place", () => {
+  const { route, shown, travel } = card();
+  const [yesterday, today] = [rangeFor("day", TODAY - 1), rangeFor("day", TODAY)];
+
+  travel.drag(1);
+  shown.got = { range: today, figures: "today's" };
+  route.step(-1);
+  shown.got = { range: yesterday, figures: "yesterday's" };
+  route.step(1);
+
   expect(travel.pane).toEqual({ got: shown.got, loading: false });
 });
 

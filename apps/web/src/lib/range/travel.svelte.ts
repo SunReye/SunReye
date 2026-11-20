@@ -39,8 +39,8 @@ export interface TravelInput<T, P> {
 export class RangeTravel<T extends { readonly range: Range }, P = T> {
   readonly #input: () => TravelInput<T, P>;
   #dragged = false;
-  /** The range a drag reached: its pane draws it loading, not the range it left. */
-  #slidTo = $state<string | null>(null);
+  /** The change a drag made: until the next, its pane draws the range loading, not the range it left. */
+  #slid = $state<number | null>(null);
 
   constructor(input: () => TravelInput<T, P>) {
     this.#input = input;
@@ -59,7 +59,7 @@ export class RangeTravel<T extends { readonly range: Range }, P = T> {
 
     if (!got) return null;
 
-    if (rangeKey(got.range) !== at && this.#slidTo === at)
+    if (rangeKey(got.range) !== at && route.via.id === this.#slid)
       return { got: pending(got, route.range), loading: true };
 
     return { got, loading };
@@ -84,7 +84,7 @@ export class RangeTravel<T extends { readonly range: Range }, P = T> {
 
     this.#dragged = true;
     route.step(dir);
-    this.#slidTo = untrack(() => rangeKey(route.range));
+    this.#slid = untrack(() => route.via.id);
   };
 
   /** How the pane gets to a new range; read once per change. */
