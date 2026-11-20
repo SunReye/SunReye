@@ -50,7 +50,7 @@ test.for([
     const node = level.element();
 
     // The slide in has landed: back starts from rest.
-    await finish(() => travels(node).length === 0);
+    await finish(() => node.getAnimations().length === 0);
     await back();
 
     // The list is back under the level, which is on its way out.

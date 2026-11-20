@@ -30,13 +30,15 @@ export function hold(): void {
 const settled = () => document.getAnimations().every((a) => a.playState === "finished" || !ends(a));
 
 /**
- * Ends every animation on the page that ends, and again until `done` holds, by default until none
- * is left: one that starts as another ends (a Svelte transition, a chained entrance) is ended in
- * its turn.
+ * Until `done` holds, by default until no animation is left, ends every animation on the page that
+ * ends, again on each look: one that starts as another ends (a Svelte transition, a chained
+ * entrance) is ended in its turn.
  */
 export async function finish(done: () => boolean = settled): Promise<void> {
   await expect
     .poll(() => {
+      if (done()) return true;
+
       for (const a of document.getAnimations())
         if (ends(a) && a.playState !== "finished") a.finish();
 
