@@ -1,14 +1,19 @@
-import { beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { connect } from "../api/core.ts";
+import { haptics } from "../haptics.ts";
 import { problem } from "../settings/settings.harness.ts";
 import Controls from "./Controls.svelte";
 import { SCHEDULE, controlsCore } from "./controls.harness.ts";
 
 beforeEach(async () => {
   await page.viewport(414, 896);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 test("the time-of-use schedule is its own group, summarised by its slots' starts", async () => {
@@ -61,6 +66,8 @@ test("applying a slot's start writes minutes since midnight through the funnel",
 });
 
 test("a switch above the slots turns the schedule on through the funnel", async () => {
+  const selection = vi.spyOn(haptics, "selection");
+  const success = vi.spyOn(haptics, "success");
   const transport = controlsCore();
 
   const screen = await render(Controls, {
@@ -77,6 +84,11 @@ test("a switch above the slots turns the schedule on through the funnel", async 
   await expect.element(on).toBeChecked();
   expect(transport.writes).toEqual([`PUT /api/v1/devices/3/settings/${SCHEDULE} {"value":1}`]);
   expect(screen.getByRole("listitem").elements()).toHaveLength(2);
+  // The tap ticks; the read-back confirms. The value it reads back is no second tick.
+  await vi.waitFor(() => {
+    expect(success).toHaveBeenCalledOnce();
+  });
+  expect(selection).toHaveBeenCalledOnce();
 });
 
 test("the schedule switch waits for the admin's enable like any setting", async () => {

@@ -2,7 +2,7 @@
 <script lang="ts">
   import { MediaQuery } from "svelte/reactivity";
   import ToggleRow from "./ToggleRow.svelte";
-  import { HAPTICS, haptics, hapticsOn } from "../haptics.ts";
+  import { HAPTICS, hapticsOn } from "../haptics.ts";
   import { motion } from "../motion/tier.svelte.ts";
   import { m } from "../paraglide/messages.js";
 
@@ -29,7 +29,6 @@
   function feelOn(on: boolean): void {
     stored = on ? "on" : "off";
     localStorage.setItem(HAPTICS, stored);
-    haptics.selection();
   }
 </script>
 

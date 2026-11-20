@@ -218,6 +218,9 @@
 [data-slot="drawer-overlay"][data-state="closed"] {
   animation-duration: var(--motion-exit);
   animation-timing-function: var(--motion-ease-exit);
+  /* vaul's 0.5 s settle after a drag (a tap's finger slop) outlasts this exit: still running, it
+     held the drawer open after the exit until it ended. */
+  transition: none !important;
 }
 
 /* An overlay on the still tier: no keyframes, and no transition left inline by a drag (vaul). */

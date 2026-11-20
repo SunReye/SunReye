@@ -35,14 +35,7 @@
   }));
 </script>
 
-{#if props.catalog === "failed"}
-  <p
-    class="grid place-items-center rounded-md border border-dashed border-border/60 px-4 text-center text-sm text-muted-foreground"
-    style:height="{props.height}px"
-  >
-    {m.explore_chart_unread()}
-  </p>
-{:else if !chart}
+{#if !chart}
   <Skeleton style="height: {props.height}px" role="status" aria-label={m.loading()} />
 {:else}
   <div

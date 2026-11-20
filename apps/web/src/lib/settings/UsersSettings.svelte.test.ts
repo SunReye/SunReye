@@ -153,7 +153,7 @@ test("a viewer is removed only once the admin confirms", async () => {
     .element(viewers.getByRole("list").getByText("Oma", { exact: true }))
     .not.toBeInTheDocument();
   await expect.element(confirm).not.toBeInTheDocument();
-  expect(success).toHaveBeenCalledExactlyOnceWith("Entfernt.");
+  expect(success).toHaveBeenCalledExactlyOnceWith("Entfernt.", {});
 });
 
 test("a new token is shown once with a copy button, then only its name stays", async () => {
@@ -199,5 +199,5 @@ test("a token is revoked once the admin confirms", async () => {
     .element(tokens.getByRole("list").getByText("evcc", { exact: true }))
     .not.toBeInTheDocument();
   await expect.element(confirm).not.toBeInTheDocument();
-  expect(success).toHaveBeenCalledExactlyOnceWith("Widerrufen.");
+  expect(success).toHaveBeenCalledExactlyOnceWith("Widerrufen.", {});
 });

@@ -44,19 +44,20 @@ export function forecastPane(got: Readonly<ForecastRead> | null) {
   };
 }
 
+/** What one line's figures are read from. */
+export interface ForecastInput {
+  core: Core;
+  device: number;
+  series: string;
+  /** The parts stacked in the bars; empty for one bar. */
+  parts: readonly Part[];
+  route: RangeRoute;
+}
+
 export class ForecastData {
   readonly #data: RangeData<Awaited<ReturnType<typeof read>>>;
 
-  constructor(
-    input: () => {
-      core: Core;
-      device: number;
-      series: string;
-      /** The parts stacked in the bars; empty for one bar. */
-      parts: readonly Part[];
-      route: RangeRoute;
-    },
-  ) {
+  constructor(input: () => ForecastInput) {
     this.#data = new RangeData(
       () => input().route,
       (from, to, now) => {
@@ -70,6 +71,15 @@ export class ForecastData {
   get travel() {
     return this.#data.travel;
   }
+
+  /** The last read of the range failed. */
+  get failed(): boolean {
+    return this.#data.failed;
+  }
+
+  retry = (): void => {
+    this.#data.retry();
+  };
 
   drill = (i: number): void => {
     this.#data.drill(i);

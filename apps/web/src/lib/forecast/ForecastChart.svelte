@@ -5,12 +5,11 @@
   input or a string.
 -->
 <script lang="ts">
-  import type { Core } from "../api/core.ts";
+  import LoadFailed from "../components/load-failed.svelte";
   import { m } from "../paraglide/messages.js";
   import RangePane from "../range/RangePane.svelte";
-  import type { RangeRoute } from "../range/route.svelte.ts";
   import { stackOf, type Line } from "./forecast.ts";
-  import { ForecastData } from "./forecast-data.svelte.ts";
+  import { ForecastData, type ForecastInput } from "./forecast-data.svelte.ts";
   import ForecastPane from "./ForecastPane.svelte";
   import LinePicker from "./LinePicker.svelte";
 
@@ -19,12 +18,7 @@
     device,
     lines,
     route,
-  }: {
-    core: Core;
-    device: number;
-    lines: readonly Line[];
-    route: RangeRoute;
-  } = $props();
+  }: Pick<ForecastInput, "core" | "device" | "route"> & { lines: readonly Line[] } = $props();
 
   const id = $props.id();
 
@@ -58,14 +52,18 @@
     {/if}
   </header>
 
-  <RangePane model={data.travel}>
-    {#snippet children(p)}
-      <ForecastPane got={p.got} up={stack.up} ondrill={data.drill} onbrush={data.brush} />
-    {/snippet}
-    {#snippet waiting()}
-      <ForecastPane got={null} up={stack.up} ondrill={data.drill} onbrush={data.brush} />
-    {/snippet}
-  </RangePane>
+  {#if data.failed}
+    <LoadFailed text={m.detail_error()} onretry={data.retry} />
+  {:else}
+    <RangePane model={data.travel}>
+      {#snippet children(p)}
+        <ForecastPane got={p.got} up={stack.up} ondrill={data.drill} onbrush={data.brush} />
+      {/snippet}
+      {#snippet waiting()}
+        <ForecastPane got={null} up={stack.up} ondrill={data.drill} onbrush={data.brush} />
+      {/snippet}
+    </RangePane>
+  {/if}
 
   <p class="max-w-[68ch] text-xs text-pretty text-muted-foreground">{note}</p>
 </section>
