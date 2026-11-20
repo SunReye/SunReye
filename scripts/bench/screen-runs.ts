@@ -77,15 +77,27 @@ async function open(core: Core, screen: Screen, plant: Plant): Promise<Opened> {
   return { ms: performance.now() - began, reads, errors, empty };
 }
 
+/** Waits, if need be, before the next open. */
+export type Pause = () => Promise<void>;
+
+const noPause: Pause = async () => {};
+
 /** Opens each of `screens` after the last: concurrent opens would share the CPU. */
-async function inTurn(core: Core, screens: readonly Screen[], plant: Plant): Promise<Opened[]> {
+async function inTurn(
+  core: Core,
+  screens: readonly Screen[],
+  plant: Plant,
+  pause: Pause,
+): Promise<Opened[]> {
   const [screen, ...rest] = screens;
 
   if (screen === undefined) return [];
 
+  await pause();
+
   const opened = await open(core, screen, plant);
 
-  return [opened, ...(await inTurn(core, rest, plant))];
+  return [opened, ...(await inTurn(core, rest, plant, pause))];
 }
 
 function failure(opened: readonly Opened[]): string | null {
@@ -125,20 +137,21 @@ function routeRows(warm: readonly Opened[]): Row[] {
 }
 
 export interface Screens {
-  /** Opens every screen 30 times more; the rows for every screen and route. */
-  readonly warm: () => Promise<Row[]>;
+  /** Opens every screen 30 times more, `pause` before each; the rows for every screen and route. */
+  readonly warm: (pause: Pause) => Promise<Row[]>;
 }
 
 /** Opens every screen once, cold. */
 export async function coldScreens(core: Core, plant: Plant): Promise<Screens> {
-  const cold = await inTurn(core, SCREENS, plant);
+  const cold = await inTurn(core, SCREENS, plant, noPause);
 
   return {
-    warm: async () => {
+    warm: async (pause) => {
       const warm = await inTurn(
         core,
         SCREENS.flatMap((screen) => Array.from({ length: WARM }, () => screen)),
         plant,
+        pause,
       );
 
       const rows = SCREENS.flatMap((screen, i) => {

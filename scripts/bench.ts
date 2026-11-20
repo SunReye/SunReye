@@ -5,13 +5,11 @@
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 
-import { type Cgroup, cgroup, coreLog, create, higher, type Peaks } from "./bench/host.ts";
-import { sampleMemory } from "./bench/host.ts";
-import { type Core, connect, firstAnswer } from "./bench/http.ts";
+import { coreLog, higher, type Peaks, sampleMemory } from "./bench/host.ts";
 import * as phase from "./bench/phases.ts";
 import { plantAt } from "./bench/plant.ts";
 import { BUDGETS, type Row, table } from "./bench/report.ts";
-import { coldScreens } from "./bench/screen-runs.ts";
+import { coldScreens, type Pause } from "./bench/screen-runs.ts";
 import * as store from "./bench/store.ts";
 import { run } from "./smoke.ts";
 
@@ -31,81 +29,115 @@ async function dirs(work: string): Promise<Dirs> {
   return { data, share, restored };
 }
 
-interface Started {
-  readonly id: string;
-  readonly core: Core;
-  readonly group: Cgroup;
-  readonly startup: number;
-  /** When the core first answered, by `performance.now()`. */
-  readonly answeredAt: number;
+/** The longest warm open, so none runs into the expiry tick's window. */
+const LONGEST_OPEN = 5000;
+
+/**
+ * Takes the first expiry tick when the next open could reach its window; the screens open in the
+ * idle minute before it, never during it.
+ */
+interface Tick {
+  readonly pause: Pause;
+  readonly row: () => Promise<Row>;
 }
 
-/** Creates the core's container on `where` and starts it, timed from stopped to first answer. */
-async function boot(image: string, name: string, where: Dirs): Promise<Started> {
-  const listen = `127.0.0.1:${store.freePort()}`;
-  const id = await create({ image, name, data: where.data, share: where.share, listen });
-  const core = connect(listen);
-  const began = performance.now();
+function tickBetweenOpens(started: phase.Started): Tick {
+  let tick: Promise<Row> | null = null;
+  const take = (): Promise<Row> => (tick ??= phase.expiryTick(started));
 
-  await run(["docker", "start", id]);
+  return {
+    pause: async () => {
+      const window = started.answeredAt + phase.MINUTE - 5000;
 
-  const startup = await firstAnswer(core.base, began, 5 * phase.MINUTE);
-  const answeredAt = performance.now();
-
-  return { id, core, group: await cgroup(id), startup, answeredAt };
+      if (tick === null && performance.now() + LONGEST_OPEN > window) await take();
+    },
+    row: take,
+  };
 }
 
-/** The reads, expiry, writes and backup on the running core; the core stopped afterwards. */
 /** What one start of the core measured. */
 interface Ran {
   readonly rows: readonly Row[];
   readonly peaks: Peaks;
 }
 
-/** The reads, expiry, writes and backup on the running core; the core stopped afterwards. */
-async function whileRunning(started: Started, held: store.Store, data: string): Promise<Ran> {
-  const { core, group, answeredAt } = started;
-  const memory = sampleMemory(group);
+/**
+ * Restore of the backup into `of.data`, then the clear-sky index computed on the restored file.
+ * Each runs in its own container beside the first core, which only idles: neither counts the
+ * other's CPU or writes.
+ */
+async function alongside(of: phase.Boot): Promise<Ran> {
+  const restored = await phase.restore({
+    image: of.image,
+    name: of.name,
+    share: of.share,
+    into: of.data,
+  });
 
-  await core.signIn(phase.PASSWORD);
+  const file = join(of.data, "core.sqlite");
 
-  const plant = await plantAt(core, held.end);
+  store.forgetIndex(file);
+  await store.evict(file);
+
+  const index = await phase.clearSkyIndex(of, file);
+
+  return { rows: [restored, ...index.rows], peaks: index.peaks };
+}
+
+/**
+ * The screens, expiry, backup and writes on the core started on `data`; its writes are counted
+ * while it idles through restore and the clear-sky index, each in a container of its own.
+ */
+async function measureCore(of: phase.Boot, held: store.Store, restored: string): Promise<Ran> {
+  const started = await phase.boot(of);
+  const memory = sampleMemory(started.group);
+
+  await started.core.signIn(phase.PASSWORD);
+
+  const plant = await plantAt(started.core, held.end);
 
   log(`screens open at ${new Date(plant.now).toISOString()}`);
 
-  const screens = await coldScreens(core, plant);
-  const tick = await phase.expiryTick(core, group, answeredAt);
+  const screens = await coldScreens(started.core, plant);
 
-  await phase.drained(held, answeredAt);
+  // The core settles its startup jobs within seconds; warm opens wait for it.
+  await phase.untilIdle(started.group, performance.now(), phase.MINUTE);
 
-  const reads = await screens.warm();
-  const writes = await phase.writesPerDay(group);
-  const size = await store.sizeOf(data);
-  const saved = await phase.backup(core);
+  const tick = tickBetweenOpens(started);
+  const reads = await screens.warm(tick.pause);
+  const saved = await phase.backup(started.core);
+
+  log("backed up");
+
+  // The backup's pages, flushed now, count before the window, not in it.
+  await run(["sync"]);
+
+  const restoring = (): Promise<Ran> =>
+    alongside({ ...of, name: `${of.name}-index`, data: restored });
+
+  const { writes, done: others } = await phase.writesWhile(started.group, restoring);
   const peaks = await memory.stop();
 
-  log(`core log:\n${await coreLog(started.id, 15)}`);
-  await run(["docker", "stop", "-t", "10", started.id]);
-
-  const startup = started.startup;
+  log(`core log:\n${await coreLog(started.id, 8)}`);
+  await run(["docker", "rm", "-f", started.id]);
 
   const rows: Row[] = [
     {
       measurement: "startup, stopped container to first answer",
       budget: BUDGETS.startup,
-      result: startup,
+      result: started.startup,
     },
     ...reads,
-    ...tick,
+    await tick.row(),
     saved,
-    { measurement: "file size", budget: null, result: size, unit: "bytes" },
+    { measurement: "file size", budget: null, result: await store.sizeOf(of.data), unit: "bytes" },
     writes,
+    ...others.rows,
   ];
 
-  return { rows, peaks };
+  return { rows, peaks: higher(peaks, others.peaks) };
 }
 
-/** Peak memory over both starts of the core. */
 function memoryRows(peaks: Peaks): Row[] {
   return [
     {
@@ -129,51 +161,55 @@ function memoryRows(peaks: Peaks): Row[] {
 }
 
 /** Everything measured on one copy of the cached file. */
-async function measure(image: string, name: string, work: string): Promise<Row[]> {
+async function measure(cache: string, image: string, name: string, work: string): Promise<Row[]> {
   const where = await dirs(work);
-  const file = await store.copy(await store.cachedFile(), where.data);
+  const file = await store.copy(cache, where.data);
   const held = store.inspect(file);
 
   await Promise.all(held.ports.map((port) => store.unreachable(port)));
+  store.trim(file, held.horizon);
+  await store.evict(file);
   log(`schema ${held.version}, data to ${new Date(held.end).toISOString()}`);
 
-  const started = await boot(image, name, where);
-  const running = await whileRunning(started, held, where.data);
-  const restored = await phase.restore({ image, name, share: where.share, into: where.restored });
-  const index = await phase.clearSkyIndex(started.id, started.core, file);
+  const of = { image, name, data: where.data, share: where.share };
+  const ran = await measureCore(of, held, where.restored);
 
   return [
-    ...running.rows,
-    ...memoryRows(higher(running.peaks, index.peaks)),
+    ...ran.rows,
+    ...memoryRows(ran.peaks),
     ...phase.UNMEASURED,
-    ...index.rows,
-    restored,
     phase.migration(held, await store.currentSchema()),
   ];
 }
 
 async function main(): Promise<number> {
+  const began = performance.now();
+  // Before the image: building the SPA invalidates the generator's build, which `--key` needs.
+  const cache = await store.cachedFile();
   const image = await store.buildImage();
   const name = `sunreye-bench-${process.pid}`;
   const work = await mkdtemp(join(ROOT, "target", "bench", "run-"));
 
   const cleanUp = async (): Promise<void> => {
-    await run(["docker", "rm", "-f", name]).catch(() => "");
-    await run(["docker", "image", "rm", image]).catch(() => "");
+    await run(["docker", "rm", "-f", name, `${name}-index`]).catch(() => "");
+
+    // A clean commit's image is kept for the next run on it.
+    if (!image.reusable) await run(["docker", "image", "rm", image.tag]).catch(() => "");
     await rm(work, { recursive: true, force: true });
   };
 
-  // An interrupted run would leave the container and a copy of the whole file behind.
+  // An interrupted run would leave its containers and copies of the whole file behind.
   for (const signal of ["SIGINT", "SIGTERM"] as const)
     process.once(signal, () => {
       void cleanUp().finally(() => process.exit(130));
     });
 
   try {
-    const { lines, breaches } = table(await measure(image, name, work));
+    const { lines, breaches } = table(await measure(cache, image.tag, name, work));
+    const seconds = ((performance.now() - began) / 1000).toFixed(0);
 
     process.stdout.write(`${lines.join("\n")}\n`);
-    log(breaches === 0 ? "every budget kept" : `${breaches} breached`);
+    log(`${breaches === 0 ? "every budget kept" : `${breaches} breached`} in ${seconds} s`);
 
     return breaches === 0 ? 0 : 1;
   } finally {

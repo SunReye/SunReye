@@ -13,7 +13,9 @@ export const ROOT = new URL("../..", import.meta.url).pathname;
 /** `RETENTION` in `crates/core/src/storage.rs`, until the admin sets it. */
 const RETENTION_S = 1827 * 86_400;
 
-export const log = (line: string): void => void process.stderr.write(`bench: ${line}\n`);
+/** A progress line, stamped with the seconds since the run began. */
+export const log = (line: string): void =>
+  void process.stderr.write(`bench +${(performance.now() / 1000).toFixed(0)} s: ${line}\n`);
 
 /** The cached ten-year file, generated when missing (about 1.5 h). */
 export async function cachedFile(): Promise<string> {
@@ -31,33 +33,54 @@ export async function cachedFile(): Promise<string> {
 }
 
 /** Builds the release image of this commit; its tag. */
-export async function buildImage(): Promise<string> {
-  const sha = await run(["git", "rev-parse", "--short", "HEAD"], ROOT);
-  const image = `sunreye-bench:${sha}`;
+export interface Image {
+  readonly tag: string;
+  /** Whether a later run on the same commit may reuse it. */
+  readonly reusable: boolean;
+}
+
+/** The image of commit `sha`; a tree `git status --porcelain` lists changes in is never reused. */
+export function imageTag(sha: string, porcelain: string): Image {
+  const reusable = porcelain.trim() === "";
+
+  return { tag: `sunreye-bench:${sha}${reusable ? "" : "-dirty"}`, reusable };
+}
+
+/** The release image of this tree, built unless a clean commit's image already exists. */
+export async function buildImage(): Promise<Image> {
+  const sha = await run(["git", "rev-parse", "HEAD"], ROOT);
+  const image = imageTag(sha, await run(["git", "status", "--porcelain"], ROOT));
+
+  const exists = await run(["docker", "image", "inspect", "-f", "{{.Id}}", image.tag]).then(
+    () => true,
+    () => false,
+  );
+
+  if (image.reusable && exists) return image;
+
   const build = ["docker", "build", "--network", "host", "-q", "-f", "packaging/Dockerfile"];
 
   // The core embeds the SPA's build (ADR 11).
   await run(["bun", "run", "--cwd", "apps/web", "build"], ROOT);
-  await run([...build, "--target", "core", "-t", image, "."], ROOT);
+  await run([...build, "--target", "core", "-t", image.tag, "."], ROOT);
 
   return image;
 }
 
-/** Copies the cached file, then drops it from the page cache so the first reads are cold. */
+/** Copies the cached file into `data`, sharing its blocks where the file system can. */
 export async function copy(cache: string, data: string): Promise<string> {
   const file = join(data, "core.sqlite");
 
   await run(["cp", "--reflink=auto", cache, file]);
-  await run([
-    "dd",
-    `of=${file}`,
-    "oflag=nocache",
-    "conv=notrunc,fdatasync",
-    "count=0",
-    "status=none",
-  ]);
 
   return file;
+}
+
+/** Writes `file` out and drops it from the page cache, so the core's first reads are cold. */
+export async function evict(file: string): Promise<void> {
+  const flags = ["oflag=nocache", "conv=notrunc,fdatasync", "count=0", "status=none"];
+
+  await run(["dd", `of=${file}`, ...flags]);
 }
 
 /** What the copy holds before the core opens it. */
@@ -65,8 +88,8 @@ export interface Store {
   readonly version: number;
   /** The end of the last stored hour, in ms since 1970. */
   readonly end: number;
-  /** Blocks already past retention, which the first ticks expire. */
-  readonly backlog: number;
+  /** The first hour, counted from 1970, whose change points retention keeps. */
+  readonly horizon: number;
   /** The plant's devices' TCP ports on loopback. */
   readonly ports: readonly number[];
 }
@@ -98,9 +121,34 @@ export function inspect(file: string): Store {
     return {
       version: number(db, "SELECT user_version AS n FROM pragma_user_version"),
       end: (number(db, "SELECT max(hour) AS n FROM block") + 1) * HOUR,
-      backlog: number(db, "SELECT count(*) AS n FROM block WHERE hour < ?", horizon),
+      horizon,
       ports: connections.map((c) => c.port),
     };
+  } finally {
+    db.close();
+  }
+}
+
+/** Expired blocks deleted per tick: `PRUNE` in `crates/core/src/storage/thread.rs`. */
+const PRUNE = 16 * 256;
+
+/**
+ * Expires, as the core would have, all but the newest blocks already past retention: enough for
+ * the tick at startup and the one a minute later to each delete a full `PRUNE`. The wall clock is
+ * weeks past the file's end, and without this every tick for ten minutes would.
+ */
+export function trim(file: string, horizon: number): void {
+  const db = new Database(file);
+
+  try {
+    db.run(
+      `DELETE FROM block WHERE hour < ?1 AND (device, series, hour) NOT IN (
+         SELECT device, series, hour FROM block WHERE hour < ?1 ORDER BY hour DESC LIMIT ?2
+       )`,
+      [horizon, 2 * PRUNE],
+    );
+    // Each step frees one page, as the core returns free pages to the file system.
+    db.query("PRAGMA incremental_vacuum").all();
   } finally {
     db.close();
   }
@@ -132,13 +180,19 @@ export function forgetIndex(file: string): void {
   db.close();
 }
 
-/** The end of the last hour the clear-sky index holds, in ms since 1970. */
+/**
+ * The end of the last hour the clear-sky index holds, in ms since 1970; `NaN` with none. Hours
+ * past retention get blocks but no rollups.
+ */
 export function indexReach(file: string): number {
   const db = new Database(file);
 
   try {
-    const sql = `SELECT max(hour) AS n FROM rollup_hour WHERE device = ${WEATHER}
+    const own = `device = ${WEATHER}
       AND series = (SELECT id FROM series WHERE name = 'weather.clearness')`;
+
+    const sql = `SELECT max(hour) AS n FROM (
+      SELECT hour FROM block WHERE ${own} UNION ALL SELECT hour FROM rollup_hour WHERE ${own})`;
 
     return (number(db, sql) + 1) * HOUR;
   } finally {

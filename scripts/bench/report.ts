@@ -154,6 +154,11 @@ export function slowest(timings: readonly Timing[]): Slowest[] {
   return [...worst.keys()].toSorted().flatMap((name) => worst.get(name) ?? []);
 }
 
+/** `bytes` written over `window` ms, scaled to a day. */
+export function perDay(bytes: number, window: number): number {
+  return (bytes * 86_400_000) / window;
+}
+
 /** The `key value` lines of a cgroup file such as `memory.stat`. */
 function keyed(text: string): Map<string, number> {
   const values = new Map<string, number>();

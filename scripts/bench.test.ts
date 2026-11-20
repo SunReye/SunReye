@@ -1,4 +1,9 @@
+import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { higher } from "./bench/host.ts";
 import { openingMoment } from "./bench/plant.ts";
 import {
@@ -7,11 +12,14 @@ import {
   inUse,
   measured,
   p95,
+  perDay,
   route,
   slowest,
   table,
   written,
 } from "./bench/report.ts";
+import { HOUR, WEATHER } from "./bench/reads.ts";
+import { imageTag, indexReach } from "./bench/store.ts";
 
 test("p95 is the nearest-rank sample", () => {
   const samples = Array.from({ length: 30 }, (_, i) => 30 - i);
@@ -59,6 +67,21 @@ test("a route answers for its slowest request, however rare among the route's re
     { route: "/api/v1/devices/{id}/history", path: year, p95: 900, samples: 2 },
     { route: "/api/v1/sun-tint", path: "/api/v1/sun-tint", p95: 1, samples: 1 },
   ]);
+});
+
+test("bytes written over a window scale to a day", () => {
+  // 2 min is a 720th of a day.
+  expect(perDay(1_000_000, 120_000)).toBe(720_000_000);
+});
+
+test("an image is reused only for a clean tree, by its full commit", () => {
+  const sha = "d8d1dda2c0ffee00d8d1dda2c0ffee00d8d1dda2";
+
+  expect(imageTag(sha, "")).toEqual({ tag: `sunreye-bench:${sha}`, reusable: true });
+  expect(imageTag(sha, " M scripts/bench.ts\n")).toEqual({
+    tag: `sunreye-bench:${sha}-dirty`,
+    reusable: false,
+  });
 });
 
 test("peak memory over two starts keeps each figure's own highest", () => {
@@ -125,4 +148,18 @@ test("a result over its budget, or one that failed, is a breach; a skipped one i
     "| restore | — | 61.0 s | — |",
     "| one read p95 | ≤ 100 ms | 87 ms | pass |",
   ]);
+});
+
+test("the clear-sky index reaches its newest hour, kept as a block where retention left no rollup", async () => {
+  const file = join(await mkdtemp(join(tmpdir(), "bench-")), "core.sqlite");
+  const db = new Database(file);
+
+  db.run("CREATE TABLE series (id INTEGER PRIMARY KEY, name TEXT)");
+  db.run("CREATE TABLE block (device INTEGER, series INTEGER, hour INTEGER)");
+  db.run("CREATE TABLE rollup_hour (device INTEGER, series INTEGER, hour INTEGER)");
+  db.run("INSERT INTO series VALUES (7, 'weather.clearness'), (8, 'pv.power')");
+  db.run(`INSERT INTO block VALUES (${WEATHER}, 7, 410544), (${WEATHER}, 8, 420000)`);
+  db.close();
+
+  expect(indexReach(file)).toBe(410545 * HOUR);
 });

@@ -114,10 +114,10 @@ export interface Probe {
 }
 
 /**
- * GETs `path` every ~10 ms until stopped and keeps the worst latency: a thread held for longer
- * shows as one slow answer.
+ * GETs `path` until stopped, `gap` ms after each answer, and keeps the worst latency: a thread
+ * held for longer than `gap` shows as one slow answer.
  */
-export function probe(core: Core, path: string): Probe {
+export function probe(core: Core, path: string, gap: number): Probe {
   let [running, worst] = [true, 0];
 
   const loop = async (): Promise<void> => {
@@ -126,7 +126,7 @@ export function probe(core: Core, path: string): Probe {
     const answer = await core.time({ path });
 
     worst = Math.max(worst, answer.ms);
-    await Bun.sleep(Math.max(0, 10 - answer.ms));
+    await Bun.sleep(gap);
 
     return loop();
   };
