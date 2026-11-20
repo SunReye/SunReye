@@ -1,6 +1,6 @@
 # 17. Solar forecast and string model
 
-Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12, 2026-11-13, 2026-11-15, 2026-11-16, 2026-11-17, 2026-11-18)
+Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12, 2026-11-13, 2026-11-15, 2026-11-16, 2026-11-17, 2026-11-18, 2026-11-20)
 
 ## Context
 
@@ -32,7 +32,7 @@ Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12, 2026-11-13, 2026
 - Per inverter: the sum of its inputs. The AC rating caps the solar forecast, not the model (Correction). Battery and feed-in curtailment are planning and wait for the EMS stage (ADR 1).
 - Perez golden values are generated offline with pvlib and committed as fixtures. Open-Meteo's tilted irradiance is a looser cross-check.
 
-**Parallel-string estimates.** The measured MPPT current is split by each string's modelled current. A string's estimate is the measured `pv.mppt.power` times its share, so the estimates sum to it. The modelled currents are the strings' latest solar forecasts at the target nearest the reading, which are split by modelled current; without one, or when they are all 0 W, the strings share equally. A string alone on its MPPT input is reported as measured. Estimates are history as `pv.string.power` (ADR 4), in the solar forecast's 1 W step, since a series' forecast and history share one step; the capabilities document marks them `estimated`.
+**Parallel-string estimates.** The measured MPPT current is split by each string's modelled current. A string's estimate is the measured `pv.mppt.power` times its share, so the estimates sum to it. The modelled currents are the strings' latest solar forecasts at the target nearest the reading, which are split by modelled current; without one, or when they are all 0 W, the strings share equally. A string alone on its MPPT input is reported as measured. Estimates are history as `pv.string.power` (ADR 4), in the 1 W step the solar forecast issues them in (Storage), since a series' forecast and history share one step; the capabilities document marks them `estimated`.
 
 **Correction.** Carried over from 3.x and v4: an exponentially weighted grid by month and plant-local hour of measured ÷ modelled, with the model run on archive weather so cloud-prediction error is not learned, and a half-life of 30 observations. Each MPPT input learns against `pv.mppt.power`, else the inverter's `pv.power`; parallel strings share their input's factor. Hours with the inverter at its AC limit are skipped. Learning runs twice a day. The 3.x and v4 learner cases are oracles.
 
@@ -43,7 +43,7 @@ Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12, 2026-11-13, 2026
 - The solar forecast applies each input's factor at the target's plant-local month and hour to the input and its strings; the inverter's forecast is the sum of its corrected inputs, capped at its AC rating where its profile declares one. The cap is applied here, once, after the factors. A capped inverter's inputs and strings are scaled by the same share, so they still sum to it. The learner's model is not capped, so an hour clipped at the rating is modelled above its measured peak.
 - Not carried over: the feed-in cap, which waits for the EMS stage, and 3.x's skill figure, which nothing reports.
 
-**Storage.** The solar forecast issues on start, after each stored weather forecast and after each layout change. Forecasts of `pv.string.power`, `pv.mppt.power` and `pv.power` go to the forecast store (ADR 15). They are stored under each inverter's device, so a series' forecast and history share one device and index. An issue runs the layout in force at each weather target and covers every string, input and inverter any layout version has, at 0 W where the version in force lacks it, so a removed string's earlier issue is superseded.
+**Storage.** The solar forecast issues on start, after each stored weather forecast and after each layout change. Forecasts of `pv.string.power`, `pv.mppt.power` and `pv.power` go to the forecast store (ADR 15). They are stored under each inverter's device, so a series' forecast and history share one device and index, and in the step its profile stores the series in (ADR 3), such as the SG01HP3's 10 W, so they share one step too; a series no profile stores, as `pv.string.power`, takes 1 W. A series storage refuses loses that issue alone. An issue runs the layout in force at each weather target and covers every string, input and inverter any layout version has, at 0 W where the version in force lacks it, so a removed string's earlier issue is superseded.
 
 ## Open
 
