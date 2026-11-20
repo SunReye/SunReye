@@ -1,5 +1,5 @@
 // Lines and areas draw in from the left as they first show (ADR 21 "Chart entrance").
-import { test } from "vitest";
+import { beforeEach, test } from "vitest";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import ShareBar from "../detail/ShareBar.svelte";
@@ -8,6 +8,10 @@ import TrendChart from "../history/TrendChart.svelte";
 import HourLines from "../weather/HourLines.svelte";
 import { expectBuilds } from "./built.harness.ts";
 import { bands, HOUR, hours, T0 } from "./charts.fixtures.ts";
+import { holdEntrances } from "../motion/animations.harness.ts";
+
+// Entrances held at their start: a test reads one before it has played out.
+beforeEach(holdEntrances);
 
 test("a trend draws in", async () => {
   await render(TrendChart, {

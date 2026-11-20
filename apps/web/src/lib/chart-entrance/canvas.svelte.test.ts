@@ -1,5 +1,5 @@
 // A chart on one canvas draws in from the left as it first shows (ADR 21 "Chart entrance").
-import { afterEach, test } from "vitest";
+import { afterEach, beforeEach, test } from "vitest";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import HeatGrid from "../analytics/HeatGrid.svelte";
@@ -8,6 +8,10 @@ import { reset, show } from "../explore/explore.harness.ts";
 import FoldChart from "../explore/FoldChart.svelte";
 import { expectBuilds } from "./built.harness.ts";
 import { HOUR, T0, week } from "./charts.fixtures.ts";
+import { holdEntrances } from "../motion/animations.harness.ts";
+
+// Entrances held at their start: a test reads one before it has played out.
+beforeEach(holdEntrances);
 
 afterEach(reset);
 

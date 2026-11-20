@@ -5,6 +5,7 @@ import "../../app.css";
 import { haptics } from "../haptics.ts";
 import SegmentedTabs from "./segmented-tabs.harness.svelte";
 import Segmented from "./segmented.svelte";
+import { finish } from "../motion/animations.harness.ts";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -166,8 +167,7 @@ test.each(["light", "dark"])(
       await expect.poll(() => Object.hasOwn(list.dataset, "indicator")).toBe(true);
       await expect.poll(() => Object.hasOwn(group.dataset, "indicator")).toBe(true);
       // The chosen option's own background fades out under the box.
-      // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- an animation is mutable.
-      await Promise.all(document.getAnimations().map((animation) => animation.finished));
+      await finish();
 
       expect(looks(list)).toEqual(looks(group));
       expect(looks(list, "::before")).toEqual(looks(group, "::before"));

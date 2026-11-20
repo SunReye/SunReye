@@ -1,8 +1,12 @@
 // A chart builds up as it first shows (ADR 21 "Chart entrance").
-import { afterEach, expect, test } from "vitest";
+import { tick } from "svelte";
+import { afterEach, beforeEach, expect, test } from "vitest";
 import { render } from "vitest-browser-svelte";
+import { holdEntrances } from "../motion/animations.harness.ts";
 import { built, finish } from "./built.harness.ts";
 import Harness from "./entrance.harness.svelte";
+
+beforeEach(holdEntrances);
 
 afterEach(() => {
   delete document.documentElement.dataset["motion"];
@@ -14,19 +18,12 @@ const bars = () => [...document.querySelectorAll("[data-grow]")];
 /** What builds the bars. */
 const grows = () => built().filter((b) => bars().includes(b.target));
 
-/** A frame drawn: anything an effect set off is running by then. */
-const frame = async () => {
-  await new Promise((resolve) => {
-    requestAnimationFrame(resolve);
-  });
-};
-
 /** The animation that starts from a translate beginning with `at`. */
 const starts = (at: string) => built().find((b) => String(b.from["translate"]).startsWith(at));
 
 test("nothing builds before the first data", async () => {
   await render(Harness, { build: "grow", ready: false });
-  await frame();
+  await tick();
 
   expect(bars()).toHaveLength(3);
   expect(built()).toEqual([]);
@@ -82,7 +79,7 @@ test("a chart already shown does not build again: its next data arrives in place
   await expect.poll(built).toEqual([]);
 
   await screen.rerender({ build: "grow", ready: true, count: 6 });
-  await frame();
+  await tick();
 
   expect(bars()).toHaveLength(6);
   expect(built()).toEqual([]);
@@ -91,7 +88,7 @@ test("a chart already shown does not build again: its next data arrives in place
 test("on the still tier a chart is drawn at once", async () => {
   document.documentElement.dataset["motion"] = "still";
   await render(Harness, { build: "grow", ready: true });
-  await frame();
+  await tick();
 
   expect(bars()).toHaveLength(3);
   expect(built()).toEqual([]);

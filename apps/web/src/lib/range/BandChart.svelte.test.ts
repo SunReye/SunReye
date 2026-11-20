@@ -1,4 +1,5 @@
-import { expect, test } from "vitest";
+import { tick } from "svelte";
+import { beforeEach, expect, test } from "vitest";
 import { userEvent, type Locator } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 // The chart is laid out and moved by the SPA's utilities and motion tokens.
@@ -6,6 +7,10 @@ import "../../app.css";
 import type { Band, Via } from "./bands.ts";
 import { built, finish } from "../chart-entrance/built.harness.ts";
 import BandChart from "./BandChart.svelte";
+import { holdEntrances } from "../motion/animations.harness.ts";
+
+// Entrances held at their start: a test reads one before it has played out.
+beforeEach(holdEntrances);
 
 const band = (key: string, up: number): Band => ({
   key,
@@ -77,9 +82,7 @@ test("a chart already shown does not build again: a new range's bars tween", asy
   await expect.poll(() => builds(screen.container).filter(Boolean)).toHaveLength(0);
 
   await screen.rerender(props([band("b0", 6), band("b1", 4), band("b2", 2)], 2));
-  await new Promise((resolve) => {
-    requestAnimationFrame(resolve);
-  });
+  await tick();
 
   expect(bars(screen.container)).toHaveLength(3);
   expect(builds(screen.container).filter(Boolean)).toEqual([]);
