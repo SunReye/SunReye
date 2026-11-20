@@ -5163,15 +5163,6 @@
             "schema": {
               "type": "string"
             }
-          },
-          {
-            "description": "Only issues before this instant, RFC 3339; the latest issue when absent.",
-            "in": "query",
-            "name": "issuedBefore",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
           }
         ],
         "responses": {

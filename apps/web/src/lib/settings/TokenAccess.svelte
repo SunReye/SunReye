@@ -3,6 +3,7 @@
   import { onMount } from "svelte";
   import type { Core, CreatedToken, Problem, Token } from "../api/core";
   import { m } from "../paraglide/messages.js";
+  import { href } from "../shell/nav.ts";
   import AccessRow from "./AccessRow.svelte";
   import AccessSection from "./AccessSection.svelte";
   import NewToken from "./NewToken.svelte";
@@ -40,6 +41,11 @@
   answer={tokens}
   action={m.access_add_token()}
 >
+  {#snippet more()}
+    <a class="self-start text-sm font-medium text-brand hover:underline" href={href("/api")}>
+      {m.api_reference()}
+    </a>
+  {/snippet}
   {#snippet row(token)}
     <AccessRow
       name={token.name}

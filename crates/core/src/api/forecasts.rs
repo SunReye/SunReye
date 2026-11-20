@@ -1,5 +1,4 @@
-//! Forecasts by device, series and range (ADR 9, 15): the latest issue of each target, or the
-//! latest before `issuedBefore`, so forecast accuracy can be compared.
+//! Forecasts by device, series and range (ADR 9, 15): each target's one kept issue.
 
 use std::time::SystemTime;
 
@@ -13,7 +12,7 @@ use utoipa::{IntoParams, ToSchema};
 use super::{Code, Problem, ProblemDetails};
 use crate::api::{internal, rfc3339};
 use crate::bus::{DeviceId, Series};
-use crate::storage::{Forecast, Reader};
+use crate::storage::Reader;
 
 const MAX_POINTS: usize = 1500;
 
@@ -40,8 +39,6 @@ pub struct Params {
     from: String,
     /// The instant after the last target, RFC 3339.
     to: String,
-    /// Only issues before this instant, RFC 3339; the latest issue when absent.
-    issued_before: Option<String>,
 }
 
 /// One series' forecasts, at most 1,500 points.
@@ -81,39 +78,22 @@ pub async fn forecasts(
     if from >= to {
         return Err(RANGE);
     }
-    let before = params.issued_before.as_deref().map(instant).transpose()?;
     let stored = reader
         .forecasts(DeviceId(device), &series, from, to)
         .await
         .map_err(internal)?;
-    let points = latest(&stored, before);
-    if points.len() > MAX_POINTS {
+    if stored.len() > MAX_POINTS {
         return Err(RANGE);
     }
-    Ok(Json(Forecasts { points }))
-}
-
-/// The latest issue of each target, of those issued before `before`; `stored` is by target,
-/// then issue.
-fn latest(stored: &[Forecast], before: Option<SystemTime>) -> Vec<ForecastPoint> {
-    let wanted = stored
+    let points = stored
         .iter()
-        .filter(|f| before.is_none_or(|before| f.issued < before));
-    let mut points: Vec<&Forecast> = Vec::new();
-    for forecast in wanted {
-        match points.last_mut() {
-            Some(last) if last.target == forecast.target => *last = forecast,
-            _ => points.push(forecast),
-        }
-    }
-    points
-        .into_iter()
         .map(|f| ForecastPoint {
             target: rfc3339(f.target),
             issued: rfc3339(f.issued),
             value: f.value,
         })
-        .collect()
+        .collect();
+    Ok(Json(Forecasts { points }))
 }
 
 fn instant(text: &str) -> Result<SystemTime, Problem> {

@@ -1,6 +1,6 @@
 # 9. API and capabilities
 
-Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-10, 2026-11-12, 2026-11-13, 2026-11-16, 2026-11-19)
+Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-10, 2026-11-12, 2026-11-13, 2026-11-16, 2026-11-19, 2026-11-20)
 
 ## Context
 
@@ -8,7 +8,7 @@ The SPA, the CLI and integrations consume one surface. v4 retrofitted capability
 
 ## Decision
 
-**Shape.** REST with JSON under `/api/v1`, described by one OpenAPI document generated from the Rust types and served at `/openapi.json`. Each route registers together with its description (`utoipa-axum`). The SPA client and its TypeScript types are generated from it. `v1` changes only additively; a break is `v2` beside `v1`. API version, core version and profile schema are three separate numbers.
+**Shape.** REST with JSON under `/api/v1`, described by one OpenAPI document generated from the Rust types and served at `/openapi.json` and readable in the SPA as the API reference (ADR 11). Each route registers together with its description (`utoipa-axum`). The SPA client and its TypeScript types are generated from it. `v1` changes only additively; a break is `v2` beside `v1`. API version, core version and profile schema are three separate numbers.
 
 **Capabilities.** `GET /api/v1/capabilities` returns the core version, the schema range, the transports a connection can be configured with (`sim` is not one), bindings, step kinds, enabled features and per-device capabilities derived from roles. Under `devices`, keyed by device id, each lists its `estimated` series: those computed from others, not measured, such as a parallel string's `pv.string.power` in the layout in force (ADR 17). It comes from the same table the WASM exposes. Each lists the `series` its profile publishes, extras left out, so the SPA shows only readings a device has (ADR 21). Each also lists its `settings` from its profile, in the profile's order: key, `range` or `values`, `step` and `enable` (ADR 8), with the device's `writes` switch (ADR 7), so the SPA renders setting controls without naming a profile. An inverter lists its profile's `maxInputVoltage`, so the builder checks each string's open-circuit voltage at −10 °C before saving (ADR 20). It also lists its `inputs` (2026-11-19): each MPPT input's `maxCurrent` in amperes and `minVoltage`, `maxVoltage` and `startVoltage` in volts, in the inputs' order from 1, as its profile gives them (ADR 5), so the builder offers the inputs an inverter has and warns where a string leaves an input's window (ADR 20). A device whose profile describes no inverter lists neither. The SPA renders from it and never branches on a brand or profile name.
 
@@ -34,7 +34,7 @@ The SPA, the CLI and integrations consume one surface. v4 retrofitted capability
 
 **Energy balance.** `GET /api/v1/balance` by the range `from` to before `to` returns each plant-local day starting in it with rolled-up history: its residual in kWh and each consuming point's (ADR 14). An empty range, or one longer than the day tier's, is refused as `history.range`.
 
-**Forecasts.** `GET /api/v1/devices/{id}/forecasts` by series and range, with the same 1,500-point cap. It returns the latest issue by default; `issuedBefore` selects an earlier one, so forecast accuracy can be compared (ADR 15).
+**Forecasts.** `GET /api/v1/devices/{id}/forecasts` by series and range, with the same 1,500-point cap. It returns each target's one kept issue (ADR 15).
 
 **Problems.** `GET /api/v1/problems` lists the conditions degrading the core by stable code, such as `clock.unsynced` (ADR 3).
 

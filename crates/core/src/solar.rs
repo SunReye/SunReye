@@ -20,7 +20,7 @@ use crate::storage::{self, Issue, Keep, Storage};
 const HOUR: Duration = Duration::from_hours(1);
 /// Today and two more days, as the weather device fetches (ADR 17).
 const HORIZON: Duration = Duration::from_hours(72);
-/// Watts.
+/// Watts: the step of a series no profile stores.
 const STEP: f64 = 1.0;
 const WEATHER: [&str; 5] = [
     "weather.ghi",
@@ -89,9 +89,10 @@ impl SolarForecast {
     /// with each MPPT input's grid from `corrections` applied.
     /// Every string, input and inverter any layout version has is issued, 0 W where the version
     /// in force at a target lacks it, so a removed string's earlier issue is superseded.
+    /// A series storage refuses is logged and skipped.
     ///
     /// # Errors
-    /// Storage failed.
+    /// Storage stopped, or the weather, layouts or corrections could not be read.
     pub async fn refresh(
         &self,
         storage: &Storage,
@@ -99,8 +100,7 @@ impl SolarForecast {
         location: Location,
         issued: SystemTime,
     ) -> Result<(), storage::Error> {
-        let since = issued.duration_since(UNIX_EPOCH).unwrap_or_default();
-        let from = issued - Duration::from_secs(since.as_secs() % HOUR.as_secs());
+        let from = hour_of(issued);
         let weather = self.weather(storage, from, from + HORIZON).await?;
         let versions = self.layouts.versions().await?;
         let mut series: BTreeMap<Key, Vec<(SystemTime, f64)>> = versions
@@ -135,16 +135,33 @@ impl SolarForecast {
                 points.push((target, values.get(key).copied().unwrap_or(0.0)));
             }
         }
+        self.store(storage, issued, series).await
+    }
+
+    /// Stores each series' issue at `issued`, in the step its profile stores the series in. A
+    /// series storage refuses, such as one stored in another step, loses its issue alone.
+    async fn store(
+        &self,
+        storage: &Storage,
+        issued: SystemTime,
+        series: BTreeMap<Key, Vec<(SystemTime, f64)>>,
+    ) -> Result<(), storage::Error> {
+        let inverters = self.layouts.inverters();
         for ((device, role, index), values) in series {
             let issue = Issue {
                 issued,
-                step: STEP,
+                step: step(inverters, (device, role, index)),
                 values,
-                keep: Keep::Every,
+                keep: Keep::Ahead,
             };
-            storage
+            match storage
                 .forecast(device, self.bus.intern(role, index), issue)
-                .await?;
+                .await
+            {
+                Ok(()) => {}
+                Err(storage::Error::Stopped) => return Err(storage::Error::Stopped),
+                Err(e) => tracing::warn!(device = device.0, role, ?index, "not forecast: {e}"),
+            }
         }
         Ok(())
     }
@@ -202,16 +219,39 @@ pub(crate) async fn estimates(
         .into_iter()
         .map(|m| (m.id, m.datasheet.model()))
         .collect();
-    Ok(weather
-        .into_iter()
-        .map(|(target, sky)| {
-            let values = in_force(versions, target).map_or_else(HashMap::new, |version| {
-                let model = Model::new(version, &module_types, layouts.inverters(), location);
-                model.values(&pv::estimate(&model.layout, &sky))
-            });
-            (target, values)
+    let versions = versions.to_vec();
+    let inverters = layouts.inverters().clone();
+    // Seconds of work on a slow device: on tokio's blocking pool, the I/O thread stays free (ADR 2).
+    tokio::task::spawn_blocking(move || {
+        weather
+            .into_iter()
+            .map(|(target, sky)| {
+                let values = in_force(&versions, target).map_or_else(HashMap::new, |version| {
+                    let model = Model::new(version, &module_types, &inverters, location);
+                    model.values(&pv::estimate(&model.layout, &sky))
+                });
+                (target, values)
+            })
+            .collect()
+    })
+    .await
+    // A panic in the model stays one, as it would have been on the I/O thread; only a runtime
+    // shutting down cancels it.
+    .map_err(|e| {
+        e.try_into_panic().map_or(storage::Error::Stopped, |panic| {
+            std::panic::resume_unwind(panic)
         })
-        .collect())
+    })
+}
+
+/// The start of `time`'s hour, in whole seconds: a sub-second left on it would skip the hour's
+/// first target.
+fn hour_of(time: SystemTime) -> SystemTime {
+    let since = time
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    UNIX_EPOCH + Duration::from_secs(since - since % HOUR.as_secs())
 }
 
 /// A string's inverter device and MPPT input.
@@ -263,6 +303,20 @@ fn corrected(
         values.insert((device, "pv.power", None), power * kept);
     }
     values
+}
+
+/// The step the inverter's profile stores `key` in, which its forecast shares (ADR 3, 17); 1 W
+/// where the profile has no such quantity, such as `pv.string.power`.
+fn step(inverters: &Inverters, (device, role, index): Key) -> f64 {
+    inverters
+        .profile(device)
+        .and_then(|p| {
+            p.quantities()
+                .iter()
+                .find(|q| q.role == role && q.index == index)
+                .map(sunreye_profile::Quantity::step)
+        })
+        .unwrap_or(STEP)
 }
 
 /// The series a string contributes to.

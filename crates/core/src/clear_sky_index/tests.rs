@@ -157,7 +157,7 @@ async fn clear_sky() -> BTreeMap<u64, f64> {
             issued: at(FIRST - DAY),
             step: 0.001,
             values: skies.iter().map(|(t, w)| (at(*t), value(w))).collect(),
-            keep: Keep::Every,
+            keep: Keep::Ahead,
         };
         let series = plant.bus.intern(name, None);
         plant
@@ -487,7 +487,7 @@ async fn forecast_snow_depth_stands_in_until_the_archive_has_it() {
         issued: at(FIRST - DAY),
         step: 0.001,
         values: (0..24).map(|h| (at(FIRST + h * HOUR), 0.2)).collect(),
-        keep: Keep::Every,
+        keep: Keep::Ahead,
     };
     let series = plant.bus.intern("weather.snow_depth", None);
     plant
@@ -544,12 +544,6 @@ async fn it_computes_as_each_quarter_closes() {
     let (_location, receiver) = tokio::sync::watch::channel(Some(BERLIN));
     let index = plant.index();
     let grids: HashMap<(DeviceId, u32), Grid> = HashMap::new();
-    // Paused time jumps to the next timer while storage works; this keeps each jump short.
-    let ticker = tokio::spawn(async {
-        loop {
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    });
     let closed = async |q: u64| loop {
         if plant.stored().await[&q].is_some() {
             return start.elapsed();
@@ -561,7 +555,6 @@ async fn it_computes_as_each_quarter_closes() {
         () = index.run(&plant.storage, &grids, receiver, clock) => panic!("stopped"),
         seen = async { (closed(noon - QUARTER).await, closed(noon).await) } => seen,
     };
-    ticker.abort();
 
     assert!(before < Duration::from_mins(1), "{before:?}");
     // Closed at 12:15 and stored half a minute later: 14½ minutes in.

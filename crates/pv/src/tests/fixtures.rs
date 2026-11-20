@@ -4,7 +4,8 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::str::FromStr;
 
-use crate::ModuleType;
+use crate::shade::Casters;
+use crate::{ModuleType, Occluder, Place, Plane, Sun};
 
 pub struct Row(HashMap<String, String>);
 
@@ -55,4 +56,15 @@ pub fn assert_peak(actual: f64, expected: f64, what: &str) {
         (actual - expected).abs() <= 1e-6 * expected.abs().max(1.0),
         "{what}: {actual} != pvlib {expected}"
     );
+}
+
+/// How many of a module's substrings the occluders shade under `sun`.
+pub fn shaded_substrings(
+    module: &ModuleType,
+    plane: Plane,
+    at: Place,
+    sun: Sun,
+    occluders: &[Occluder],
+) -> u8 {
+    Casters::under(sun, occluders).shaded_substrings(module, plane, at)
 }

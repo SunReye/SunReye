@@ -228,11 +228,15 @@ const READS = new Map<string, (q: Query) => Response>(
   }),
 );
 
-function transport(): Transport {
+/** A core that answers from the synthetic plant and records the path and query of each request in `urls`. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- it collects into `urls`.
+function transport(urls: string[]): Transport {
   return {
     base: "http://core.test/",
     fetch: async (request) => {
       const url = new URL(request.url);
+
+      urls.push(`${url.pathname}${url.search}`);
       const read = READS.get(url.pathname.split("/").at(-1) ?? "");
 
       const plantRead = /\/(history|statistics)$/u.test(url.pathname);
@@ -248,17 +252,18 @@ function transport(): Transport {
   };
 }
 
-/** The screen at `query`, and every route change it makes. */
+/** The screen at `query`, every route change it makes, and every URL it asks its core. */
 export async function show(query: string) {
   const went: Readonly<{ patch: Readonly<Record<string, string | null>>; push: boolean }>[] = [];
+  const urls: string[] = [];
 
   const screen = await render(StatisticsScreen, {
-    core: connect(transport()),
+    core: connect(transport(urls)),
     params: new URLSearchParams(query),
     go: (patch: Readonly<Record<string, string | null>>, push: boolean) => {
       went.push({ patch, push });
     },
   });
 
-  return { screen, went };
+  return { screen, went, urls };
 }

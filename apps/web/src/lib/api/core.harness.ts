@@ -45,3 +45,35 @@ export function scripted(...responses: readonly Response[]): Transport & {
 }
 
 /** Collects `count` live updates, then stops the stream. */
+
+/** A core that answers every request with `response` and keeps what it was sent. */
+export function answering(response: Response): Transport & { readonly sent: Request[] } {
+  const sent: Request[] = [];
+
+  return {
+    base: BASE,
+    sent,
+    fetch: (request) => {
+      sent.push(request);
+
+      return Promise.resolve(response);
+    },
+  };
+}
+
+/** An OpenAPI document as a core serves it, with one operation. */
+export const API_DOCUMENT = {
+  openapi: "3.1.0",
+  info: { title: "SunReye", version: "1" },
+  tags: [{ name: "views" }],
+  paths: {
+    "/api/v1/views": {
+      get: {
+        tags: ["views"],
+        summary: "Every saved view",
+        operationId: "list_views",
+        responses: { 200: { description: "The views" } },
+      },
+    },
+  },
+};

@@ -2,9 +2,11 @@
 //! owner's layout (`crates/pv/fixtures/estimate.csv`, the 2026-06-21 11:00 UTC row).
 
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use sunreye_profile::{RoleKind, Unit};
 use sunreye_pv::{Block, GridModule, ModuleGrid, Obstacle, Overhang, Roof, Scene, Spot};
 use tokio::sync::watch;
 
@@ -14,7 +16,7 @@ use crate::correction::{Cell as Learned, Grid};
 use crate::layout::{Datasheet, Inverters, Layouts, StringDraft, Wiring};
 use crate::location::Location;
 use crate::profiles::{Catalogue, Chosen};
-use crate::storage::{Issue, Keep, Storage};
+use crate::storage::{Issue, Keep, Policy, Storage};
 
 const INVERTER: DeviceId = DeviceId(1);
 const WEATHER: DeviceId = DeviceId(3);
@@ -52,7 +54,7 @@ async fn store_weather(storage: &Storage, bus: &Bus, targets: &[u64]) {
             issued: at(NOON - HOUR),
             step: 0.01,
             values: targets.iter().map(|t| (at(*t), value)).collect(),
-            keep: Keep::Every,
+            keep: Keep::Ahead,
         };
         storage
             .forecast(WEATHER, bus.intern(role, None), issue)
@@ -68,6 +70,11 @@ async fn plant(targets: &[u64]) -> Plant {
 
 /// [`plant`] with the Deye family's `variant`, or its base.
 async fn plant_of(targets: &[u64], variant: Option<&str>) -> Plant {
+    plant_with(targets, "deye-sg05lp3", variant).await
+}
+
+/// [`plant`] with the bundled `family`'s `variant`, or its base, as device 1.
+async fn plant_with(targets: &[u64], family: &str, variant: Option<&str>) -> Plant {
     let dir = tempfile::tempdir().unwrap();
     let bus = Bus::default();
     let storage = Storage::open(
@@ -78,7 +85,7 @@ async fn plant_of(targets: &[u64], variant: Option<&str>) -> Plant {
     )
     .unwrap();
     store_weather(&storage, &bus, targets).await;
-    let chosen = Chosen::new("deye-sg05lp3", variant);
+    let chosen = Chosen::new(family, variant);
     let deye = Catalogue::bundled().unwrap().resolve(&chosen).unwrap();
     let inverters: Inverters = std::iter::once((INVERTER, deye)).collect();
     let layouts = Layouts::new(storage.database(), inverters);
@@ -198,6 +205,127 @@ async fn the_owners_strings_inputs_and_inverter_are_forecast() {
     assert_near(input(2).await, 5005.27, "input 2");
     let inverter = plant.forecast("pv.power", None, &[NOON]).await[0];
     assert_near(inverter, 13_444.54, "inverter");
+}
+
+/// A clock reads sub-seconds; the issue still covers its own hour from its first second (ADR 15).
+#[tokio::test]
+async fn an_issue_mid_hour_covers_its_hour_from_the_top() {
+    let plant = plant(&[NOON, NOON + 900]).await;
+    plant
+        .layouts
+        .change(at(0), vec![plant.string(None, 1, 0.0, 16)], None, at(0))
+        .await
+        .unwrap();
+    let forecast = SolarForecast::new(plant.layouts.clone(), WEATHER, &plant.bus);
+
+    let issued = at(NOON + 41 * 60) + Duration::from_millis(400);
+    forecast
+        .refresh(&plant.storage, &HashMap::new(), BERLIN, issued)
+        .await
+        .unwrap();
+
+    let power = plant.forecast("pv.power", None, &[NOON, NOON + 900]).await;
+    assert!(power.iter().all(|w| *w > 0.0), "{power:?}");
+}
+
+/// A series storage refuses, here one stored in another step, loses its forecast alone.
+#[tokio::test]
+async fn a_refused_series_leaves_the_others_forecast() {
+    let plant = plant(&[NOON]).await;
+    let layout = plant
+        .layouts
+        .change(
+            at(0),
+            vec![
+                plant.string(None, 1, 0.0, 16),
+                plant.string(None, 2, 0.0, 14),
+            ],
+            None,
+            at(0),
+        )
+        .await
+        .unwrap();
+    let first = plant.bus.intern("pv.mppt.power", Some(1));
+    let other = Policy::new(
+        RoleKind::Measurement,
+        Some(Unit::Watt),
+        2.0,
+        Duration::from_secs(10),
+    );
+    plant.storage.declare(INVERTER, first, other).await.unwrap();
+    let forecast = SolarForecast::new(plant.layouts.clone(), WEATHER, &plant.bus);
+
+    forecast
+        .refresh(&plant.storage, &HashMap::new(), BERLIN, at(NOON - HOUR))
+        .await
+        .unwrap();
+
+    assert!(plant.forecast("pv.mppt.power", Some(1), &[NOON]).await[0].is_nan());
+    let id = layout.strings[1].id;
+    for (role, index) in [
+        ("pv.mppt.power", Some(2)),
+        ("pv.power", None),
+        ("pv.string.power", Some(id)),
+    ] {
+        let value = plant.forecast(role, index, &[NOON]).await[0];
+        assert!(value > 0.0, "{role} {index:?}: {value}");
+    }
+}
+
+/// The SG01HP3 stores its inputs' power in 10 W steps, and its total in theirs: each series is
+/// forecast in the step its profile stores it in, since its history and forecast share one.
+#[tokio::test]
+async fn each_series_is_forecast_in_the_step_its_profile_stores_it_in() {
+    let plant = plant_with(&[NOON], "deye-sg01hp3", None).await;
+    let layout = plant
+        .layouts
+        .change(
+            at(0),
+            vec![
+                plant.string(None, 1, 0.0, 16),
+                plant.string(None, 2, 0.0, 14),
+            ],
+            None,
+            at(0),
+        )
+        .await
+        .unwrap();
+    // As the device declares them on start, before any forecast.
+    let profile = plant.layouts.inverters().profile(INVERTER).unwrap();
+    for q in profile
+        .quantities()
+        .iter()
+        .filter(|q| q.role.starts_with("pv."))
+    {
+        let policy = Policy::new(q.kind(), q.unit(), q.step(), q.cadence());
+        let series = plant.bus.intern(&q.role, q.index);
+        plant
+            .storage
+            .declare(INVERTER, series, policy)
+            .await
+            .unwrap();
+    }
+    let forecast = SolarForecast::new(plant.layouts.clone(), WEATHER, &plant.bus);
+
+    forecast
+        .refresh(&plant.storage, &HashMap::new(), BERLIN, at(NOON - HOUR))
+        .await
+        .unwrap();
+
+    for (role, index) in [
+        ("pv.mppt.power", Some(1)),
+        ("pv.mppt.power", Some(2)),
+        ("pv.power", None),
+    ] {
+        let value = plant.forecast(role, index, &[NOON]).await[0];
+        assert!(
+            value > 0.0 && value % 10.0 == 0.0,
+            "{role} {index:?}: {value}"
+        );
+    }
+    let id = layout.strings[0].id;
+    let string = plant.forecast("pv.string.power", Some(id), &[NOON]).await[0];
+    assert!(string > 0.0, "string: {string}");
 }
 
 /// The inverter is capped at its variant's AC rating (ADR 5, 17): the SUN-5K's 5 kW, not the
@@ -549,35 +677,21 @@ async fn a_saved_scene_places_the_modules_and_its_obstacles_shade_the_forecast()
     assert!(walled < 0.4 * open, "walled {walled} W, open {open} W");
 }
 
-impl Plant {
-    /// Waits until the inverter's `pv.power` at noon has `count` issues; returns their times.
-    async fn issues(&self, count: usize) -> Vec<SystemTime> {
-        let series = self.bus.intern("pv.power", None);
-        let read = async || {
-            self.storage
-                .forecasts(INVERTER, series, at(NOON), at(NOON + 1))
-                .await
-                .unwrap()
-        };
-        let wait = async {
-            let mut stored = read().await;
-            while stored.len() < count {
-                tokio::time::sleep(Duration::from_millis(10)).await;
-                stored = read().await;
-            }
-            stored
-        };
-        let stored = tokio::time::timeout(Duration::from_secs(10), wait)
-            .await
-            .unwrap();
-        stored.iter().map(|f| f.issued).collect()
-    }
+/// Issue times a second apart from an hour before noon, one per call, counted in `calls`.
+fn ticking(calls: Arc<AtomicU64>) -> impl Fn() -> SystemTime + Sync {
+    move || at(NOON - HOUR + calls.fetch_add(1, Ordering::Relaxed))
 }
 
-/// Issue times a second apart from an hour before noon, one per call.
-fn ticking() -> impl Fn() -> SystemTime + Sync {
-    let calls = AtomicU64::new(0);
-    move || at(NOON - HOUR + calls.fetch_add(1, Ordering::Relaxed))
+/// Waits until `calls` reaches `count`: each issue reads the clock once.
+async fn issued(calls: &AtomicU64, count: u64) {
+    let wait = async {
+        while calls.load(Ordering::Relaxed) < count {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(10), wait)
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -594,20 +708,74 @@ async fn it_issues_on_start_after_each_weather_issue_and_after_a_layout_change()
     let (weather, issues) = watch::channel(None);
     let learned = HashMap::new();
 
+    let calls = Arc::new(AtomicU64::new(0));
+
     let check = async {
-        assert_eq!(plant.issues(1).await, [at(NOON - HOUR)]);
+        issued(&calls, 1).await;
         weather.send_replace(Some(at(NOON - HOUR)));
-        assert_eq!(plant.issues(2).await.len(), 2);
+        issued(&calls, 2).await;
         let kept = plant.string(Some(layout.strings[0].id), 2, 0.0, 16);
         plant
             .layouts
             .change(at(0), vec![kept], None, at(0))
             .await
             .unwrap();
-        assert_eq!(plant.issues(3).await.len(), 3);
+        issued(&calls, 3).await;
     };
     tokio::select! {
-        () = forecast.run((&plant.storage, &learned), berlin, issues, ticking()) => panic!("it stopped"),
+        () = forecast.run((&plant.storage, &learned), berlin, issues, ticking(Arc::clone(&calls))) => panic!("it stopped"),
         () = check => {}
     }
+}
+
+/// Counts each turn the I/O thread gives it, forever.
+async fn count(turns: Arc<AtomicU64>) {
+    loop {
+        turns.fetch_add(1, Ordering::Relaxed);
+        tokio::task::yield_now().await;
+    }
+}
+
+#[tokio::test]
+async fn the_model_leaves_the_io_thread_free_while_it_runs() {
+    // ADR 2: on the one I/O thread a model run would stall polling and every request.
+    let plant = plant(&[NOON]).await;
+    plant
+        .layouts
+        .change(
+            at(0),
+            vec![
+                plant.string(None, 1, 90.0, 1),
+                plant.string(None, 2, 90.0, 1),
+            ],
+            Some(walled_house(plant.module_type)),
+            at(0),
+        )
+        .await
+        .unwrap();
+    let versions = plant.layouts.versions().await.unwrap();
+    let noon = sunreye_pv::Weather {
+        unix: i64::try_from(NOON).unwrap(),
+        ghi: 880.0,
+        dni: 800.0,
+        dhi: 150.0,
+        temperature: 25.0,
+        wind: Some(3.0),
+    };
+    let weather = (0..200).map(|_| (at(NOON), noon)).collect();
+    let turns = Arc::new(AtomicU64::new(0));
+    let spinning = tokio::spawn(count(Arc::clone(&turns)));
+
+    let modelled = super::estimates(&plant.layouts, &versions, BERLIN, weather)
+        .await
+        .unwrap();
+    spinning.abort();
+
+    assert_eq!(modelled.len(), 200);
+    let ran = turns.load(Ordering::Relaxed);
+    // Inline, the model let the other task run 17 times; off the thread, hundreds of thousands.
+    assert!(
+        ran > 1_000,
+        "the I/O thread ran {ran} other polls during the model"
+    );
 }

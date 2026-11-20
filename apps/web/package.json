@@ -21,6 +21,7 @@
     "wasm": "cargo build --locked --release -p sunreye-pv-wasm --target wasm32-unknown-unknown"
   },
   "dependencies": {
+    "@scalar/api-reference": "1.76.4",
     "openapi-fetch": "0.17.0",
     "web-haptics": "0.0.6"
   },

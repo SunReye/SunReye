@@ -8,7 +8,7 @@
   import { untrack } from "svelte";
   import { PerspectiveCamera } from "three";
   import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-  import { openGarage, type Garage, type ModelLoader } from "../cars/garage.ts";
+  import { openGarage, parkedKey, type Garage, type ModelLoader } from "../cars/garage.ts";
   import type { Parked } from "../cars/parked.ts";
   import { m } from "../paraglide/messages.js";
   import PerfOverlay from "../scene/PerfOverlay.svelte";
@@ -179,7 +179,8 @@
   }
 
   /** Parks the cars once `due`, each change after the last; the default body loaded and their
-   * programs compiled first. No car is drawn when the body cannot be read. */
+   * programs compiled first. No car is drawn when the body cannot be read. A live tick that moves
+   * only power or SOC brings nothing: an arrival snapshots the canvas, a stutter on every tick. */
   function parkLater(
     canvas: HTMLCanvasElement,
     opening: Lit["opening"],
@@ -188,11 +189,14 @@
     let due = $state(false);
     let parking: Promise<Garage | null> | undefined;
     let parked: Promise<unknown> = Promise.resolve();
+    let brought = parkedKey([]);
 
     $effect(() => {
       const arriving = cars;
+      const key = parkedKey(arriving);
 
-      if (due) {
+      if (due && key !== brought) {
+        brought = key;
         parking ??= open().catch(() => null);
         parked = parked
           .then(() => parking)

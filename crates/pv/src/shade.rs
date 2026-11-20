@@ -8,42 +8,224 @@ const ALONG: u32 = 9;
 /// Metres a ray travels before it counts, so a module's own roof never shades it.
 const CLEARANCE: f64 = 1e-6;
 
-/// How many of the module's substrings lose their beam. A substring with any shaded sample is
-/// shaded, since its most shaded cell limits its current.
-pub fn shaded_substrings(
-    module: &ModuleType,
-    plane: Plane,
-    at: Place,
-    sun: Sun,
-    occluders: &[Occluder],
-) -> u8 {
-    if occluders.is_empty() {
-        return 0;
+/// Slack on the bounds that rule a caster out for a module, in metres and of 1: a caster a
+/// rounding error out of reach is still tested.
+const SLACK: f64 = 1e-9;
+/// The cosine of incidence from which a module's own plane rules casters out; below it a ray
+/// gains too little height per metre to tell the plane from what lies in it.
+const FACING: f64 = 1e-4;
+
+/// What casts beam shade under one sun.
+pub struct Casters {
+    toward_sun: Point,
+    casters: Vec<Caster>,
+}
+
+/// An occluder with what the sun's ray fixes of its test, in the ball that holds it.
+struct Caster {
+    centre: Point,
+    radius: f64,
+    shape: Shape,
+}
+
+enum Shape {
+    Triangle(Triangle),
+    /// About the caster's centre.
+    Sphere {
+        radius: f64,
+    },
+    Cylinder {
+        base: Point,
+        radius: f64,
+        height: f64,
+    },
+    Cone {
+        base: Point,
+        radius: f64,
+        height: f64,
+    },
+}
+
+impl Casters {
+    pub fn under(sun: Sun, occluders: &[Occluder]) -> Self {
+        let toward_sun = direction(sun);
+        let casters = occluders
+            .iter()
+            .filter_map(|occluder| Caster::new(toward_sun, occluder));
+        Self {
+            toward_sun,
+            casters: casters.collect(),
+        }
     }
-    let toward_sun = direction(sun);
-    let (tilt, azimuth) = (plane.tilt.to_radians(), plane.azimuth.to_radians());
-    let up_slope = [
-        azimuth.sin() * tilt.cos(),
-        azimuth.cos() * tilt.cos(),
-        tilt.sin(),
-    ];
-    let across_slope = [azimuth.cos(), -azimuth.sin(), 0.0];
-    // Substrings are strips along the long side, side by side across the short side.
-    let (long, short) = if at.landscape {
-        (across_slope, up_slope)
-    } else {
-        (up_slope, across_slope)
-    };
-    let parts = module.bypass_diodes.max(1);
-    let shaded = (0..parts)
-        .filter(|&part| {
-            samples(module, parts, part).any(|(s, l)| {
-                let origin = offset(offset(at.centre, short, s), long, l);
-                occluders.iter().any(|o| blocks(o, origin, toward_sun))
+
+    /// How many of the module's substrings lose their beam. A substring with any shaded sample
+    /// is shaded, since its most shaded cell limits its current.
+    pub fn shaded_substrings(&self, module: &ModuleType, plane: Plane, at: Place) -> u8 {
+        self.shaded(module, plane, at, true)
+    }
+
+    /// The same with every sample tested against every caster: what ruling casters out must
+    /// never change.
+    #[cfg(test)]
+    pub fn shaded_exhaustively(&self, module: &ModuleType, plane: Plane, at: Place) -> u8 {
+        self.shaded(module, plane, at, false)
+    }
+
+    fn shaded(&self, module: &ModuleType, plane: Plane, at: Place, rule_out: bool) -> u8 {
+        let (tilt, azimuth) = (plane.tilt.to_radians(), plane.azimuth.to_radians());
+        let up_slope = [
+            azimuth.sin() * tilt.cos(),
+            azimuth.cos() * tilt.cos(),
+            tilt.sin(),
+        ];
+        let across_slope = [azimuth.cos(), -azimuth.sin(), 0.0];
+        let face = Face {
+            centre: at.centre,
+            normal: cross(across_slope, up_slope),
+            reach: module.width.hypot(module.height) / 2.0,
+        };
+        // Most casters cannot shade this module under this sun: each sample tests the rest.
+        let near: Vec<&Caster> = self
+            .casters
+            .iter()
+            .filter(|c| !rule_out || c.reaches(&face, self.toward_sun))
+            .collect();
+        if near.is_empty() {
+            return 0;
+        }
+        // Substrings are strips along the long side, side by side across the short side.
+        let (long, short) = if at.landscape {
+            (across_slope, up_slope)
+        } else {
+            (up_slope, across_slope)
+        };
+        let parts = module.bypass_diodes.max(1);
+        let shaded = (0..parts)
+            .filter(|&part| {
+                samples(module, parts, part).any(|(s, l)| {
+                    let origin = offset(offset(at.centre, short, s), long, l);
+                    near.iter().any(|c| c.blocks(origin, self.toward_sun))
+                })
             })
+            .count();
+        u8::try_from(shaded).unwrap_or(parts)
+    }
+}
+
+/// A module as its casters see it: its samples lie in its plane, within `reach` of its centre.
+struct Face {
+    centre: Point,
+    /// Out of its front.
+    normal: Point,
+    reach: f64,
+}
+
+impl Caster {
+    /// `None` for a triangle edge-on to the ray, which blocks nothing.
+    fn new(ray: Point, occluder: &Occluder) -> Option<Self> {
+        let upright = |base: Point, radius: f64, height: f64, shape: Shape| Self {
+            centre: offset(base, [0.0, 0.0, 1.0], height / 2.0),
+            radius: radius.hypot(height / 2.0),
+            shape,
+        };
+        Some(match *occluder {
+            Occluder::Triangle(corners) => {
+                let [[ax, ay, az], [bx, by, bz], [cx, cy, cz]] = corners;
+                let centre = [
+                    (ax + bx + cx) / 3.0,
+                    (ay + by + cy) / 3.0,
+                    (az + bz + cz) / 3.0,
+                ];
+                let far = corners.map(|p| dot(sub(p, centre), sub(p, centre)));
+                Self {
+                    centre,
+                    radius: far.into_iter().fold(0.0, f64::max).sqrt(),
+                    shape: Shape::Triangle(Triangle::new(ray, corners)?),
+                }
+            }
+            Occluder::Sphere { centre, radius } => Self {
+                centre,
+                radius: radius.abs(),
+                shape: Shape::Sphere { radius },
+            },
+            Occluder::Cylinder {
+                base,
+                radius,
+                height,
+            } => {
+                let shape = Shape::Cylinder {
+                    base,
+                    radius,
+                    height,
+                };
+                upright(base, radius, height, shape)
+            }
+            Occluder::Cone {
+                base,
+                radius,
+                height,
+            } => {
+                let shape = Shape::Cone {
+                    base,
+                    radius,
+                    height,
+                };
+                upright(base, radius, height, shape)
+            }
         })
-        .count();
-    u8::try_from(shaded).unwrap_or(parts)
+    }
+
+    /// Whether a ray toward the sun, `ray`, from any of the module's samples could meet it. It
+    /// cannot when the caster lies behind the module along the ray, beside the rays, or on or
+    /// behind the module's own plane.
+    fn reaches(&self, face: &Face, ray: Point) -> bool {
+        let to = sub(self.centre, face.centre);
+        let along = dot(to, ray);
+        let apart = (self.radius + face.reach).mul_add(1.0 + SLACK, SLACK);
+        if along < -apart || along.mul_add(-along, dot(to, to)) > apart * apart {
+            return false;
+        }
+        let facing = dot(face.normal, ray);
+        if facing < FACING {
+            return true;
+        }
+        // A ray is `facing` above the plane per metre, and counts from CLEARANCE on.
+        let above = match &self.shape {
+            Shape::Triangle(triangle) => {
+                let heights = triangle
+                    .corners
+                    .map(|p| dot(sub(p, face.centre), face.normal));
+                heights.into_iter().fold(f64::MIN, f64::max)
+            }
+            Shape::Sphere { .. } | Shape::Cylinder { .. } | Shape::Cone { .. } => {
+                dot(to, face.normal) + self.radius
+            }
+        };
+        above > CLEARANCE * facing / 2.0
+    }
+
+    /// Whether the ray from `origin` toward the sun, `ray`, meets it.
+    fn blocks(&self, origin: Point, ray: Point) -> bool {
+        match self.shape {
+            Shape::Triangle(ref triangle) => triangle.blocks(origin, ray),
+            Shape::Sphere { radius } => {
+                let to = sub(origin, self.centre);
+                let b = dot(ray, to);
+                let discriminant = b.mul_add(b, radius.mul_add(radius, -dot(to, to)));
+                discriminant >= 0.0 && discriminant.sqrt() - b > CLEARANCE
+            }
+            Shape::Cylinder {
+                base,
+                radius,
+                height,
+            } => cylinder(sub(origin, base), ray, radius, height),
+            Shape::Cone {
+                base,
+                radius,
+                height,
+            } => cone(sub(origin, base), ray, radius, height),
+        }
+    }
 }
 
 /// Offsets in metres along the short and the long side of one substring's sample points.
@@ -92,43 +274,44 @@ pub fn cross(a: Point, b: Point) -> Point {
     ]
 }
 
-/// Whether the ray from `origin` toward `ray` meets the occluder.
-fn blocks(occluder: &Occluder, origin: Point, ray: Point) -> bool {
-    match *occluder {
-        Occluder::Triangle(corners) => triangle(origin, ray, corners),
-        Occluder::Sphere { centre, radius } => {
-            let to = sub(origin, centre);
-            let b = dot(ray, to);
-            let discriminant = b.mul_add(b, radius.mul_add(radius, -dot(to, to)));
-            discriminant >= 0.0 && discriminant.sqrt() - b > CLEARANCE
-        }
-        Occluder::Cylinder {
-            base,
-            radius,
-            height,
-        } => cylinder(sub(origin, base), ray, radius, height),
-        Occluder::Cone {
-            base,
-            radius,
-            height,
-        } => cone(sub(origin, base), ray, radius, height),
-    }
+/// A triangle under one ray direction, by Möller and Trumbore 1997: what every ray shares.
+struct Triangle {
+    corners: [Point; 3],
+    first: Point,
+    edge: Point,
+    other: Point,
+    normal: Point,
+    det: f64,
 }
 
-/// Möller and Trumbore 1997.
-fn triangle(origin: Point, ray: Point, [first, second, third]: [Point; 3]) -> bool {
-    let (edge, other) = (sub(second, first), sub(third, first));
-    let normal = cross(ray, other);
-    let det = dot(edge, normal);
-    if det.abs() < 1e-12 {
-        return false;
+impl Triangle {
+    /// `None` edge-on to the ray, where nothing is blocked.
+    fn new(ray: Point, corners: [Point; 3]) -> Option<Self> {
+        let [first, second, third] = corners;
+        let (edge, other) = (sub(second, first), sub(third, first));
+        let normal = cross(ray, other);
+        let det = dot(edge, normal);
+        (det.abs() >= 1e-12).then_some(Self {
+            corners,
+            first,
+            edge,
+            other,
+            normal,
+            det,
+        })
     }
-    let to = sub(origin, first);
-    let u = dot(to, normal) / det;
-    let turned = cross(to, edge);
-    let v = dot(ray, turned) / det;
-    let distance = dot(other, turned) / det;
-    (0.0..=1.0).contains(&u) && v >= 0.0 && u + v <= 1.0 && distance > CLEARANCE
+
+    fn blocks(&self, origin: Point, ray: Point) -> bool {
+        let to = sub(origin, self.first);
+        let u = dot(to, self.normal) / self.det;
+        if !(0.0..=1.0).contains(&u) {
+            return false;
+        }
+        let turned = cross(to, self.edge);
+        let v = dot(ray, turned) / self.det;
+        let distance = dot(self.other, turned) / self.det;
+        v >= 0.0 && u + v <= 1.0 && distance > CLEARANCE
+    }
 }
 
 /// Metres past which a level ray no longer counts, so its stretch in a slab stays finite.

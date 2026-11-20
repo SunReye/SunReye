@@ -143,7 +143,7 @@ impl Plant {
                 issued: at(FIRST - DAY),
                 step: 0.1,
                 values: slots.iter().map(|s| (s.target, value(s))).collect(),
-                keep: Keep::Every,
+                keep: Keep::Ahead,
             };
             let series = self.bus.intern(name, None);
             self.storage.forecast(WEATHER, series, issue).await.unwrap();
@@ -152,7 +152,7 @@ impl Plant {
             issued: at(FIRST - DAY),
             step: 0.01,
             values: slots.iter().map(|s| (s.target, s.wind.unwrap())).collect(),
-            keep: Keep::Every,
+            keep: Keep::Ahead,
         };
         let wind = self.bus.intern("weather.wind", None);
         self.storage.forecast(WEATHER, wind, issue).await.unwrap();

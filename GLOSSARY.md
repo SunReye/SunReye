@@ -8,6 +8,10 @@ A local-first monitor for home solar, battery and meter hardware: it reads devic
 The one site being monitored. It has one timezone and one location, set by the admin.
 _Avoid_: Site, installation, system
 
+**Reference plant**:
+The plant the performance benchmark generates ten years of, the largest home it must stay fast for.
+_Avoid_: Test plant, demo plant
+
 **Device**:
 One physical or logical unit that produces readings: an inverter, a battery, a meter, a wallbox.
 _Avoid_: Inverter (as the general term), asset
