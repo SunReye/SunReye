@@ -5,7 +5,7 @@
   are keyed by what they stand for:
   - bars are keyed by place: a new range moves each bar to its new value, place and width; a bar the
     new range has no place for shrinks to the baseline and fades (150 ms); an extra one grows in,
-    staggered over 120 ms;
+    staggered (`--motion-stagger`);
   - a drill or a brush (`via.kind === "zoom"`) is a FLIP along the time axis: the old bars spread out
     of the plot from the chosen span, the new ones start inside it;
   - a gridline keeps its value: it travels to that value's place on the new scale.
@@ -14,6 +14,7 @@
 -->
 <script lang="ts">
   import { untrack } from "svelte";
+  import ChartEntrance from "../chart-entrance/ChartEntrance.svelte";
   import { motion } from "../motion/tier.svelte.ts";
   import { m } from "../paraglide/messages.js";
   import {
@@ -122,9 +123,10 @@
 
     const move = moves(vs, zoom, w, gen);
 
+    // The first bars build with the chart's entrance; later arrivals grow in on their own.
     arrivals = Math.max(
       1,
-      bars.set(move.items, (o) => o.key, { exit: move.exit, enter: true, leave: move.leave }),
+      bars.set(move.items, (o) => o.key, { exit: move.exit, enter: started, leave: move.leave }),
     );
   }
 
@@ -246,9 +248,12 @@
   /** The band being read and the running one carry their label in full. */
   const strong = (k: Kept<View>) => shown === k.item.b || k.item.b.state === "live";
 
-  /** An arriving bar waits its turn in the stagger; a zoom moves every bar at once. */
-  const delayOf = (k: Kept<View>) =>
-    k.fresh > 0 && !k.item.zoom ? Math.round((k.fresh / arrivals) * 120) : 0;
+  /** A bar's turn in the stagger: among the arrivals, or at first show in the row; a zoom moves every bar at once. */
+  const staggerOf = (k: Kept<View>, i: number) => {
+    if (k.item.zoom) return 0;
+
+    return k.fresh >= 0 ? k.fresh / arrivals : i / bars.list.length;
+  };
 
   const legend = $derived<Legend>({
     title: readout.title,
@@ -298,64 +303,66 @@
 <div class="flex flex-col gap-2">
   <BandLegend {legend} {fmt} {drillLabel} onopen={reading.open} />
 
-  <div class={["grid grid-cols-[2.25rem_minmax(0,1fr)] gap-x-1", motion.still && "still"]}>
-    <!-- Above the top gridline's figure, which sits half above the plot. -->
-    <span class="mb-2.5 text-right text-[11px] leading-none text-muted-foreground opacity-70"
-      >{unit}</span
-    >
-    <span></span>
-    <div
-      class="axis relative text-[11px] text-muted-foreground tabular-nums"
-      style:height="{height}px"
-      aria-hidden="true"
-    >
-      <BandTicks list={ticks.list} axis />
-    </div>
+  <ChartEntrance build="grow" ready={!loading && bars.list.length > 0}>
+    <div class={["grid grid-cols-[2.25rem_minmax(0,1fr)] gap-x-1", motion.still && "still"]}>
+      <!-- Above the top gridline's figure, which sits half above the plot. -->
+      <span class="mb-2.5 text-right text-[11px] leading-none text-muted-foreground opacity-70"
+        >{unit}</span
+      >
+      <span></span>
+      <div
+        class="axis relative text-[11px] text-muted-foreground tabular-nums"
+        style:height="{height}px"
+        aria-hidden="true"
+      >
+        <BandTicks list={ticks.list} axis />
+      </div>
 
-    <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
-    <div
-      bind:this={plot}
-      bind:clientHeight={plotHeight}
-      bind:clientWidth={plotW}
-      class={[
-        "plot relative touch-pan-y overflow-hidden outline-none select-none focus-visible:ring-2 focus-visible:ring-ring",
-        legend.open && "cursor-pointer",
-      ]}
-      style:height="{height}px"
-      style:--zero="{zero}%"
-      role="group"
-      tabindex="0"
-      data-scrub
-      aria-label={m.range_chart_keys({ chart: label })}
-      onpointerdown={reading.down}
-      onpointermove={reading.move}
-      onpointerup={reading.up}
-      onpointerleave={reading.leave}
-      onpointercancel={reading.cancel}
-      onkeydown={reading.key}
-      onblur={reading.blur}
-    >
-      <BandTicks list={ticks.list} />
-      {#if loading}
-        {@render skeleton()}
-      {:else}
-        {@render overlays()}
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
+      <div
+        bind:this={plot}
+        bind:clientHeight={plotHeight}
+        bind:clientWidth={plotW}
+        class={[
+          "plot relative touch-pan-y overflow-hidden outline-none select-none focus-visible:ring-2 focus-visible:ring-ring",
+          legend.open && "cursor-pointer",
+        ]}
+        style:height="{height}px"
+        style:--zero="{zero}%"
+        role="group"
+        tabindex="0"
+        data-scrub
+        aria-label={m.range_chart_keys({ chart: label })}
+        onpointerdown={reading.down}
+        onpointermove={reading.move}
+        onpointerup={reading.up}
+        onpointerleave={reading.leave}
+        onpointercancel={reading.cancel}
+        onkeydown={reading.key}
+        onblur={reading.blur}
+      >
+        <BandTicks list={ticks.list} />
+        {#if loading}
+          {@render skeleton()}
+        {:else}
+          {@render overlays()}
+          {#each bars.list as k, i (k.key)}
+            <BandBar {k} ghost={ghostColour} {level} stagger={staggerOf(k, i)} />
+          {/each}
+        {/if}
+      </div>
+
+      <span></span>
+      <div
+        class="labels relative mt-0.5 h-[1.375rem] text-[11px] leading-4 text-muted-foreground tabular-nums"
+        aria-hidden="true"
+      >
         {#each bars.list as k (k.key)}
-          <BandBar {k} ghost={ghostColour} {level} delay={delayOf(k)} />
+          <BandLabel {k} strong={strong(k)} />
         {/each}
-      {/if}
+      </div>
     </div>
-
-    <span></span>
-    <div
-      class="labels relative mt-0.5 h-[1.375rem] text-[11px] leading-4 text-muted-foreground tabular-nums"
-      aria-hidden="true"
-    >
-      {#each bars.list as k (k.key)}
-        <BandLabel {k} strong={strong(k)} />
-      {/each}
-    </div>
-  </div>
+  </ChartEntrance>
 </div>
 
 <style>

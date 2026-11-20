@@ -10,15 +10,15 @@
     k,
     ghost,
     level,
-    delay,
+    stagger,
   }: {
     k: Kept<View>;
     /** The colour of the faint bar of a band still to come. */
     ghost: string;
     /** A value's place on the scale, in % from the top. */
     level: (v: number) => number;
-    /** How long an arriving bar waits, for the stagger. */
-    delay: number;
+    /** Its turn in the stagger, 0 to 1: how long it waits as it arrives or builds. */
+    stagger: number;
   } = $props();
 
   const o = $derived(k.item);
@@ -66,7 +66,8 @@
     style:--x0="{o.x0.toFixed(2)}px"
     style:--sx0={o.sx0.toFixed(4)}
     style:--sy0={o.sy0}
-    style:--delay="{delay}ms"
+    style:--i={stagger.toFixed(3)}
+    data-grow
   >
     {#each stack as g, j (j)}
       <span
@@ -106,6 +107,7 @@
   }
   /* Arriving: grown from the baseline beside the bars that move, each a little after the one before. */
   .bar.fresh {
+    --delay: calc(var(--i) * var(--motion-stagger));
     transition:
       transform var(--move) var(--delay),
       opacity var(--move) var(--delay);
