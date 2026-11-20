@@ -47,7 +47,7 @@ pub fn policy(quantity: &Quantity, overrides: &Overrides, cycle: Duration) -> Op
     if quantity.storage() == StorageClass::NoHistory {
         return None;
     }
-    let cadence = endpoint::cadence(cycle, quantity.cadence());
+    let cadence = endpoint::cadence(cycle, quantity.cadence(cycle));
     let mut policy = Policy::new(quantity.kind(), quantity.unit(), quantity.step(), cadence);
     policy.deadband = resolve(quantity, overrides).deadband.unwrap_or(0.0);
     Some(policy)
@@ -70,7 +70,7 @@ fn resolve(quantity: &Quantity, overrides: &Overrides) -> RoleDeadband {
         quantity.kind(),
         quantity.unit(),
         quantity.step(),
-        quantity.cadence(),
+        quantity.cadence(endpoint::CADENCE),
     )
     .deadband;
     // An override may outlive the profile that made its role a measurement: the kind wins.

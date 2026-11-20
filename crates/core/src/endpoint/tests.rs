@@ -449,7 +449,7 @@ async fn a_task_polls_at_its_connections_cycle_and_its_readings_carry_it() {
     let start = Instant::now();
     let _task = spawn(
         Endpoint::Sim(capture),
-        Duration::from_secs(10),
+        Duration::from_secs(1),
         vec![device()],
         bus.clone(),
     );
@@ -457,11 +457,10 @@ async fn a_task_polls_at_its_connections_cycle_and_its_readings_carry_it() {
     let first = cycle(&mut readings).await;
     assert_eq!(start.elapsed(), Duration::ZERO);
     let second = cycle(&mut readings).await;
-    assert_eq!(start.elapsed(), Duration::from_secs(10));
+    assert_eq!(start.elapsed(), Duration::from_secs(1));
     for reading in first.iter().chain(&second) {
-        assert_eq!(reading.cadence, Duration::from_secs(10));
-        // Three cadences, past ADR 3's floor of 15 s.
-        assert_eq!(reading.gap_threshold(), Duration::from_secs(30));
+        assert_eq!(reading.cadence, Duration::from_secs(1));
+        assert_eq!(reading.gap_threshold(), Duration::from_secs(15));
     }
 }
 

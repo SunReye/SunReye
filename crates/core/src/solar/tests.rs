@@ -297,7 +297,8 @@ async fn each_series_is_forecast_in_the_step_its_profile_stores_it_in() {
         .iter()
         .filter(|q| q.role.starts_with("pv."))
     {
-        let policy = Policy::new(q.kind(), q.unit(), q.step(), q.cadence());
+        let cadence = q.cadence(crate::endpoint::CADENCE);
+        let policy = Policy::new(q.kind(), q.unit(), q.step(), cadence);
         let series = plant.bus.intern(&q.role, q.index);
         plant
             .storage
