@@ -424,6 +424,18 @@ _Avoid_: Glass chip, badge
 A browser's choice of motion tier, *Bewegung*: Automatisch, where measured strain decides, or Voll or Reduziert, which hold. It never chooses still.
 _Avoid_: Motion mode, animation setting
 
+**Range card**:
+A card over the range whose content a finger drags to the earlier or later range, the neighbour already beside it.
+_Avoid_: Swipe card, pager card
+
+**Segmented control**:
+A row of a few words, one chosen, its pressed box sliding to the next choice: the hero's 3D/2D toggle is one.
+_Avoid_: Toggle group, pill tabs, switcher
+
+**Chart entrance**:
+How a chart first shows: it builds up from its baseline and fades in.
+_Avoid_: Chart animation, intro
+
 **Template**:
 A ready-made starting scene the builder offers when the scene is empty.
 _Avoid_: Preset (a preset is a camera view)
