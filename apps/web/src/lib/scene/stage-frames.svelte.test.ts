@@ -18,7 +18,8 @@ afterEach(() => {
 function display() {
   const asked = new Map<number, FrameRequestCallback>();
   let id = 0;
-  let now = performance.now();
+  // Later than any frame the page gave before: the display's clock only moves on.
+  let now = 1e9;
 
   vi.stubGlobal("requestAnimationFrame", (frame: FrameRequestCallback) => {
     id += 1;

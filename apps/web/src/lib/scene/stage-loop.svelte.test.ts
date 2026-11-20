@@ -80,10 +80,7 @@ test("the frame watch waits while the scene is prepared, until its first frame i
   const built = Promise.withResolvers<void>();
   const opening = open(built.promise);
 
-  await new Promise((resolve) => {
-    setTimeout(resolve, 50);
-  });
-  expect(held).toHaveBeenCalledTimes(1);
+  await expect.poll(() => held.mock.calls.length).toBe(1);
   expect(drawn).not.toHaveBeenCalled();
 
   built.resolve();

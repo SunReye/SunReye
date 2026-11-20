@@ -1,8 +1,8 @@
-import { expect, test } from "vitest";
+import { expect, onTestFinished, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 // The chart is laid out by the SPA's utilities.
 import "../../app.css";
-import { settled } from "../api/core.harness.ts";
+import { settled } from "../api/settled.harness.ts";
 import { connect, SPOT, TARIFF } from "../api/core.ts";
 import { aside, dragBy, letGo } from "../range/drag.harness.ts";
 import { feed } from "../live/stream.harness.ts";
@@ -85,6 +85,12 @@ test("money over time and payback live in History, which the screen links to", a
 });
 
 test("a finger drags the costs to the earlier month, read only once it is shown", async () => {
+  // The screen's timers, and the clock a finger's speed is read on, run on the test's clock.
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+  onTestFinished(() => {
+    vi.useRealTimers();
+  });
+
   const core = testCore({
     "GET /api/v1/costs": () => Response.json(COSTS),
     "GET /api/v1/timezone": () => Response.json({ name: "UTC" }),
