@@ -1,14 +1,16 @@
 // What every group of the core's client shares: the generated client and refusals (ADR 9).
 import createClient from "openapi-fetch";
+import { sharing } from "./in-flight";
 import type { components, paths } from "./schema";
 
 export type { components };
 
 export type Client = ReturnType<typeof createClient<paths>>;
 
-/** The generated client over `fetch`, its paths resolved under `base`. */
+/** The generated client over `fetch`, its paths resolved under `base`; a range read in flight is
+ * shared with the same read asked meanwhile. */
 export function open(base: string, fetch: (request: Request) => Promise<Response>): Client {
-  return createClient<paths>({ baseUrl: base, fetch });
+  return createClient<paths>({ baseUrl: base, fetch: sharing(fetch) });
 }
 
 export type ProblemDetails = components["schemas"]["ProblemDetails"];

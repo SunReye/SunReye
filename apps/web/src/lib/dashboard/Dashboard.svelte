@@ -9,7 +9,7 @@
   import type { SceneLayout } from "../live/dashboard.ts";
   import { Recorded } from "../live-graph/recorded.svelte.ts";
   import type { Go } from "../range/route.svelte.ts";
-  import { readDay, type Day } from "./day.ts";
+  import { followDay, type Day } from "./day-follow.ts";
   import EvCard from "./EvCard.svelte";
   import Hero from "./Hero.svelte";
   import NowStrip from "./NowStrip.svelte";
@@ -41,9 +41,6 @@
     go?: Go;
   } = $props();
 
-  /** How often today is reread: its energy and money move slowly. */
-  const REREAD_MS = 60_000;
-
   const recorded = new Recorded();
 
   const live = $derived(recorded.live);
@@ -53,24 +50,12 @@
   /** Device names, which only the admin may list (ADR 9). */
   let names = $state.raw<ReadonlyMap<number, string>>(new Map());
 
-  $effect(() => {
-    let stopped = false;
-
-    // A failed read keeps the last day; the next one tries again.
-    const read = async () => {
-      const next = await readDay(core, new Date()).catch(() => null);
-
-      if (!stopped && next !== null) day = next;
-    };
-
-    void read();
-    const timer = setInterval(() => void read(), REREAD_MS);
-
-    return () => {
-      stopped = true;
-      clearInterval(timer);
-    };
-  });
+  // Each part of today is read again as often as it moves; the live stream carries the powers now.
+  $effect(() =>
+    followDay(core, (next) => {
+      day = next;
+    }),
+  );
 
   $effect(() => {
     void core

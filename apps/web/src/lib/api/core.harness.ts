@@ -44,7 +44,29 @@ export function scripted(...responses: readonly Response[]): Transport & {
   };
 }
 
-/** Collects `count` live updates, then stops the stream. */
+/** A screen's API requests by path, `/api/v1/` cut off, the live stream included. */
+export function tally(urls: readonly string[]) {
+  const counts = new Map<string, number>();
+
+  for (const url of urls) {
+    const path = new URL(url, "http://core.test/").pathname.replace(/^.*\/api\/v1\//u, "");
+
+    counts.set(path, (counts.get(path) ?? 0) + 1);
+  }
+
+  return Object.fromEntries(counts);
+}
+
+/** Resolves once `count` has held still for `ms`: a screen has made every request it will. */
+export async function settled(count: () => number, ms = 600): Promise<void> {
+  const last = count();
+
+  await new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+  if (count() !== last) await settled(count, ms);
+}
 
 /** A core that answers every request with `response` and keeps what it was sent. */
 export function answering(response: Response): Transport & { readonly sent: Request[] } {

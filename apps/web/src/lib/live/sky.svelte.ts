@@ -1,9 +1,8 @@
 // The dashboard scene's sky (ADR 20 Look, ADR 23): the weather now, read again as it moves on.
 import type { Core } from "../api/core.ts";
 import { sceneWeather, type Plant, type SceneWeather } from "../scene/weather.ts";
-import { readWeather, weatherAt, type WeatherRead } from "../weather/weather.ts";
-
-const HOUR = 3_600_000;
+import { weatherNow } from "../weather/now.ts";
+import { weatherAt, type WeatherRead } from "../weather/weather.ts";
 
 /** The forecast's step: the weather is read again this often, as the scene's sun moves on. */
 const STEP = 15 * 60_000;
@@ -40,9 +39,9 @@ export class LiveSky {
       let current = true;
 
       void (async () => {
-        const read = await readWeather(reader, new Date(now - HOUR), new Date(now + HOUR));
+        const read = await weatherNow(reader, now);
 
-        if (current) this.#read = [read, now];
+        if (current) this.#read = read;
       })();
 
       return () => {

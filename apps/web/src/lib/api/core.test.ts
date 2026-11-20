@@ -70,10 +70,14 @@ test("the series catalog lists each device with stored history", async () => {
     ],
   };
 
-  const transport = scripted(Response.json({ devices: [device] }), problem(401, "auth.required"));
-  const core = connect(transport);
+  const transport = scripted(Response.json({ devices: [device] }));
 
-  expect(await core.series()).toEqual([device]);
+  expect(await connect(transport).series()).toEqual([device]);
+  expect(transport.urls).toEqual([`${BASE}api/v1/series`]);
+});
+
+test("a refused series catalog reports the problem code", async () => {
+  const core = connect(scripted(problem(401, "auth.required")));
+
   expect(await core.series()).toEqual({ problem: "auth.required" });
-  expect(transport.urls).toEqual([`${BASE}api/v1/series`, `${BASE}api/v1/series`]);
 });
