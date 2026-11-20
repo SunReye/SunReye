@@ -6,14 +6,12 @@
 -->
 <script lang="ts">
   import type { Core } from "../api/core.ts";
-  import Verdict from "../history/Verdict.svelte";
   import { m } from "../paraglide/messages.js";
-  import BandChart from "../range/BandChart.svelte";
-  import { kwh } from "../range/format.ts";
+  import RangePane from "../range/RangePane.svelte";
   import type { RangeRoute } from "../range/route.svelte.ts";
   import { stackOf, type Line } from "./forecast.ts";
   import { ForecastData } from "./forecast-data.svelte.ts";
-  import ForecastFigures from "./ForecastFigures.svelte";
+  import ForecastPane from "./ForecastPane.svelte";
   import LinePicker from "./LinePicker.svelte";
 
   let {
@@ -43,8 +41,6 @@
     route,
   }));
 
-  const view = $derived(data.view);
-
   const note = $derived(
     [line.estimated && m.forecast_estimated_note(), m.forecast_horizon(), m.stats_forecast_note()]
       .filter(Boolean)
@@ -62,24 +58,14 @@
     {/if}
   </header>
 
-  <Verdict id={view?.key ?? ""} sentence={view?.said ?? null} gapHours={0} />
-
-  <BandChart
-    bands={data.bands}
-    up={stack.up.filter((part, i) => (data.kept ? data.kept.includes(i) : !part.optional))}
-    markLabel={m.range_forecast()}
-    ghostLabel={m.forecast_expected()}
-    via={data.via}
-    summary={data.summary}
-    fmt={kwh}
-    unit="kWh"
-    loading={!view}
-    label={m.forecast_chart()}
-    ondrill={data.drill}
-    onbrush={data.brush}
-  />
-
-  <ForecastFigures accuracy={view?.accuracy ?? null} />
+  <RangePane model={data.travel}>
+    {#snippet children(p)}
+      <ForecastPane got={p.got} up={stack.up} ondrill={data.drill} onbrush={data.brush} />
+    {/snippet}
+    {#snippet waiting()}
+      <ForecastPane got={null} up={stack.up} ondrill={data.drill} onbrush={data.brush} />
+    {/snippet}
+  </RangePane>
 
   <p class="max-w-[68ch] text-xs text-pretty text-muted-foreground">{note}</p>
 </section>

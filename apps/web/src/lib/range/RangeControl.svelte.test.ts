@@ -1,9 +1,15 @@
-import { expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import type { Bounds, Kind, Ranged } from "./range.ts";
+import { haptics } from "../haptics.ts";
+import { dragBy } from "./drag.harness.ts";
 import RangeControl from "./RangeControl.svelte";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 const BOUNDS: Bounds = {
   from: "2026-11-03",
@@ -90,4 +96,15 @@ test("a custom bound's date is picked from a calendar, between its limits", asyn
 
   expect(changes).toEqual([["2026-11-03", "2026-11-10", 0, 24]]);
   await expect.element(page.getByRole("grid")).not.toBeInTheDocument();
+});
+
+test("a flick on the range's label steps it once, with one tick", async () => {
+  const selection = vi.spyOn(haptics, "selection");
+  const { steps, model } = control();
+
+  await render(RangeControl, { model });
+  await dragBy(page.getByText("November 2026").element(), 120);
+
+  expect(steps).toEqual([-1]);
+  expect(selection).toHaveBeenCalledOnce();
 });

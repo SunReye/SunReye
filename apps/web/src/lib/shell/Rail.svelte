@@ -175,16 +175,17 @@
     transform: translateX(-6px);
     pointer-events: none;
     transition:
-      opacity 150ms var(--motion-ease),
-      transform 150ms var(--motion-ease);
+      opacity var(--motion-exit) var(--motion-ease-exit),
+      transform var(--motion-exit) var(--motion-ease-exit);
   }
 
   .rail[data-expanded="true"] :global(.label) {
     opacity: 1;
     transform: none;
     pointer-events: auto;
+    /* After a third of a base step, so the rail has started to open. */
     transition:
-      opacity 220ms var(--motion-ease) 60ms,
-      transform 220ms var(--motion-ease) 60ms;
+      opacity var(--motion-slow) var(--motion-ease) calc(var(--motion-base) / 3),
+      transform var(--motion-slow) var(--motion-ease) calc(var(--motion-base) / 3);
   }
 </style>

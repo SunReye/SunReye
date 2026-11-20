@@ -2,7 +2,7 @@
 <script lang="ts">
   import { Pressable } from "../components/ui/pressable/index.js";
   import { Progress } from "#lib/components/ui/progress/index.js";
-  import AnimatedNumber from "../components/animated-number.svelte";
+  import FigureNumber from "./FigureNumber.svelte";
   import type { Payback } from "../api/tariff.ts";
   import { m } from "../paraglide/messages.js";
   import { money, num } from "../range/format.ts";
@@ -27,11 +27,10 @@
     <span class="flex w-full items-baseline justify-between gap-2">
       <span class="text-sm font-semibold">{m.stats_payback()}</span>
       <span class="text-sm font-semibold tabular-nums"
-        ><AnimatedNumber
+        ><FigureNumber
           value={loading ? null : share}
           format={(v) => `${num(v * 100)} %`}
           placeholder="–"
-          duration={320}
           appear={false}
         /></span
       >
@@ -57,14 +56,11 @@
 
 <style>
   .tuck {
-    transition: opacity 200ms var(--motion-ease);
+    transition: opacity var(--motion-base) var(--motion-ease);
   }
   .tucked {
     opacity: 0;
-    transition: opacity 150ms ease-in;
-  }
-  :global([data-motion="still"]) .tuck {
-    transition: none;
+    transition: opacity var(--motion-exit) var(--motion-ease-exit);
   }
   :global(.payback > [data-slot="progress-indicator"]) {
     background: var(--e-solar);

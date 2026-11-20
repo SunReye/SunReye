@@ -19,14 +19,14 @@
 <RangeScreen title={m.forecast_title()} model={route}>
   {#await inverters}
     <!-- One inverter's card at its size: the title, the headline, then its chart and figures. -->
-    <RangeCard model={route}>
+    <RangeCard>
       <Skeleton class="h-9 w-48" />
       <Skeleton class="h-12" />
       <Skeleton class="h-[480px]" role="status" aria-label={m.loading()} />
     </RangeCard>
   {:then shown}
     {#each shown as inverter (inverter.device)}
-      <RangeCard model={route}>
+      <RangeCard>
         <ForecastChart {core} device={inverter.device} lines={inverter.lines} {route} />
       </RangeCard>
     {:else}

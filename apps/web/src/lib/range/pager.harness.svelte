@@ -1,7 +1,8 @@
 <!-- Test harness: a pager over pages 0 to 3, stepped by a finger drag on its card. -->
 <script lang="ts">
   import "../../app.css";
-  import Pager, { type Travel } from "./Pager.svelte";
+  import Pager from "./Pager.svelte";
+  import type { Travel } from "./travel.svelte.ts";
 
   let { steps }: { steps: (-1 | 1)[] } = $props();
 

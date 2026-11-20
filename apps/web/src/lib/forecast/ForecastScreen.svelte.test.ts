@@ -3,7 +3,9 @@ import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 // The chart is laid out by the SPA's utilities.
 import "../../app.css";
+import { settled } from "../api/core.harness.ts";
 import { connect } from "../api/core.ts";
+import { aside as asideOf, dragBy, letGo } from "../range/drag.harness.ts";
 import { locales, setLocale } from "../paraglide/runtime.js";
 import ForecastScreen from "./ForecastScreen.svelte";
 
@@ -244,3 +246,46 @@ test.each(SIZES)(
       expect(dd.scrollWidth, dd.textContent).toBeLessThanOrEqual(dd.clientWidth);
   },
 );
+
+const aside = (device: number) => asideOf(card(device).element());
+
+test("a finger drags an inverter's card to the earlier week, reading nothing more than an arrow", async () => {
+  const transport = testCore(WEEK);
+  const went: string[] = [];
+
+  const screen = await render(ForecastScreen, {
+    core: connect(transport),
+    params: PAST_WEEK.params,
+    go: (patch: Readonly<Record<string, string | null>>) => {
+      went.push(String(patch.at));
+    },
+  });
+
+  await expect.poll(() => legendValue(2, "gemessen")).toBe("30,0 kWh");
+  await settled(() => transport.asked.length);
+
+  const before = transport.asked.length;
+  const title = card(1).getByRole("heading", { name: "Wechselrichter 1" }).element();
+
+  await dragBy(title, 240, { hold: true, share: 1 / 3 });
+
+  // The earlier week stands beside the card, drawn loading: nothing is read for it.
+  expect(aside(1)).toBeGreaterThan(0);
+  expect(transport.asked.length).toBe(before);
+
+  letGo(title);
+  await expect.poll(() => went.at(-1)).toBe("2026-10-26");
+  // The other inverter's card changes in place.
+  expect(aside(2)).toBe(0);
+  await settled(() => transport.asked.length);
+
+  const dragged = transport.asked.length - before;
+
+  expect(dragged).toBeGreaterThan(0);
+
+  await screen.getByRole("button", { name: "Früher" }).click();
+  await expect.poll(() => went.at(-1)).toBe("2026-10-19");
+  await settled(() => transport.asked.length);
+
+  expect(transport.asked.length - before - dragged).toBe(dragged);
+});
