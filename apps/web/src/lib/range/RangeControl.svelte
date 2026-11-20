@@ -34,9 +34,9 @@
 <!-- One row where it fits; below that the stepper takes its own full-width row, arrows at the ends. -->
 <div class="@container flex flex-col gap-2">
   <div
-    class="flex flex-col gap-2 @[430px]:flex-row @[430px]:items-center @[430px]:justify-center @[430px]:gap-3"
+    class="flex flex-col gap-2 @[500px]:flex-row @[500px]:items-center @[500px]:justify-center @[500px]:gap-3"
   >
-    <div class="@[430px]:w-fit @[430px]:shrink-0">
+    <div class="@[500px]:w-fit @[500px]:shrink-0">
       <Segmented
         options={offered.map(([id, text]) => [id, text()] as const)}
         value={kind}
