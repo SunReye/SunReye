@@ -1,10 +1,10 @@
 # 16. Cloud relay
 
-Status: accepted (2026-11-08), amended (2026-11-08): design accepted, build deferred; amended (2026-11-09): install id format
+Status: accepted (2026-11-08), amended (2026-11-08): design accepted, build deferred; amended (2026-11-09): install id format; amended (2026-11-19): one cloud identity with SunReye Plan, organisations
 
 ## Context
 
-Homeowners who cannot set up a VPN want an app, and businesses that sold the software want to watch many installs. The operator must not be able to read a home's data, no home should open an inbound port, and nobody wants to handle passwords.
+Homeowners who cannot set up a VPN want an app, and installers that sold the software want to watch many installs. The operator must not be able to read a home's data, no home should open an inbound port, and nobody wants to handle passwords.
 
 ## Decision
 
@@ -15,6 +15,8 @@ Homeowners who cannot set up a VPN want an app, and businesses that sold the sof
 **Security model.** The cloud login grants routing only. A signed-in account can reach the Durable Objects of its installs, nothing more. The core accepts only device keys it trusts, so a hijacked identity-provider account or a compromised cloud can route traffic but never read or write a home's data.
 
 **Login.** Social login only: Google, Apple and Microsoft over OpenID Connect, in the Worker. No passwords, no email signup, nothing password-derived stored.
+
+**One identity (2026-11-19).** The cloud account is the one SunReye Plan signs in with (ADR 25): Better Auth, shared by the relay and Plan, with the same social logins and no passwords. An organisation is an installer company in that identity, with members and roles. Nothing else here changes: an account still grants routing only, and the Noise keys, the passkey-wrapped account key and the trusted-keys table stay as decided.
 
 **Tunnel.** The core keeps one outbound WebSocket to its Durable Object. A client opens a WebSocket to the same object, which splices frames per session and never decrypts. Inside, client and core run `Noise_IK_25519_ChaChaPoly_BLAKE2s` (the `snow` crate); clients run the same crate compiled to WASM. The client pins the core's static key. The client's static key is its device key, and the first handshake message carries the account's signature over it. The relay sees ciphertext, sizes and timing. It stores routing metadata only: install id, account, and whether the core is connected.
 
@@ -30,7 +32,7 @@ Homeowners who cannot set up a VPN want an app, and businesses that sold the sof
 
 **Connect at home.** In the local SPA, "connect to cloud" opens the web app in the same browser with a one-time code and the core's public key in the URL fragment, which browsers never send to a server. The homeowner confirms with the passkey; the web app signs the code with the account key and sends it through the relay; the core checks the code and trusts the account as `admin`. On a phone, a QR code from the local SPA replaces the link. A relay that never sees the code shown at home cannot substitute its own key.
 
-**Businesses.** A business is an account. The homeowner grants it in the local SPA by entering the business's share code, which carries the business key's fingerprint, so a substituted key is detected. The default role is `viewer`. The business key signs its staff's device keys; a staff revocation is signed by the business key and checked by the core. The homeowner revokes the business at the core.
+**Organisations.** An organisation (2026-11-19; a business until then) is an installer company in the cloud identity, with a key of its own. The homeowner grants it in the local SPA by entering the organisation's share code, which carries the organisation key's fingerprint, so a substituted key is detected. The default role is `viewer`. The organisation key signs its staff's device keys; a staff revocation is signed by the organisation key and checked by the core. The homeowner revokes the business at the core.
 
 **Clients.** The web app is the same SPA as the local one, with the tunnel as its transport (ADR 11). It is built reproducibly from the repo, every release is signed with the web-bundle key (ADR 8), and it is served by a static deployment separate from the relay Worker. A service worker pins the installed version and accepts an update only if its signature verifies against the key it was installed with. The local SPA shows the expected bundle hash. The first load and a hard reload that bypasses the service worker trust the server; the product says so. The native app (Android first) has no such gap.
 
