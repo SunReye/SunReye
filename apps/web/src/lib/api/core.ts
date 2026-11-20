@@ -151,7 +151,7 @@ export function connect(
 ): Core {
   const client = open(transport.base, transport.fetch);
 
-  return remembering(unremembered(client, transport, page), page);
+  return remembering(unremembered(client, transport, page), page, client);
 }
 
 /** Every read asks the core. */

@@ -1,12 +1,21 @@
 /// <reference types="bun" />
 // Range reads through `connect` (ADR 9, 11): one request for the series of one device, range and
-// period asked at once, and a refused series apart.
-import { expect, test } from "bun:test";
+// period asked at once, a refused series apart, and closed ranges kept for the session.
+import { afterEach, expect, setSystemTime, test } from "bun:test";
 import { connect } from "./core.ts";
 import type { Visibility } from "./live.ts";
 
 const FROM = new Date("2026-11-12T00:00:00Z");
 const TO = new Date("2026-11-12T12:00:00Z");
+
+/** Now: 2026-11-20 10:30 UTC, so a range ending by 09:00 is closed. */
+const NOW = new Date("2026-11-20T10:30:00Z");
+
+const DAY = { from: new Date("2026-11-19T00:00:00Z"), to: new Date("2026-11-19T09:00:00Z") };
+
+afterEach(() => {
+  setSystemTime();
+});
 
 /** A point ending at `end`. */
 const point = (end: string) => ({ start: "2026-11-12T00:00:00Z", end, mean: 1 });
@@ -154,6 +163,79 @@ test("a refusal naming no series goes to every series asked", async () => {
   const read = await core.history(1, ["pv.power", "load.power"], FROM, TO);
 
   expect(read).toEqual([{ problem: "auth.required" }, { problem: "auth.required" }]);
+});
+
+test("an open range is asked again once settled", async () => {
+  setSystemTime(NOW);
+
+  const { core, asked } = fake();
+  const today = { from: new Date("2026-11-20T00:00:00Z"), to: new Date("2026-11-20T10:30:00Z") };
+
+  await core.history(1, ["pv.power"], today.from, today.to);
+  // Ends after the start of the previous hour, 09:00: its rollup is still being written.
+  await core.history(1, ["pv.power"], DAY.from, new Date("2026-11-19T09:00:01Z"));
+  await core.history(1, ["pv.power"], today.from, today.to);
+
+  expect(asked).toHaveLength(3);
+});
+
+test("a closed range is kept: asked later, its series are not asked again", async () => {
+  setSystemTime(NOW);
+
+  const { core, asked } = fake({ points: () => [point("2026-11-19T09:00:00Z")] });
+
+  const first = await core.history(1, ["pv.power", "load.power"], DAY.from, DAY.to);
+  const later = await core.history(1, ["load.power", "grid.import.power"], DAY.from, DAY.to);
+
+  expect(asked).toEqual([["pv.power", "load.power"], ["grid.import.power"]]);
+  expect(later[0]).toEqual(first[1]);
+});
+
+test("a closed range whose last period runs past it, as a month under way, is not kept", async () => {
+  setSystemTime(NOW);
+
+  const { core, asked } = fake({ points: () => [point("2026-12-01T00:00:00Z")] });
+  const month = [new Date("2026-11-01T00:00:00Z"), new Date("2026-11-02T00:00:00Z")] as const;
+
+  await core.statistics(1, ["pv.power"], "month", ...month);
+  await core.statistics(1, ["pv.power"], "month", ...month);
+
+  expect(asked).toHaveLength(2);
+});
+
+test("a write or the page shown again forgets closed ranges", async () => {
+  setSystemTime(NOW);
+
+  const page = Object.assign(new EventTarget(), { hidden: false });
+  const { core, asked } = fake({ points: () => [point("2026-11-19T09:00:00Z")], page });
+  const read = () => core.history(1, ["pv.power"], DAY.from, DAY.to);
+
+  await read();
+  await core.setTimezone("Europe/Berlin");
+  await read();
+  page.dispatchEvent(new Event("visibilitychange"));
+  await read();
+  await read();
+
+  expect(asked).toHaveLength(3);
+});
+
+test("closed ranges are kept up to 200,000 points, the least recently used dropped first", async () => {
+  setSystemTime(NOW);
+
+  const many = Array.from({ length: 80_000 }, () => point("2026-11-19T09:00:00Z"));
+  const { core, asked } = fake({ points: () => many });
+  const read = (series: string) => core.history(1, [series], DAY.from, DAY.to);
+
+  await read("a");
+  await read("b");
+  await read("a");
+  // 240,000 points: b, the least recently used, goes.
+  await read("c");
+  await read("a");
+  await read("b");
+
+  expect(asked).toEqual([["a"], ["b"], ["c"], ["b"]]);
 });
 
 test("an answer of another shape, or one missing a series asked, fails those series", async () => {

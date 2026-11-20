@@ -1,7 +1,7 @@
 // The reads that rarely change, asked once for every screen: a core's devices, layout,
 // capabilities, timezone, series catalog, topology, module types and location; and range reads,
 // held as `ranges.ts` says.
-import type { Problem } from "./client";
+import type { Client, Problem } from "./client";
 import type { Core } from "./core";
 import type { Visibility } from "./live";
 import { holding } from "./ranges";
@@ -94,27 +94,54 @@ const keep = (core: Readonly<Core>) =>
   }) satisfies Record<Read, Readonly<{ forget: () => void }>>;
 
 /**
+ * Calls `all` and `ranges` when `page` is shown again, as another screen may have changed the
+ * plant meanwhile, and `ranges` on any write through `client`, as a layout, topology, timezone or
+ * import changes what the core computes for a past range (ADR 11).
+ */
+function watch(
+  page: Visibility | undefined,
+  client: Client,
+  all: () => void,
+  ranges: () => void,
+): void {
+  page?.addEventListener("visibilitychange", () => {
+    if (page.hidden) return;
+
+    all();
+    ranges();
+  });
+  client.use({
+    onRequest: ({ request }: Readonly<{ request: Request }>) => {
+      if (request.method !== "GET") ranges();
+    },
+  });
+}
+
+/**
  * `core` with its rarely changing reads remembered and its range reads held (ADR 11): callers at
  * once share one request, later ones none, until a write through it changes the read, or the page
  * is shown again, as another screen may have changed the plant meanwhile. A failure or a refusal
  * other than a viewer's is asked again.
  */
-export function remembering(core: Readonly<Core>, page: Visibility | undefined): Core {
+export function remembering(
+  core: Readonly<Core>,
+  page: Visibility | undefined,
+  client: Client,
+): Core {
   const kept = keep(core);
+  const { forget: forgetRanges, ...ranges } = holding(core);
 
   const forget = (reads: readonly Read[] = READS) => {
     for (const read of reads) kept[read].forget();
   };
 
-  page?.addEventListener("visibilitychange", () => {
-    if (!page.hidden) forget();
-  });
+  watch(page, client, forget, forgetRanges);
 
   const changing = changer(forget);
 
   return {
     ...core,
-    ...holding(core),
+    ...ranges,
     devices: kept.devices.read,
     layout: kept.layout.read,
     capabilities: kept.capabilities.read,
