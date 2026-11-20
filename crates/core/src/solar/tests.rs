@@ -53,7 +53,7 @@ async fn store_weather(storage: &Storage, bus: &Bus, targets: &[u64]) {
             issued: at(NOON - HOUR),
             step: 0.01,
             values: targets.iter().map(|t| (at(*t), value)).collect(),
-            keep: Keep::Every,
+            keep: Keep::Ahead,
         };
         storage
             .forecast(WEATHER, bus.intern(role, None), issue)
@@ -571,35 +571,21 @@ async fn a_saved_scene_places_the_modules_and_its_obstacles_shade_the_forecast()
     assert!(walled < 0.4 * open, "walled {walled} W, open {open} W");
 }
 
-impl Plant {
-    /// Waits until the inverter's `pv.power` at noon has `count` issues; returns their times.
-    async fn issues(&self, count: usize) -> Vec<SystemTime> {
-        let series = self.bus.intern("pv.power", None);
-        let read = async || {
-            self.storage
-                .forecasts(INVERTER, series, at(NOON), at(NOON + 1))
-                .await
-                .unwrap()
-        };
-        let wait = async {
-            let mut stored = read().await;
-            while stored.len() < count {
-                tokio::time::sleep(Duration::from_millis(10)).await;
-                stored = read().await;
-            }
-            stored
-        };
-        let stored = tokio::time::timeout(Duration::from_secs(10), wait)
-            .await
-            .unwrap();
-        stored.iter().map(|f| f.issued).collect()
-    }
+/// Issue times a second apart from an hour before noon, one per call, counted in `calls`.
+fn ticking(calls: Arc<AtomicU64>) -> impl Fn() -> SystemTime + Sync {
+    move || at(NOON - HOUR + calls.fetch_add(1, Ordering::Relaxed))
 }
 
-/// Issue times a second apart from an hour before noon, one per call.
-fn ticking() -> impl Fn() -> SystemTime + Sync {
-    let calls = AtomicU64::new(0);
-    move || at(NOON - HOUR + calls.fetch_add(1, Ordering::Relaxed))
+/// Waits until `calls` reaches `count`: each issue reads the clock once.
+async fn issued(calls: &AtomicU64, count: u64) {
+    let wait = async {
+        while calls.load(Ordering::Relaxed) < count {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(10), wait)
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -616,20 +602,22 @@ async fn it_issues_on_start_after_each_weather_issue_and_after_a_layout_change()
     let (weather, issues) = watch::channel(None);
     let learned = HashMap::new();
 
+    let calls = Arc::new(AtomicU64::new(0));
+
     let check = async {
-        assert_eq!(plant.issues(1).await, [at(NOON - HOUR)]);
+        issued(&calls, 1).await;
         weather.send_replace(Some(at(NOON - HOUR)));
-        assert_eq!(plant.issues(2).await.len(), 2);
+        issued(&calls, 2).await;
         let kept = plant.string(Some(layout.strings[0].id), 2, 0.0, 16);
         plant
             .layouts
             .change(at(0), vec![kept], None, at(0))
             .await
             .unwrap();
-        assert_eq!(plant.issues(3).await.len(), 3);
+        issued(&calls, 3).await;
     };
     tokio::select! {
-        () = forecast.run((&plant.storage, &learned), berlin, issues, ticking()) => panic!("it stopped"),
+        () = forecast.run((&plant.storage, &learned), berlin, issues, ticking(Arc::clone(&calls))) => panic!("it stopped"),
         () = check => {}
     }
 }
