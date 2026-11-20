@@ -80,16 +80,19 @@ export function followDay(
   // When the last read that landed was made, in ms since 1970.
   let at = 0;
   let stopped = false;
+  // Each read's turn: a read landing after a later one began is dropped, as it may be older.
+  let turn = 0;
 
   const read = async (whole: boolean) => {
     if (page?.hidden) return;
 
+    const mine = (turn += 1);
     const now = new Date();
     const part = whole ? "whole" : due(reads, at, now);
 
     const next = await reread(core, reads, part, now).catch(() => null);
 
-    if (stopped || next === null) return;
+    if (stopped || next === null || mine !== turn) return;
 
     reads = next;
     at = now.getTime();

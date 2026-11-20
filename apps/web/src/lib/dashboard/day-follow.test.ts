@@ -65,22 +65,27 @@ function range(href: string, made: number): Response {
 /** A plant in UTC that made `made` Wh so far today, and every request asked of it. */
 function plant(page: Visibility) {
   const urls: string[] = [];
-  const state = { made: 1000 };
+  // Each answer waits for `hold` and carries `made` as it was when asked.
+  const state = { made: 1000, hold: Promise.resolve() };
 
   const core = connect(
     {
       base: "http://core.test/",
-      fetch: (request) => {
+      fetch: async (request) => {
         const url = new URL(request.url);
         const path = url.pathname;
 
         urls.push(request.url);
 
-        if (path.endsWith("/timezone")) return Promise.resolve(Response.json({ name: "UTC" }));
+        if (path.endsWith("/timezone")) return Response.json({ name: "UTC" });
 
-        if (path.endsWith("/layout")) return Promise.resolve(Response.json(LAYOUT));
+        if (path.endsWith("/layout")) return Response.json(LAYOUT);
 
-        return Promise.resolve(range(request.url, state.made));
+        const made = state.made;
+
+        await state.hold;
+
+        return range(request.url, made);
       },
     },
     page,
@@ -244,6 +249,40 @@ test("a hidden page reads nothing, and today is read whole when it is shown agai
   const whole = { ...MOVING, ...PLACE, [`devices/${PLANT}/history`]: 1, ...FORECASTS };
 
   expect(since()).toEqual(whole);
+  stop();
+});
+
+test("an older read landing after a newer one does not replace it", async () => {
+  const page = new Page();
+  const { core, state } = plant(page);
+  const days: Day[] = [];
+
+  const stop = followDay(
+    core,
+    (day) => {
+      days.push(day);
+    },
+    page,
+  );
+
+  await drain();
+
+  const slow = Promise.withResolvers<void>();
+
+  state.made = 1500;
+  state.hold = slow.promise;
+  await pass(MINUTE);
+  state.hold = Promise.resolve();
+  state.made = 2000;
+  page.show(true);
+  await drain();
+
+  expect(days.at(-1)?.today.production).toBe(2);
+
+  slow.resolve();
+  await drain();
+
+  expect(days.at(-1)?.today.production).toBe(2);
   stop();
 });
 
