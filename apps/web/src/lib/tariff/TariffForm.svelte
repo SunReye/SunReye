@@ -1,9 +1,9 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import { toast } from "svelte-sonner";
   import { Button } from "#lib/components/ui/button/index.js";
   import type { Core, Problem, Tariff } from "../api/core";
   import ProblemAlert from "../components/problem-alert.svelte";
+  import { confirmed } from "../feedback.ts";
   import { m } from "../paraglide/messages.js";
   import { getLocale } from "../paraglide/runtime.js";
   import { changeOf, draftOf, instantOf } from "./draft";
@@ -31,7 +31,7 @@
         : await core.changeTariff({ ...change, appliesFrom: from ?? null });
 
     if (!("problem" in answer)) {
-      toast.success(m.tariff_saved_from({ from: instant.format(Date.parse(answer.appliesFrom)) }));
+      confirmed(m.tariff_saved_from({ from: instant.format(Date.parse(answer.appliesFrom)) }));
     }
   }
 </script>

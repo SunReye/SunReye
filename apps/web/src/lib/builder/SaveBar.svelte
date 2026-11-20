@@ -2,9 +2,9 @@
 <script lang="ts">
   import Redo2 from "@lucide/svelte/icons/redo-2";
   import Undo2 from "@lucide/svelte/icons/undo-2";
-  import { toast } from "svelte-sonner";
   import DateField from "#lib/components/date-field.svelte";
   import { Button } from "#lib/components/ui/button/index.js";
+  import { confirmed } from "../feedback.ts";
   import { m } from "../paraglide/messages.js";
   import { today } from "./day.ts";
   import Outcome from "./Outcome.svelte";
@@ -17,7 +17,7 @@
 
     // The confirmation is a toast (ADR 21); a refusal stays here, where it is fixed.
     if (session.saved !== undefined && !("problem" in session.saved)) {
-      toast.success(m.builder_saved());
+      confirmed(m.builder_saved());
     }
   }
 </script>
