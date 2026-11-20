@@ -71,6 +71,25 @@ test("its group carries the name", async () => {
   await expect.element(screen.getByRole("group", { name: "Zeitraum" })).toBeVisible();
 });
 
+test("full width, it fills its row with one equal column per option", async () => {
+  const screen = await render(Segmented, {
+    options: OPTIONS,
+    value: "day",
+    label: "Zeitraum",
+    fill: true,
+    onchange: () => {},
+  });
+
+  const group = screen.getByRole("group", { name: "Zeitraum" }).element();
+
+  const widths = ["Tag", "Woche", "Monat"].map(
+    (name) => screen.getByRole("radio", { name }).element().getBoundingClientRect().width,
+  );
+
+  expect(group.getBoundingClientRect().width).toBe(screen.container.getBoundingClientRect().width);
+  expect(new Set(widths).size).toBe(1);
+});
+
 async function tabs(value = "day") {
   const selection = vi.spyOn(haptics, "selection");
   const chosen: string[] = [];
