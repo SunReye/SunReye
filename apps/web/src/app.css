@@ -467,11 +467,9 @@
 }
 
 /* On ambient glass and a canvas chip the registry's muted pressed box disappears; lift it a step. */
-:is(
-    .glass-ambient,
-    .glass-ambient *,
-    .canvas-chip,
-    .canvas-chip *
-  )[data-slot="toggle-group"]::before {
+:is(.glass-ambient, .glass-ambient *, .canvas-chip, .canvas-chip *):is(
+    [data-slot="toggle-group"],
+    [data-slot="tabs-list"][data-variant="segmented"]
+  )::before {
   background-color: color-mix(in oklab, var(--foreground) 13%, transparent);
 }
