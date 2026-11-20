@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Core } from "../api/core.ts";
   import { Skeleton } from "#lib/components/ui/skeleton/index.js";
+  import LoadFailed from "../components/load-failed.svelte";
   import { m } from "../paraglide/messages.js";
   import RangeCard from "../range/RangeCard.svelte";
   import RangeScreen from "../range/RangeScreen.svelte";
@@ -13,7 +14,14 @@
   // The range may step as far as the forecast reaches.
   const route = new RangeRoute(() => ({ params, go, core }), AHEAD);
 
-  const inverters = $derived(inverterLines(core));
+  /** Bumped by a retry, so the lines are read again. */
+  let attempt = $state(0);
+
+  const inverters = $derived.by(() => {
+    void attempt;
+
+    return inverterLines(core);
+  });
 </script>
 
 <RangeScreen title={m.forecast_title()} model={route}>
@@ -32,5 +40,9 @@
     {:else}
       <p>{m.forecast_none()}</p>
     {/each}
+  {:catch}
+    <RangeCard model={route}>
+      <LoadFailed size="block" text={m.forecast_error()} onretry={() => (attempt += 1)} />
+    </RangeCard>
   {/await}
 </RangeScreen>

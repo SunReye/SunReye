@@ -42,14 +42,7 @@
   }));
 </script>
 
-{#if props.catalog === "failed"}
-  <p
-    class="grid place-items-center rounded-md border border-dashed border-border/60 px-4 text-center text-sm text-muted-foreground"
-    style:height="{props.height}px"
-  >
-    {m.explore_chart_unread()}
-  </p>
-{:else if view.state === "unstored"}
+{#if view.state === "unstored"}
   <Empty.Root style="min-height: {props.height}px">
     <Empty.Header>
       <Empty.Media variant="icon"><ChartSpline /></Empty.Media>

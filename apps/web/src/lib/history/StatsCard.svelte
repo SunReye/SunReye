@@ -2,11 +2,12 @@
 <script lang="ts">
   import { MediaQuery } from "svelte/reactivity";
   import * as Card from "#lib/components/ui/card/index.js";
+  import LoadFailed from "../components/load-failed.svelte";
   import CardIntro from "./CardIntro.svelte";
   import CardPane from "./CardPane.svelte";
   import { cardText } from "./card-text.ts";
   import FigureTabs from "./FigureTabs.svelte";
-  import LoadError from "./LoadError.svelte";
+  import { m } from "../paraglide/messages.js";
   import type { Statistics, StatisticsCore, Summary } from "./screen.svelte.ts";
 
   let {
@@ -44,7 +45,12 @@
   />
 
   {#if s.data.failed}
-    <LoadError onretry={s.data.retry} />
+    <LoadFailed
+      size="block"
+      text={m.stats_error_title()}
+      detail={m.stats_error_text()}
+      onretry={s.data.retry}
+    />
   {:else}
     <div class="flex flex-col gap-3 px-3 pt-4 pb-4 sm:px-5">
       <CardIntro

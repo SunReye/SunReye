@@ -5,14 +5,13 @@
   input or a string.
 -->
 <script lang="ts">
-  import type { Core } from "../api/core.ts";
+  import LoadFailed from "../components/load-failed.svelte";
   import Verdict from "../history/Verdict.svelte";
   import { m } from "../paraglide/messages.js";
   import BandChart from "../range/BandChart.svelte";
   import { kwh } from "../range/format.ts";
-  import type { RangeRoute } from "../range/route.svelte.ts";
   import { stackOf, type Line } from "./forecast.ts";
-  import { ForecastData } from "./forecast-data.svelte.ts";
+  import { ForecastData, type ForecastInput } from "./forecast-data.svelte.ts";
   import ForecastFigures from "./ForecastFigures.svelte";
   import LinePicker from "./LinePicker.svelte";
 
@@ -21,12 +20,7 @@
     device,
     lines,
     route,
-  }: {
-    core: Core;
-    device: number;
-    lines: readonly Line[];
-    route: RangeRoute;
-  } = $props();
+  }: Pick<ForecastInput, "core" | "device" | "route"> & { lines: readonly Line[] } = $props();
 
   const id = $props.id();
 
@@ -62,24 +56,28 @@
     {/if}
   </header>
 
-  <Verdict id={view?.key ?? ""} sentence={view?.said ?? null} gapHours={0} />
+  {#if data.failed}
+    <LoadFailed text={m.detail_error()} onretry={data.retry} />
+  {:else}
+    <Verdict id={view?.key ?? ""} sentence={view?.said ?? null} gapHours={0} />
 
-  <BandChart
-    bands={data.bands}
-    up={stack.up.filter((part, i) => (data.kept ? data.kept.includes(i) : !part.optional))}
-    markLabel={m.range_forecast()}
-    ghostLabel={m.forecast_expected()}
-    via={data.via}
-    summary={data.summary}
-    fmt={kwh}
-    unit="kWh"
-    loading={!view}
-    label={m.forecast_chart()}
-    ondrill={data.drill}
-    onbrush={data.brush}
-  />
+    <BandChart
+      bands={data.bands}
+      up={stack.up.filter((part, i) => (data.kept ? data.kept.includes(i) : !part.optional))}
+      markLabel={m.range_forecast()}
+      ghostLabel={m.forecast_expected()}
+      via={data.via}
+      summary={data.summary}
+      fmt={kwh}
+      unit="kWh"
+      loading={!view}
+      label={m.forecast_chart()}
+      ondrill={data.drill}
+      onbrush={data.brush}
+    />
 
-  <ForecastFigures accuracy={view?.accuracy ?? null} />
+    <ForecastFigures accuracy={view?.accuracy ?? null} />
+  {/if}
 
   <p class="max-w-[68ch] text-xs text-pretty text-muted-foreground">{note}</p>
 </section>

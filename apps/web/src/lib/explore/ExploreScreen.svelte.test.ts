@@ -143,9 +143,32 @@ test("without the catalog the chosen series keep their names and the picker offe
   await expect.element(screen.getByText("Die Reihen konnten nicht geladen werden.")).toBeVisible();
 
   plant.broken = false;
-  await screen.getByRole("button", { name: "Erneut laden" }).click();
+  await screen
+    .getByRole("alert")
+    .filter({ hasText: "Die Reihen konnten nicht geladen werden." })
+    .getByRole("button", { name: "Erneut laden" })
+    .click();
 
   await expect.element(screen.getByRole("heading", { name: "Deye" })).toBeVisible();
+});
+
+test("a chart that cannot be drawn without the catalog reads it again from its own retry", async () => {
+  await desk();
+  plant.broken = true;
+
+  const { screen } = await show();
+
+  const failed = screen
+    .getByRole("alert")
+    .filter({ hasText: "Ohne die Liste der Reihen lässt sich das Diagramm nicht zeichnen." });
+
+  await expect.element(failed).toBeVisible();
+
+  plant.broken = false;
+  await failed.getByRole("button", { name: "Erneut laden" }).click();
+
+  await expect.element(screen.getByRole("heading", { name: "Deye" })).toBeVisible();
+  expect(failed.query()).toBeNull();
 });
 
 test("an unreachable core leaves the picker with the same way out", async () => {

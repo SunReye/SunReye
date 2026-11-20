@@ -8,6 +8,16 @@ import type { RangeRoute } from "../range/route.svelte.ts";
 import { planned, type Part } from "./forecast.ts";
 import { headline, judge, pastDays, summaryOf } from "./judge.ts";
 
+/** What one line's figures are read from. */
+export interface ForecastInput {
+  core: Core;
+  device: number;
+  series: string;
+  /** The parts stacked in the bars; empty for one bar. */
+  parts: readonly Part[];
+  route: RangeRoute;
+}
+
 export class ForecastData {
   readonly #data: RangeData<Awaited<ReturnType<typeof read>>>;
 
@@ -26,16 +36,7 @@ export class ForecastData {
     };
   });
 
-  constructor(
-    input: () => {
-      core: Core;
-      device: number;
-      series: string;
-      /** The parts stacked in the bars; empty for one bar. */
-      parts: readonly Part[];
-      route: RangeRoute;
-    },
-  ) {
+  constructor(input: () => ForecastInput) {
     this.#data = new RangeData(
       () => input().route,
       (from, to, now) => {
@@ -64,6 +65,15 @@ export class ForecastData {
   get via() {
     return this.#data.current?.via;
   }
+
+  /** The last read of the range failed. */
+  get failed(): boolean {
+    return this.#data.failed;
+  }
+
+  retry = (): void => {
+    this.#data.retry();
+  };
 
   drill = (i: number): void => {
     this.#data.drill(i);

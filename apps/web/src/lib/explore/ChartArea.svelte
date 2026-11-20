@@ -6,13 +6,12 @@
   import ChartSpline from "@lucide/svelte/icons/chart-spline";
   import { MediaQuery } from "svelte/reactivity";
   import * as Empty from "#lib/components/ui/empty/index.js";
+  import LoadFailed from "../components/load-failed.svelte";
   import { m } from "../paraglide/messages.js";
   import type { Explore, ExploreCore } from "./explore.svelte.ts";
-  import FoldPane from "./FoldPane.svelte";
   import { modeLabel } from "./labels.ts";
   import type { Table } from "./csv.ts";
-  import OverlayPane from "./OverlayPane.svelte";
-  import SeriesPane from "./SeriesPane.svelte";
+  import { PANES } from "./panes.ts";
 
   let {
     core,
@@ -31,8 +30,6 @@
     plotted?: (() => Table | null) | undefined;
   } = $props();
 
-  const PANES = { series: SeriesPane, overlay: OverlayPane, fold: FoldPane };
-
   const wide = new MediaQuery("(min-width: 1024px)");
   const height = $derived(fill ?? (wide.current ? 416 : 348));
 
@@ -41,7 +38,10 @@
   /** The open pane's plot; the pane sets it as it is built, so a switch of mode hands it over. */
   let read = $state.raw<() => Table | null>();
 
-  plotted = () => (x.chosen.length === 0 ? null : (read?.() ?? null));
+  // Series and overlay draw on the catalog's kinds and instants; a fold reads without them.
+  const unread = $derived(x.catalog === "failed" && x.view.mode !== "fold");
+
+  plotted = () => (x.chosen.length === 0 || unread ? null : (read?.() ?? null));
 </script>
 
 <section aria-label={modeLabel(x.view.mode)} style:min-height="{height}px">
@@ -53,6 +53,10 @@
         <Empty.Description>{m.explore_none_text()}</Empty.Description>
       </Empty.Header>
     </Empty.Root>
+  {:else if unread}
+    <div class="flex flex-col justify-center" style:height="{height}px">
+      <LoadFailed text={m.explore_chart_unread()} onretry={() => void x.load()} />
+    </div>
   {:else}
     <Pane
       {core}

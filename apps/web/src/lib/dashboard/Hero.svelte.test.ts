@@ -106,7 +106,7 @@ test("a failed load leaves the 2D flow with a retry that loads the scene", async
   expect(flowShown()).toBe(true);
 
   types = "answer";
-  await page.getByRole("button", { name: "Erneut versuchen" }).click();
+  await page.getByRole("button", { name: "Erneut laden" }).click();
 
   await expect.element(sceneFigure(), SLOW).toBeVisible();
   await expect.poll(flowShown, SLOW).toBe(false);
