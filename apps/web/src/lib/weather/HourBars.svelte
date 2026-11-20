@@ -8,6 +8,7 @@
 </script>
 
 <script lang="ts">
+  import ChartEntrance from "../chart-entrance/ChartEntrance.svelte";
   import type { Hour } from "./hourly.ts";
 
   let { hours, label }: { hours: readonly Hour[]; label: string } = $props();
@@ -18,23 +19,27 @@
   const top = $derived(Math.max(FULL, ...hours.map((h) => h.precipitation ?? 0)));
 </script>
 
-<div class="flex h-12 w-full gap-px" role="img" aria-label={label}>
-  {#each hours as hour (hour.at)}
-    {@const snow = (hour.snowfall ?? 0) > 0}
-    {@const mm = hour.precipitation ?? 0}
-    <span
-      class="relative flex-1"
-      data-hour={hour.at}
-      data-mm={hour.precipitation}
-      data-snow={snow || undefined}
-    >
-      {#if mm > 0}
-        <span
-          class="absolute inset-x-0 bottom-0 min-h-px rounded-t-[1px]"
-          style:height="{(mm / top) * 100}%"
-          style:background={snow ? SNOW : RAIN}
-        ></span>
-      {/if}
-    </span>
-  {/each}
-</div>
+<ChartEntrance build="grow" ready={hours.length > 0} class="h-12 w-full">
+  <div class="flex size-full gap-px" role="img" aria-label={label}>
+    {#each hours as hour, i (hour.at)}
+      {@const snow = (hour.snowfall ?? 0) > 0}
+      {@const mm = hour.precipitation ?? 0}
+      <span
+        class="relative flex-1"
+        data-hour={hour.at}
+        data-mm={hour.precipitation}
+        data-snow={snow || undefined}
+      >
+        {#if mm > 0}
+          <span
+            class="absolute inset-x-0 bottom-0 min-h-px origin-bottom rounded-t-[1px]"
+            style:height="{(mm / top) * 100}%"
+            style:background={snow ? SNOW : RAIN}
+            style:--i={i / hours.length}
+            data-grow
+          ></span>
+        {/if}
+      </span>
+    {/each}
+  </div>
+</ChartEntrance>

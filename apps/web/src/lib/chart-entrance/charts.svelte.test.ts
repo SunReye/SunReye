@@ -6,11 +6,15 @@ import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import DayChart from "../dashboard/DayChart.svelte";
 import type { DayRow } from "../dashboard/today.ts";
+import PriceChart from "../detail/PriceChart.svelte";
 import ShareBar from "../detail/ShareBar.svelte";
+import ShareChart from "../detail/ShareChart.svelte";
+import LineBars from "../forecast/LineBars.svelte";
 import SocLine from "../detail/SocLine.svelte";
 import TrendChart from "../history/TrendChart.svelte";
 import LiveArea from "../live-graph/LiveArea.svelte";
 import type { Band } from "../range/bands.ts";
+import HourBars from "../weather/HourBars.svelte";
 import HourLines from "../weather/HourLines.svelte";
 import type { Hour } from "../weather/hourly.ts";
 
@@ -50,6 +54,18 @@ const dayRows = (n: number): DayRow[] =>
     actual: i,
     forecast: i + 1,
   }));
+
+/** A day of hourly spot prices, the night's below zero. */
+const priceDay = {
+  zone: "UTC",
+  now: new Date(T0 + 12 * HOUR),
+  start: new Date(T0),
+  end: new Date(T0 + 24 * HOUR),
+  prices: Array.from({ length: 24 }, (_, i) => ({
+    target: new Date(T0 + i * HOUR).toISOString(),
+    value: (i - 3) / 100,
+  })),
+};
 
 /** How the chart's entrance builds it: what each of its animations starts from. */
 function builds(): string[] {
@@ -116,6 +132,37 @@ const CHARTS: readonly {
     build: "draw",
   },
   {
+    name: "the spot prices",
+    chart: PriceChart as Component<never>,
+    props: { day: priceDay },
+    build: "grow",
+  },
+  {
+    name: "autarky and self-consumption by band",
+    chart: ShareChart as Component<never>,
+    props: { bands: [band(0), band(1), band(2)], grain: "hour", selfUse: 50 },
+    build: "grow",
+  },
+  {
+    name: "a weather row's precipitation",
+    chart: HourBars as Component<never>,
+    props: { hours: Array.from({ length: 24 }, (_, i) => hour(i)), label: "Niederschlag" },
+    build: "grow",
+  },
+  {
+    name: "a forecast day's strings",
+    chart: LineBars as Component<never>,
+    props: {
+      title: "Strings",
+      lines: [
+        { label: "Süd", colour: "red", kwh: 8 },
+        { label: "West", colour: "blue", kwh: 5 },
+      ],
+      top: 8,
+    },
+    build: "grow",
+  },
+  {
     name: "the day chart, which grows live",
     chart: DayChart as Component<never>,
     props: {
@@ -146,4 +193,15 @@ test.each(CHARTS)("$name builds up as it first shows ($build)", async ({ chart, 
 
   if (build === "fade") expect(shown.every((b) => b === "fade")).toBe(true);
   else expect(shown).toContain(build);
+});
+
+test("a price below zero grows down from the zero line, one above it up", async () => {
+  await render(PriceChart, { day: priceDay as never });
+
+  const grower = (price: number) =>
+    document.querySelector<HTMLElement>(`[data-price="${price}"] [data-grow]`)!;
+  const originY = (el: Element) => getComputedStyle(el).transformOrigin.split(" ")[1];
+
+  expect(originY(grower(-0.03))).toBe("0px");
+  expect(originY(grower(0.05))).toBe(getComputedStyle(grower(0.05)).height);
 });
