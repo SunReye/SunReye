@@ -108,3 +108,34 @@ test("a flick on the range's label steps it once, with one tick", async () => {
   expect(steps).toEqual([-1]);
   expect(selection).toHaveBeenCalledOnce();
 });
+
+test.each([400, 470, 520])(
+  "in a %i px column, the kinds and the stepper never run past it",
+  async (width) => {
+    const column = document.createElement("div");
+
+    column.style.width = `${width}px`;
+    document.body.append(column);
+
+    try {
+      const { model } = control();
+
+      const screen = await render(RangeControl, {
+        target: column,
+        props: { model: { ...model, label: "KW 45 · 3. Nov.–9. Nov. 2025" } },
+      });
+
+      await expect.element(screen.getByRole("radio", { name: "Woche" })).toBeVisible();
+
+      // Boxes, not scrollWidth: on touch a 44 px hit area reaches past a control unseen.
+      const right = Math.max(
+        // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- a DOM element is mutable.
+        ...[...column.querySelectorAll("button")].map((each) => each.getBoundingClientRect().right),
+      );
+
+      expect(right).toBeLessThanOrEqual(column.getBoundingClientRect().right);
+    } finally {
+      column.remove();
+    }
+  },
+);

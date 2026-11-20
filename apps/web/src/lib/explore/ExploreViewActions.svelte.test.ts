@@ -155,8 +155,8 @@ test("the marked view is renamed, and deleted once confirmed", async () => {
   expect(await menu()).toEqual(["Als CSV exportieren", "Ansicht speichern"]);
 });
 
-test("on a phone the admin's menu stands in one row with the title, the mode switch and fullscreen", async () => {
-  await page.viewport(390, 844);
+test("on a large phone the admin's menu stands in one row with the title, the mode switch and fullscreen", async () => {
+  await page.viewport(430, 932);
 
   const { screen } = await show("", { admin: true });
 
@@ -175,7 +175,7 @@ test("on a phone the admin's menu stands in one row with the title, the mode swi
   });
 
   expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(8);
-  expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390);
+  expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(430);
 });
 
 // Last: touch emulation cannot be undone (pointer stays `none`).

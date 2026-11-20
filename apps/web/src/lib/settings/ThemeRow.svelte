@@ -2,15 +2,7 @@
 <script lang="ts">
   import { setMode, userPrefersMode } from "mode-watcher";
   import SegmentRow from "./SegmentRow.svelte";
-  import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
-
-  function theme(next: string): void {
-    if (next !== "dark" && next !== "light") return;
-
-    setMode(next);
-    haptics.selection();
-  }
 </script>
 
 <SegmentRow
@@ -20,5 +12,5 @@
     ["dark", m.display_dark()],
     ["light", m.display_light()],
   ]}
-  onchange={theme}
+  onchange={setMode}
 />

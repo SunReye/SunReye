@@ -5,7 +5,6 @@
 <script lang="ts" generics="T extends { readonly start: number }">
   import type { Snippet } from "svelte";
   import * as Tabs from "#lib/components/ui/tabs/index.js";
-  import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
   import { getLocale } from "../paraglide/runtime.js";
   import { daySlide } from "./day-slide.ts";
@@ -55,7 +54,6 @@
   function choose(id: string): void {
     if (id === tab?.id) return;
 
-    haptics.selection();
     chosen = id;
   }
 </script>
@@ -63,7 +61,7 @@
 {#if tab}
   <section class={className} aria-label={label}>
     <Tabs.Root bind:value={() => tab.id, choose}>
-      <Tabs.List variant="line" class="-ml-1.5" aria-label={label}>
+      <Tabs.List variant="segmented" aria-label={label}>
         {#each tabs as t (t.id)}
           <Tabs.Trigger value={t.id}>{t.name}</Tabs.Trigger>
         {/each}
