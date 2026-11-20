@@ -20,6 +20,16 @@
     <Tabs.Content value="pattern" class="text-sm text-muted-foreground">Hour by weekday.</Tabs.Content>
     <Tabs.Content value="strings" class="text-sm text-muted-foreground">Each string.</Tabs.Content>
   </Tabs.Root>
+  <Tabs.Root value="time" class="w-80">
+    <Tabs.List variant="segmented" aria-label="Segmented tabs">
+      <Tabs.Trigger value="time">Time</Tabs.Trigger>
+      <Tabs.Trigger value="pattern">Pattern</Tabs.Trigger>
+      <Tabs.Trigger value="strings">Strings</Tabs.Trigger>
+    </Tabs.List>
+    <Tabs.Content value="time" class="text-sm text-muted-foreground">Energy over time.</Tabs.Content>
+    <Tabs.Content value="pattern" class="text-sm text-muted-foreground">Hour by weekday.</Tabs.Content>
+    <Tabs.Content value="strings" class="text-sm text-muted-foreground">Each string.</Tabs.Content>
+  </Tabs.Root>
 </Demo>
 
 <Demo name="breadcrumb">
