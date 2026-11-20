@@ -41,6 +41,7 @@ interface Tick {
   readonly row: () => Promise<Row>;
 }
 
+// Warm opens can end before the first tick: `row` takes it then, so call it while the core runs.
 function tickBetweenOpens(started: phase.Started): Tick {
   let tick: Promise<Row> | null = null;
   const take = (): Promise<Row> => (tick ??= phase.expiryTick(started));
@@ -105,7 +106,6 @@ async function measureCore(of: phase.Boot, held: store.Store, restored: string):
 
   const tick = tickBetweenOpens(started);
   const reads = await screens.warm(tick.pause);
-  // Warm opens can end before the first tick: take it now, while the core still runs.
   const ticked = await tick.row();
   const saved = await phase.backup(started.core);
 
