@@ -12,6 +12,18 @@ _Avoid_: Site, installation, system
 One physical or logical unit that produces readings: an inverter, a battery, a meter, a wallbox.
 _Avoid_: Inverter (as the general term), asset
 
+**Pending device**:
+A device without a connection: it can be named by strings and equipment markers and produces no readings until it is given one.
+_Avoid_: Planned device, placeholder, draft device
+
+**Plant document**:
+A plant as an installer planned it: location, types, layout, scene and pending devices, without any connection. The core imports it.
+_Avoid_: Export, project file, handoff file
+
+**Handoff code**:
+The one-time code with which the core fetches a plant document.
+_Avoid_: Claim code, share code (which grants access), invite
+
 **Connection**:
 How the core reaches one or more devices: an endpoint, broker or HTTP host, plus its credentials.
 _Avoid_: Integration, source
@@ -288,6 +300,18 @@ _Avoid_: Cell string, diode group
 The datasheet values of one PV module model.
 _Avoid_: Panel model
 
+**Inverter type**:
+The datasheet values of one inverter model, among them each MPPT input's limits; a device carries a copy.
+_Avoid_: Inverter model, inverter profile (a profile describes registers)
+
+**Battery type**:
+The datasheet values of one battery model: usable capacity, power and round-trip efficiency.
+_Avoid_: Battery model
+
+**Datasheet catalogue**:
+Inverter and battery types bundled with SunReye under the module catalogue's rules. Picking one adds a type.
+_Avoid_: Device database, product list
+
 **Module catalogue**:
 Module types' datasheet values bundled with SunReye, each naming the maker's datasheet it was copied from. Picking one adds a module type.
 _Avoid_: Preset (a preset is a camera view), module database
@@ -311,6 +335,14 @@ _Avoid_: Building, house
 **Overhang**:
 How far a block's roof reaches past its walls: at the eaves and at the verges.
 _Avoid_: Eave depth, soffit
+
+**Free-form roof face**:
+A roof face given by its corners rather than by its block's roof kind; it carries module grids like any other.
+_Avoid_: Custom roof, polygon roof, LoD2 face
+
+**Rack field**:
+Rows of modules tilted off a flat roof face or level ground, at their own tilt and azimuth.
+_Avoid_: Ground mount, elevation, substructure, Aufständerung
 
 **Roof chimney**:
 An upright box standing on one roof face of a block; no module may stand on its footprint.
@@ -462,8 +494,12 @@ _Avoid_: User (a user is local), profile
 The X25519 key pair one browser or app generates, used as its Noise static key; the core trusts it when an account it trusts has signed it.
 _Avoid_: Session key, token
 
+**Organisation**:
+An installer company in the cloud identity, with members; a homeowner may grant it access to an install.
+_Avoid_: Business, company account, tenant
+
 **Share code**:
-The code a business gives a homeowner to grant access; it carries the business key's fingerprint.
+The code an organisation gives a homeowner to grant access; it carries the organisation key's fingerprint.
 _Avoid_: Invite, referral
 
 ## Platform
