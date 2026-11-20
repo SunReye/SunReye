@@ -41,7 +41,7 @@ const band = (i: number): Band => ({
 export const bands = [band(0), band(1), band(2)];
 
 /** The day's PV by the quarter hour. */
-export const dayRows: DayRow[] = Array.from({ length: 96 }, (_, i) => ({
+export const quarters: DayRow[] = Array.from({ length: 96 }, (_, i) => ({
   time: new Date(T0 + (i * HOUR) / 4),
   actual: i,
   forecast: i + 1,
