@@ -2,6 +2,7 @@
   row of a detail's day: no axes, no rule and no padding, so a quarter hour stands where the
   rows around it have it. -->
 <script lang="ts">
+  import ChartEntrance from "../chart-entrance/ChartEntrance.svelte";
   import { flowColour } from "../energy-colours.ts";
   import { curveMonotoneX } from "d3-shape";
   import { Area, Axis, Chart, Layer, Rule, Spline } from "layerchart";
@@ -39,7 +40,8 @@
   });
 </script>
 
-<div class="h-full w-full">
+<!-- It grows live through the day: it only fades in, so a tick never redraws it. -->
+<ChartEntrance build="fade" ready={rows.length > 0} class="h-full w-full">
   <Chart
     data={[...rows]}
     x="time"
@@ -103,4 +105,4 @@
       {/if}
     </Layer>
   </Chart>
-</div>
+</ChartEntrance>

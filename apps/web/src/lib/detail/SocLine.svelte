@@ -5,6 +5,7 @@
   chart's (ADR 21 "Chart reading"). A band without readings breaks the line, never 0 %.
 -->
 <script lang="ts">
+  import ChartEntrance from "../chart-entrance/ChartEntrance.svelte";
   import { flowColour } from "../energy-colours.ts";
   import { m } from "../paraglide/messages.js";
   import type { Band } from "../range/bands.ts";
@@ -80,22 +81,24 @@
       class="h-14 border-y border-dashed border-border/60"
       data-plot
     >
-      <svg
-        class="absolute inset-0 size-full overflow-visible"
-        viewBox="0 0 {Math.max(1, bands.length)} 100"
-        preserveAspectRatio="none"
-        aria-hidden="true"
-      >
-        <path
-          d={path}
-          fill="none"
-          stroke={COLOUR}
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          vector-effect="non-scaling-stroke"
-        />
-      </svg>
+      <ChartEntrance build="draw" ready={path !== ""} class="absolute inset-0">
+        <svg
+          class="absolute inset-0 size-full overflow-visible"
+          viewBox="0 0 {Math.max(1, bands.length)} 100"
+          preserveAspectRatio="none"
+          aria-hidden="true"
+        >
+          <path
+            d={path}
+            fill="none"
+            stroke={COLOUR}
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            vector-effect="non-scaling-stroke"
+          />
+        </svg>
+      </ChartEntrance>
     </ChartReading>
   </div>
 </div>

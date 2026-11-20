@@ -7,6 +7,7 @@
   downsampled to its pixel budget. `diverging` fills around zero.
 -->
 <script lang="ts">
+  import ChartEntrance from "../chart-entrance/ChartEntrance.svelte";
   import { Axis, Chart, Layer, Rule } from "layerchart";
   import ChartReading from "../detail/ChartReading.svelte";
   import { KW_AXIS } from "../chart-axis.ts";
@@ -127,37 +128,40 @@
   style:-webkit-mask-image={edgeFade}
   bind:clientWidth={plotWidth}
 >
-  <!-- Held until the box is measured: building every scale at width 0 is thrown away a frame later. -->
-  {#if plotWidth >= 24 && data.length > 1}
-    <Chart
-      {data}
-      x="t"
-      {xDomain}
-      y="v"
-      {yDomain}
-      padding={PADDING}
-    >
-      <Layer type="svg">
-        <Axis {...KW_AXIS} />
-        {#if diverging}<Rule y={0} class="stroke-foreground/30" />{/if}
-        <LiveMarks
-          {lastT}
-          cursor={cursor.current}
-          {interval}
-          {quantum}
-          {accent}
-          {below}
-          {diverging}
-          {glide}
-        />
-      </Layer>
-    </Chart>
-    <ChartReading
-      {slots}
-      bind:read
-      class="absolute inset-y-0 right-0"
-      style="left: {PADDING.left}px"
-      data-plot
-    />
-  {/if}
+  <!-- A tick never redraws it: it only fades in, once. -->
+  <ChartEntrance build="fade" ready={plotWidth >= 24 && data.length > 1} class="size-full">
+    <!-- Held until the box is measured: building every scale at width 0 is thrown away a frame later. -->
+    {#if plotWidth >= 24 && data.length > 1}
+      <Chart
+        {data}
+        x="t"
+        {xDomain}
+        y="v"
+        {yDomain}
+        padding={PADDING}
+      >
+        <Layer type="svg">
+          <Axis {...KW_AXIS} />
+          {#if diverging}<Rule y={0} class="stroke-foreground/30" />{/if}
+          <LiveMarks
+            {lastT}
+            cursor={cursor.current}
+            {interval}
+            {quantum}
+            {accent}
+            {below}
+            {diverging}
+            {glide}
+          />
+        </Layer>
+      </Chart>
+      <ChartReading
+        {slots}
+        bind:read
+        class="absolute inset-y-0 right-0"
+        style="left: {PADDING.left}px"
+        data-plot
+      />
+    {/if}
+  </ChartEntrance>
 </div>

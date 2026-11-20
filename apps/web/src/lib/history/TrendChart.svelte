@@ -4,6 +4,7 @@
   tooltip (ADR 21).
 -->
 <script lang="ts">
+  import ChartEntrance from "../chart-entrance/ChartEntrance.svelte";
   import { Axis, Chart, Layer, Rule, type ChartState } from "layerchart";
   import { getLocale } from "../paraglide/runtime.js";
   import { isValue, valueOf, type TrendRow, type TrendRule, type TrendSeries } from "./trend.ts";
@@ -106,42 +107,44 @@
     aria-label={label}
     data-scrub
   >
-    {#if drawn}
-      <Chart
-        bind:context={bind.get, bind.set}
-        data={[...rows]}
-        x="x"
-        {y}
-        {yDomain}
-        padding={{ top: 8, bottom: 20, left: 44, right: 8 }}
-        tooltipContext={{ mode: "bisect-x" }}
-      >
-        <Layer type="svg">
-          <Axis
-            placement="left"
-            ticks={4}
-            grid={{ class: "stroke-foreground/[0.07]" }}
-            rule={false}
-            tickLength={0}
-            format={valueTick}
-            classes={axis}
-          />
-          <Axis
-            placement="bottom"
-            {ticks}
-            format={(d: Date) => xf.format(d)}
-            rule={false}
-            tickLength={0}
-            classes={axis}
-          />
-          {#each rules as r (r.label)}
-            <Rule y={r.y} class="stroke-foreground/50" />
-          {/each}
-          {#each series as s (s.key)}
-            <TrendMark {s} {rows} />
-          {/each}
-        </Layer>
-      </Chart>
-    {/if}
+    <ChartEntrance build="draw" ready={drawn} class="size-full">
+      {#if drawn}
+        <Chart
+          bind:context={bind.get, bind.set}
+          data={[...rows]}
+          x="x"
+          {y}
+          {yDomain}
+          padding={{ top: 8, bottom: 20, left: 44, right: 8 }}
+          tooltipContext={{ mode: "bisect-x" }}
+        >
+          <Layer type="svg">
+            <Axis
+              placement="left"
+              ticks={4}
+              grid={{ class: "stroke-foreground/[0.07]" }}
+              rule={false}
+              tickLength={0}
+              format={valueTick}
+              classes={axis}
+            />
+            <Axis
+              placement="bottom"
+              {ticks}
+              format={(d: Date) => xf.format(d)}
+              rule={false}
+              tickLength={0}
+              classes={axis}
+            />
+            {#each rules as r (r.label)}
+              <Rule y={r.y} class="stroke-foreground/50" />
+            {/each}
+            {#each series as s (s.key)}
+              <TrendMark {s} {rows} />
+            {/each}
+          </Layer>
+        </Chart>
+      {/if}
+    </ChartEntrance>
   </div>
 </div>
