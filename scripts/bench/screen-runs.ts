@@ -2,6 +2,7 @@
 // Opening the screens once cold and 30 times warm (ADR 24), each read timed and kept by route.
 
 import type { Core } from "./http.ts";
+import { coalescing } from "./coalesce.ts";
 import { type Body, type Plant, pointsOf, type Read, type Screen } from "./reads.ts";
 import { BUDGETS, measured, p95, route, type Row, slowest, type Timing } from "./report.ts";
 import { SCREENS } from "./screens.ts";
@@ -72,7 +73,7 @@ async function open(core: Core, screen: Screen, plant: Plant): Promise<Opened> {
 
   const began = performance.now();
 
-  await screen.open(read, plant);
+  await screen.open(coalescing(read), plant);
 
   return { ms: performance.now() - began, reads, errors, empty };
 }

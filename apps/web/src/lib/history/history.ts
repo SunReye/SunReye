@@ -48,6 +48,45 @@ function piecesOf(period: RollupPeriod, from: number, to: number): (readonly [nu
   return pieces;
 }
 
+/**
+ * Each of `series`' rollups starting from `from` to before `to`, in order, read together in
+ * pieces the core serves; a series refused is empty.
+ */
+export async function rollupsOf(
+  core: Readonly<Pick<Core, "statistics">>,
+  device: number,
+  series: readonly string[],
+  period: RollupPeriod,
+  from: Readonly<Date>,
+  to: Readonly<Date>,
+): Promise<Rolled[][]> {
+  const reads = await Promise.all(
+    piecesOf(period, from.getTime(), to.getTime()).map((p) =>
+      core.statistics(device, series, period, new Date(p[0]), new Date(p[1])),
+    ),
+  );
+
+  return series.map((_, i) => {
+    const out: Rolled[] = [];
+
+    for (const read of reads) {
+      const one = read[i];
+
+      for (const p of one !== undefined && "points" in one ? one.points : [])
+        out.push({
+          start: Date.parse(p.start),
+          end: Date.parse(p.end),
+          integral: p.integral ?? 0,
+          mean: p.mean ?? 0,
+          max: p.max ?? null,
+          covered: (p.hours ?? 0) * H,
+        });
+    }
+
+    return out;
+  });
+}
+
 /** The series' rollups starting from `from` to before `to`, read in pieces the core serves. */
 export async function rollups(
   core: Readonly<Pick<Core, "statistics">>,
@@ -57,26 +96,9 @@ export async function rollups(
   from: Readonly<Date>,
   to: Readonly<Date>,
 ): Promise<Rolled[]> {
-  const reads = await Promise.all(
-    piecesOf(period, from.getTime(), to.getTime()).map((p) =>
-      core.statistics(device, series, period, new Date(p[0]), new Date(p[1])),
-    ),
-  );
+  const [rolled] = await rollupsOf(core, device, [series], period, from, to);
 
-  const out: Rolled[] = [];
-
-  for (const read of reads)
-    for (const p of "points" in read ? read.points : [])
-      out.push({
-        start: Date.parse(p.start),
-        end: Date.parse(p.end),
-        integral: p.integral ?? 0,
-        mean: p.mean ?? 0,
-        max: p.max ?? null,
-        covered: (p.hours ?? 0) * H,
-      });
-
-  return out;
+  return rolled ?? [];
 }
 
 /**

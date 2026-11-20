@@ -95,9 +95,9 @@ test("while the sessions read, a skeleton holds their place", async () => {
   served.rolled = (a) =>
     a.series === "battery.discharge.power" ? new Promise<Response>(() => {}) : plant(CHARGED)(a);
 
-  const { sheet, head } = await sheetOf("ev");
+  // The head's energy is read in the same request as the sessions' series (ADR 9), so it waits too.
+  const { sheet } = await sheetOf("ev");
 
-  await expect.element(head.getByText("12,0 kWh")).toBeVisible();
   await expect
     .element(sheet.getByRole("region", { name: "Verlauf" }).getByRole("status"))
     .toBeVisible();

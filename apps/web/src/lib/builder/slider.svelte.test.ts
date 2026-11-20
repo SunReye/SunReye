@@ -91,15 +91,20 @@ function readingCore(corrections: () => Corrections): Transport & { readonly put
         // Local midnight; no clock change on the days asked.
         const noon = Date.parse(url.searchParams.get("from") ?? "") + 12 * 3_600_000;
 
+        const points = [
+          {
+            start: new Date(noon).toISOString(),
+            end: new Date(noon + 3_600_000).toISOString(),
+            mean: 812,
+          },
+        ];
+
         return Response.json({
-          tier: "bucket",
-          points: [
-            {
-              start: new Date(noon).toISOString(),
-              end: new Date(noon + 3_600_000).toISOString(),
-              mean: 812,
-            },
-          ],
+          series: url.searchParams.getAll("series").map((series) => ({
+            series,
+            tier: "bucket",
+            points,
+          })),
         });
       }
 
@@ -186,9 +191,13 @@ test("the scene's sky is the weather of the slider's day", async () => {
     to: new Date("2026-11-02T00:00").toISOString(),
   }).toString();
 
+  // One request a source names every series it reads.
   const weather = (route: string, series: string) =>
     asked.find(
-      (url) => url.includes(`/devices/4294967295/${route}?series=${series}&`) && url.endsWith(day),
+      (url) =>
+        url.includes(`/devices/4294967295/${route}?`) &&
+        new URL(url).searchParams.getAll("series").includes(series) &&
+        url.endsWith(day),
     );
 
   await expect.poll(() => weather("forecasts", "weather.ghi")).toBeDefined();

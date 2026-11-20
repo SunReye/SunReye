@@ -170,13 +170,27 @@ export async function readPlant(
   ]);
 }
 
-/** The `points` of a history, statistics or forecasts answer; none for any other. */
-export function pointsOf(text: string | null): readonly unknown[] {
+/** The series of a history, statistics or forecasts answer (ADR 9); none for any other. */
+function answersOf(text: string | null): readonly unknown[] {
   const body: unknown = text === null || text === "" ? null : JSON.parse(text);
 
-  return body instanceof Object && "points" in body && Array.isArray(body.points)
-    ? body.points
+  return body instanceof Object && "series" in body && Array.isArray(body.series)
+    ? body.series
     : [];
+}
+
+/** Every series' `points` of a history, statistics or forecasts answer; none for any other. */
+export function pointsOf(text: string | null): readonly unknown[] {
+  const points: unknown[] = [];
+
+  for (const answer of answersOf(text))
+    if (answer instanceof Object && "points" in answer && Array.isArray(answer.points)) {
+      const found: readonly unknown[] = answer.points;
+
+      points.push(...found);
+    }
+
+  return points;
 }
 
 /** The oldest year `/records` lists. */

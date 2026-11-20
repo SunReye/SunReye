@@ -3,6 +3,7 @@
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
+import { perSeries as eachSeries } from "../api/core.harness.ts";
 import type { WeatherReader } from "./weather.ts";
 import WeatherDetail from "./WeatherDetail.svelte";
 
@@ -35,29 +36,29 @@ function fake(stored: Stored) {
     );
 
   const core: WeatherReader = {
-    history: (device, series) => {
+    history: eachSeries((device, series: string) => {
       devices.push(device);
 
-      return Promise.resolve({
-        tier: "hour",
+      return {
+        tier: "hour" as const,
         points: hours("history", series).map(({ at, value }) => ({
           start: new Date(at).toISOString(),
           end: new Date(at + HOUR).toISOString(),
           mean: value,
         })),
-      });
-    },
-    forecasts: (device, series) => {
+      };
+    }),
+    forecasts: eachSeries((device, series: string) => {
       devices.push(device);
 
-      return Promise.resolve({
+      return {
         points: hours("forecasts", series).map(({ at, value }) => ({
           issued: new Date(START).toISOString(),
           target: new Date(at).toISOString(),
           value,
         })),
-      });
-    },
+      };
+    }),
   };
 
   return { core, devices };

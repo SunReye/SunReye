@@ -3,6 +3,7 @@ import { beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect, type Transport } from "../api/core.ts";
+import { eachSeries } from "../api/core.harness.ts";
 import { Studio } from "../scene/studio.ts";
 import Builder from "./Builder.svelte";
 import { DEVICES, house, inspector, MODULE, pv } from "./builder.harness.ts";
@@ -19,14 +20,14 @@ const snowedIn: Transport = {
     const url = new URL(request.url);
 
     if (url.pathname.endsWith("/history")) {
-      return Promise.resolve(Response.json({ tier: "raw", points: [] }));
+      return Promise.resolve(eachSeries(request.url, () => ({ tier: "raw", points: [] })));
     }
 
     if (!url.pathname.endsWith("/forecasts")) return Promise.withResolvers<Response>().promise;
 
     const from = Date.parse(url.searchParams.get("from") ?? "");
     const to = Date.parse(url.searchParams.get("to") ?? "");
-    const points = [];
+    const points: { issued: string; target: string; value: number }[] = [];
 
     for (let at = from; at < to; at += QUARTER) {
       points.push({
@@ -36,7 +37,7 @@ const snowedIn: Transport = {
       });
     }
 
-    return Promise.resolve(Response.json({ points }));
+    return Promise.resolve(eachSeries(request.url, () => ({ points })));
   },
 };
 

@@ -1,6 +1,6 @@
 # 24. Performance at ten years
 
-Status: accepted (2026-11-20), amended (2026-11-20, twice)
+Status: accepted (2026-11-20), amended (2026-11-20, three times)
 
 ## Context
 
@@ -33,6 +33,7 @@ ADR 2 chose the runtime from known costs rather than measured ones. An install r
   | Peak memory | ≤ 48 MB |
   | Writes at a steady state | ≤ 50 MB a day |
 
+- **Batched reads.** A range read lists up to 16 series of one device (ADR 9), so a screen's reads are fewer requests. The one-read budget holds per series: the harness divides a batch's time by its series and checks that against 100 ms at p95. A batch does not hold the storage thread: the core sends each series' read to it as its own request, one after another, and the thread answers its queue in order, so a write or another screen's read queued meanwhile is answered between two series rather than after the batch.
 - **A breach.** The command prints each measurement beside its budget and exits non-zero on any breach. A breach blocks a release until it is fixed, or until this ADR raises the budget with a reason. No history of runs is kept: a run on an earlier commit is the comparison.
 - **When.** On demand and before every release, never in the gate (ADR 13).
 

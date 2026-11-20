@@ -86,6 +86,7 @@ impl From<Refusal> for Refused {
         Self {
             problem: refusal.into(),
             pointer,
+            series: None,
         }
     }
 }

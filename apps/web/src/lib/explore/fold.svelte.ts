@@ -1,6 +1,6 @@
 // Fold mode's state (ADR 22): whether the series folds, the period from the hash route, and the
 // statistics read for the range, one call per fold.
-import type { Period } from "../api/core.ts";
+import { only, type Period } from "../api/core.ts";
 import { foldTable } from "./csv.ts";
 import {
   FOLD_PARAM,
@@ -75,8 +75,8 @@ export class Fold extends ModeView<Folded | null> {
 
     // An unreachable core rejects; a refusal answers with a problem.
     const read = await core
-      .statistics(ref.device, ref.series, period, new Date(from), new Date(to))
-      .catch(() => ({ problem: "network" }) as const);
+      .statistics(ref.device, [ref.series], period, new Date(from), new Date(to))
+      .then(only, () => ({ problem: "network" }) as const);
 
     const base = { ref, period, zone, attempt, from: from.getTime(), to: to.getTime() };
 

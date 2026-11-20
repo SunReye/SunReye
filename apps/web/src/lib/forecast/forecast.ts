@@ -1,6 +1,6 @@
 // What the solar forecast screen shows (ADR 17): each inverter's total, each MPPT input and its
 // strings, with estimated strings marked.
-import type { Core, PvString } from "../api/core.ts";
+import { only, type Core, type PvString } from "../api/core.ts";
 import { flowColour, mpptColour } from "../energy-colours.ts";
 import { m } from "../paraglide/messages.js";
 import { intervals, spread, type Span } from "../range/fill.ts";
@@ -203,7 +203,9 @@ export async function forecastTargets(
 
   const reads = await Promise.all(
     starts.map((a) =>
-      core.forecasts(device, series, new Date(a), new Date(Math.min(to.getTime(), a + PIECE))),
+      core
+        .forecasts(device, [series], new Date(a), new Date(Math.min(to.getTime(), a + PIECE)))
+        .then(only),
     ),
   );
 

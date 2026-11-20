@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { connect } from "../api/core.ts";
+import { eachSeries } from "../api/core.harness.ts";
 import { readDay } from "./day.ts";
 
 /** Each history, statistics and forecast read, as its route, series and `from`. */
@@ -18,14 +19,13 @@ function fake(zone: string) {
 
       if (route === "timezone") return Promise.resolve(Response.json({ name: zone }));
 
-      if (["history", "statistics", "forecasts"].includes(route))
-        asked.push({
-          route,
-          series: url.searchParams.get("series"),
-          from: url.searchParams.get("from"),
-        });
+      if (!["history", "statistics", "forecasts"].includes(route))
+        return Promise.resolve(Response.json({ strings: [] }));
 
-      return Promise.resolve(Response.json({ points: [], strings: [] }));
+      for (const series of url.searchParams.getAll("series"))
+        asked.push({ route, series, from: url.searchParams.get("from") });
+
+      return Promise.resolve(eachSeries(request.url, () => ({ points: [] })));
     },
   });
 
@@ -53,7 +53,6 @@ test("the day's weather is the weather device's at the instant it was read", asy
     base: "http://core.test/",
     fetch: (request) => {
       const url = new URL(request.url);
-      const series = url.searchParams.get("series");
       const weather = url.pathname.endsWith("/devices/4294967295/forecasts");
 
       if (url.pathname.endsWith("/timezone"))
@@ -77,11 +76,13 @@ test("the day's weather is the weather device's at the instant it was read", asy
         },
       ];
 
+      if (!/\/(?:history|statistics|forecasts)$/u.test(url.pathname))
+        return Promise.resolve(Response.json({ strings: [] }));
+
       return Promise.resolve(
-        Response.json({
+        eachSeries(request.url, (series) => ({
           points: weather && series === "weather.code" ? points : [],
-          strings: [],
-        }),
+        })),
       );
     },
   });

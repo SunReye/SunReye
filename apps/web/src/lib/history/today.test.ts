@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { connect } from "../api/core.ts";
+import { eachSeries } from "../api/core.harness.ts";
 import { readDay } from "../dashboard/day.ts";
 import { sumOf } from "./flows.ts";
 import { readPlant } from "./plant-read.ts";
@@ -48,16 +49,14 @@ const CURVE = {
 const ROUTES = new Map(
   Object.entries({
     timezone: () => Response.json({ name: "UTC" }),
-    statistics: (q: Readonly<URLSearchParams>) =>
-      Response.json(
-        rollup(
-          q.get("series") ?? "",
-          Date.parse(q.get("from") ?? ""),
-          Date.parse(q.get("to") ?? ""),
-        ),
-      ),
-    history: () => Response.json(CURVE),
-    forecasts: () => Response.json({ points: [] }),
+    statistics: (href: string) => {
+      const q = new URL(href).searchParams;
+      const [from, to] = [Date.parse(q.get("from") ?? ""), Date.parse(q.get("to") ?? "")];
+
+      return eachSeries(href, (series) => rollup(series, from, to));
+    },
+    history: (href: string) => eachSeries(href, () => CURVE),
+    forecasts: (href: string) => eachSeries(href, () => ({ points: [] })),
     layout: () => Response.json({ strings: [] }),
   }),
 );
@@ -70,7 +69,7 @@ function fake() {
       const route = ROUTES.get(url.pathname.split("/").at(-1) ?? "");
 
       return route
-        ? Promise.resolve(route(url.searchParams))
+        ? Promise.resolve(route(request.url))
         : Promise.resolve(
             Response.json(
               { code: "tariff.none", status: 404 },

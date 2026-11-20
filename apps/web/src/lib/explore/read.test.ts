@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import type { History, Statistics } from "../api/core.ts";
+import type { History, Problem, Statistics } from "../api/core.ts";
+import { perSeries } from "../api/core.harness.ts";
 import type { Chosen } from "./picker.ts";
 import { expired, readSeries, type Reads } from "./read.ts";
 
@@ -18,7 +19,10 @@ const QUARTER = [new Date("2026-08-01T00:00:00Z"), new Date("2026-11-01T00:00:00
 const H = (hour: number) => `2026-11-10T${String(hour).padStart(2, "0")}:00:00Z`;
 const ms = (hour: number) => Date.parse(H(hour));
 
-const RAW: History = {
+/** One series' answer, before the core names it. */
+type Unnamed<T> = Omit<T, "series">;
+
+const RAW: Unnamed<History> = {
   tier: "raw",
   points: [
     { start: H(0), end: H(2), mean: 5 },
@@ -33,7 +37,7 @@ const figure = (hour: number, more: Partial<Statistics["points"][number]>) => ({
   ...more,
 });
 
-const MEANS: Statistics = {
+const MEANS: Unnamed<Statistics> = {
   period: "hour",
   points: [
     figure(0, { mean: 10, min: 4, max: 21 }),
@@ -42,32 +46,32 @@ const MEANS: Statistics = {
   ],
 };
 
-const DELTAS: Statistics = {
+const DELTAS: Unnamed<Statistics> = {
   period: "hour",
   points: [figure(0, { delta: 1.5 }), figure(1, { delta: 0 })],
 };
 
-const NONE: Statistics = { period: "hour", points: [] };
+const NONE: Unnamed<Statistics> = { period: "hour", points: [] };
 
 /** A core answering every read alike, and the reads it was asked. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the core's own answers.
 function core(answers: {
-  history?: Awaited<ReturnType<Reads["history"]>>;
-  statistics?: Awaited<ReturnType<Reads["statistics"]>>;
+  history?: Unnamed<History> | Problem;
+  statistics?: Unnamed<Statistics> | Problem;
 }) {
   const asked: string[] = [];
 
   const reads: Reads = {
-    history: (device, name, from, to) => {
+    history: perSeries((device, name, from: Date, to: Date) => {
       asked.push(`history ${device} ${name} ${from.toISOString()} ${to.toISOString()}`);
 
-      return Promise.resolve(answers.history ?? { tier: "raw", points: [] });
-    },
-    statistics: (device, name, period) => {
+      return answers.history ?? { tier: "raw" as const, points: [] };
+    }),
+    statistics: perSeries((_device, _name, period: Statistics["period"]) => {
       asked.push(`statistics ${period}`);
 
-      return Promise.resolve(answers.statistics ?? NONE);
-    },
+      return answers.statistics ?? NONE;
+    }),
   };
 
   return { reads, asked };

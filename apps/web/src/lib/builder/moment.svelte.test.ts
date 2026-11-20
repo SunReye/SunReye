@@ -1,6 +1,7 @@
 import { flushSync } from "svelte";
 import { expect, test } from "vitest";
 import { connect } from "../api/core.ts";
+import { eachSeries } from "../api/core.harness.ts";
 import { pv } from "./builder.harness.ts";
 import { emptyDraft } from "./modules.ts";
 import type { SceneWeather } from "../scene/weather.ts";
@@ -16,11 +17,11 @@ const snowedIn = connect({
     const url = new URL(request.url);
 
     if (url.pathname.endsWith("/history"))
-      return Promise.resolve(Response.json({ tier: "raw", points: [] }));
+      return Promise.resolve(eachSeries(request.url, () => ({ tier: "raw", points: [] })));
 
     const from = Date.parse(url.searchParams.get("from") ?? "");
     const to = Date.parse(url.searchParams.get("to") ?? "");
-    const points = [];
+    const points: { issued: string; target: string; value: number }[] = [];
 
     for (let at = from; at < to; at += QUARTER) {
       points.push({
@@ -30,7 +31,7 @@ const snowedIn = connect({
       });
     }
 
-    return Promise.resolve(Response.json({ points }));
+    return Promise.resolve(eachSeries(request.url, () => ({ points })));
   },
 });
 

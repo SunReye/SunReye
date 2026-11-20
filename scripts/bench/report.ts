@@ -130,9 +130,17 @@ export interface Slowest {
   readonly samples: number;
 }
 
+/** How many series a request reads: a range read lists 1 to 16, any other read is one. */
+function seriesOf(path: string): number {
+  const query = path.split("?")[1] ?? "";
+
+  return Math.max(1, new URLSearchParams(query).getAll("series").length);
+}
+
 /**
- * Each route's slowest request by its own p95, routes in order. Pooling a route's requests would
- * hide a year-long read among many day-long ones.
+ * Each route's slowest request by its own p95, routes in order, a batch's time divided by the
+ * series it reads (ADR 24). Pooling a route's requests would hide a year-long read among many
+ * day-long ones.
  */
 export function slowest(timings: readonly Timing[]): Slowest[] {
   const byPath = Map.groupBy(timings, (timing) => timing.path);
@@ -142,7 +150,7 @@ export function slowest(timings: readonly Timing[]): Slowest[] {
     const found = {
       route: route(path),
       path,
-      p95: p95(times.map((t) => t.ms)),
+      p95: p95(times.map((t) => t.ms / seriesOf(path))),
       samples: times.length,
     };
 

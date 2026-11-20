@@ -1,6 +1,7 @@
 // The forecast screen's test core and readers, shared by its component tests.
 import { page } from "vitest/browser";
 import type { Transport } from "../api/core.ts";
+import { eachSeries } from "../api/core.harness.ts";
 
 const WIRING = { moduleType: 1, modules: 16, optimized: 0, tilt: 35, loss: 2 };
 
@@ -98,15 +99,14 @@ export function testCore(plant: Plant): Transport & { readonly asked: string[] }
 
       if (fixed(last)) return Promise.resolve(Response.json(FIXED[last]));
 
-      const series = url.searchParams.get("series") ?? "";
-
-      asked.push(`${url.pathname} ${series}`);
+      for (const series of url.searchParams.getAll("series"))
+        asked.push(`${url.pathname} ${series}`);
 
       const from = Date.parse(url.searchParams.get("from") ?? "");
       const to = Date.parse(url.searchParams.get("to") ?? "");
 
       return Promise.resolve(
-        Response.json(
+        eachSeries(request.url, (series) =>
           last === "statistics" ? statistics(plant, series, from, to) : forecasts(plant, from, to),
         ),
       );
