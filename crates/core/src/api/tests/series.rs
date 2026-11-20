@@ -132,7 +132,7 @@ async fn a_device_without_stored_history_is_not_listed() {
         issued: at(0),
         step: 1.0,
         values: vec![(at(3600), 500.0)],
-        keep: Keep::Every,
+        keep: Keep::Ahead,
     };
     core.storage
         .forecast(weather::DEVICE, forecast, issue)

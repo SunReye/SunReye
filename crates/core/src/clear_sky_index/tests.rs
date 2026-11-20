@@ -157,7 +157,7 @@ async fn clear_sky() -> BTreeMap<u64, f64> {
             issued: at(FIRST - DAY),
             step: 0.001,
             values: skies.iter().map(|(t, w)| (at(*t), value(w))).collect(),
-            keep: Keep::Every,
+            keep: Keep::Ahead,
         };
         let series = plant.bus.intern(name, None);
         plant
@@ -487,7 +487,7 @@ async fn forecast_snow_depth_stands_in_until_the_archive_has_it() {
         issued: at(FIRST - DAY),
         step: 0.001,
         values: (0..24).map(|h| (at(FIRST + h * HOUR), 0.2)).collect(),
-        keep: Keep::Every,
+        keep: Keep::Ahead,
     };
     let series = plant.bus.intern("weather.snow_depth", None);
     plant

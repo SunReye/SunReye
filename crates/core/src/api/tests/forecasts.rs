@@ -29,7 +29,7 @@ impl Core {
             issued: at(issued),
             step: 1.0,
             values: values.iter().map(|&(t, v)| (at(t), v)).collect(),
-            keep: Keep::Every,
+            keep: Keep::Ahead,
         };
         self.storage.forecast(DEVICE, series, issue).await.unwrap();
     }
@@ -61,23 +61,6 @@ async fn forecasts_come_from_the_latest_issue_of_each_target() {
             { "target": instant(4500), "issued": instant(600), "value": 150.0 },
             { "target": instant(5400), "issued": instant(0), "value": 200.0 },
         ]})
-    );
-}
-
-#[tokio::test]
-async fn an_earlier_issue_is_selected_by_issued_before() {
-    let dir = tempfile::tempdir().unwrap();
-    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
-    core.issue(0, &[(4500, 100.0)]).await;
-    core.issue(600, &[(4500, 150.0)]).await;
-
-    let query = format!("{}&issuedBefore={}", range(3600, 7200), instant(600));
-    let (status, body) = core.forecasts(&set_cookie, &query).await;
-
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(
-        body,
-        json!({ "points": [{ "target": instant(4500), "issued": instant(0), "value": 100.0 }] })
     );
 }
 

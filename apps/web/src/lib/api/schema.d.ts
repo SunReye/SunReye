@@ -3403,8 +3403,6 @@ export interface operations {
                 from: string;
                 /** @description The instant after the last target, RFC 3339. */
                 to: string;
-                /** @description Only issues before this instant, RFC 3339; the latest issue when absent. */
-                issuedBefore?: string;
             };
             header?: never;
             path: {

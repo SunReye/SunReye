@@ -402,7 +402,7 @@ async fn forecasts(storage: &Storage, series: SeriesId) -> Vec<Issued> {
 }
 
 async fn issue(storage: &Storage, series: SeriesId, issued: f64, values: &[(f64, f64)]) {
-    kept(storage, series, Keep::Every, issued, values).await;
+    kept(storage, series, Keep::Ahead, issued, values).await;
 }
 
 async fn kept(storage: &Storage, series: SeriesId, keep: Keep, issued: f64, values: &[(f64, f64)]) {
@@ -453,54 +453,50 @@ async fn an_issue_keeps_its_targets_from_the_start_of_its_hour() {
     );
 }
 
+/// Each target keeps its latest issue made before its hour (ADR 15); an issue within the hour
+/// fills only a target nothing forecast.
 #[tokio::test]
-async fn a_passed_target_hour_keeps_only_its_latest_issue() {
+async fn a_target_keeps_its_latest_issue_made_before_its_hour() {
     let dir = tempfile::tempdir().unwrap();
     let plant = Plant::new();
     let storage = plant
         .open(&dir.path().join("history.sqlite"), epoch())
         .await;
-    let ghi = plant.bus.intern("weather.ghi", None);
+    let pv = plant.bus.intern("pv.power", None);
     let hours = [(0.0, 1.0), (1800.0, 1.0), (3600.0, 1.0), (7200.0, 1.0)];
-    issue(&storage, ghi, 0.0, &hours).await;
+    issue(&storage, pv, 0.0, &hours).await;
     let hours = [(0.0, 2.0), (1800.0, 2.0), (3600.0, 2.0), (7200.0, 2.0)];
-    issue(&storage, ghi, 60.0, &hours).await;
-    issue(&storage, ghi, 3660.0, &[(3600.0, 3.0), (7200.0, 3.0)]).await;
-    issue(&storage, ghi, 7260.0, &[(7200.0, 4.0), (8100.0, 4.0)]).await;
-    // An issue within a target's hour forecasts it only where nothing did before (ADR 15).
+    issue(&storage, pv, 60.0, &hours).await;
+    issue(&storage, pv, 3660.0, &[(3600.0, 3.0), (7200.0, 3.0)]).await;
+    issue(&storage, pv, 7260.0, &[(7200.0, 4.0), (8100.0, 4.0)]).await;
     assert_eq!(
-        forecasts(&storage, ghi).await,
+        forecasts(&storage, pv).await,
         [
             (0.0, 0.0, 1.0),
             (1800.0, 0.0, 1.0),
             (3600.0, 60.0, 2.0),
-            (7200.0, 0.0, 1.0),
-            (7200.0, 60.0, 2.0),
             (7200.0, 3660.0, 3.0),
             (8100.0, 7260.0, 4.0),
         ]
     );
 }
 
-/// A passed target keeps its own latest issue, though a later issue of its hour lacks it.
+/// A value an issue leaves unchanged keeps its row and earlier issue time, and a target an
+/// issue lacks keeps its own.
 #[tokio::test]
-async fn a_passed_target_keeps_its_latest_issue_though_a_later_one_lacks_it() {
+async fn an_unchanged_or_missing_target_keeps_its_earlier_issue() {
     let dir = tempfile::tempdir().unwrap();
     let plant = Plant::new();
     let storage = plant
         .open(&dir.path().join("history.sqlite"), epoch())
         .await;
-    let ghi = plant.bus.intern("weather.ghi", None);
-    issue(&storage, ghi, 0.0, &[(3600.0, 1.0), (4500.0, 1.0)]).await;
-    issue(&storage, ghi, 60.0, &[(4500.0, 2.0)]).await;
-    issue(&storage, ghi, 7260.0, &[(7200.0, 3.0)]).await;
+    let pv = plant.bus.intern("pv.power", None);
+    let quarters = [(3600.0, 1.0), (4500.0, 1.0), (5400.0, 1.0)];
+    issue(&storage, pv, 0.0, &quarters).await;
+    issue(&storage, pv, 60.0, &[(3600.0, 1.0), (4500.0, 2.0)]).await;
     assert_eq!(
-        forecasts(&storage, ghi).await,
-        [
-            (3600.0, 0.0, 1.0),
-            (4500.0, 60.0, 2.0),
-            (7200.0, 7260.0, 3.0)
-        ]
+        forecasts(&storage, pv).await,
+        [(3600.0, 0.0, 1.0), (4500.0, 60.0, 2.0), (5400.0, 0.0, 1.0)]
     );
 }
 
@@ -533,7 +529,7 @@ async fn an_issue_kept_alone_replaces_the_earlier_issues_of_its_targets() {
 }
 
 /// The weather forecasts stored before a weather target kept its latest issue alone (ADR 15) keep
-/// only that issue on upgrade; another device's issues stay.
+/// only that issue on upgrade.
 #[tokio::test]
 async fn weather_forecasts_keep_their_latest_issue_on_upgrade() {
     let dir = tempfile::tempdir().unwrap();
@@ -573,13 +569,44 @@ async fn weather_forecasts_keep_their_latest_issue_on_upgrade() {
     assert_eq!(
         rows,
         [
-            (7, 1, 100, 10, 6),
             (7, 1, 100, 20, 7),
             (4_294_967_295, 1, 100, 20, 2),
             (4_294_967_295, 1, 200, 10, 3),
             (4_294_967_295, 2, 100, 30, 4),
         ]
     );
+}
+
+/// Every forecast keeps only its latest issue of each target on upgrade (ADR 15).
+#[tokio::test]
+async fn forecasts_keep_their_latest_issue_of_each_target_on_upgrade() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("core.sqlite");
+    let old = rusqlite::Connection::open(&path).unwrap();
+    for sql in &super::thread::MIGRATIONS[..37] {
+        old.execute_batch(sql).unwrap();
+    }
+    old.pragma_update(None, "user_version", 37).unwrap();
+    old.execute_batch(
+        "INSERT INTO forecast (device, series, target, issued, value) VALUES
+           (7, 1, 100, 10, 6), (7, 1, 100, 20, 7), (7, 1, 200, 10, 8), (7, 2, 100, 5, 9);",
+    )
+    .unwrap();
+    drop(old);
+
+    drop(Storage::open(&path, epoch(), "UTC", &Bus::default()).unwrap());
+
+    let rows: Vec<(i64, i64, i64, i64)> = rusqlite::Connection::open(&path)
+        .unwrap()
+        .prepare("SELECT series, target, issued, value FROM forecast")
+        .unwrap()
+        .query_map([], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+        })
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(rows, [(1, 100, 20, 7), (1, 200, 10, 8), (2, 100, 5, 9)]);
 }
 
 /// The weather forecasts stored for hours archive weather answers (ADR 17) go on upgrade: the

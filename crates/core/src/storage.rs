@@ -151,15 +151,14 @@ pub struct Issue {
     pub keep: Keep,
 }
 
-/// Which issues of a target the forecast store keeps (ADR 15).
+/// Which issue of a target the forecast store keeps, one alone (ADR 15). A value an issue leaves
+/// unchanged keeps its row and earlier issue time, so an unchanged forecast writes nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Keep {
-    /// Every issue until the target's hour passes, then the latest, so forecast accuracy can be
-    /// compared.
-    Every,
-    /// The latest alone: an issue replaces the earlier ones of the targets it covers. A value it
-    /// leaves unchanged keeps its row and earlier issue time, so an unchanged forecast writes
-    /// nothing.
+    /// The latest made before the target's hour: an issue leaves a target of its own hour as an
+    /// earlier issue forecast it, so forecast accuracy can be compared.
+    Ahead,
+    /// The latest, also one made within the target's hour.
     Latest,
 }
 

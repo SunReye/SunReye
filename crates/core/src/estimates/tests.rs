@@ -103,7 +103,7 @@ impl Plant {
             issued: at(NOON - 3600),
             step: 1.0,
             values: vec![(at(NOON), watts)],
-            keep: Keep::Every,
+            keep: Keep::Ahead,
         };
         self.storage
             .forecast(

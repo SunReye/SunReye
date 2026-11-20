@@ -139,7 +139,7 @@ impl SolarForecast {
                 issued,
                 step: STEP,
                 values,
-                keep: Keep::Every,
+                keep: Keep::Ahead,
             };
             storage
                 .forecast(device, self.bus.intern(role, index), issue)

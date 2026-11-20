@@ -1,6 +1,6 @@
 # 9. API and capabilities
 
-Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-10, 2026-11-12, 2026-11-13, 2026-11-16, 2026-11-19)
+Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-10, 2026-11-12, 2026-11-13, 2026-11-16, 2026-11-19, 2026-11-20)
 
 ## Context
 
@@ -34,7 +34,7 @@ The SPA, the CLI and integrations consume one surface. v4 retrofitted capability
 
 **Energy balance.** `GET /api/v1/balance` by the range `from` to before `to` returns each plant-local day starting in it with rolled-up history: its residual in kWh and each consuming point's (ADR 14). An empty range, or one longer than the day tier's, is refused as `history.range`.
 
-**Forecasts.** `GET /api/v1/devices/{id}/forecasts` by series and range, with the same 1,500-point cap. It returns the latest issue by default; `issuedBefore` selects an earlier one, so forecast accuracy can be compared (ADR 15).
+**Forecasts.** `GET /api/v1/devices/{id}/forecasts` by series and range, with the same 1,500-point cap. It returns each target's one kept issue (ADR 15).
 
 **Problems.** `GET /api/v1/problems` lists the conditions degrading the core by stable code, such as `clock.unsynced` (ADR 3).
 

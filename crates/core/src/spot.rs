@@ -188,7 +188,7 @@ impl<P: Provider> SpotPrices<P> {
             issued,
             step: STEP,
             values: slots.iter().map(|s| (s.start, s.price)).collect(),
-            keep: Keep::Every,
+            keep: Keep::Ahead,
         };
         storage.forecast(DEVICE, self.series, issue).await?;
         Ok(())

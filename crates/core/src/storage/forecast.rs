@@ -10,8 +10,10 @@ use super::encode::Tick;
 /// An hour in ticks.
 const HOUR: Tick = 36_000;
 
-/// Writes one issue's points as `(target, value)` from the start of the issue's hour, so its
-/// hour is whole, keeping the issues `keep` asks for.
+/// Writes one issue's points as `(target, value)` from the start of the issue's hour, each its
+/// target's only row. A changed value is updated in place and an unchanged one is left alone, so
+/// a forecast that holds writes no page. Under [`Keep::Ahead`] a target of the issue's own hour
+/// keeps the row an earlier issue gave it.
 pub fn write(
     tx: &Transaction<'_>,
     (device, series): (u32, i64),
@@ -20,52 +22,10 @@ pub fn write(
     keep: Keep,
 ) -> rusqlite::Result<()> {
     let hour = issued - issued.rem_euclid(HOUR);
-    let points = points.filter(|(target, _)| *target >= hour);
-    match keep {
-        Keep::Every => every(tx, (device, series), (issued, hour), points),
-        Keep::Latest => latest(tx, (device, series), issued, points),
-    }
-}
-
-/// Adds the issue beside the earlier ones, a target of its own hour only where none forecast it,
-/// then keeps only each passed target's latest issue (ADR 15).
-fn every(
-    tx: &Transaction<'_>,
-    (device, series): (u32, i64),
-    (issued, hour): (Tick, Tick),
-    points: impl Iterator<Item = (Tick, i64)>,
-) -> rusqlite::Result<()> {
-    let mut insert = tx.prepare_cached(
-        "INSERT INTO forecast (device, series, target, issued, value)
-         SELECT ?1, ?2, ?3, ?4, ?5 WHERE ?3 >= ?6 OR NOT EXISTS (
-           SELECT 1 FROM forecast WHERE device = ?1 AND series = ?2 AND target = ?3
-         )
-         ON CONFLICT DO UPDATE SET value = excluded.value",
-    )?;
-    let next = hour + HOUR;
-    for (target, value) in points {
-        insert.execute(params![device, series, target, issued, value, next])?;
-    }
-    tx.execute(
-        "DELETE FROM forecast AS old
-         WHERE device = ?1 AND series = ?2 AND target < ?3
-         AND issued < (
-           SELECT max(issued) FROM forecast
-           WHERE device = old.device AND series = old.series AND target = old.target
-         )",
-        params![device, series, hour],
-    )?;
-    Ok(())
-}
-
-/// Makes each point its target's only row. A changed value is updated in place and an unchanged
-/// one is left alone, so a forecast that holds writes no page.
-fn latest(
-    tx: &Transaction<'_>,
-    (device, series): (u32, i64),
-    issued: Tick,
-    points: impl Iterator<Item = (Tick, i64)>,
-) -> rusqlite::Result<()> {
+    let replaced_from = match keep {
+        Keep::Ahead => hour + HOUR,
+        Keep::Latest => hour,
+    };
     let mut update = tx.prepare_cached(
         "UPDATE OR REPLACE forecast SET issued = ?4, value = ?5
          WHERE device = ?1 AND series = ?2 AND target = ?3 AND value <> ?5",
@@ -76,9 +36,9 @@ fn latest(
            SELECT 1 FROM forecast WHERE device = ?1 AND series = ?2 AND target = ?3
          )",
     )?;
-    for (target, value) in points {
+    for (target, value) in points.filter(|(target, _)| *target >= hour) {
         let row = params![device, series, target, issued, value];
-        if update.execute(row)? == 0 {
+        if target < replaced_from || update.execute(row)? == 0 {
             insert.execute(row)?;
         }
     }
