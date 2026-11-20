@@ -163,3 +163,11 @@ test("the clear-sky index reaches its newest hour, kept as a block where retenti
 
   expect(indexReach(file)).toBe(410545 * HOUR);
 });
+
+test("a batch is held to the one-read budget per series it reads", () => {
+  const batch = "/api/v1/devices/1/history?series=a&series=b&series=c&series=d&from=x&to=y";
+
+  expect(slowest([{ path: batch, ms: 200 }])).toEqual([
+    { route: "/api/v1/devices/{id}/history", path: batch, p95: 50, samples: 1 },
+  ]);
+});
