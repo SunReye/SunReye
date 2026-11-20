@@ -8,6 +8,7 @@ import { coreContext } from "../lib/shell/core.ts";
 import App from "./shell.harness.svelte";
 import History from "./history/+page.svelte";
 import Home from "./+page.svelte";
+import Dashboard from "../lib/dashboard/Dashboard.svelte";
 import "../app.css";
 
 const PLANT = "4294967294";
@@ -172,4 +173,31 @@ test("History opened from the dashboard reads nothing the dashboard already read
     [`devices/${PLANT}/history`]: 2,
     [`devices/${PLANT}/statistics`]: 18,
   });
+});
+
+test("a dashboard minute reads only today's energies and money", async () => {
+  vi.useFakeTimers({
+    toFake: ["setInterval", "clearInterval", "Date"],
+    now: new Date("2026-11-12T10:01:30Z"),
+  });
+
+  try {
+    const core = connect({
+      base: `${location.origin}/`,
+      fetch: (request) => fake(request) ?? Promise.resolve(answer("")),
+    });
+
+    const screen = await render(Dashboard, { core, layout: null, admin: true });
+
+    await expect.element(screen.getByRole("group", { name: "Heute" })).toBeVisible();
+    await settled(() => urls.length);
+    urls.length = 0;
+
+    vi.advanceTimersByTime(60_000);
+    await settled(() => urls.length);
+
+    expect(tally(urls)).toEqual({ [`devices/${PLANT}/statistics`]: 6, costs: 1 });
+  } finally {
+    vi.useRealTimers();
+  }
 });
