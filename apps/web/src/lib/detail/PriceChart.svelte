@@ -14,7 +14,8 @@
   import ChartReading from "./ChartReading.svelte";
   import ChartEntrance from "../chart-entrance/ChartEntrance.svelte";
 
-  let { day }: { day: Day | undefined } = $props();
+  let { day }: { day: Pick<Day, "zone" | "now" | "start" | "end" | "prices"> | undefined } =
+    $props();
 
   const HOUR = 3_600_000;
   const HEIGHT = 190;
