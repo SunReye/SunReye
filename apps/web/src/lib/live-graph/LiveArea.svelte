@@ -8,9 +8,8 @@
 -->
 <script lang="ts">
   import ChartEntrance from "../chart-entrance/ChartEntrance.svelte";
-  import { Axis, Chart, Layer, Rule } from "layerchart";
+  import { Chart, Layer } from "layerchart";
   import ChartReading from "../detail/ChartReading.svelte";
-  import { KW_AXIS } from "../chart-axis.ts";
   import { valueDomain } from "./domain.ts";
   import { downsample, pointBudget } from "./downsample.ts";
   import { liveCursor } from "./live-cursor.svelte.ts";
@@ -141,8 +140,6 @@
         padding={PADDING}
       >
         <Layer type="svg">
-          <Axis {...KW_AXIS} />
-          {#if diverging}<Rule y={0} class="stroke-foreground/30" />{/if}
           <LiveMarks
             {lastT}
             cursor={cursor.current}
