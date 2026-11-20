@@ -9,7 +9,7 @@ afterEach(async () => {
   await server?.stop(true);
 });
 
-test("history asks the core under its prefix for a series over a range", async () => {
+test("history asks the core under its prefix for its series over a range", async () => {
   const asked: string[] = [];
   server = Bun.serve({
     port: 0,
@@ -18,9 +18,15 @@ test("history asks the core under its prefix for a series over a range", async (
       asked.push(url.pathname + url.search);
 
       return Response.json({
-        tier: "bucket",
-        width: 60,
-        points: [{ start: "2026-11-09T00:00:00Z", end: "2026-11-09T00:01:00Z", mean: 412.5 }],
+        series: [
+          {
+            series: "pv.power",
+            tier: "bucket",
+            width: 60,
+            points: [{ start: "2026-11-09T00:00:00Z", end: "2026-11-09T00:01:00Z", mean: 412.5 }],
+          },
+          { series: "load.power", tier: "raw", points: [] },
+        ],
       });
     },
   });
@@ -28,27 +34,31 @@ test("history asks the core under its prefix for a series over a range", async (
 
   const history = await core.history(
     1,
-    "pv.power",
+    ["pv.power", "load.power"],
     new Date("2026-11-09T00:00:00Z"),
     new Date("2026-11-09T12:00:00Z"),
   );
 
   expect(asked).toEqual([
-    "/prefix/api/v1/devices/1/history?series=pv.power&from=2026-11-09T00%3A00%3A00.000Z&to=2026-11-09T12%3A00%3A00.000Z",
+    "/prefix/api/v1/devices/1/history?series=pv.power&series=load.power&from=2026-11-09T00%3A00%3A00.000Z&to=2026-11-09T12%3A00%3A00.000Z",
   ]);
-  expect(history).toEqual({
-    tier: "bucket",
-    width: 60,
-    points: [{ start: "2026-11-09T00:00:00Z", end: "2026-11-09T00:01:00Z", mean: 412.5 }],
-  });
+  expect(history).toEqual([
+    {
+      series: "pv.power",
+      tier: "bucket",
+      width: 60,
+      points: [{ start: "2026-11-09T00:00:00Z", end: "2026-11-09T00:01:00Z", mean: 412.5 }],
+    },
+    { series: "load.power", tier: "raw", points: [] },
+  ]);
 });
 
 test("a refused history read reports the problem code", async () => {
   const core = connect(scripted(problem(422, "history.range")));
 
-  const history = await core.history(1, "pv.power", new Date(0), new Date(0));
+  const history = await core.history(1, ["pv.power"], new Date(0), new Date(0));
 
-  expect(history).toEqual({ problem: "history.range" });
+  expect(history).toEqual([{ problem: "history.range" }]);
 });
 
 /** A test core that records each request with its method and body. */

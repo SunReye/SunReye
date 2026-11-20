@@ -1,6 +1,6 @@
 // The time slider's day (ADR 20): where each string's production comes from, and its value at an
 // instant. Pure but for the reads it is handed; nothing here touches the scene.
-import type { Core, ModuleType } from "../api/core.ts";
+import { only, type Core, type ModuleType } from "../api/core.ts";
 import type { Draft } from "./modules.ts";
 import type { Location, Pv } from "./pv.ts";
 
@@ -105,7 +105,7 @@ function stored(
       const series = `pv.string.power[${String(id)}]`;
 
       if (source === "measured") {
-        const history = await core.history(device, series, from, to);
+        const history = only(await core.history(device, [series], from, to));
 
         return "problem" in history
           ? []
@@ -118,7 +118,7 @@ function stored(
             );
       }
 
-      const forecasts = await core.forecasts(device, series, from, to);
+      const forecasts = only(await core.forecasts(device, [series], from, to));
 
       return "problem" in forecasts
         ? []

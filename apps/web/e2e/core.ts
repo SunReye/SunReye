@@ -13,7 +13,7 @@ type Query = Readonly<URLSearchParams>;
 
 const periodOf = (q: Query) => PERIODS.find((p) => p === q.get("period")) ?? "day";
 
-const seriesOf = (q: Query) => q.get("series") ?? "";
+const seriesOf = (q: Query) => q.getAll("series");
 
 const spanOf = (q: Query) => ({
   from: Date.parse(q.get("from") ?? ""),
@@ -23,10 +23,15 @@ const spanOf = (q: Query) => ({
 /** A device's reads by kind: its series' history, statistics and forecasts, a setting's value. */
 function deviceReads(plant: Plant) {
   return {
-    history: (device: number, q: Query) => history(plant, device, seriesOf(q), spanOf(q)),
-    statistics: (device: number, q: Query) =>
-      statistics(plant, device, seriesOf(q), periodOf(q), spanOf(q)),
-    forecasts: (device: number, q: Query) => forecasts(plant, device, seriesOf(q), spanOf(q)),
+    history: (device: number, q: Query) => ({
+      series: seriesOf(q).map((s) => history(plant, device, s, spanOf(q))),
+    }),
+    statistics: (device: number, q: Query) => ({
+      series: seriesOf(q).map((s) => statistics(plant, device, s, periodOf(q), spanOf(q))),
+    }),
+    forecasts: (device: number, q: Query) => ({
+      series: seriesOf(q).map((s) => forecasts(plant, device, s, spanOf(q))),
+    }),
     settings: () => ({ value: 120 }),
   };
 }

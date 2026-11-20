@@ -1,7 +1,7 @@
 // Where a series' curve is read from, by its kind and the span (ADR 22): history up to a day,
 // statistics past it; a status or held value from history at any range. One read per series, and
 // one that fails leaves the others standing.
-import type { Core, History, Period, Statistics } from "../api/core.ts";
+import { only, type Core, type History, type Period, type Statistics } from "../api/core.ts";
 import type { Curve, Draw, Sample, Tier } from "./curve.ts";
 import type { Chosen } from "./picker.ts";
 
@@ -94,7 +94,7 @@ interface Ask {
 /** The series' statistics; `hourly` when they stand in for a day's expired change points. */
 async function figures(ask: Ask, period: Period & Tier, hourly: boolean): Promise<Reading> {
   const { device, series } = ask.s.ref;
-  const got = await ask.core.statistics(device, series, period, ask.from, ask.to);
+  const got = only(await ask.core.statistics(device, [series], period, ask.from, ask.to));
 
   if ("problem" in got) return failed(ask.none);
 
@@ -106,7 +106,7 @@ async function figures(ask: Ask, period: Period & Tier, hourly: boolean): Promis
 
 async function history(ask: Ask, rolled: boolean): Promise<Reading> {
   const { device, series } = ask.s.ref;
-  const got = await ask.core.history(device, series, ask.from, ask.to);
+  const got = only(await ask.core.history(device, [series], ask.from, ask.to));
 
   // Only a status or held value is refused for its changes (ADR 9): past 1,500 raw intervals.
   if ("problem" in got)

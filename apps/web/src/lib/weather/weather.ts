@@ -1,7 +1,8 @@
 // The weather at an instant (ADR 23 "The sky"), from the weather device's history and forecasts
 // (ADR 17): what the scene, the now strip and the weather detail show. Pure but for the read it
 // is handed.
-import { WEATHER, type Core, type Forecasts, type History } from "../api/core.ts";
+import type { Core } from "../api/core.ts";
+import { stored } from "./stored.ts";
 
 /** What is known of an instant's weather; null where nothing stored covers it. */
 export interface Weather {
@@ -38,9 +39,6 @@ export interface Weather {
 }
 
 const MINUTE = 60_000;
-
-/** A forecast value is in force this long at most: the hourly quantities' step. */
-const STEP = 60 * MINUTE;
 
 const QUARTER = 15 * MINUTE;
 
@@ -104,74 +102,12 @@ export type WeatherRead = Readonly<Record<string, readonly Held[]>>;
 
 export type WeatherReader = Pick<Core, "history" | "forecasts">;
 
-type Span = readonly [Date, Date];
-
-type Interval = History["points"][number];
-
-type Target = Forecasts["points"][number];
+export type Span = readonly [Date, Date];
 
 /** A span's stored weather with its history and its forecasts apart. */
 export interface WeatherSources {
   readonly measured: WeatherRead;
   readonly forecast: WeatherRead;
-}
-
-async function measured(core: WeatherReader, role: DetailRole, span: Span): Promise<Held[]> {
-  const read = await core.history(WEATHER, role, ...span);
-
-  return "points" in read
-    ? read.points.map(({ start, end, mean }: Readonly<Interval>) => ({
-        from: Date.parse(start),
-        to: Date.parse(end),
-        value: mean,
-      }))
-    : [];
-}
-
-async function forecast(core: WeatherReader, role: DetailRole, span: Span): Promise<Held[]> {
-  const read = await core.forecasts(WEATHER, role, ...span);
-
-  if (!("points" in read)) return [];
-
-  const begun = read.points.map(({ target }: Readonly<Target>) => Date.parse(target));
-
-  return read.points.map(({ value }: Readonly<Target>, i) => {
-    const start = begun[i] ?? 0;
-
-    return { from: start, to: Math.min(begun[i + 1] ?? Infinity, start + STEP), value };
-  });
-}
-
-/** One source of a series; a read the core refuses or fails is empty. */
-async function source(wanted: boolean, read: () => Promise<Held[]>): Promise<Held[]> {
-  if (!wanted) return [];
-
-  try {
-    return await read();
-  } catch {
-    return [];
-  }
-}
-
-/** One series from both sources. */
-type Stored = Readonly<{ role: DetailRole; past: readonly Held[]; ahead: readonly Held[] }>;
-
-/** Each of `series` from both sources; a series the core refuses or fails is empty. */
-function stored(
-  core: WeatherReader,
-  series: readonly (typeof SERIES | typeof DETAIL)[number][],
-  spans: Readonly<{ past: Span; ahead: Span }>,
-): Promise<readonly Stored[]> {
-  return Promise.all(
-    series.map(async ({ role, history, forecasts }) => {
-      const [past, ahead] = await Promise.all([
-        source(history, () => measured(core, role, spans.past)),
-        source(forecasts, () => forecast(core, role, spans.ahead)),
-      ]);
-
-      return { role, past, ahead };
-    }),
-  );
 }
 
 const spanOf = (from: Readonly<Date>, to: Readonly<Date>): Span => [
@@ -186,9 +122,9 @@ export async function readWeather(
   to: Readonly<Date>,
 ): Promise<WeatherRead> {
   const span = spanOf(from, to);
-  const read = await stored(core, SERIES, { past: span, ahead: span });
+  const { past, ahead } = await stored(core, SERIES, { past: span, ahead: span });
 
-  return Object.fromEntries(read.map(({ role, past, ahead }) => [role, [...past, ...ahead]]));
+  return Object.fromEntries(SERIES.map(({ role }) => [role, [...past(role), ...ahead(role)]]));
 }
 
 /**
@@ -206,11 +142,12 @@ export async function readWeatherSources(
 ): Promise<WeatherSources> {
   const spans = { past: spanOf(from, measuredTo), ahead: spanOf(from, to) };
   const all = [...SERIES, ...DETAIL];
-  const read = await stored(core, only ? all.filter((s) => only.includes(s.role)) : all, spans);
+  const chosen = only ? all.filter((s) => only.includes(s.role)) : all;
+  const { past, ahead } = await stored(core, chosen, spans);
 
   return {
-    measured: Object.fromEntries(read.map(({ role, past }) => [role, past])),
-    forecast: Object.fromEntries(read.map(({ role, ahead }) => [role, ahead])),
+    measured: Object.fromEntries(chosen.map(({ role }) => [role, past(role)])),
+    forecast: Object.fromEntries(chosen.map(({ role }) => [role, ahead(role)])),
   };
 }
 

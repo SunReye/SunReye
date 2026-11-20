@@ -1,9 +1,9 @@
 // The plant's rollups and its house load's history over a range (ADR 3, 9); the core caps each
 // read, so a long range is read in pieces.
-import { PLANT, type Core } from "../api/core.ts";
+import { only, PLANT, type Core } from "../api/core.ts";
 import type { Interval } from "../dashboard/today.ts";
 import { PLANT_FLOWS, NO_PLANT, type PlantFlow, type Plant, type Rollups } from "./flows.ts";
-import { rollups, type RollupPeriod } from "./history.ts";
+import { rollupsOf, type RollupPeriod } from "./history.ts";
 
 const DAY = 86_400_000;
 const PIECE = 1400 * DAY;
@@ -18,7 +18,9 @@ async function loadHistory(core: PlantCore, from: number, to: number) {
   for (let a = from; a < to; a += PIECE) pieces.push([a, Math.min(to, a + PIECE)]);
 
   const reads = await Promise.all(
-    pieces.map((p) => core.history(PLANT, PLANT_FLOWS.load, new Date(p[0]), new Date(p[1]))),
+    pieces.map(async (p) =>
+      only(await core.history(PLANT, [PLANT_FLOWS.load], new Date(p[0]), new Date(p[1]))),
+    ),
   );
 
   for (const read of reads) if ("points" in read) out.push(...read.points);
@@ -26,30 +28,28 @@ async function loadHistory(core: PlantCore, from: number, to: number) {
   return out;
 }
 
-/** Every flow's rollups of `period`. */
+/** Every flow's rollups of `period`, read together. */
 export async function readFlows(
   core: Readonly<Pick<Core, "statistics">>,
   period: RollupPeriod,
   from: number,
   to: number,
 ): Promise<Rollups> {
-  const read = (f: PlantFlow) =>
-    rollups(core, PLANT, PLANT_FLOWS[f], period, new Date(from), new Date(to));
+  const series = Object.values(PLANT_FLOWS);
+  const read = await rollupsOf(core, PLANT, series, period, new Date(from), new Date(to));
+  const of = (f: PlantFlow) => read[series.indexOf(PLANT_FLOWS[f])] ?? [];
 
-  const [pv, load, imported, exported, selfUsed, selfCovered, charge, discharge, ev] =
-    await Promise.all([
-      read("pv"),
-      read("load"),
-      read("imported"),
-      read("exported"),
-      read("selfUsed"),
-      read("selfCovered"),
-      read("charge"),
-      read("discharge"),
-      read("ev"),
-    ]);
-
-  return { pv, load, imported, exported, selfUsed, selfCovered, charge, discharge, ev };
+  return {
+    pv: of("pv"),
+    load: of("load"),
+    imported: of("imported"),
+    exported: of("exported"),
+    selfUsed: of("selfUsed"),
+    selfCovered: of("selfCovered"),
+    charge: of("charge"),
+    discharge: of("discharge"),
+    ev: of("ev"),
+  };
 }
 
 /**

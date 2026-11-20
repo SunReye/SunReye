@@ -1,6 +1,7 @@
 import { flushSync } from "svelte";
 import { expect, test, vi } from "vitest";
 import { connect } from "../api/core.ts";
+import { eachSeries } from "../api/core.harness.ts";
 import { LiveSky } from "./sky.svelte.ts";
 
 /** A core whose weather forecast is `ghi` and `dhi` W/m² through every span asked. */
@@ -17,25 +18,26 @@ function weatherCore(ghi: number, dhi: number) {
 
       // The weather device stores no history here: nothing measured the sky.
       if (url.pathname.endsWith("/history"))
-        return Promise.resolve(Response.json({ tier: "raw", points: [] }));
+        return Promise.resolve(eachSeries(request.url, () => ({ tier: "raw", points: [] })));
 
       if (url.pathname.endsWith("/devices/4294967295/forecasts"))
-        asked.push({
-          series: url.searchParams.get("series"),
-          from: Date.parse(url.searchParams.get("from") ?? ""),
-          to: Date.parse(url.searchParams.get("to") ?? ""),
-        });
+        for (const series of url.searchParams.getAll("series"))
+          asked.push({
+            series,
+            from: Date.parse(url.searchParams.get("from") ?? ""),
+            to: Date.parse(url.searchParams.get("to") ?? ""),
+          });
 
       return Promise.resolve(
-        Response.json({
+        eachSeries(request.url, (series) => ({
           points: [
             {
               issued: url.searchParams.get("from"),
               target: target.toISOString(),
-              value: url.searchParams.get("series") === "weather.dhi" ? dhi : ghi,
+              value: series === "weather.dhi" ? dhi : ghi,
             },
           ],
-        }),
+        })),
       );
     },
   });
@@ -86,13 +88,13 @@ function measuredCore(start: number) {
         });
       }
 
-      const index =
-        url.searchParams.get("series") === "weather.clearness" && url.pathname.endsWith("/history");
-
-      return Response.json({
+      return eachSeries(request.url, (series) => ({
         tier: "raw",
-        points: index ? [{ start: iso(-20), end: iso(-5), mean: 0.25 }] : [],
-      });
+        points:
+          series === "weather.clearness" && url.pathname.endsWith("/history")
+            ? [{ start: iso(-20), end: iso(-5), mean: 0.25 }]
+            : [],
+      }));
     },
   });
 

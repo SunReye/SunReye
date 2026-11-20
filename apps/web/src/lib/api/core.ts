@@ -1,5 +1,5 @@
 import { remembering } from "./cache";
-import { open, refusal, type Client, type components, type Problem } from "./client";
+import { bySeries, open, refusal, type Client, type components, type Problem } from "./client";
 import { imports, type Imports } from "./imports";
 import { shared, type Live, type Visibility } from "./live";
 import { layouts, type Layouts } from "./layouts";
@@ -9,6 +9,7 @@ import { plantRecords, type PlantRecords } from "./records";
 import { tariffs, type Tariffs } from "./tariff";
 import { views, type Views } from "./views";
 
+/** One series' history, forecasts or figures per period, by name (ADR 9). */
 export type History = components["schemas"]["History"];
 
 export type Forecasts = components["schemas"]["Forecasts"];
@@ -78,6 +79,11 @@ export interface Transport {
   readonly fetch: (request: Request) => Promise<Response>;
 }
 
+/** The one answer of a range read of one series. */
+export function only<T>(answers: readonly (T | Problem)[]): T | Problem {
+  return answers[0] ?? { problem: "request.query" };
+}
+
 /** The core that served the page, at `base`. */
 export function http(base: string): Transport {
   return { base, fetch: (request) => fetch(request) };
@@ -87,20 +93,33 @@ export function http(base: string): Transport {
 export interface Core extends Setup, Imports, Tariffs, PlantRecords, Layouts, Views, Reference {
   /** Calls `listener` with every value on connect and after each change, until the returned stop. */
   live(listener: (live: Live) => void): () => void;
-  /** Time-weighted means of one series from `from` to before `to`, at the tier the core picks. */
-  history(device: number, series: string, from: Date, to: Date): Promise<History | Problem>;
-  /** One series' figures per plant-local period starting from `from` to before `to`. */
+  /**
+   * Time-weighted means of each of `series` from `from` to before `to`, at the tier the core
+   * picks; one answer or refusal a series, in order (ADR 9).
+   */
+  history(
+    device: number,
+    series: readonly string[],
+    from: Date,
+    to: Date,
+  ): Promise<readonly (History | Problem)[]>;
+  /** Each of `series`' figures per plant-local period starting from `from` to before `to`. */
   statistics(
     device: number,
-    series: string,
+    series: readonly string[],
     period: Period,
     from: Date,
     to: Date,
-  ): Promise<Statistics | Problem>;
+  ): Promise<readonly (Statistics | Problem)[]>;
   /** Every device with stored history, present or removed, with its stored series, by id. */
   series(): Promise<readonly CatalogDevice[] | Problem>;
-  /** The latest forecast of each target of one series from `from` to before `to`. */
-  forecasts(device: number, series: string, from: Date, to: Date): Promise<Forecasts | Problem>;
+  /** The latest forecast of each target of each of `series` from `from` to before `to`. */
+  forecasts(
+    device: number,
+    series: readonly string[],
+    from: Date,
+    to: Date,
+  ): Promise<readonly (Forecasts | Problem)[]>;
   /** Every registered device; admin only. */
   devices(): Promise<readonly Device[] | Problem>;
   /** What the core supports, and each device's settings. */
@@ -132,37 +151,37 @@ export function connect(
 ): Core {
   const client = open(transport.base, transport.fetch);
 
-  return remembering(unremembered(client, transport, page), page);
+  return remembering(unremembered(client, transport, page), page, client);
 }
 
 /** Every read asks the core. */
 function unremembered(client: Client, transport: Transport, page: Visibility | undefined): Core {
   return {
     live: shared(client, page),
-    history: async (device, series, from, to) => {
-      const { data, error, response } = await client.GET("/api/v1/devices/{id}/history", {
-        params: { path: { id: device }, query: span(series, from, to) },
-      });
+    history: (device, series, from, to) =>
+      bySeries(series, async (names) => {
+        const { data, error, response } = await client.GET("/api/v1/devices/{id}/history", {
+          params: { path: { id: device }, query: span(names, from, to) },
+        });
 
-      return data ?? refusal(error, response.status);
-    },
-    statistics: async (device, series, period, from, to) => {
-      const { data, error, response } = await client.GET("/api/v1/devices/{id}/statistics", {
-        params: {
-          path: { id: device },
-          query: { series, period, from: from.toISOString(), to: to.toISOString() },
-        },
-      });
+        return data ? data.series : refusal(error, response.status);
+      }),
+    statistics: (device, series, period, from, to) =>
+      bySeries(series, async (names) => {
+        const { data, error, response } = await client.GET("/api/v1/devices/{id}/statistics", {
+          params: { path: { id: device }, query: { ...span(names, from, to), period } },
+        });
 
-      return data ?? refusal(error, response.status);
-    },
-    forecasts: async (device, series, from, to) => {
-      const { data, error, response } = await client.GET("/api/v1/devices/{id}/forecasts", {
-        params: { path: { id: device }, query: span(series, from, to) },
-      });
+        return data ? data.series : refusal(error, response.status);
+      }),
+    forecasts: (device, series, from, to) =>
+      bySeries(series, async (names) => {
+        const { data, error, response } = await client.GET("/api/v1/devices/{id}/forecasts", {
+          params: { path: { id: device }, query: span(names, from, to) },
+        });
 
-      return data ?? refusal(error, response.status);
-    },
+        return data ? data.series : refusal(error, response.status);
+      }),
     ...layouts(client),
     ...settings(client),
     ...trust(client),
@@ -275,7 +294,7 @@ function status(client: Client): Pick<Core, "problems" | "connections" | "logs">
   };
 }
 
-/** One series over a span, as the history and forecast routes take it. */
-function span(series: string, from: Readonly<Date>, to: Readonly<Date>) {
-  return { series, from: from.toISOString(), to: to.toISOString() };
+/** Series over a span, as the range routes take them. */
+function span(series: readonly string[], from: Readonly<Date>, to: Readonly<Date>) {
+  return { series: [...series], from: from.toISOString(), to: to.toISOString() };
 }

@@ -74,10 +74,38 @@ impl Core {
         last
     }
 
-    /// The history of `pv.mppt.power[2]` from `from` to `to` seconds after `T0`.
+    /// The history of `pv.mppt.power[2]` from `from` to `to` seconds after `T0`: its one entry
+    /// without its name, or the refusal.
     async fn history(&self, set_cookie: &str, from: u64, to: u64) -> (StatusCode, Value) {
+        let (status, mut body) = self
+            .histories(set_cookie, &["pv.mppt.power%5B2%5D"], from, to)
+            .await;
+        if status != StatusCode::OK {
+            return (status, body);
+        }
+        let mut list = body["series"].take();
+        assert_eq!(list.as_array().map(Vec::len), Some(1), "{list}");
+        let mut one = list[0].take();
+        assert_eq!(one["series"], "pv.mppt.power[2]");
+        one.as_object_mut().unwrap().remove("series");
+        (status, one)
+    }
+
+    /// The history of each of `series`, URL-encoded, from `from` to `to` seconds after `T0`.
+    async fn histories(
+        &self,
+        set_cookie: &str,
+        series: &[&str],
+        from: u64,
+        to: u64,
+    ) -> (StatusCode, Value) {
+        let series = series
+            .iter()
+            .map(|s| format!("series={s}&"))
+            .collect::<Vec<_>>()
+            .concat();
         let uri = format!(
-            "/api/v1/devices/7/history?series=pv.mppt.power%5B2%5D&from={}&to={}",
+            "/api/v1/devices/7/history?{series}from={}&to={}",
             instant(from),
             instant(to)
         );
@@ -105,6 +133,111 @@ async fn a_short_range_returns_raw_intervals_without_gaps() {
                 { "start": instant(20), "end": instant(25), "mean": 120.0 },
             ],
         })
+    );
+}
+
+#[tokio::test]
+async fn one_request_reads_several_series_listed_by_name_in_the_order_asked() {
+    let (_dir, core, set_cookie) = core(RoleKind::Measurement, 5).await;
+    core.store([(0, 100.0), (10, 150.0)]).await;
+
+    let (status, body) = core
+        .histories(
+            &set_cookie,
+            &["pv.mppt.power%5B1%5D", "pv.mppt.power%5B2%5D"],
+            0,
+            60,
+        )
+        .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        body,
+        json!({
+            "series": [
+                { "series": "pv.mppt.power[1]", "tier": "raw", "points": [] },
+                {
+                    "series": "pv.mppt.power[2]",
+                    "tier": "raw",
+                    "points": [
+                        { "start": instant(0), "end": instant(10), "mean": 100.0 },
+                        { "start": instant(10), "end": instant(15), "mean": 150.0 },
+                    ],
+                },
+            ],
+        })
+    );
+}
+
+#[tokio::test]
+async fn sixteen_series_are_read_at_once_and_seventeen_or_none_refused() {
+    let (_dir, core, set_cookie) = core(RoleKind::Measurement, 5).await;
+    let names: Vec<String> = (1..=17)
+        .map(|i| format!("pv.string.power%5B{i}%5D"))
+        .collect();
+    let names: Vec<&str> = names.iter().map(String::as_str).collect();
+
+    let (status, sixteen) = core.histories(&set_cookie, &names[..16], 0, 60).await;
+    let (over, seventeen) = core.histories(&set_cookie, &names, 0, 60).await;
+    let (empty, none) = core.histories(&set_cookie, &[], 0, 60).await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(sixteen["series"].as_array().unwrap().len(), 16);
+    assert_eq!(sixteen["series"][15]["series"], "pv.string.power[16]");
+    for (status, body) in [(over, seventeen), (empty, none)] {
+        assert_eq!(
+            (status, &body["code"]),
+            (StatusCode::BAD_REQUEST, &json!("request.query"))
+        );
+    }
+}
+
+#[tokio::test]
+async fn one_refused_series_refuses_the_request_and_is_named() {
+    let (_dir, core, set_cookie) = core(RoleKind::Measurement, 5).await;
+    core.store([(0, 100.0)]).await;
+
+    let (status, body) = core
+        .histories(
+            &set_cookie,
+            &["pv.mppt.power%5B2%5D", "pv.mppt.power%5Bx%5D"],
+            0,
+            60,
+        )
+        .await;
+
+    assert_eq!(
+        (status, body),
+        (
+            StatusCode::BAD_REQUEST,
+            json!({ "status": 400, "code": "request.query", "series": "pv.mppt.power[x]" })
+        )
+    );
+}
+
+#[tokio::test]
+async fn a_counter_past_raw_intervals_refuses_the_series_read_with_it() {
+    let (_dir, core, set_cookie) = core(RoleKind::Counter, 60).await;
+    core.store(steady(0, 7200, 60, |t| {
+        f64::from(1000 + u32::try_from(t).unwrap())
+    }))
+    .await;
+
+    let (status, body) = core
+        .histories(
+            &set_cookie,
+            &["pv.mppt.power%5B1%5D", "pv.mppt.power%5B2%5D"],
+            0,
+            2 * 86_400,
+        )
+        .await;
+
+    assert_eq!(
+        (status, body),
+        (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            json!({ "status": 422, "code": "history.counter", "series": "pv.mppt.power[2]" })
+        )
     );
 }
 

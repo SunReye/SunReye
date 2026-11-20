@@ -3,7 +3,7 @@ import { beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect } from "../lib/api/core.ts";
-import { problem, settled, tally } from "../lib/api/core.harness.ts";
+import { eachSeries, problem, settled, tally } from "../lib/api/core.harness.ts";
 import { coreContext } from "../lib/shell/core.ts";
 import App from "./shell.harness.svelte";
 import History from "./history/+page.svelte";
@@ -73,14 +73,17 @@ const ANSWERS = new Map<string, () => Response>([
 /** The weather device's forecast: a drizzle all day. */
 const SKY = [{ issued: "2026-11-12T00:00:00Z", target: "2026-11-12T00:00:00Z", value: 51 }];
 
-function answer(pathname: string): Response {
+function answer(href: string): Response {
+  const { pathname } = new URL(href, "http://core.test/");
   const known = ANSWERS.get(pathname);
 
   if (known) return known();
 
-  if (pathname.endsWith(`/devices/${WEATHER}/forecasts`)) return Response.json({ points: SKY });
+  if (pathname.endsWith(`/devices/${WEATHER}/forecasts`))
+    return eachSeries(href, (series) => ({ points: series === "weather.code" ? SKY : [] }));
 
-  if (/\/(?:history|forecasts|statistics)$/u.test(pathname)) return Response.json({ points: [] });
+  if (/\/(?:history|forecasts|statistics)$/u.test(pathname))
+    return eachSeries(href, () => ({ points: [] }));
 
   return problem(404, "not.found");
 }
@@ -95,7 +98,7 @@ const fake = (request: Request) => {
 
   urls.push(request.url);
 
-  return Promise.resolve(answer(url.pathname));
+  return Promise.resolve(answer(request.url));
 };
 
 beforeEach(async () => {
@@ -132,15 +135,15 @@ test("the dashboard opens on one read of each thing it shows", async () => {
     "sun-tint": 1,
     live: 1,
     costs: 1,
-    // The plant's day: two powers and six energies.
-    [`devices/${PLANT}/history`]: 2,
-    [`devices/${PLANT}/statistics`]: 6,
+    // The plant's day: its two powers in one read, its six energies in another (ADR 9).
+    [`devices/${PLANT}/history`]: 1,
+    [`devices/${PLANT}/statistics`]: 1,
     // The inverter's PV forecast and the spot prices.
     "devices/1/forecasts": 1,
     [`devices/${SPOT}/forecasts`]: 1,
-    // The weather now, once for the scene's sky and the day alike.
-    [`devices/${WEATHER}/history`]: 12,
-    [`devices/${WEATHER}/forecasts`]: 12,
+    // The weather now, once for the scene's sky and the day alike, every role in one read a source.
+    [`devices/${WEATHER}/history`]: 1,
+    [`devices/${WEATHER}/forecasts`]: 1,
   });
 });
 
@@ -171,7 +174,8 @@ test("History opened from the dashboard reads nothing the dashboard already read
     corrections: 1,
     costs: 2,
     [`devices/${PLANT}/history`]: 2,
-    [`devices/${PLANT}/statistics`]: 18,
+    // The flows by day and by hour, each one read of every flow.
+    [`devices/${PLANT}/statistics`]: 2,
   });
 });
 
@@ -196,7 +200,7 @@ test("a dashboard minute reads only today's energies and money", async () => {
     vi.advanceTimersByTime(60_000);
     await settled(() => urls.length);
 
-    expect(tally(urls)).toEqual({ [`devices/${PLANT}/statistics`]: 6, costs: 1 });
+    expect(tally(urls)).toEqual({ [`devices/${PLANT}/statistics`]: 1, costs: 1 });
   } finally {
     vi.useRealTimers();
   }

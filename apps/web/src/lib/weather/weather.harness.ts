@@ -1,5 +1,6 @@
 // What the weather read's unit tests share: a core that holds stored weather, and its points.
 import type { Forecasts, History } from "../api/core.ts";
+import { perSeries } from "../api/core.harness.ts";
 import { readWeather } from "./weather.ts";
 
 export const WEATHER = 4_294_967_295;
@@ -27,27 +28,38 @@ export interface Stored {
   readonly forecasts?: Readonly<Record<string, readonly Readonly<Forecasts["points"][number]>[]>>;
 }
 
-/** A core that holds `stored` for the weather device, and what was asked of it. */
+/** A core that holds `stored` for the weather device, each series asked of it, and how many
+ * requests asked them. */
 export function fake(stored: Stored) {
   const asked: string[] = [];
+  const requests = { count: 0 };
+
+  const history = perSeries((device, series: string) => {
+    asked.push(`history ${device} ${series}`);
+
+    return { tier: "raw" as const, points: [...(stored.history?.[series] ?? [])] };
+  });
+
+  const forecasts = perSeries((device, series: string) => {
+    asked.push(`forecasts ${device} ${series}`);
+
+    return { points: [...(stored.forecasts?.[series] ?? [])] };
+  });
 
   const core: Parameters<typeof readWeather>[0] = {
     history: (device, series) => {
-      asked.push(`history ${device} ${series}`);
+      requests.count += 1;
 
-      return Promise.resolve({
-        tier: "raw",
-        points: [...(stored.history?.[series] ?? [])],
-      });
+      return history(device, series);
     },
     forecasts: (device, series) => {
-      asked.push(`forecasts ${device} ${series}`);
+      requests.count += 1;
 
-      return Promise.resolve({ points: [...(stored.forecasts?.[series] ?? [])] });
+      return forecasts(device, series);
     },
   };
 
-  return { core, asked };
+  return { core, asked, requests };
 }
 
 export const read = (stored: Stored) =>

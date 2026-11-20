@@ -2,6 +2,7 @@
 // the statistics it answers for October 2026.
 import { render } from "vitest-browser-svelte";
 import { connect, type CatalogDevice, type Statistics, type Transport } from "../api/core.ts";
+import { eachSeries } from "../api/core.harness.ts";
 import ExploreScreen from "./ExploreScreen.svelte";
 
 const SPAN = { first: "2026-01-01T00:00:00Z", last: "2026-11-15T12:00:00Z" };
@@ -75,9 +76,12 @@ function transport(): Transport {
       if (read === "statistics" && !plant.refused) {
         plant.asked.push(url.searchParams);
 
-        const points = POINTS.get(url.searchParams.get("series") ?? "") ?? [];
-
-        return Promise.resolve(Response.json({ period: url.searchParams.get("period"), points }));
+        return Promise.resolve(
+          eachSeries(request.url, (series) => ({
+            period: url.searchParams.get("period"),
+            points: POINTS.get(series) ?? [],
+          })),
+        );
       }
 
       return Promise.resolve(Response.json({ status: 404, code: "not.found" }, { status: 404 }));

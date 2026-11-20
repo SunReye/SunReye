@@ -1517,10 +1517,30 @@
               "$ref": "#/components/schemas/ForecastPoint"
             },
             "type": "array"
+          },
+          "series": {
+            "description": "As asked.",
+            "type": "string"
           }
         },
         "required": [
+          "series",
           "points"
+        ],
+        "type": "object"
+      },
+      "ForecastsRead": {
+        "description": "Each series asked, in the order asked.",
+        "properties": {
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/Forecasts"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "series"
         ],
         "type": "object"
       },
@@ -1702,6 +1722,10 @@
             },
             "type": "array"
           },
+          "series": {
+            "description": "As asked.",
+            "type": "string"
+          },
           "tier": {
             "$ref": "#/components/schemas/Tier"
           },
@@ -1716,8 +1740,24 @@
           }
         },
         "required": [
+          "series",
           "tier",
           "points"
+        ],
+        "type": "object"
+      },
+      "HistoryRead": {
+        "description": "Each series asked, in the order asked.",
+        "properties": {
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/History"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "series"
         ],
         "type": "object"
       },
@@ -2943,6 +2983,13 @@
               "null"
             ]
           },
+          "series": {
+            "description": "The series a range read refuses, where it reads several.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "status": {
             "description": "The HTTP status.",
             "format": "int32",
@@ -3846,11 +3893,31 @@
               "$ref": "#/components/schemas/Figures"
             },
             "type": "array"
+          },
+          "series": {
+            "description": "As asked.",
+            "type": "string"
           }
         },
         "required": [
+          "series",
           "period",
           "points"
+        ],
+        "type": "object"
+      },
+      "StatisticsRead": {
+        "description": "Each series asked, in the order asked.",
+        "properties": {
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/Statistics"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "series"
         ],
         "type": "object"
       },
@@ -5138,12 +5205,17 @@
             }
           },
           {
-            "description": "A series such as `pv.string.power[3]`.",
+            "description": "Series such as `pv.string.power[3]`, repeated: 1 to 16 of the device.",
             "in": "query",
             "name": "series",
             "required": true,
             "schema": {
-              "type": "string"
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 16,
+              "minItems": 1,
+              "type": "array"
             }
           },
           {
@@ -5170,7 +5242,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Forecasts"
+                  "$ref": "#/components/schemas/ForecastsRead"
                 }
               }
             }
@@ -5221,12 +5293,17 @@
             }
           },
           {
-            "description": "A series such as `pv.mppt.power[2]`.",
+            "description": "Series such as `pv.mppt.power[2]`, repeated: 1 to 16 of the device.",
             "in": "query",
             "name": "series",
             "required": true,
             "schema": {
-              "type": "string"
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 16,
+              "minItems": 1,
+              "type": "array"
             }
           },
           {
@@ -5253,7 +5330,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/History"
+                  "$ref": "#/components/schemas/HistoryRead"
                 }
               }
             }
@@ -5478,12 +5555,17 @@
             }
           },
           {
-            "description": "A series such as `pv.mppt.power[2]`.",
+            "description": "Series such as `pv.mppt.power[2]`, repeated: 1 to 16 of the device.",
             "in": "query",
             "name": "series",
             "required": true,
             "schema": {
-              "type": "string"
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 16,
+              "minItems": 1,
+              "type": "array"
             }
           },
           {
@@ -5518,7 +5600,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Statistics"
+                  "$ref": "#/components/schemas/StatisticsRead"
                 }
               }
             }
@@ -5533,7 +5615,7 @@
             }
           }
         },
-        "summary": "One series' figures for each hour, or plant-local period, starting in the range, from its\nhourly rollups or folded from its daily ones."
+        "summary": "Each series' figures for each hour, or plant-local period, starting in the range, from its\nhourly rollups or folded from its daily ones."
       }
     },
     "/api/v1/import": {

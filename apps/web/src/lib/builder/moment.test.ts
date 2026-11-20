@@ -1,6 +1,7 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
 import type { Core, ModuleType } from "../api/core.ts";
+import { perSeries } from "../api/core.harness.ts";
 import { emptyDraft, type Draft } from "./modules.ts";
 import { load, shareAt, sourceOf, wattsAt } from "./moment.ts";
 import { loadPv } from "./pv.ts";
@@ -75,13 +76,13 @@ function reading(history: boolean) {
   const asked: string[] = [];
 
   const core: Pick<Core, "history" | "forecasts"> = {
-    history: async (device, series, from) => {
+    history: perSeries(async (device, series: string, from: Readonly<Date>) => {
       await Promise.resolve();
       asked.push(`history ${device} ${series}`);
 
       return history
         ? {
-            tier: "bucket",
+            tier: "bucket" as const,
             points: [
               {
                 start: from.toISOString(),
@@ -90,9 +91,9 @@ function reading(history: boolean) {
               },
             ],
           }
-        : { tier: "bucket", points: [] };
-    },
-    forecasts: async (device, series, from) => {
+        : { tier: "bucket" as const, points: [] };
+    }),
+    forecasts: perSeries(async (device, series: string, from: Readonly<Date>) => {
       await Promise.resolve();
       asked.push(`forecasts ${device} ${series}`);
 
@@ -105,7 +106,7 @@ function reading(history: boolean) {
           },
         ],
       };
-    },
+    }),
   };
 
   return { core, asked };

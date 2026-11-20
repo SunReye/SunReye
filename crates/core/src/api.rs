@@ -52,6 +52,7 @@ const METHOD: Problem = Problem {
 mod battery;
 mod forecasts;
 mod history;
+mod range;
 mod records;
 mod roles;
 mod series;
@@ -695,13 +696,17 @@ pub struct ProblemDetails {
     /// `/strings/0/modules`, where the core can name it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pointer: Option<String>,
+    /// The series a range read refuses, where it reads several.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    series: Option<String>,
 }
 
-/// A [`Problem`] that names the request body's member at fault.
+/// A [`Problem`] that names the request body's member or the series at fault.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Refused {
     pub problem: Problem,
     pub pointer: Option<String>,
+    pub series: Option<String>,
 }
 
 impl From<Problem> for Refused {
@@ -709,17 +714,23 @@ impl From<Problem> for Refused {
         Self {
             problem,
             pointer: None,
+            series: None,
         }
     }
 }
 
 impl IntoResponse for Refused {
     fn into_response(self) -> Response {
-        let Self { problem, pointer } = self;
+        let Self {
+            problem,
+            pointer,
+            series,
+        } = self;
         let details = ProblemDetails {
             status: problem.status.as_u16(),
             code: problem.code,
             pointer,
+            series,
         };
         let mut response = (problem.status, axum::Json(details)).into_response();
         response.headers_mut().insert(

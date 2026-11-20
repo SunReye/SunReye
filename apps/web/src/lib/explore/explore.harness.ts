@@ -11,6 +11,7 @@ import {
 } from "../api/core.ts";
 import Shell from "../shell/Shell.svelte";
 import ExploreScreen from "./ExploreScreen.svelte";
+import { eachSeries } from "../api/core.harness.ts";
 import { answerViews, forViews, resetViews } from "./views.harness.ts";
 
 const SPAN = { first: "2026-01-01T00:00:00Z", last: "2026-11-15T12:00:00Z" };
@@ -53,10 +54,13 @@ interface Asked {
   readonly period: string | null;
 }
 
+/** One series' answer, before the core names it. */
+type Unnamed<T> = Omit<T, "series">;
+
 const iso = (t: number) => new Date(t).toISOString();
 
 /** 100 over the first half of the span, 300 over the second. */
-function halves({ from, to }: Asked): History {
+function halves({ from, to }: Asked): Unnamed<History> {
   const mid = (from + to) / 2;
 
   return {
@@ -71,7 +75,7 @@ function halves({ from, to }: Asked): History {
 const HOUR = 3_600_000;
 
 /** Every hour or day of the span: a mean of 200 between 150 and 250, a delta of 2. */
-function figures({ from, to, period }: Asked): Statistics {
+function figures({ from, to, period }: Asked): Unnamed<Statistics> {
   const step = period === "hour" ? HOUR : 24 * HOUR;
   const points = [];
 
@@ -110,9 +114,9 @@ export function reset(): void {
   plant.asked = [];
 }
 
-/** A device's history or statistics read, as its address asks for it. */
+/** A device's history or statistics read of `series`, as its address asks for it. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the DOM's own type.
-function askedOf(url: URL): Asked | null {
+function askedOf(url: URL, series: string): Asked | null {
   const [, device, read] = /devices\/(\d+)\/(history|statistics)$/u.exec(url.pathname) ?? [];
   const q = url.searchParams;
 
@@ -121,7 +125,7 @@ function askedOf(url: URL): Asked | null {
   return {
     read,
     device: Number(device),
-    series: q.get("series") ?? "",
+    series,
     from: Date.parse(q.get("from") ?? ""),
     to: Date.parse(q.get("to") ?? ""),
     period: q.get("period"),
@@ -143,13 +147,18 @@ function transport(): Transport {
 
       if (forViews(request)) return answerViews(request);
 
-      const asked = askedOf(new URL(request.url));
+      const url = new URL(request.url);
 
-      if (asked) {
-        plant.asked.push(asked);
+      if (askedOf(url, "") !== null)
+        return Promise.resolve(
+          eachSeries(request.url, (series) => {
+            const asked = askedOf(url, series)!;
 
-        return Promise.resolve(Response.json(plant[asked.read](asked)));
-      }
+            plant.asked.push(asked);
+
+            return plant[asked.read](asked);
+          }),
+        );
 
       return Promise.resolve(Response.json({ status: 404, code: "not.found" }, { status: 404 }));
     },

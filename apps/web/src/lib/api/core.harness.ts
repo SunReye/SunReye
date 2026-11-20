@@ -1,5 +1,5 @@
 /// <reference types="bun" />
-import type { Transport } from "./core.ts";
+import type { Problem, Transport } from "./core.ts";
 
 export const BASE = "http://core.test/prefix/";
 
@@ -99,3 +99,45 @@ export const API_DOCUMENT = {
     },
   },
 };
+
+/** A fake core's range read (ADR 9): `one` answers each series asked, which is then named. */
+export function perSeries<R extends readonly unknown[], T extends object>(
+  one: (device: number, series: string, ...rest: R) => T | Problem | Promise<T | Problem>,
+) {
+  return (device: number, series: readonly string[], ...rest: R) =>
+    Promise.all(
+      series.map(async (name) => {
+        const answer = await one(device, name, ...rest);
+
+        return "problem" in answer ? answer : { ...answer, series: name };
+      }),
+    );
+}
+
+/** A fake core's answer to a range request (ADR 9): `one` answers each series it asks, named. */
+export function eachSeries(href: string, one: (series: string) => object) {
+  const names = new URL(href, "http://core.test/").searchParams.getAll("series");
+
+  return Response.json({
+    series: names.map((name) => Object.assign({}, one(name), { series: name })),
+  });
+}
+
+/** A range request answered a series at a time from `one`'s answers (ADR 9): one refusal refuses
+ * the request, naming its series. Each answer is a JSON object with members. */
+export async function eachAnswer(
+  series: readonly string[],
+  one: (series: string) => Response | Promise<Response>,
+): Promise<Response> {
+  const answers = await Promise.all(series.map((name) => Promise.resolve(one(name))));
+  const bodies = await Promise.all(answers.map((answer) => answer.text()));
+  // The series' name as the first member of its answer's object.
+  const named = (i: number) => `{"series":${JSON.stringify(series[i])},${bodies[i]?.slice(1)}`;
+  const refused = answers.findIndex((answer) => !answer.ok);
+  const headers = { "content-type": "application/json" };
+
+  if (refused >= 0)
+    return new Response(named(refused), { status: answers[refused]?.status ?? 500, headers });
+
+  return new Response(`{"series":[${series.map((_, i) => named(i)).join(",")}]}`, { headers });
+}

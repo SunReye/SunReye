@@ -4,7 +4,8 @@
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
-import { PLANT, WEATHER } from "../api/core.ts";
+import { PLANT, WEATHER, type Period } from "../api/core.ts";
+import { perSeries } from "../api/core.harness.ts";
 import { dayRows } from "../dashboard/today.ts";
 import type { AheadReader } from "./ahead-read.ts";
 import ForecastDetail from "./ForecastDetail.svelte";
@@ -116,12 +117,12 @@ function fake(stored: Readonly<Record<string, Watts>>) {
 
   const core: AheadReader = {
     layout: () => Promise.resolve(LAYOUT),
-    history: (device, series) => {
+    history: perSeries((device, series: string) => {
       asked.push(`history ${device} ${series}`);
 
-      return Promise.resolve({ tier: "raw", points: [] });
-    },
-    forecasts: (device, series, from, to) => {
+      return { tier: "raw" as const, points: [] };
+    }),
+    forecasts: perSeries((device, series: string, from: Readonly<Date>, to: Readonly<Date>) => {
       asked.push(`forecasts ${device} ${series}`);
 
       const of = device === WEATHER ? SKY.get(series) : stored[series];
@@ -129,9 +130,9 @@ function fake(stored: Readonly<Record<string, Watts>>) {
       const read = targets(of, from.getTime(), to.getTime());
 
       // The core refuses a read of more than 1,500 points (ADR 9).
-      return Promise.resolve(read.points.length > 1500 ? { problem: "forecast.range" } : read);
-    },
-    statistics: (device, series, period) => {
+      return read.points.length > 1500 ? { problem: "forecast.range" } : read;
+    }),
+    statistics: perSeries((device, series: string, period: Period) => {
       asked.push(`statistics ${device} ${series} ${period}`);
 
       const extra = device === PLANT ? UNLAID : 0;
@@ -145,8 +146,8 @@ function fake(stored: Readonly<Record<string, Watts>>) {
         hours,
       }));
 
-      return Promise.resolve({ period, points: device === PLANT || device === 1 ? points : [] });
-    },
+      return { period, points: device === PLANT || device === 1 ? points : [] };
+    }),
   };
 
   return { core, asked };

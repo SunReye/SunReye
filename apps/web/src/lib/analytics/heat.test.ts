@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { dayOf } from "../range/calendar.ts";
 import { rangeFor } from "../range/range.ts";
 import { connect } from "../api/core.ts";
+import { eachSeries } from "../api/core.harness.ts";
 import { heatCells, heatColumns, readHeat } from "./heat.ts";
 
 const H = 3_600_000;
@@ -76,7 +77,7 @@ test("each hour's energy is its hourly rollup, read from the core in kWh", async
       asked.push(`${url.pathname.split("/").at(-1)}:${url.searchParams.get("period")}`);
 
       return Promise.resolve(
-        Response.json({
+        eachSeries(request.url, () => ({
           period: "hour",
           points: [
             {
@@ -87,7 +88,7 @@ test("each hour's energy is its hourly rollup, read from the core in kWh", async
               hours: 1,
             },
           ],
-        }),
+        })),
       );
     },
   });

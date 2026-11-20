@@ -11,7 +11,7 @@ use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
-use super::{Clock, Code, Problem, ProblemDetails};
+use super::{Clock, Code, Problem, ProblemDetails, Refused, range};
 use crate::api::{internal, rfc3339};
 use crate::bus::{DeviceId, Series};
 use crate::storage::{self, Aggregate, ChangePoint, Reader, Rollup};
@@ -49,17 +49,26 @@ const COUNTER: Problem = Problem {
 #[derive(Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct Params {
-    /// A series such as `pv.mppt.power[2]`.
-    series: String,
+    /// Series such as `pv.mppt.power[2]`, repeated: 1 to 16 of the device.
+    #[param(min_items = 1, max_items = 16)]
+    series: Vec<String>,
     /// The first instant, RFC 3339.
     from: String,
     /// The instant after the last, RFC 3339.
     to: String,
 }
 
+/// Each series asked, in the order asked.
+#[derive(Serialize, ToSchema)]
+pub struct HistoryRead {
+    series: Vec<History>,
+}
+
 /// Time-weighted means of one series over a range, at the tier the server picked.
 #[derive(Serialize, ToSchema)]
 pub struct History {
+    /// As asked.
+    series: String,
     tier: Tier,
     /// A `bucket`'s width in seconds.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -89,10 +98,17 @@ struct Point {
     mean: f64,
 }
 
+/// One series' points, before it is named.
+struct Read {
+    tier: Tier,
+    width: Option<u64>,
+    points: Vec<Point>,
+}
+
 #[utoipa::path(get, path = "/api/v1/devices/{id}/history",
     params(("id" = u32, Path, description = "The device id."), Params),
     responses(
-        (status = 200, body = History),
+        (status = 200, body = HistoryRead),
         (status = 400, body = ProblemDetails, content_type = "application/problem+json"),
         (status = 401, body = ProblemDetails, content_type = "application/problem+json"),
         (status = 422, body = ProblemDetails, content_type = "application/problem+json"),
@@ -101,40 +117,40 @@ struct Point {
 pub async fn history(
     State((reader, clock)): State<(Reader, Clock)>,
     device: Result<Path<u32>, PathRejection>,
-    params: Result<Query<Params>, QueryRejection>,
-) -> Result<Json<History>, Problem> {
+    params: Result<Query<Vec<(String, String)>>, QueryRejection>,
+) -> Result<Json<HistoryRead>, Refused> {
     let Path(device) = device.map_err(|_| PATH)?;
-    let Query(params) = params.map_err(|_| QUERY)?;
-    let series = Series::parse(&params.series).ok_or(QUERY)?;
+    let params: Params = range::query(params)?;
+    let names = range::parse(&params.series)?;
     let range = instant(&params.from)?..instant(&params.to)?;
     let span = range.end.duration_since(range.start).map_err(|_| RANGE)?;
     if span.is_zero() || span > DAY_SPAN {
-        return Err(RANGE);
+        return Err(RANGE.into());
     }
-    let read = Read {
-        reader,
-        device: DeviceId(device),
-        series,
-        range,
-        now: clock(),
-    };
-    let carries = read
-        .reader
-        .carries(read.device, &read.series)
-        .await
-        .map_err(internal)?;
-    let history = if carries {
-        read.held().await?
-    } else if span <= RAW_SPAN {
-        read.short().await?
-    } else {
-        read.rolled_up(span).await?
-    };
-    Ok(Json(history))
+    let now = clock();
+    let mut list = Vec::with_capacity(names.len());
+    // One series after another, each its own request to the storage thread (ADR 24).
+    for (name, series) in names {
+        let ask = Ask {
+            reader: reader.clone(),
+            device: DeviceId(device),
+            series,
+            range: range.clone(),
+            now,
+        };
+        let read = ask.read(span).await.map_err(|p| range::named(p, &name))?;
+        list.push(History {
+            series: name,
+            tier: read.tier,
+            width: read.width,
+            points: read.points,
+        });
+    }
+    Ok(Json(HistoryRead { series: list }))
 }
 
-/// One history request.
-struct Read {
+/// One series' history.
+struct Ask {
     reader: Reader,
     device: DeviceId,
     series: Series,
@@ -142,9 +158,24 @@ struct Read {
     now: SystemTime,
 }
 
-impl Read {
+impl Ask {
+    async fn read(&self, span: Duration) -> Result<Read, Problem> {
+        let carries = self
+            .reader
+            .carries(self.device, &self.series)
+            .await
+            .map_err(internal)?;
+        if carries {
+            self.held().await
+        } else if span <= RAW_SPAN {
+            self.short().await
+        } else {
+            self.rolled_up(span).await
+        }
+    }
+
     /// Raw intervals, or minute means past 1,500 of them.
-    async fn short(&self) -> Result<History, Problem> {
+    async fn short(&self) -> Result<Read, Problem> {
         let (range, now) = (&self.range, self.now);
         // Whole minutes, so buckets need no second read.
         let window = floor(range.start, MINUTE)..ceil(range.end, MINUTE);
@@ -154,7 +185,7 @@ impl Read {
             return Ok(raw_history(&raw));
         }
         let intervals = intervals(&points, window.start..window.end.min(now));
-        Ok(History {
+        Ok(Read {
             tier: Tier::Bucket,
             width: Some(MINUTE.as_secs()),
             points: buckets(&intervals, window.start, MINUTE),
@@ -163,7 +194,7 @@ impl Read {
 
     /// A status's or held value's raw intervals at any range, at most 1,500: they have no
     /// rollups (ADR 3).
-    async fn held(&self) -> Result<History, Problem> {
+    async fn held(&self) -> Result<Read, Problem> {
         let range = &self.range;
         let points = self.change_points(range.clone()).await?;
         let raw = intervals(&points, range.start..range.end.min(self.now));
@@ -174,7 +205,7 @@ impl Read {
     }
 
     /// Hourly or daily rollups; the hour in progress is read from change points (ADR 3).
-    async fn rolled_up(&self, span: Duration) -> Result<History, Problem> {
+    async fn rolled_up(&self, span: Duration) -> Result<Read, Problem> {
         let range = &self.range;
         // Rollups from a tier's longest window early, for the window the range starts in.
         let (tier, lead, name) = if span <= HOUR_SPAN {
@@ -195,7 +226,7 @@ impl Read {
             let change = self.change_points(tail..end).await?;
             points.extend(buckets(&intervals(&change, tail..end), tail, HOUR));
         }
-        Ok(History {
+        Ok(Read {
             tier: name,
             width: None,
             points,
@@ -211,13 +242,13 @@ impl Read {
 }
 
 /// Intervals as the `raw` tier.
-fn raw_history(raw: &[Interval]) -> History {
+fn raw_history(raw: &[Interval]) -> Read {
     let points = raw.iter().map(|&(start, end, mean)| Point {
         start: rfc3339(start),
         end: rfc3339(end),
         mean,
     });
-    History {
+    Read {
         tier: Tier::Raw,
         width: None,
         points: points.collect(),
