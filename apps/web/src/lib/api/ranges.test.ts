@@ -3,98 +3,11 @@
 // period asked at once, a refused series apart, and closed ranges kept for the session.
 import { afterEach, expect, setSystemTime, test } from "bun:test";
 import { connect } from "./core.ts";
-import type { Visibility } from "./live.ts";
-
-const FROM = new Date("2026-11-12T00:00:00Z");
-const TO = new Date("2026-11-12T12:00:00Z");
-
-/** Now: 2026-11-20 10:30 UTC, so a range ending by 09:00 is closed. */
-const NOW = new Date("2026-11-20T10:30:00Z");
-
-const DAY = { from: new Date("2026-11-19T00:00:00Z"), to: new Date("2026-11-19T09:00:00Z") };
+import { DAY, FROM, NOW, TO, failed, fake, named, point } from "./ranges.harness.ts";
 
 afterEach(() => {
   setSystemTime();
 });
-
-/** A point ending at `end`. */
-const point = (end: string) => ({ start: "2026-11-12T00:00:00Z", end, mean: 1 });
-
-/** The series each answer names; a refusal names one only where the core said which. */
-function named(read: readonly Readonly<{ series?: string }>[]): (string | undefined)[] {
-  const names: (string | undefined)[] = [];
-
-  for (const one of read) names.push(one.series);
-
-  return names;
-}
-
-const ONE_POINT = [point("2026-11-12T01:00:00Z")];
-
-/** A rejected read's error. */
-const failed = (error: Readonly<Error>) => error;
-
-/** What the fake core answers and how. */
-type Options = Readonly<{
-  refused?: readonly string[];
-  points?: (series: string) => readonly object[];
-  page?: Visibility;
-  /** Each write is answered once this settles. */
-  writes?: () => Promise<void>;
-}>;
-
-/** A range read's answer: each of `series` with `points(series)`, or the first `refused`. */
-function answer(options: Options, statistics: boolean, series: readonly string[]): Response {
-  const refused = series.find((s) => options.refused?.includes(s) === true);
-
-  if (refused !== undefined)
-    return Response.json(
-      { status: 422, code: "history.range", series: refused },
-      { status: 422, headers: { "content-type": "application/problem+json" } },
-    );
-
-  const kind = statistics ? { period: "day" } : { tier: "raw" };
-
-  return Response.json({
-    series: series.map((s) =>
-      Object.assign({ series: s, points: options.points?.(s) ?? ONE_POINT }, kind),
-    ),
-  });
-}
-
-/** A fake core answering each series it is asked with `points(series)`, refusing those in
- * `refused` by name, with every request it was asked. */
-function fake(options: Options = {}) {
-  const urls: string[] = [];
-  const asked: (readonly string[])[] = [];
-
-  const core = connect(
-    {
-      base: "http://core.test/",
-      fetch: async (request) => {
-        await Promise.resolve();
-
-        if (request.method !== "GET") {
-          await options.writes?.();
-
-          return new Response(null, { status: 204 });
-        }
-
-        const url = new URL(request.url);
-        const series = url.searchParams.getAll("series");
-
-        urls.push(request.url);
-
-        if (series.length > 0) asked.push(series);
-
-        return answer(options, url.pathname.endsWith("/statistics"), series);
-      },
-    },
-    options.page,
-  );
-
-  return { core, urls, asked };
-}
 
 test("the series of one device, range and period asked at once go as one request", async () => {
   const { core, asked } = fake();
@@ -258,6 +171,25 @@ test("an import in progress, or a write until it is answered, forgets closed ran
   await read();
 
   expect(asked).toHaveLength(4);
+});
+
+test("a read asked after a write does not join one sent before it", async () => {
+  const release = Promise.withResolvers<void>();
+  const { core, asked } = fake({ reads: () => release.promise });
+  const read = () => core.history(1, ["pv.power"], FROM, TO);
+
+  const before = read();
+
+  await Promise.resolve();
+  await Promise.resolve();
+  await core.setTimezone("Europe/Berlin");
+
+  const after = read();
+
+  release.resolve();
+  await Promise.all([before, after]);
+
+  expect(asked).toEqual([["pv.power"], ["pv.power"]]);
 });
 
 test("closed ranges are kept up to 200,000 points, the least recently used dropped first", async () => {

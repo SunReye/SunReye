@@ -81,11 +81,12 @@ function kept<T extends Answer>() {
 /** One kind of range read, coalesced by range and task, joined in flight and kept once closed. */
 class Ranges<T extends Answer> {
   readonly #kept = kept<T>();
-  /** Each series in flight, by range and series. */
+  /** Each series in flight, by generation, range and series: a read asked after `forget` joins
+   * none sent before it, whose answer may predate the write. */
   readonly #waiting = new Map<string, PromiseWithResolvers<T | Problem>>();
-  /** The series of each range asked in this task. */
+  /** The series of each generation and range asked in this task. */
   readonly #pending = new Map<string, string[]>();
-  // Bumped by `forget`: an answer asked before it is not kept.
+  // Bumped by `forget`: an answer asked before it is neither kept nor joined.
   #generation = 0;
 
   forget(): void {
@@ -102,42 +103,45 @@ class Ranges<T extends Answer> {
 
         if (known !== undefined) return Promise.resolve(known);
 
-        return this.#waiting.get(key)?.promise ?? this.#wait(range, to, ask, name);
+        return (
+          this.#waiting.get(`${this.#generation}\n${key}`)?.promise ??
+          this.#wait(range, to, ask, name)
+        );
       }),
     );
   }
 
   #wait(range: string, to: number, ask: Ask<T>, name: string) {
-    const names = this.#pending.get(range);
+    const batch = `${this.#generation}\n${range}`;
+    const names = this.#pending.get(batch);
 
     if (names === undefined) {
-      this.#pending.set(range, [name]);
+      this.#pending.set(batch, [name]);
       queueMicrotask(() => {
-        void this.#send(range, to, ask);
+        void this.#send(batch, range, to, ask);
       });
     } else names.push(name);
 
     const waiting = Promise.withResolvers<T | Problem>();
 
-    this.#waiting.set(`${range}\n${name}`, waiting);
+    this.#waiting.set(`${batch}\n${name}`, waiting);
 
     return waiting.promise;
   }
 
-  async #send(range: string, to: number, ask: Ask<T>) {
-    const names = this.#pending.get(range) ?? [];
+  async #send(batch: string, range: string, to: number, ask: Ask<T>) {
+    const names = this.#pending.get(batch) ?? [];
     const asked = this.#generation;
 
     const take = (name: string) => {
-      const key = `${range}\n${name}`;
-      const waiting = this.#waiting.get(key);
+      const waiting = this.#waiting.get(`${batch}\n${name}`);
 
-      this.#waiting.delete(key);
+      this.#waiting.delete(`${batch}\n${name}`);
 
-      return { key, waiting };
+      return { key: `${range}\n${name}`, waiting };
     };
 
-    this.#pending.delete(range);
+    this.#pending.delete(batch);
 
     try {
       const answers = await ask(names);
