@@ -46,9 +46,10 @@ test("the PV sheet opens on one read of each thing its shown tab needs", async (
     // The dashboard knows neither the topology nor the stored series.
     topology: 1,
     series: 1,
-    // The overview tab's range and the PV facts below the tabs; no hidden tab's.
-    [`devices/${PLANT}/statistics`]: 8,
-    [`devices/${INVERTER}/forecasts`]: 4,
+    // The overview tab's range and the PV facts below the tabs, no hidden tab's; a range read
+    // asked twice at once, once.
+    [`devices/${PLANT}/statistics`]: 5,
+    [`devices/${INVERTER}/forecasts`]: 2,
   });
 });
 
