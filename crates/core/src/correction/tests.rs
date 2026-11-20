@@ -467,7 +467,7 @@ async fn it_learns_once_the_plant_has_a_location_and_twice_a_day_from_then() {
 }
 
 #[tokio::test]
-async fn each_input_reports_its_grid_and_its_last_30_days_measured_against_the_model() {
+async fn each_input_reports_its_grid_and_the_last_30_days_its_learner_measured_against_the_model() {
     let plant = plant().await;
     let modelled = plant.modelled("pv.mppt.power", Some(1)).await;
     plant
@@ -479,18 +479,18 @@ async fn each_input_reports_its_grid_and_its_last_30_days_measured_against_the_m
         .learn(&plant.storage, BERLIN, &berlin(), at(NOW))
         .await
         .unwrap();
-    let corrections = Corrections::new(plant.layouts.clone(), WEATHER, &plant.storage);
+    // No archive under this device: a read that ran the model would compare nothing.
+    let corrections = Corrections::new(plant.layouts.clone(), DeviceId(99), &plant.storage);
 
-    let reports = corrections
-        .report(Some(BERLIN), &berlin(), at(NOW))
-        .await
-        .unwrap();
+    let reports = corrections.report(true).await.unwrap();
 
     let [report] = reports.as_slice() else {
         panic!("{} inputs", reports.len());
     };
     assert_eq!((report.device, report.input), (INVERTER, 1));
     assert_eq!(report.grid, learner.grid(INVERTER, 1).await.unwrap());
+    let unplaced = corrections.report(false).await.unwrap();
+    assert_eq!(unplaced[0].recent, None);
     let recent = report.recent.unwrap();
     // Two June days of 6.4 kWp: tens of kWh.
     assert!(recent.modelled > 10.0, "{recent:?}");
@@ -505,11 +505,12 @@ async fn without_a_location_or_readings_nothing_is_compared() {
     let plant = plant().await;
     let corrections = Corrections::new(plant.layouts.clone(), WEATHER, &plant.storage);
 
-    let unplaced = corrections.report(None, &berlin(), at(NOW)).await.unwrap();
-    let unread = corrections
-        .report(Some(BERLIN), &berlin(), at(NOW))
+    let unplaced = corrections.report(false).await.unwrap();
+    corrections
+        .refresh(BERLIN, &berlin(), at(NOW))
         .await
         .unwrap();
+    let unread = corrections.report(true).await.unwrap();
 
     for reports in [unplaced, unread] {
         let [report] = reports.as_slice() else {
@@ -518,4 +519,45 @@ async fn without_a_location_or_readings_nothing_is_compared() {
         assert_eq!(report.grid, super::Grid::default());
         assert_eq!(report.recent, None);
     }
+}
+
+#[tokio::test]
+async fn a_layout_change_stores_the_last_30_days_again_at_once() {
+    let plant = plant().await;
+    let modelled = plant.modelled("pv.mppt.power", Some(1)).await;
+    plant
+        .measure("pv.mppt.power", Some(1), &modelled, |w| 0.8 * w)
+        .await;
+    let (archive, _calls) = FakeArchive::new(archive());
+    let learner = plant.learner(archive);
+    let (_location, located) = watch::channel(Some(BERLIN));
+    let (_zone, zone) = watch::channel(berlin());
+    let corrections = Corrections::new(plant.layouts.clone(), WEATHER, &plant.storage);
+    let stored = async || {
+        let reports = corrections.report(true).await.unwrap();
+        reports.first().and_then(|r| r.recent).map(|r| r.modelled)
+    };
+    let changed = async |from: Option<f64>| loop {
+        if let Some(now) = stored().await
+            && Some(now) != from
+        {
+            return now;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    };
+
+    let (before, after) = tokio::select! {
+        () = learner.run(&plant.storage, located, zone, || at(NOW)) => panic!("the learner stopped"),
+        found = tokio::time::timeout(Duration::from_secs(10), async {
+            let before = changed(None).await;
+            // The same string with half its modules, from the start.
+            let mut string = plant.layouts.versions().await.unwrap()[0].strings[0].clone();
+            string.wiring.modules = 8;
+            let draft = StringDraft { id: Some(string.id), wiring: string.wiring };
+            plant.layouts.change(at(0), vec![draft], None, at(NOW)).await.unwrap();
+            (before, changed(Some(before)).await)
+        }) => found.expect("the last 30 days were not stored again"),
+    };
+
+    assert!((after / before - 0.5).abs() < 0.05, "{before} → {after}");
 }

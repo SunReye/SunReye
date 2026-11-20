@@ -9,7 +9,11 @@
 //! when the inverter's measured `pv.power` peaks within 2 % of the highest hourly peak it has
 //! stored in the past year while the model on archive weather expects more than that peak.
 //!
-//! The correction module owns the `correction_cell` and `correction_state` tables.
+//! Each run, and each layout change, also stores every input's last 30 days measured against the
+//! model, so the builder's read runs no model (ADR 20, 24).
+//!
+//! The correction module owns the `correction_cell`, `correction_state` and `correction_recent`
+//! tables.
 
 mod grid;
 mod routes;
@@ -133,7 +137,8 @@ impl<A: Archive> Learner<A> {
 
     /// Learns while the plant's `location` is set: on start, at once when it changes, and every
     /// 12 hours from then, with hours cut in the plant `zone`, until storage or the location
-    /// stops. `clock` gives each run's time.
+    /// stops; and stores the last 30 days again at once when the layout changes. `clock` gives
+    /// each run's time.
     pub async fn run(
         &self,
         storage: &Storage,
@@ -141,54 +146,65 @@ impl<A: Archive> Learner<A> {
         zone: watch::Receiver<TimeZone>,
         clock: impl Fn() -> SystemTime + Sync,
     ) {
+        let mut layout = self.corrections.layouts.changes();
         let mut next = Instant::now();
         loop {
             let current = *location.borrow_and_update();
             let plant_zone = zone.borrow().clone();
             if let Some(at) = current
-                && self
-                    .logged(storage, at, &plant_zone, clock())
-                    .await
-                    .is_break()
+                && logged(self.learn(storage, at, &plant_zone, clock()).await).is_break()
             {
                 return;
             }
             next += EVERY;
-            tokio::select! {
-                () = tokio::time::sleep_until(next) => {}
-                changed = location.changed() => {
-                    if changed.is_err() {
-                        return;
+            loop {
+                tokio::select! {
+                    () = tokio::time::sleep_until(next) => break,
+                    changed = location.changed() => {
+                        if changed.is_err() {
+                            return;
+                        }
+                        next = Instant::now();
+                        break;
                     }
-                    next = Instant::now();
+                    Ok(()) = layout.changed() => {
+                        let current = *location.borrow();
+                        let plant_zone = zone.borrow().clone();
+                        let Some(at) = current else { continue };
+                        let refreshed = self.corrections.refresh(at, &plant_zone, clock()).await;
+                        if logged(refreshed.map_err(Error::Storage)).is_break() {
+                            return;
+                        }
+                    }
                 }
             }
         }
     }
 
-    /// Learns, logging a failure; breaks once storage has stopped.
-    async fn logged(
+    /// Learns the settled UTC days up to 3 days before `now` it has not learned, reaching 90
+    /// days back at first, then stores each input's last 30 days before `now` measured against
+    /// the model, whether or not a day was learned. A day is learned once one of its hours is
+    /// measured, so a day the archive has not settled is fetched again next time.
+    ///
+    /// # Errors
+    /// The archive or storage failed; what failed is not stored.
+    pub async fn learn(
         &self,
         storage: &Storage,
         location: Location,
         zone: &TimeZone,
         now: SystemTime,
-    ) -> ControlFlow<()> {
-        match self.learn(storage, location, zone, now).await {
-            Err(Error::Storage(storage::Error::Stopped)) => return ControlFlow::Break(()),
-            Err(e) => tracing::warn!("correction: {e}"),
-            Ok(()) => {}
+    ) -> Result<(), Error> {
+        let learned = self.learn_days(storage, location, zone, now).await;
+        if matches!(learned, Err(Error::Storage(storage::Error::Stopped))) {
+            return learned;
         }
-        ControlFlow::Continue(())
+        self.corrections.refresh(location, zone, now).await?;
+        learned
     }
 
-    /// Learns the settled UTC days up to 3 days before `now` it has not learned, reaching 90
-    /// days back at first. A day is learned once one of its hours is measured, so a day the
-    /// archive has not settled is fetched again next time.
-    ///
-    /// # Errors
-    /// The archive or storage failed; nothing is learned.
-    pub async fn learn(
+    /// Learns the settled days not yet learned.
+    async fn learn_days(
         &self,
         storage: &Storage,
         location: Location,
@@ -249,44 +265,51 @@ impl Corrections {
         Ok(grids.remove(&(device, input)).unwrap_or_default())
     }
 
-    /// Every MPPT input any layout version wires a string to, with its grid and, at `location`,
-    /// its whole hours of the 30 days before `now` measured against the model. Hours are cut in
-    /// the plant `zone`.
+    /// Every MPPT input any layout version wires a string to, with its grid and, while the plant
+    /// is `located`, its last 30 days measured against the model as last stored. Runs no model.
     ///
     /// # Errors
     /// Storage failed.
-    pub async fn report(
-        &self,
-        location: Option<Location>,
-        zone: &TimeZone,
-        now: SystemTime,
-    ) -> Result<Vec<InputReport>, storage::Error> {
-        let since = now.duration_since(UNIX_EPOCH).unwrap_or_default();
-        let to = now - Duration::from_secs(since.as_secs() % HOUR.as_secs());
-        let from = to - RECENT;
-        let plant = match location {
-            Some(at) => Some(self.plant(at, zone, from..to).await?),
-            None => None,
-        };
+    pub async fn report(&self, located: bool) -> Result<Vec<InputReport>, storage::Error> {
         let versions = self.layouts.versions().await?;
-        let mut grids = self.database.run(grids).await?;
-        let mut reports = Vec::new();
-        for (device, input) in inputs(&versions) {
-            let recent = match &plant {
-                Some(plant) => {
-                    let measured = self.measured((device, input), from..to).await?;
-                    plant.recent(&measured, (device, input), hours(from, to))
-                }
-                None => None,
-            };
-            reports.push(InputReport {
+        let (mut grids, mut recent) = self
+            .database
+            .run(|db| Ok((grids(db)?, stored_recent(db)?)))
+            .await?;
+        Ok(inputs(&versions)
+            .into_iter()
+            .map(|(device, input)| InputReport {
                 device,
                 input,
                 grid: grids.remove(&(device, input)).unwrap_or_default(),
-                recent,
-            });
+                recent: recent.remove(&(device, input)).filter(|_| located),
+            })
+            .collect())
+    }
+
+    /// Stores, at `location`, each input's whole hours of the 30 days before `now` measured
+    /// against the model, in place of those stored. Hours are cut in the plant `zone`.
+    ///
+    /// # Errors
+    /// Storage failed; nothing is stored.
+    pub async fn refresh(
+        &self,
+        location: Location,
+        zone: &TimeZone,
+        now: SystemTime,
+    ) -> Result<(), storage::Error> {
+        let since = now.duration_since(UNIX_EPOCH).unwrap_or_default();
+        let to = now - Duration::from_secs(since.as_secs() % HOUR.as_secs());
+        let from = to - RECENT;
+        let plant = self.plant(location, zone, from..to).await?;
+        let mut recent = HashMap::new();
+        for input in inputs(&plant.versions) {
+            let measured = self.measured(input, from..to).await?;
+            if let Some(energy) = plant.recent(&measured, input, hours(from, to)) {
+                recent.insert(input, energy);
+            }
         }
-        Ok(reports)
+        self.database.run(move |db| save_recent(db, &recent)).await
     }
 
     /// The layout versions, and the model on the archive weather stored for `range`.
@@ -594,6 +617,43 @@ fn grids(db: &Connection) -> rusqlite::Result<HashMap<Input, Grid>> {
         grids.entry(input).or_default().set(month, hour, cell);
     }
     Ok(grids)
+}
+
+fn stored_recent(db: &Connection) -> rusqlite::Result<HashMap<Input, Recent>> {
+    let mut statement =
+        db.prepare("SELECT device, input, measured, modelled FROM correction_recent")?;
+    let rows = statement.query_map([], |row| {
+        let input = (DeviceId(row.get(0)?), row.get(1)?);
+        let recent = Recent {
+            measured: row.get(2)?,
+            modelled: row.get(3)?,
+        };
+        Ok((input, recent))
+    })?;
+    rows.collect()
+}
+
+fn save_recent(db: &Connection, recent: &HashMap<Input, Recent>) -> rusqlite::Result<()> {
+    let tx = db.unchecked_transaction()?;
+    tx.execute("DELETE FROM correction_recent", [])?;
+    for ((device, input), r) in recent {
+        tx.execute(
+            "INSERT INTO correction_recent (device, input, measured, modelled) \
+             VALUES (?1, ?2, ?3, ?4)",
+            params![device.0, input, r.measured, r.modelled],
+        )?;
+    }
+    tx.commit()
+}
+
+/// Logs a failure; breaks once storage has stopped.
+fn logged(result: Result<(), Error>) -> ControlFlow<()> {
+    match result {
+        Err(Error::Storage(storage::Error::Stopped)) => return ControlFlow::Break(()),
+        Err(e) => tracing::warn!("correction: {e}"),
+        Ok(()) => {}
+    }
+    ControlFlow::Continue(())
 }
 
 fn save(db: &Connection, grids: &HashMap<Input, Grid>, through: &str) -> rusqlite::Result<()> {
