@@ -19,6 +19,8 @@ const steps: readonly Command[] = [
   ["fallow", "--quiet"],
   // The kit is the only source of controls (ADR 11).
   ["bun", "scripts/native-controls.ts"],
+  // A shared behaviour lives in one component (ADR 21, #836).
+  ["bun", "scripts/one-owner.ts"],
   // The built glass keeps its blur in Chromium (#763).
   ["bun", "scripts/built-css.ts"],
   ["cargo", "deny", "--workspace", "check"],
