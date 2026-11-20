@@ -105,6 +105,8 @@ async function measureCore(of: phase.Boot, held: store.Store, restored: string):
 
   const tick = tickBetweenOpens(started);
   const reads = await screens.warm(tick.pause);
+  // Warm opens can end before the first tick: take it now, while the core still runs.
+  const ticked = await tick.row();
   const saved = await phase.backup(started.core);
 
   log("backed up");
@@ -128,7 +130,7 @@ async function measureCore(of: phase.Boot, held: store.Store, restored: string):
       result: started.startup,
     },
     ...reads,
-    await tick.row(),
+    ticked,
     saved,
     { measurement: "file size", budget: null, result: await store.sizeOf(of.data), unit: "bytes" },
     writes,
