@@ -82,7 +82,7 @@ export function history(
     if (value !== undefined) points.push({ start: iso(t), end: iso(end), mean: value });
   }
 
-  return { tier: name, width: name === "bucket" ? width : null, points };
+  return { series, tier: name, width: name === "bucket" ? width : null, points };
 }
 
 /** The plant-local period after `start`. */
@@ -136,7 +136,7 @@ export function statistics(
     if (found !== null) points.push(found);
   }
 
-  return { period, points };
+  return { series, period, points };
 }
 
 export function forecasts(
@@ -156,7 +156,7 @@ export function forecasts(
       points.push({ issued, target: iso(t), value: device === SPOT ? value : value * 1.08 });
   }
 
-  return { points };
+  return { series, points };
 }
 
 export function costs(plant: Plant, span: Span): Answer<"CostDays"> {

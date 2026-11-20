@@ -1,5 +1,6 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
+import { perSeries } from "../api/core.harness.ts";
 import type { Rolled } from "../history/history.ts";
 import { daySpans } from "../weather/hourly.ts";
 import { aheadDays, powerAt, track } from "./ahead.ts";
@@ -157,15 +158,13 @@ test("a read refused in any of its pieces holds no forecast, not one with a hole
   const asked: number[] = [];
 
   const core = {
-    forecasts: (_device: number, _series: string, from: Readonly<Date>) => {
+    forecasts: perSeries((_device: number, _series: string, from: Readonly<Date>) => {
       asked.push(from.getTime());
 
-      return Promise.resolve(
-        asked.length === 2
-          ? { problem: "forecast.range" }
-          : { points: [{ target: from.toISOString(), issued: from.toISOString(), value: 1 }] },
-      );
-    },
+      return asked.length === 2
+        ? { problem: "forecast.range" }
+        : { points: [{ target: from.toISOString(), issued: from.toISOString(), value: 1 }] };
+    }),
   };
 
   const read = await forecastTargets(

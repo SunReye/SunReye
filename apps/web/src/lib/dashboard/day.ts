@@ -1,7 +1,7 @@
 // Reads today from the core: the plant's energy from its rollups, the PV forecast, the day's prices, the weather
 // and the money (ADR 12, 14, 15, 17). Nothing here is live; the dashboard rereads each part as
 // often as it moves.
-import { PLANT, SPOT, type Core } from "../api/core.ts";
+import { only, PLANT, SPOT, type Core } from "../api/core.ts";
 import type { CostDays } from "../api/tariff.ts";
 import { plantMidnight } from "../plant-day.ts";
 import {
@@ -44,40 +44,51 @@ export type Reader = Readonly<
   Pick<Core, "timezone" | "history" | "statistics" | "forecasts" | "layout" | "costs">
 >;
 
-async function measured(core: Reader, series: string, from: Date, to: Date): Promise<Interval[]> {
+/** Each of the `plant`'s `series` measured from `from` to before `to`, read together. */
+async function measured(
+  core: Reader,
+  series: readonly string[],
+  from: Date,
+  to: Date,
+): Promise<Interval[][]> {
   // An empty range, the first instant of a day, is refused: nothing to read yet.
-  if (to <= from) return [];
+  if (to <= from) return series.map(() => []);
 
-  const read = await core.history(PLANT, series, from, to);
+  const read: Interval[][] = [];
 
-  return "points" in read ? read.points : [];
+  for (const one of await core.history(PLANT, series, from, to))
+    read.push("points" in one ? one.points : []);
+
+  return read;
 }
 
-/** A `plant` power's day energy in kWh, rolled up by the core to its latest reading (ADR 3). */
-async function rolledUp(core: Reader, series: keyof Energies, day: readonly [Date, Date]) {
-  const read = await core.statistics(PLANT, series, "day", ...day);
+const ENERGIES = [
+  "pv.power",
+  "load.power",
+  "grid.import.power",
+  "grid.export.power",
+  "self.consumption.power",
+  "self.supply.power",
+] as const satisfies readonly (keyof Energies)[];
+
+/** The `plant` powers' day energies in kWh, rolled up by the core to their latest reading (ADR 3). */
+async function energies(core: Reader, day: readonly [Date, Date]): Promise<Energies> {
+  const read = await core.statistics(PLANT, ENERGIES, "day", ...day);
 
   // Wh; a day without a reading has no figures.
-  return ("points" in read ? (read.points[0]?.integral ?? 0) : 0) / 1000;
-}
+  const kwh = (i: number) => {
+    const one = read[i];
 
-async function energies(core: Reader, day: readonly [Date, Date]): Promise<Energies> {
-  const [pv, load, imported, exported, pvOnSite, loadOnSite] = await Promise.all([
-    rolledUp(core, "pv.power", day),
-    rolledUp(core, "load.power", day),
-    rolledUp(core, "grid.import.power", day),
-    rolledUp(core, "grid.export.power", day),
-    rolledUp(core, "self.consumption.power", day),
-    rolledUp(core, "self.supply.power", day),
-  ]);
+    return (one !== undefined && "points" in one ? (one.points[0]?.integral ?? 0) : 0) / 1000;
+  };
 
   return {
-    "pv.power": pv,
-    "load.power": load,
-    "grid.import.power": imported,
-    "grid.export.power": exported,
-    "self.consumption.power": pvOnSite,
-    "self.supply.power": loadOnSite,
+    "pv.power": kwh(0),
+    "load.power": kwh(1),
+    "grid.import.power": kwh(2),
+    "grid.export.power": kwh(3),
+    "self.consumption.power": kwh(4),
+    "self.supply.power": kwh(5),
   };
 }
 
@@ -88,7 +99,7 @@ async function forecast(
   from: Date,
   to: Date,
 ): Promise<readonly Target[]> {
-  const read = await core.forecasts(device, series, from, to);
+  const read = only(await core.forecasts(device, [series], from, to));
 
   return "points" in read ? read.points : [];
 }
@@ -175,9 +186,8 @@ export async function readQuarterly(
 ): Promise<Quarterly> {
   const read = new Date(now.getTime());
 
-  const [pv, load, weather] = await Promise.all([
-    measured(core, "pv.power", start, read),
-    measured(core, "load.power", start, read),
+  const [[pv = [], load = []], weather] = await Promise.all([
+    measured(core, ["pv.power", "load.power"], start, read),
     weatherOf(core, read),
   ]);
 

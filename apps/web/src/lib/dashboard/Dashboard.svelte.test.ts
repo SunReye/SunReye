@@ -3,6 +3,7 @@ import { cdp, page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { connect, type Transport } from "../api/core.ts";
+import { eachSeries } from "../api/core.harness.ts";
 import { feed } from "../live/stream.harness.ts";
 import Dashboard from "./Dashboard.svelte";
 
@@ -41,11 +42,10 @@ const ROLLUPS = new Map([
   ["self.supply.power", 4000],
 ]);
 
-const statistics = (series: string, integral = ROLLUPS.get(series)) =>
-  Response.json({
-    period: "day",
-    points: integral === undefined ? [] : [{ date: "", start: "", end: "", integral }],
-  });
+const statistics = (series: string, integral = ROLLUPS.get(series)) => ({
+  period: "day",
+  points: integral === undefined ? [] : [{ date: "", start: "", end: "", integral }],
+});
 
 const forecast = (value: number) => ({
   points: [{ issued: "2026-11-12T06:00:00Z", target: "2026-11-12T10:00:00Z", value }],
@@ -63,8 +63,9 @@ const served: Served = { live: NOON, day: true, devices: null };
 
 const held = () => Promise.withResolvers<Response>().promise;
 
-/** Today's reads by path; any other forecast, an inverter's or the weather's, is empty. */
-const DAY = new Map<string, (series: string) => Response>([
+/** Today's reads by path, a range read answering each series; any other forecast, an
+ * inverter's or the weather's, is empty. */
+const DAY = new Map<string, (href: string) => Response>([
   ["/api/v1/timezone", () => Response.json({ name: "UTC" })],
   [
     "/api/v1/layout",
@@ -72,10 +73,10 @@ const DAY = new Map<string, (series: string) => Response>([
   ],
   [
     `/api/v1/devices/${PLANT}/history`,
-    (series) => Response.json({ tier: "raw", points: HISTORY.get(series) ?? [] }),
+    (href) => eachSeries(href, (series) => ({ tier: "raw", points: HISTORY.get(series) ?? [] })),
   ],
-  [`/api/v1/devices/${PLANT}/statistics`, statistics],
-  [`/api/v1/devices/${SPOT}/forecasts`, () => Response.json(forecast(0.061))],
+  [`/api/v1/devices/${PLANT}/statistics`, (href) => eachSeries(href, statistics)],
+  [`/api/v1/devices/${SPOT}/forecasts`, (href) => eachSeries(href, () => forecast(0.061))],
   [
     "/api/v1/costs",
     () => Response.json({ days: [], total: { paid: 0.32, earned: 0.33, saved: 2.1 } }),
@@ -95,9 +96,9 @@ function answer(href: string): Promise<Response> {
 
   if (!served.day) return held();
 
-  const read = DAY.get(url.pathname) ?? (() => Response.json({ points: [] }));
+  const read = DAY.get(url.pathname) ?? ((h: string) => eachSeries(h, () => ({ points: [] })));
 
-  return Promise.resolve(read(url.searchParams.get("series") ?? ""));
+  return Promise.resolve(read(href));
 }
 
 const transport: Transport = {

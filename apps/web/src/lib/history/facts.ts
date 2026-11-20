@@ -1,6 +1,6 @@
 // What the statistics screen reads once, whatever the range: the strings, whether the plant has a
 // battery or an EV, the first day it recorded, and payback (admin only, ADR 12).
-import { PLANT, type Core, type PvString } from "../api/core.ts";
+import { only, PLANT, type Core, type PvString } from "../api/core.ts";
 import type { Payback } from "../api/tariff.ts";
 import { inputCorrections, modulePeaks } from "../analytics/string-energy.ts";
 import type { InputCorrection } from "../analytics/strings.ts";
@@ -50,24 +50,28 @@ async function since(core: FactsCore): Promise<Pick<Facts, "since" | "begun">> {
 
   if (year === undefined) return { since: null, begun: null };
 
-  const read = await core.statistics(
-    PLANT,
-    "load.power",
-    "day",
-    new Date(Date.UTC(year - 1, 11, 31)),
-    new Date(Date.UTC(year + 1, 0, 2)),
+  const read = only(
+    await core.statistics(
+      PLANT,
+      ["load.power"],
+      "day",
+      new Date(Date.UTC(year - 1, 11, 31)),
+      new Date(Date.UTC(year + 1, 0, 2)),
+    ),
   );
 
   const first = "points" in read ? read.points[0] : undefined;
 
   if (first === undefined) return { since: null, begun: null };
 
-  const hours = await core.statistics(
-    PLANT,
-    "load.power",
-    "hour",
-    new Date(first.start),
-    new Date(first.end),
+  const hours = only(
+    await core.statistics(
+      PLANT,
+      ["load.power"],
+      "hour",
+      new Date(first.start),
+      new Date(first.end),
+    ),
   );
 
   const hour = "points" in hours ? hours.points[0] : undefined;

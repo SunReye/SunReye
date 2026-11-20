@@ -3,7 +3,13 @@
 import { PLANT, type Core } from "../api/core.ts";
 import { share } from "../dashboard/today.ts";
 import { euroDigits } from "../range/format.ts";
-import { coveredSum, rollups, type Rolled, type RollupPeriod } from "../history/history.ts";
+import {
+  coveredSum,
+  rollups,
+  rollupsOf,
+  type Rolled,
+  type RollupPeriod,
+} from "../history/history.ts";
 
 export interface Measured {
   /** Null where nothing was read. */
@@ -35,7 +41,7 @@ export const strict = (core: MeasureCore): MeasureCore => ({
   statistics: async (...args: Readonly<Parameters<MeasureCore["statistics"]>>) => {
     const read = await core.statistics(...args);
 
-    if ("problem" in read) throw new Error(read.problem);
+    for (const one of read) if ("problem" in one) throw new Error(one.problem);
 
     return read;
   },
@@ -100,10 +106,14 @@ function shareOf(core: MeasureCore, part: string, whole: string): Measure {
     digits: () => 0,
     points: true,
     read: async (from, to, period) => {
-      const read = (series: string) =>
-        rollups(sure, PLANT, series, period, new Date(from), new Date(to));
-
-      const [of, all] = await Promise.all([read(part), read(whole)]);
+      const [of = [], all = []] = await rollupsOf(
+        sure,
+        PLANT,
+        [part, whole],
+        period,
+        new Date(from),
+        new Date(to),
+      );
 
       return { value: share(kwh(of), kwh(all)), stops: stopOf(all, to) };
     },

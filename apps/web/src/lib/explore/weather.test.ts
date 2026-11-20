@@ -68,6 +68,7 @@ test("the picker lists the weather's roles under the weather device, by their la
 const H = (hour: number) => `2026-11-10T${String(hour).padStart(2, "0")}:00:00Z`;
 
 const CODES: History = {
+  series: "weather.code",
   tier: "raw",
   points: [
     { start: H(0), end: H(6), mean: 3 },
@@ -77,7 +78,7 @@ const CODES: History = {
 };
 
 const reads: Reads = {
-  history: () => Promise.resolve(CODES),
+  history: () => Promise.resolve([CODES]),
   statistics: () => Promise.reject(new Error("a weather code has no statistics")),
 };
 

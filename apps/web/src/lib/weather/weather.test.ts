@@ -1,5 +1,6 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
+import { perSeries } from "../api/core.harness.ts";
 import { at, fake, intervals, read, targets, WEATHER } from "./weather.harness.ts";
 import { weatherNow } from "./now.ts";
 import { readWeather, weatherAt, type Weather } from "./weather.ts";
@@ -101,9 +102,12 @@ test("past weather comes from history where it covers the instant, else from the
 });
 
 test("the weather is read from the weather device: history and forecasts, the measured index from history alone, visibility from forecasts alone", async () => {
-  const { core, asked } = fake({});
+  const { core, asked, requests } = fake({});
 
   await readWeather(core, new Date(at("00:00")), new Date(at("23:59")));
+
+  // One request a source, for every series it holds.
+  expect(requests.count).toBe(2);
 
   expect(asked.toSorted()).toEqual(
     [
@@ -128,11 +132,12 @@ test("the weather is read from the weather device: history and forecasts, the me
 test("a refused or failed read is no weather for its quantity", async () => {
   const weather = await readWeather(
     {
-      history: () => Promise.resolve({ problem: "history.range" }),
-      forecasts: (_, series) =>
+      history: () => Promise.reject(new Error("offline")),
+      forecasts: perSeries((_, series: string) =>
         series === "weather.code"
-          ? Promise.resolve({ points: targets(["12:00", 45]) })
-          : Promise.reject(new Error("offline")),
+          ? { points: targets(["12:00", 45]) }
+          : { problem: "forecast.range" },
+      ),
     },
     new Date(at("00:00")),
     new Date(at("23:59")),
@@ -168,7 +173,7 @@ test("an instant knows how long it has been dry: 0 while it falls, then since it
 });
 
 test("every reader of the weather now within a quarter shares one read, as of the first", async () => {
-  const { core, asked } = fake({ forecasts: { "weather.code": targets(["12:00", 61]) } });
+  const { core, requests } = fake({ forecasts: { "weather.code": targets(["12:00", 61]) } });
 
   const [first, second] = await Promise.all([
     weatherNow(core, at("12:01")),
@@ -177,7 +182,8 @@ test("every reader of the weather now within a quarter shares one read, as of th
 
   const later = await weatherNow(core, at("12:14"));
 
-  expect(asked).toHaveLength(24);
+  // One read: its history and its forecasts.
+  expect(requests.count).toBe(2);
   expect(second).toBe(first);
   expect(later).toBe(first);
   expect(first[1]).toBe(at("12:01"));
@@ -185,26 +191,26 @@ test("every reader of the weather now within a quarter shares one read, as of th
 });
 
 test("the weather now is read again a minute into the next quarter, once the core closed it", async () => {
-  const { core, asked } = fake({ forecasts: { "weather.code": targets(["12:00", 61]) } });
+  const { core, requests } = fake({ forecasts: { "weather.code": targets(["12:00", 61]) } });
 
   const first = await weatherNow(core, at("12:14"));
   // The core stores the closed quarter's clear-sky index half a minute after its end.
   const closing = await weatherNow(core, at("12:15") + 59_000);
 
   expect(closing).toBe(first);
-  expect(asked).toHaveLength(24);
+  expect(requests.count).toBe(2);
 
   const next = await weatherNow(core, at("12:16"));
 
-  expect(asked).toHaveLength(48);
+  expect(requests.count).toBe(4);
   expect(next[1]).toBe(at("12:16"));
 });
 
 test("a read with no weather at all is not shared: the core may answer the next", async () => {
-  const { core, asked } = fake({});
+  const { core, requests } = fake({});
 
   await weatherNow(core, at("12:01"));
   await weatherNow(core, at("12:02"));
 
-  expect(asked).toHaveLength(48);
+  expect(requests.count).toBe(4);
 });

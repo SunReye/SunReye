@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { connect } from "../api/core.ts";
+import { eachSeries } from "../api/core.harness.ts";
 import { dayOf } from "../range/calendar.ts";
 import { readFacts } from "./facts.ts";
 
@@ -29,18 +30,16 @@ const PROBLEM = { "content-type": "application/problem+json" };
 const refusal = (status: number, code: string) =>
   Response.json({ status, code }, { status, headers: PROBLEM });
 
-/** Reads a request's query parameter. */
-type Query = (name: string) => string;
-
-/** A statistics read: refused past the core's cap, else answered by its period. */
-function statistics(q: Query, answer: (key: string) => object): Response {
+/** A statistics read: refused past the core's cap, else each series answered by its period. */
+function statistics(href: string, answer: (key: string) => object): Response {
+  const q = (name: string) => new URL(href).searchParams.get(name) ?? "";
   const span = Date.parse(q("to")) - Date.parse(q("from"));
 
   if (!(span <= DAY_SPAN)) return refusal(422, "history.range");
 
   asked.push(new Date(q("from")).getUTCFullYear());
 
-  return Response.json(answer(q("period")));
+  return eachSeries(href, () => answer(q("period")));
 }
 
 /** The core answering by the path's last part, statistics by period; a viewer is refused payback. */
@@ -51,8 +50,8 @@ function core(viewer = false, rolledUp = true) {
 
   const answer = (key: string) => answers.get(key) ?? {};
 
-  const reads = new Map<string, (q: Query) => Response>([
-    ["statistics", (q) => statistics(q, answer)],
+  const reads = new Map<string, (href: string) => Response>([
+    ["statistics", (href) => statistics(href, answer)],
     ...(viewer ? [["payback", () => refusal(403, "auth.forbidden")] as const] : []),
   ]);
 
@@ -63,7 +62,7 @@ function core(viewer = false, rolledUp = true) {
       const last = url.pathname.split("/").at(-1) ?? "";
       const read = reads.get(last) ?? (() => Response.json(answer(last)));
 
-      return Promise.resolve(read((name) => url.searchParams.get(name) ?? ""));
+      return Promise.resolve(read(request.url));
     },
   });
 }

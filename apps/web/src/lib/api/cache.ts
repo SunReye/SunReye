@@ -1,8 +1,10 @@
 // The reads that rarely change, asked once for every screen: a core's devices, layout,
-// capabilities, timezone, series catalog, topology, module types and location.
+// capabilities, timezone, series catalog, topology, module types and location; and range reads,
+// held as `ranges.ts` says.
 import type { Problem } from "./client";
 import type { Core } from "./core";
 import type { Visibility } from "./live";
+import { holding } from "./ranges";
 
 const READS = [
   "devices",
@@ -78,13 +80,9 @@ const changer =
     }
   };
 
-/**
- * `core` with its rarely changing reads remembered: callers at once share one request, later ones
- * none, until a write through it changes the read, or the page is shown again, as another screen
- * may have changed the plant meanwhile. A failure or a refusal other than a viewer's is asked again.
- */
-export function remembering(core: Readonly<Core>, page: Visibility | undefined): Core {
-  const kept = {
+/** Each rarely changing read of `core`, remembered. */
+const keep = (core: Readonly<Core>) =>
+  ({
     devices: remembered(core.devices),
     layout: remembered(core.layout),
     capabilities: remembered(core.capabilities),
@@ -93,7 +91,16 @@ export function remembering(core: Readonly<Core>, page: Visibility | undefined):
     topology: remembered(core.topology),
     moduleTypes: remembered(core.moduleTypes),
     location: remembered(core.location),
-  } satisfies Record<Read, Readonly<{ forget: () => void }>>;
+  }) satisfies Record<Read, Readonly<{ forget: () => void }>>;
+
+/**
+ * `core` with its rarely changing reads remembered and its range reads held (ADR 11): callers at
+ * once share one request, later ones none, until a write through it changes the read, or the page
+ * is shown again, as another screen may have changed the plant meanwhile. A failure or a refusal
+ * other than a viewer's is asked again.
+ */
+export function remembering(core: Readonly<Core>, page: Visibility | undefined): Core {
+  const kept = keep(core);
 
   const forget = (reads: readonly Read[] = READS) => {
     for (const read of reads) kept[read].forget();
@@ -107,6 +114,7 @@ export function remembering(core: Readonly<Core>, page: Visibility | undefined):
 
   return {
     ...core,
+    ...holding(core),
     devices: kept.devices.read,
     layout: kept.layout.read,
     capabilities: kept.capabilities.read,

@@ -3,7 +3,7 @@
 // and the day move on.
 import { afterEach, beforeEach, expect, jest, setSystemTime, test } from "bun:test";
 import { connect } from "../api/core.ts";
-import { tally } from "../api/core.harness.ts";
+import { eachSeries, tally } from "../api/core.harness.ts";
 import type { Visibility } from "../api/live.ts";
 import type { Day } from "./day.ts";
 import { followDay } from "./day-follow.ts";
@@ -44,6 +44,24 @@ class Page extends EventTarget {
   }
 }
 
+/** A range read of the plant's day: `made` Wh of PV so far, and the weather device's sky. */
+function range(href: string, made: number): Response {
+  const path = new URL(href).pathname;
+
+  if (path.endsWith("/statistics"))
+    return eachSeries(href, (series) => ({
+      period: "day",
+      points: [{ date: "", start: "", end: "", integral: series === "pv.power" ? made : 0 }],
+    }));
+
+  // The weather device forecasts the sky; nothing else is stored.
+  const weather = path.endsWith(`/devices/${WEATHER}/forecasts`);
+
+  return eachSeries(href, (series) => ({
+    points: weather && series === "weather.code" ? SKY : [],
+  }));
+}
+
 /** A plant in UTC that made `made` Wh so far today, and every request asked of it. */
 function plant(page: Visibility) {
   const urls: string[] = [];
@@ -62,22 +80,7 @@ function plant(page: Visibility) {
 
         if (path.endsWith("/layout")) return Promise.resolve(Response.json(LAYOUT));
 
-        const integral = url.searchParams.get("series") === "pv.power" ? state.made : 0;
-
-        if (path.endsWith("/statistics"))
-          return Promise.resolve(
-            Response.json({
-              period: "day",
-              points: [{ date: "", start: "", end: "", integral }],
-            }),
-          );
-
-        // The weather device forecasts the sky; nothing else is stored.
-        const weather =
-          path.endsWith(`/devices/${WEATHER}/forecasts`) &&
-          url.searchParams.get("series") === "weather.code";
-
-        return Promise.resolve(Response.json({ points: weather ? SKY : [] }));
+        return Promise.resolve(range(request.url, state.made));
       },
     },
     page,
@@ -112,15 +115,16 @@ async function minutes(count: number): Promise<void> {
   await minutes(count - 1);
 }
 
-/** Today's energies and money: they move every minute. */
-const MOVING = { [`devices/${PLANT}/statistics`]: 6, costs: 1 };
+/** Today's six energies, in one read, and money: they move every minute. */
+const MOVING = { [`devices/${PLANT}/statistics`]: 1, costs: 1 };
 
-/** The day chart's measured powers and the weather now: they move each quarter. */
+/** The day chart's two measured powers and the weather now, each one read: they move each
+ * quarter. */
 const QUARTERLY = {
   ...MOVING,
-  [`devices/${PLANT}/history`]: 2,
-  [`devices/${WEATHER}/history`]: 12,
-  [`devices/${WEATHER}/forecasts`]: 12,
+  [`devices/${PLANT}/history`]: 1,
+  [`devices/${WEATHER}/history`]: 1,
+  [`devices/${WEATHER}/forecasts`]: 1,
 };
 
 /** The forecasts: they move each hour. */
@@ -179,7 +183,7 @@ test("a quarter's close reads the chart and the weather again, an hour's the for
   // 10:02:30 to 10:15:30: the minutes alone. The core closes a quarter a minute after its end.
   await minutes(14);
 
-  expect(since()).toEqual({ [`devices/${PLANT}/statistics`]: 6 * 14, costs: 14 });
+  expect(since()).toEqual({ [`devices/${PLANT}/statistics`]: 14, costs: 14 });
 
   // 10:16:30.
   await pass(MINUTE);
@@ -214,7 +218,7 @@ test("a new day is read whole", async () => {
   await pass(MINUTE);
 
   // The layout and the timezone are remembered, and the weather now is the closing quarter's.
-  const day = { ...MOVING, [`devices/${PLANT}/history`]: 2, ...FORECASTS };
+  const day = { ...MOVING, [`devices/${PLANT}/history`]: 1, ...FORECASTS };
 
   expect(since()).toEqual(day);
   expect(days.at(-1)?.start.toISOString()).toBe("2026-11-13T00:00:00.000Z");
@@ -237,7 +241,7 @@ test("a hidden page reads nothing, and today is read whole when it is shown agai
   await drain();
 
   // The weather now is the quarter's, read already.
-  const whole = { ...MOVING, ...PLACE, [`devices/${PLANT}/history`]: 2, ...FORECASTS };
+  const whole = { ...MOVING, ...PLACE, [`devices/${PLANT}/history`]: 1, ...FORECASTS };
 
   expect(since()).toEqual(whole);
   stop();

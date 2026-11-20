@@ -3,6 +3,7 @@ import { cdp, page } from "vitest/browser";
 import { vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import { connect, type Transport } from "../api/core.ts";
+import { eachAnswer } from "../api/core.harness.ts";
 import { merge } from "../api/frames.ts";
 import Dashboard from "../dashboard/Dashboard.svelte";
 import { feed } from "../live/stream.harness.ts";
@@ -12,13 +13,14 @@ import {
   INVERTER,
   INVERTER_PLAN,
   NO_COSTS,
+  PLANT,
   SPOT_PRICES,
+  statistics,
   TOPOLOGY,
 } from "./detail.fixtures.ts";
 
-export { INVERTER };
+export { INVERTER, PLANT, rollup } from "./detail.fixtures.ts";
 
-export const PLANT = "4294967294";
 const SPOT = "4294967292";
 export const TARIFF = "4294967293";
 export const BATTERY = "2";
@@ -117,38 +119,15 @@ const IMPORTING = { [PLANT]: { "grid.power": 800 } };
 /** One statistics request: device, series, its window and the period it is cut in. */
 export type Asked = Readonly<Record<"device" | "series" | "from" | "to" | "period", string>>;
 
-/** Each statistics request. */
+/** Each series of each statistics request. */
 export const asked: Asked[] = [];
 
-/** Each other request, as `/api/v1/devices/4294967295/history weather.code 2026-11-12T00:00:00.000Z`. */
+/** Each other request, a range read's once a series, as
+ * `/api/v1/devices/4294967295/history weather.code 2026-11-12T00:00:00.000Z`. */
 export const fetched: string[] = [];
 
-/** One hourly rollup of `watts` from `at`, in ms since the epoch. */
-export function rollup(at: number, watts: number) {
-  const [start, end] = [new Date(at).toISOString(), new Date(at + 3_600_000).toISOString()];
-
-  return { date: start.slice(0, 10), start, end, mean: watts, integral: watts, hours: 1 };
-}
-
-/** The plant's battery discharged 2 kWh at 08:00 and charged 3 kWh at 10:00. */
-function battery(from: string): Response {
-  const at = (h: number) => Date.parse(from) + h * 3_600_000;
-
-  return Response.json({ points: [rollup(at(8), -2000), rollup(at(10), 3000)], period: "hour" });
-}
-
-/** String 1 made 12 kWh in the range, string 2 3 kWh: one rollup each. */
-function statistics(device: string, series: string | null, from: string): Response {
-  if (device === PLANT && series === "battery.power") return battery(from);
-
-  const watts = { "pv.string.power[1]": 12_000, "pv.string.power[2]": 3000 }[series ?? ""];
-  const at = Date.parse(from) + 10 * 3_600_000;
-
-  if (device !== INVERTER || watts === undefined)
-    return Response.json({ points: [], period: "hour" });
-
-  return Response.json({ points: [rollup(at, watts)], period: "hour" });
-}
+/** Each request's path, once a request. */
+export const requested: string[] = [];
 
 /** Feeds the stream the served frame, folded as the core's stream folds it (ADR 9). */
 function streamed(): void {
@@ -214,34 +193,42 @@ const ROUTES = new Map<string, (q: Readonly<URLSearchParams>) => Response | Prom
 ]);
 
 /** A statistics request's device, series, window and period, read from its URL. */
-function askedOf(device: string, q: Readonly<URLSearchParams>): Asked {
+function askedOf(device: string, series: string, q: Readonly<URLSearchParams>): Asked {
   const field = (name: string) => q.get(name) ?? "";
 
-  return {
-    device,
-    series: field("series"),
-    from: field("from"),
-    to: field("to"),
-    period: field("period"),
-  };
+  return { device, series, from: field("from"), to: field("to"), period: field("period") };
 }
 
 function answer(href: string): Response | Promise<Response> {
   const { pathname, searchParams: q } = new URL(href);
+  const series = q.getAll("series");
+
+  requested.push(pathname);
 
   const read = /^\/api\/v1\/devices\/(\d+)\/statistics$/u.exec(pathname);
 
-  if (read) {
-    const one = askedOf(read[1]!, q);
+  if (read)
+    return eachAnswer(series, (name) => {
+      const one = askedOf(read[1]!, name, q);
 
-    asked.push(one);
+      asked.push(one);
 
-    return served.rolled?.(one) ?? statistics(one.device, one.series, one.from);
+      return served.rolled?.(one) ?? statistics(one.device, one.series, one.from);
+    });
+
+  const route = ROUTES.get(pathname) ?? (() => Response.json({ points: [] }));
+
+  if (!/\/(?:history|forecasts)$/u.test(pathname)) {
+    fetched.push(`${pathname}  ${q.get("from") ?? ""}`);
+
+    return route(q);
   }
 
-  fetched.push(`${pathname} ${q.get("series") ?? ""} ${q.get("from") ?? ""}`);
+  return eachAnswer(series, (name) => {
+    fetched.push(`${pathname} ${name} ${q.get("from") ?? ""}`);
 
-  return (ROUTES.get(pathname) ?? (() => Response.json({ points: [] })))(q);
+    return route(q);
+  });
 }
 
 const transport: Transport = {
@@ -255,6 +242,7 @@ export async function prepare(): Promise<void> {
   served.stale = undefined;
   asked.length = 0;
   fetched.length = 0;
+  requested.length = 0;
   served.tick = false;
   served.breaks = false;
   served.refuses = false;

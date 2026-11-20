@@ -1,10 +1,17 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
+import { perSeries } from "../api/core.harness.ts";
 import { readWeatherSources, type WeatherReader } from "./weather.ts";
 
 const WEATHER = 4_294_967_295;
 const at = (time: string) => new Date(`2026-11-14T${time}:00Z`);
 const minute = (date: Readonly<Date>) => date.toISOString().slice(0, 16);
+
+/** The forecasts stored ahead, by series. */
+const AHEAD = new Map([
+  ["weather.humidity", 70],
+  ["weather.sunshine", 900],
+]);
 
 /** Every read of the last `read`. */
 const asked: string[] = [];
@@ -12,7 +19,7 @@ const asked: string[] = [];
 /** A core storing one humidity each way and an hour of sunshine ahead. */
 function fake(): WeatherReader {
   return {
-    history: (device, series, from, to) => {
+    history: perSeries((device, series: string, from: Readonly<Date>, to: Readonly<Date>) => {
       asked.push(`history ${device} ${series} ${minute(from)} ${minute(to)}`);
 
       const points =
@@ -20,16 +27,16 @@ function fake(): WeatherReader {
           ? [{ start: at("08:00").toISOString(), end: at("09:00").toISOString(), mean: 81 }]
           : [];
 
-      return Promise.resolve({ tier: "raw", points });
-    },
-    forecasts: (device, series, from, to) => {
+      return { tier: "raw" as const, points };
+    }),
+    forecasts: perSeries((device, series: string, from: Readonly<Date>, to: Readonly<Date>) => {
       asked.push(`forecasts ${device} ${series} ${minute(from)} ${minute(to)}`);
 
-      const value = { "weather.humidity": 70, "weather.sunshine": 900 }[series];
+      const value = AHEAD.get(series);
       const target = { issued: at("00:00").toISOString(), target: at("08:00").toISOString() };
 
-      return Promise.resolve({ points: value === undefined ? [] : [{ ...target, value }] });
-    },
+      return { points: value === undefined ? [] : [{ ...target, value }] };
+    }),
   };
 }
 

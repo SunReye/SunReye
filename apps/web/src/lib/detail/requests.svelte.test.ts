@@ -2,22 +2,18 @@
 import { afterEach, beforeEach, expect, test } from "vitest";
 import "../../app.css";
 import { settled, tally } from "../api/core.harness.ts";
-import { asked, fetched, INVERTER, PLANT, prepare, restore, show } from "./detail.harness.ts";
+import { asked, PLANT, prepare, requested, restore, show } from "./detail.harness.ts";
 
 beforeEach(prepare);
 
 afterEach(restore);
 
 /** Every request so far, by path. */
-const requests = () => [
-  ...asked.map(({ device }) => `/api/v1/devices/${device}/statistics`),
-  ...fetched.map((line) => line.split(" ")[0] ?? ""),
-];
+const requests = () => requested;
 
 /** The requests the dashboard makes as it opens with sheet `detail`, by path. */
 async function opening(detail: string | null) {
-  asked.length = 0;
-  fetched.length = 0;
+  requested.length = 0;
 
   const { screen } = await show(detail);
 
@@ -46,10 +42,10 @@ test("the PV sheet opens on one read of each thing its shown tab needs", async (
     // The dashboard knows neither the topology nor the stored series.
     topology: 1,
     series: 1,
-    // The overview tab's range and the PV facts below the tabs, no hidden tab's; a range read
-    // asked twice at once, once.
-    [`devices/${PLANT}/statistics`]: 5,
-    [`devices/${INVERTER}/forecasts`]: 2,
+    // The overview tab's range and the PV facts below the tabs, no hidden tab's: the series of one
+    // range and period asked at once go as one request (ADR 9), and the inverter's forecast joins
+    // the dashboard's.
+    [`devices/${PLANT}/statistics`]: 2,
   });
 });
 

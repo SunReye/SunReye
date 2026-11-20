@@ -1,6 +1,8 @@
 // Fixed answers of the detail sheet tests' fake core (ADR 21).
 export const INVERTER = "1";
 
+export const PLANT = "4294967294";
+
 /** Input 1 runs 15 % under its model lately. */
 export const CORRECTIONS = {
   inputs: [
@@ -61,3 +63,30 @@ export const SPOT_PRICES = {
 export const INVERTER_PLAN = { points: [10, 11, 12, 13].map((h) => slot(h, 2000)) };
 
 export const NO_COSTS = { days: [], total: { paid: 0.32, earned: 0.33, saved: 2.1, standing: 0 } };
+
+/** One hourly rollup of `watts` from `at`, in ms since the epoch. */
+export function rollup(at: number, watts: number) {
+  const [start, end] = [new Date(at).toISOString(), new Date(at + 3_600_000).toISOString()];
+
+  return { date: start.slice(0, 10), start, end, mean: watts, integral: watts, hours: 1 };
+}
+
+/** The plant's battery discharged 2 kWh at 08:00 and charged 3 kWh at 10:00. */
+function battery(from: string): Response {
+  const at = (h: number) => Date.parse(from) + h * 3_600_000;
+
+  return Response.json({ points: [rollup(at(8), -2000), rollup(at(10), 3000)], period: "hour" });
+}
+
+/** String 1 made 12 kWh in the range, string 2 3 kWh: one rollup each. */
+export function statistics(device: string, series: string | null, from: string): Response {
+  if (device === PLANT && series === "battery.power") return battery(from);
+
+  const watts = { "pv.string.power[1]": 12_000, "pv.string.power[2]": 3000 }[series ?? ""];
+  const at = Date.parse(from) + 10 * 3_600_000;
+
+  if (device !== INVERTER || watts === undefined)
+    return Response.json({ points: [], period: "hour" });
+
+  return Response.json({ points: [rollup(at, watts)], period: "hour" });
+}

@@ -2,6 +2,7 @@
 // recorded, and every read the screen makes (ADR 9, 12).
 import { render } from "vitest-browser-svelte";
 import { connect, type Transport } from "../api/core.ts";
+import { eachSeries } from "../api/core.harness.ts";
 import { iso } from "../range/calendar.ts";
 import StatisticsScreen from "./StatisticsScreen.svelte";
 import { at, rollups, series, TODAY } from "./statistics.series.ts";
@@ -68,19 +69,19 @@ export function reset(): void {
 /** Reads a request's query parameter. */
 type Query = (name: string) => string | null;
 
-function history(q: Query): Response {
-  const name = q("series") ?? "";
-
+function history(q: Query, href: string): Response {
   const [from, to] = [Date.parse(q("from")!), Date.parse(q("to")!)];
 
-  asked.push({ series: name, from, to });
+  return eachSeries(href, (name) => {
+    asked.push({ series: name, from, to });
 
-  const points = (new Map(Object.entries(series())).get(name) ?? []).filter(
-    (p: Readonly<{ start: string; end: string }>) =>
-      Date.parse(p.end) > from && Date.parse(p.start) < to,
-  );
+    const points = (new Map(Object.entries(series())).get(name) ?? []).filter(
+      (p: Readonly<{ start: string; end: string }>) =>
+        Date.parse(p.end) > from && Date.parse(p.start) < to,
+    );
 
-  return Response.json({ tier: "hour", points });
+    return { tier: "hour", points };
+  });
 }
 
 /** A plant-local day's bounds, as the core states them. */
@@ -164,20 +165,20 @@ function capacity(): Response {
   });
 }
 
-function statistics(q: Query): Response {
-  const [name, from, to] = [q("series") ?? "", Date.parse(q("from")!), Date.parse(q("to")!)];
+function statistics(q: Query, href: string): Response {
+  const [from, to] = [Date.parse(q("from")!), Date.parse(q("to")!)];
   const period = q("period") ?? "";
-  const recorded = period === "day" || period === "hour" ? rollups(name, period, from, to) : [];
 
-  asked.push({ series: name, from, to });
+  return eachSeries(href, (name) => {
+    const recorded = period === "day" || period === "hour" ? rollups(name, period, from, to) : [];
 
-  return Response.json({
-    period,
-    points: recorded.length > 0 ? recorded : [dayAt(TODAY - plant.age)],
+    asked.push({ series: name, from, to });
+
+    return { period, points: recorded.length > 0 ? recorded : [dayAt(TODAY - plant.age)] };
   });
 }
 
-const READS = new Map<string, (q: Query) => Response>(
+const READS = new Map<string, (q: Query, href: string) => Response>(
   Object.entries({
     timezone: () => {
       zone.read = true;
@@ -187,7 +188,7 @@ const READS = new Map<string, (q: Query) => Response>(
     history,
     costs,
     statistics,
-    forecasts: () => Response.json({ points: [] }),
+    forecasts: (_, href) => eachSeries(href, () => ({ points: [] })),
     capabilities: () =>
       Response.json({
         devices: {
@@ -246,7 +247,7 @@ function transport(urls: string[]): Transport {
       if (plant.gate && plantRead) await plant.gate;
 
       return read
-        ? read((name) => url.searchParams.get(name))
+        ? read((name) => url.searchParams.get(name), request.url)
         : Response.json({ problem: { code: "request.route" } }, { status: 404 });
     },
   };

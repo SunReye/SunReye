@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { connect } from "../api/core.ts";
+import { eachSeries } from "../api/core.harness.ts";
 import { rangeFor } from "../range/range.ts";
 import { bandFigure, coveredSum, periodOf, rollups } from "./history.ts";
 
@@ -69,7 +70,9 @@ function fake() {
         hours: 0.5,
       };
 
-      return Promise.resolve(Response.json({ period: q.get("period"), points: [point] }));
+      return Promise.resolve(
+        eachSeries(request.url, () => ({ period: q.get("period"), points: [point] })),
+      );
     },
   });
 
