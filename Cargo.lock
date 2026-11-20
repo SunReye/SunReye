@@ -1003,6 +1003,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "sunreye-synth"
+version = "5.0.0"
+dependencies = [
+ "axum",
+ "jiff",
+ "rusqlite",
+ "serde_json",
+ "sunreye-core",
+ "sunreye-profile",
+ "sunreye-pv",
+ "tempfile",
+ "tokio",
+ "tower",
+]
+
+[[package]]
 name = "syn"
 version = "2.0.119"
 source = "registry+https://github.com/rust-lang/crates.io-index"
