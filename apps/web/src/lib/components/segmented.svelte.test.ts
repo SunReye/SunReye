@@ -130,24 +130,35 @@ function looks(element: Element, pseudo?: string) {
   };
 }
 
-test("segmented tabs look like the segmented control", async () => {
-  const { screen } = await tabs();
+test.each(["light", "dark"])(
+  "in the %s theme, segmented tabs look like the segmented control",
+  async (theme) => {
+    document.documentElement.classList.toggle("dark", theme === "dark");
 
-  const list = screen.getByRole("tablist", { name: "Tabs" }).element();
-  const group = screen.getByRole("group", { name: "Segmente" }).element();
-  const tab = screen.getByRole("tab", { name: "Tag" }).element();
-  const item = screen.getByRole("radio", { name: "Tag" }).element();
+    try {
+      const { screen } = await tabs();
 
-  // An earlier test's pointer may still rest on a tab and light its glow.
-  await userEvent.unhover(tab);
-  // The pressed box is drawn once each has measured its chosen option.
-  await expect.poll(() => Object.hasOwn(list.dataset, "indicator")).toBe(true);
-  await expect.poll(() => Object.hasOwn(group.dataset, "indicator")).toBe(true);
-  // The chosen option's own background fades out under the box.
-  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- an animation is mutable.
-  await Promise.all(document.getAnimations().map((animation) => animation.finished));
+      const list = screen.getByRole("tablist", { name: "Tabs" }).element();
+      const group = screen.getByRole("group", { name: "Segmente" }).element();
 
-  expect(looks(list)).toEqual(looks(group));
-  expect(looks(list, "::before")).toEqual(looks(group, "::before"));
-  expect(looks(tab)).toEqual(looks(item));
-});
+      // An earlier test's pointer may still rest on a tab and light its glow.
+      await userEvent.unhover(list);
+      // The pressed box is drawn once each has measured its chosen option.
+      await expect.poll(() => Object.hasOwn(list.dataset, "indicator")).toBe(true);
+      await expect.poll(() => Object.hasOwn(group.dataset, "indicator")).toBe(true);
+      // The chosen option's own background fades out under the box.
+      // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- an animation is mutable.
+      await Promise.all(document.getAnimations().map((animation) => animation.finished));
+
+      expect(looks(list)).toEqual(looks(group));
+      expect(looks(list, "::before")).toEqual(looks(group, "::before"));
+
+      for (const name of ["Tag", "Woche"])
+        expect(looks(screen.getByRole("tab", { name }).element()), name).toEqual(
+          looks(screen.getByRole("radio", { name }).element()),
+        );
+    } finally {
+      document.documentElement.classList.remove("dark");
+    }
+  },
+);
