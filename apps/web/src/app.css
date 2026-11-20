@@ -131,6 +131,8 @@
   --motion-enter: 350ms;
   --motion-exit: 150ms;
   --motion-ease-exit: cubic-bezier(0.55, 0.055, 0.675, 0.19);
+  /* How long the last of a row of arrivals waits after the first (a chart's bars). */
+  --motion-stagger: 120ms;
 }
 
 .dark {
@@ -194,6 +196,7 @@
     --motion-move: 0ms;
     --motion-enter: 0ms;
     --motion-exit: 0ms;
+    --motion-stagger: 0ms;
   }
 }
 
@@ -206,6 +209,7 @@
   --motion-move: 0ms;
   --motion-enter: 0ms;
   --motion-exit: 0ms;
+  --motion-stagger: 0ms;
 }
 
 /* A drawer enters like a sheet and leaves faster, easing in (ADR 21). Unlayered, as vaul's own 0.5 s. */
