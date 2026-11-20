@@ -281,6 +281,8 @@ test("a finger drags an inverter's card to the earlier week, reading nothing mor
 
   const dragged = transport.asked.length - before;
 
+  expect(dragged).toBeGreaterThan(0);
+
   await screen.getByRole("button", { name: "Früher" }).click();
   await expect.poll(() => went.at(-1)).toBe("2026-10-19");
   await settled(() => transport.asked.length);

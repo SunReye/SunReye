@@ -25,16 +25,19 @@ function timings(selector: string): number[] {
 }
 
 const SCREENS = [
-  { name: "the boot line", mount: () => render(Boot), selector: "[role=status]" },
+  { name: "the boot line", mount: () => render(Boot), selector: "[role=status]", full: 0.18 },
   {
     name: "the scene stand-in's line",
     mount: () => render(SceneStandIn, { slow: true }),
     selector: "[role=status]",
+    full: 0.18,
   },
   {
     name: "the rail's labels",
     mount: () => render(Rail),
     selector: ".rail .label",
+    // Folded: the exit's.
+    full: 0.15,
   },
   {
     name: "a stalled live graph's dimming",
@@ -48,16 +51,25 @@ const SCREENS = [
         diverging: false,
       }),
     selector: "div.transition-opacity",
+    full: 0.25,
   },
-  { name: "a pager's crossfade", mount: () => render(Pager, { steps: [] }), selector: ".inner" },
+  {
+    name: "a pager's crossfade",
+    mount: () => render(Pager, { steps: [] }),
+    selector: ".inner",
+    full: 0.25,
+  },
 ] as const;
 
-test.each(SCREENS)("$name moves on full", async ({ mount, selector }) => {
-  await mount();
+test.each(SCREENS)(
+  "$name moves on full, for its token's time",
+  async ({ mount, selector, full }) => {
+    await mount();
 
-  await expect.poll(() => timings(selector).length).toBeGreaterThan(0);
-  expect(Math.max(...timings(selector))).toBeGreaterThan(0);
-});
+    await expect.poll(() => timings(selector).length).toBeGreaterThan(0);
+    expect(Math.max(...timings(selector))).toBe(full);
+  },
+);
 
 test.each(SCREENS)("$name is instant on the still tier", async ({ mount, selector }) => {
   document.documentElement.dataset["motion"] = "still";
