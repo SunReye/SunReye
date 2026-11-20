@@ -75,6 +75,42 @@ test("a pull down closes the drawer with a soft tap", async () => {
   expect(soft).toHaveBeenCalledOnce();
 });
 
+test("closed after a small drag, the drawer slides out without coming back", async () => {
+  await cdp().send("Emulation.setEmulatedMedia", { features: [] });
+
+  const { rerender } = await opened();
+  const drawer = sheet().element();
+
+  // A tap's finger slop: the drawer follows it a few px and settles back on the lift.
+  held(await press(drawer, 4));
+  // The tap's click lands a few frames after the lift.
+  await new Promise((done) => {
+    setTimeout(done, 50);
+  });
+  await rerender({ open: false });
+
+  const tops: number[] = [];
+
+  await new Promise<void>((done) => {
+    const sample = () => {
+      if (!drawer.isConnected) {
+        done();
+
+        return;
+      }
+
+      tops.push(drawer.getBoundingClientRect().top);
+      requestAnimationFrame(sample);
+    };
+
+    requestAnimationFrame(sample);
+  });
+
+  const rises = tops.filter((top, i) => i > 0 && top < tops[i - 1]! - 1);
+
+  expect(rises).toEqual([]);
+});
+
 test("the scrim dims the page without blurring it", async () => {
   await opened();
   await expect.element(sheet()).toBeVisible();
