@@ -1929,7 +1929,7 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/RecentEnergy",
-                "description": "The last 30 days measured against the model, absent until both exist."
+                "description": "The last 30 days measured against the model as the learner last stored them, absent until\nboth exist."
               },
               {
                 "type": "null"

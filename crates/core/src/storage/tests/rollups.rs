@@ -601,6 +601,7 @@ async fn archive_weather_drops_its_stored_hours_on_upgrade_and_still_reads_hourl
         .unwrap()
         .execute_batch(
             "ALTER TABLE step DROP COLUMN cadence;
+             DROP TABLE correction_recent;
              INSERT INTO rollup_hour (device, series, hour, duration, sum, min, max)
              SELECT 4294967295, id, 496596, 36000, 360000, 1, 1 FROM series
              WHERE name = 'weather.ghi';
