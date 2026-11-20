@@ -38,7 +38,11 @@ function closed(to: number, answer: Answer, now: number): boolean {
   return to <= boundary && lastEnd(answer.points) <= boundary;
 }
 
-/** Closed answers by key, least recently used first, at most `KEPT_POINTS` points together. */
+/** What an answer costs to keep: its points, at least one. */
+const weight = (answer: Answer): number => Math.max(1, answer.points.length);
+
+/** Closed answers by key, least recently used first, at most `KEPT_POINTS` points together; an
+ * answer without points counts as one. */
 function kept<T extends Answer>() {
   const answers = new Map<string, T>();
   let points = 0;
@@ -58,13 +62,13 @@ function kept<T extends Answer>() {
       if (answer.points.length > KEPT_POINTS || answers.has(key)) return;
 
       answers.set(key, answer);
-      points += answer.points.length;
+      points += weight(answer);
 
-      for (const [old, { points: dropped }] of answers) {
+      for (const [old, dropped] of answers) {
         if (points <= KEPT_POINTS) break;
 
         answers.delete(old);
-        points -= dropped.length;
+        points -= weight(dropped);
       }
     },
     clear: (): void => {

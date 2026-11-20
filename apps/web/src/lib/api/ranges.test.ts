@@ -34,15 +34,37 @@ const ONE_POINT = [point("2026-11-12T01:00:00Z")];
 /** A rejected read's error. */
 const failed = (error: Readonly<Error>) => error;
 
+/** What the fake core answers and how. */
+type Options = Readonly<{
+  refused?: readonly string[];
+  points?: (series: string) => readonly object[];
+  page?: Visibility;
+  /** Each write is answered once this settles. */
+  writes?: () => Promise<void>;
+}>;
+
+/** A range read's answer: each of `series` with `points(series)`, or the first `refused`. */
+function answer(options: Options, statistics: boolean, series: readonly string[]): Response {
+  const refused = series.find((s) => options.refused?.includes(s) === true);
+
+  if (refused !== undefined)
+    return Response.json(
+      { status: 422, code: "history.range", series: refused },
+      { status: 422, headers: { "content-type": "application/problem+json" } },
+    );
+
+  const kind = statistics ? { period: "day" } : { tier: "raw" };
+
+  return Response.json({
+    series: series.map((s) =>
+      Object.assign({ series: s, points: options.points?.(s) ?? ONE_POINT }, kind),
+    ),
+  });
+}
+
 /** A fake core answering each series it is asked with `points(series)`, refusing those in
  * `refused` by name, with every request it was asked. */
-function fake(
-  options: Readonly<{
-    refused?: readonly string[];
-    points?: (series: string) => readonly object[];
-    page?: Visibility;
-  }> = {},
-) {
+function fake(options: Options = {}) {
   const urls: string[] = [];
   const asked: (readonly string[])[] = [];
 
@@ -52,29 +74,20 @@ function fake(
       fetch: async (request) => {
         await Promise.resolve();
 
-        if (request.method !== "GET") return new Response(null, { status: 204 });
+        if (request.method !== "GET") {
+          await options.writes?.();
+
+          return new Response(null, { status: 204 });
+        }
 
         const url = new URL(request.url);
         const series = url.searchParams.getAll("series");
 
         urls.push(request.url);
-        asked.push(series);
 
-        const refused = series.find((s) => options.refused?.includes(s) === true);
+        if (series.length > 0) asked.push(series);
 
-        if (refused !== undefined)
-          return Response.json(
-            { status: 422, code: "history.range", series: refused },
-            { status: 422, headers: { "content-type": "application/problem+json" } },
-          );
-
-        const kind = url.pathname.endsWith("/statistics") ? { period: "day" } : { tier: "raw" };
-
-        return Response.json({
-          series: series.map((s) =>
-            Object.assign({ series: s, points: options.points?.(s) ?? ONE_POINT }, kind),
-          ),
-        });
+        return answer(options, url.pathname.endsWith("/statistics"), series);
       },
     },
     options.page,
@@ -218,6 +231,33 @@ test("a write or the page shown again forgets closed ranges", async () => {
   await read();
 
   expect(asked).toHaveLength(3);
+});
+
+test("an import in progress, or a write until it is answered, forgets closed ranges", async () => {
+  setSystemTime(NOW);
+
+  const release = Promise.withResolvers<void>();
+
+  const { core, asked } = fake({
+    points: () => [point("2026-11-19T09:00:00Z")],
+    writes: () => release.promise,
+  });
+
+  const read = () => core.history(1, ["pv.power"], DAY.from, DAY.to);
+
+  await read();
+  await core.importStatus();
+  await read();
+
+  const write = core.setTimezone("Europe/Berlin");
+
+  // Read while the write is in flight: the core may answer it from before the write.
+  await read();
+  release.resolve();
+  await write;
+  await read();
+
+  expect(asked).toHaveLength(4);
 });
 
 test("closed ranges are kept up to 200,000 points, the least recently used dropped first", async () => {

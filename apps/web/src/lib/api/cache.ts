@@ -94,9 +94,9 @@ const keep = (core: Readonly<Core>) =>
   }) satisfies Record<Read, Readonly<{ forget: () => void }>>;
 
 /**
- * Calls `all` and `ranges` when `page` is shown again, as another screen may have changed the
- * plant meanwhile, and `ranges` on any write through `client`, as a layout, topology, timezone or
- * import changes what the core computes for a past range (ADR 11).
+ * Calls `all` when `page` is shown again, as another screen may have changed the plant meanwhile,
+ * and `ranges` as any write through `client` is sent and again as it is answered, as a layout,
+ * topology, timezone or import changes what the core computes for a past range (ADR 11).
  */
 function watch(
   page: Visibility | undefined,
@@ -104,17 +104,14 @@ function watch(
   all: () => void,
   ranges: () => void,
 ): void {
-  page?.addEventListener("visibilitychange", () => {
-    if (page.hidden) return;
+  const written = ({ request }: Readonly<{ request: Request }>) => {
+    if (request.method !== "GET") ranges();
+  };
 
-    all();
-    ranges();
+  page?.addEventListener("visibilitychange", () => {
+    if (!page.hidden) all();
   });
-  client.use({
-    onRequest: ({ request }: Readonly<{ request: Request }>) => {
-      if (request.method !== "GET") ranges();
-    },
-  });
+  client.use({ onRequest: written, onResponse: written });
 }
 
 /**
@@ -131,8 +128,10 @@ export function remembering(
   const kept = keep(core);
   const { forget: forgetRanges, ...ranges } = holding(core);
 
+  // Whatever forgets a rarely changing read forgets the closed ranges too.
   const forget = (reads: readonly Read[] = READS) => {
     for (const read of reads) kept[read].forget();
+    forgetRanges();
   };
 
   watch(page, client, forget, forgetRanges);
