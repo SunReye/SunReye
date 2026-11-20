@@ -45,7 +45,7 @@
   spacing={1}
   bind:value={() => value, set}
   class={[
-    "rounded-md p-0.5 ring-1 ring-border/60",
+    "rounded-md p-0.5 text-foreground ring-1 ring-border/60",
     // One equal column per option, without a class per count; the kit's own `style` keeps its gap.
     fill && "grid w-full auto-cols-fr grid-flow-col",
     canvas && "canvas-chip elevation-1",

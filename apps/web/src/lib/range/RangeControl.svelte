@@ -3,12 +3,10 @@
   day … custom, arrows or a swipe on the label step. It holds no state: its model owns the range.
 -->
 <script lang="ts">
-  import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
-  import { haptics } from "../haptics.ts";
+  import Segmented from "../components/segmented.svelte";
   import { m } from "../paraglide/messages.js";
   import CustomBounds from "./CustomBounds.svelte";
-  import { indicator } from "./indicator.ts";
-  import { isKind, type Kind, type Ranged } from "./range.ts";
+  import type { Kind, Ranged } from "./range.ts";
   import Stepper from "./Stepper.svelte";
 
   const KINDS: [Kind, () => string][] = [
@@ -38,31 +36,15 @@
   <div
     class="flex flex-col gap-2 @[430px]:flex-row @[430px]:items-center @[430px]:justify-center @[430px]:gap-3"
   >
-    <ToggleGroup.Root
-      type="single"
-      variant="outline"
-      size="sm"
-      class={[
-        "grid w-full data-indicator:before:hidden! @[430px]:flex @[430px]:w-fit",
-        offered.length === 2 ? "grid-cols-2" : "grid-cols-5",
-      ]}
-      bind:value={
-        () => kind,
-        (v: string) => {
-          if (!isKind(v) || v === kind) return;
-          haptics.selection();
-          model.setKind(v);
-        }
-      }
-      aria-label={m.range_kind()}
-    >
-      <!-- kbase's sliding pill, on a transform. -->
-      <span class="rounded-[2px] bg-foreground/[0.13]" {@attach indicator('[data-state="on"]')}
-      ></span>
-      {#each offered as [id, text] (id)}
-        <ToggleGroup.Item value={id} class="px-2.5 text-xs">{text()}</ToggleGroup.Item>
-      {/each}
-    </ToggleGroup.Root>
+    <div class="@[430px]:w-fit @[430px]:shrink-0">
+      <Segmented
+        options={offered.map(([id, text]) => [id, text()] as const)}
+        value={kind}
+        label={m.range_kind()}
+        fill
+        onchange={(next) => model.setKind(next)}
+      />
+    </div>
     <Stepper
       label={model.label}
       dir={model.via.dir}
