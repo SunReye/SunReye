@@ -5,6 +5,7 @@
   says how much that is; the chart is then drawn in it.
 -->
 <script lang="ts">
+  import ChartEntrance from "../chart-entrance/ChartEntrance.svelte";
   import type { Attachment } from "svelte/attachments";
   import LaneAxis from "./LaneAxis.svelte";
   import { paintScene } from "./paint.ts";
@@ -78,7 +79,9 @@
     onkeydown={pointer.key}
     onblur={pointer.blur}
   >
-    <canvas class="absolute inset-0 size-full" aria-hidden="true" {@attach paint}></canvas>
+    <ChartEntrance build="draw" ready={width > 0} class="absolute inset-0">
+      <canvas class="absolute inset-0 size-full" aria-hidden="true" {@attach paint}></canvas>
+    </ChartEntrance>
     {#each chart.lanes as lane (lane.lane.key)}
       <div
         class="pointer-events-none absolute inset-x-0"

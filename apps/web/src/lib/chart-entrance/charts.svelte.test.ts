@@ -1,9 +1,11 @@
 // Every chart opts into the one chart entrance (ADR 21 "Chart entrance"): bars grow, lines, areas
 // and canvases draw in from the left, a chart that grows live only fades.
 import type { Component } from "svelte";
-import { expect, test } from "vitest";
+import { afterEach, expect, test } from "vitest";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
+import HeatGrid from "../analytics/HeatGrid.svelte";
+import { PLANT } from "../api/computed-devices.ts";
 import DayChart from "../dashboard/DayChart.svelte";
 import type { DayRow } from "../dashboard/today.ts";
 import PriceChart from "../detail/PriceChart.svelte";
@@ -11,6 +13,8 @@ import ShareBar from "../detail/ShareBar.svelte";
 import ShareChart from "../detail/ShareChart.svelte";
 import LineBars from "../forecast/LineBars.svelte";
 import SocLine from "../detail/SocLine.svelte";
+import { reset, show } from "../explore/explore.harness.ts";
+import FoldChart from "../explore/FoldChart.svelte";
 import TrendChart from "../history/TrendChart.svelte";
 import LiveArea from "../live-graph/LiveArea.svelte";
 import type { Band } from "../range/bands.ts";
@@ -66,6 +70,8 @@ const priceDay = {
     value: (i - 3) / 100,
   })),
 };
+
+afterEach(reset);
 
 /** How the chart's entrance builds it: what each of its animations starts from. */
 function builds(): string[] {
@@ -163,6 +169,46 @@ const CHARTS: readonly {
     build: "grow",
   },
   {
+    name: "a fold's bars, on one canvas",
+    chart: FoldChart as Component<never>,
+    props: {
+      rows: Array.from({ length: 7 }, (_, i) => ({
+        key: `${i}`,
+        start: T0 + i * 24 * HOUR,
+        end: T0 + (i + 1) * 24 * HOUR,
+        day: 0,
+        mean: 100 + i,
+        min: 50,
+        max: 200,
+        energy: null,
+        delta: null,
+      })),
+      period: "day",
+      counter: false,
+      unit: "W",
+      from: T0,
+      to: T0 + 7 * 24 * HOUR,
+      zone: "UTC",
+      whole: "Woche",
+      label: "Falten",
+      height: 300,
+    },
+    build: "draw",
+  },
+  {
+    name: "the heat grid, on one canvas",
+    chart: HeatGrid as Component<never>,
+    props: {
+      cols: Array.from({ length: 3 }, (_, i) => ({ label: `${i}`, tick: true, title: `${i}` })),
+      cells: Array.from({ length: 3 }, () => Array.from({ length: 24 }, (_, h) => h)),
+      colour: () => "red",
+      describe: (v: number | null) => `${v}`,
+      idle: "Muster",
+      label: "Muster",
+    },
+    build: "draw",
+  },
+  {
     name: "the day chart, which grows live",
     chart: DayChart as Component<never>,
     props: {
@@ -204,4 +250,10 @@ test("a price below zero grows down from the zero line, one above it up", async 
 
   expect(originY(grower(-0.03))).toBe("0px");
   expect(originY(grower(0.05))).toBe(getComputedStyle(grower(0.05)).height);
+});
+
+test("the explore chart's lanes draw in, on one canvas", async () => {
+  await show(`s=${PLANT}:pv.power`);
+
+  await expect.poll(builds).toContain("draw");
 });
