@@ -24,7 +24,7 @@
     <SunMark class="size-10" />
     <p
       class={[
-        "h-4 text-xs leading-4 text-muted-foreground transition-opacity duration-200",
+        "h-4 text-xs leading-4 text-muted-foreground transition-opacity duration-(--motion-base)",
         slow ? "opacity-100" : "opacity-0",
       ]}
       role="status"

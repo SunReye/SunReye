@@ -1,6 +1,6 @@
 <!-- One line of the breakdown: its colour, label, note and value, with its change under the value. -->
 <script lang="ts">
-  import AnimatedNumber from "../components/animated-number.svelte";
+  import FigureNumber from "./FigureNumber.svelte";
   import type { Row } from "./breakdown.ts";
 
   let { r, loading }: { r: Row; loading: boolean } = $props();
@@ -17,11 +17,10 @@
     {/if}
   </dt>
   <dd class="text-right text-sm font-semibold whitespace-nowrap tabular-nums">
-    <AnimatedNumber
+    <FigureNumber
       value={loading ? null : r.value}
       format={r.format}
       placeholder="–"
-      duration={320}
       appear={false}
     />
     {#if r.change && !loading}

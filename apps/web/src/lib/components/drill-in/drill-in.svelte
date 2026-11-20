@@ -29,7 +29,7 @@
   import * as Item from "../ui/item/index.js";
   import { spring, tween, VelocityTracker } from "../../animate.ts";
   import { haptics } from "../../haptics.ts";
-  import { settle, slideMs } from "./drill.ts";
+  import { released, settle, slideMs } from "./drill.ts";
   import DrillHeader from "./drill-header.svelte";
   import DrillPanes from "./drill-panes.svelte";
   import DrillRow from "./drill-row.svelte";
@@ -192,7 +192,7 @@
     cancel =
       velocity === undefined
         ? tween(p, to, slideMs(p, to), set, done)
-        : spring(p, to, set, { stiffness: 300, damping: 32, velocity }, done);
+        : spring(p, to, set, released(velocity), done);
   }
 
   /** Two panes: show a group's page on the right; nothing slides. */

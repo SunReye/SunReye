@@ -3,7 +3,7 @@
   import { Pressable } from "../components/ui/pressable/index.js";
   import CircleCheck from "@lucide/svelte/icons/circle-check";
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
-  import AnimatedNumber from "../components/animated-number.svelte";
+  import FigureNumber from "./FigureNumber.svelte";
   import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
   import { indicator } from "../range/indicator.ts";
@@ -62,11 +62,10 @@
     >
       <span class={["label", on ? "text-foreground" : "text-muted-foreground"]}>{f.label}</span>
       <span class="value">
-        <AnimatedNumber
+        <FigureNumber
           value={quiet ? null : f.value}
           format={f.format}
           placeholder="–"
-          duration={320}
           appear={false}
         />
         <span class={unitClass}>{f.unit}</span>
@@ -74,10 +73,9 @@
       <span class="max-w-full truncate text-xs text-muted-foreground tabular-nums">
         {#if !quiet && against && f.change !== null}
           <span class="font-medium text-foreground"
-            ><AnimatedNumber
+            ><FigureNumber
               value={f.change}
               format={(v) => delta(v, f.points)}
-              duration={320}
               appear={false}
             /></span
           ><span class="hidden @[640px]:inline">{" "}{against}</span>

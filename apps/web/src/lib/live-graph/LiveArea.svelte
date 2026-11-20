@@ -121,7 +121,7 @@
 
 <LiveLegend {reading} {label} warn={stalled} />
 <div
-  class={["relative w-full transition-opacity duration-300", stalled && "opacity-50"]}
+  class={["relative w-full transition-opacity duration-(--motion-slow)", stalled && "opacity-50"]}
   style:height="{height}px"
   style:mask-image={edgeFade}
   style:-webkit-mask-image={edgeFade}

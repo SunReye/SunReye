@@ -13,6 +13,7 @@
   import type { Snippet } from "svelte";
   import { spring, VelocityTracker } from "../animate.ts";
   import { haptics } from "../haptics.ts";
+  import { SPRINGS } from "../motion/values.ts";
   import { m } from "../paraglide/messages.js";
 
   let {
@@ -83,7 +84,7 @@
       (value) => {
         held = value;
       },
-      { stiffness: 380, damping: 36, velocity, precision: 0.5 },
+      { ...SPRINGS.inspector, velocity, precision: 0.5 },
       () => {
         held = null;
         haptics.soft();

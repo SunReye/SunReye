@@ -47,7 +47,7 @@
   <div class="ground absolute top-[47%] left-[8%] h-[38%] w-[84%]"></div>
   <p
     class={[
-      "absolute bottom-4 left-4 text-xs text-muted-foreground transition-opacity duration-200",
+      "absolute bottom-4 left-4 text-xs text-muted-foreground transition-opacity duration-(--motion-base)",
       slow ? "opacity-100" : "opacity-0",
     ]}
     role="status"
