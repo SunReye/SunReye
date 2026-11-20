@@ -53,6 +53,14 @@
   }
 </script>
 
+{#snippet pane(t: Tab)}
+  {#if t === "overview" && overview}
+    {@render overview()}
+  {:else}
+    <AnalyticsPane tab={t} {title} {colour} {analytics} {input} />
+  {/if}
+{/snippet}
+
 <Tabs.Root bind:value={() => tab, choose}>
   {#if tabs.length > 1}
     <Tabs.List variant="line">
@@ -62,11 +70,10 @@
     </Tabs.List>
   {/if}
   {#each tabs as [t] (t)}
+    <!-- A hidden tab's content mounts too: its pane, and the reads it makes, wait until shown. -->
     <Tabs.Content value={t} class="pt-2">
-      {#if t === "overview" && overview}
-        {@render overview()}
-      {:else}
-        <AnalyticsPane tab={t} {title} {colour} {analytics} {input} />
+      {#if t === tab}
+        {@render pane(t)}
       {/if}
     </Tabs.Content>
   {/each}

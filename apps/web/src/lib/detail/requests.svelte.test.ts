@@ -32,7 +32,7 @@ async function opening(detail: string | null) {
   return tally(requests());
 }
 
-test("the PV sheet opens on what its tabs and facts read, and nothing the dashboard read", async () => {
+test("the PV sheet opens on one read of each thing its shown tab needs", async () => {
   const dashboard = await opening(null);
   const both = await opening("production");
 
@@ -46,11 +46,26 @@ test("the PV sheet opens on what its tabs and facts read, and nothing the dashbo
     // The dashboard knows neither the topology nor the stored series.
     topology: 1,
     series: 1,
-    // Every tab's range, hidden ones' too, and the PV facts below the tabs.
-    [`devices/${PLANT}/statistics`]: 11,
-    [`devices/${INVERTER}/statistics`]: 4,
+    // The overview tab's range and the PV facts below the tabs; no hidden tab's.
+    [`devices/${PLANT}/statistics`]: 8,
     [`devices/${INVERTER}/forecasts`]: 4,
-    "module-types": 1,
-    corrections: 2,
   });
+});
+
+/** The string comparison's reads: each string's energy from the inverter. */
+const strings = () => asked.filter(({ series }) => series.startsWith("pv.string.")).length;
+
+test("a hidden tab reads nothing until it is shown", async () => {
+  const { screen } = await show("production");
+  const sheet = screen.getByRole("dialog");
+
+  await expect.element(sheet.getByRole("tab", { name: "Vergleich" })).toBeVisible();
+  await settled(() => requests().length);
+
+  expect(strings()).toBe(0);
+
+  await sheet.getByRole("tab", { name: "Vergleich" }).click();
+  await settled(() => requests().length);
+
+  expect(strings()).toBe(2);
 });
