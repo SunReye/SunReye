@@ -522,6 +522,31 @@ async fn without_a_location_or_readings_nothing_is_compared() {
 }
 
 #[tokio::test]
+async fn a_clock_between_seconds_still_compares_the_stored_hours() {
+    let plant = plant().await;
+    let modelled = plant.modelled("pv.mppt.power", Some(1)).await;
+    plant
+        .measure("pv.mppt.power", Some(1), &modelled, |w| 0.8 * w)
+        .await;
+    let (archive, _calls) = FakeArchive::new(archive());
+    let learner = plant.learner(archive);
+    let corrections = Corrections::new(plant.layouts.clone(), WEATHER, &plant.storage);
+
+    let now = at(NOW) + Duration::from_millis(500);
+    learner
+        .learn(&plant.storage, BERLIN, &berlin(), now)
+        .await
+        .unwrap();
+
+    let reports = corrections.report(true).await.unwrap();
+    let recent = reports[0].recent.expect("no hour compared");
+    assert!(
+        (recent.measured / recent.modelled - 0.8).abs() < 1e-2,
+        "{recent:?}"
+    );
+}
+
+#[tokio::test]
 async fn a_layout_change_stores_the_last_30_days_again_at_once() {
     let plant = plant().await;
     let modelled = plant.modelled("pv.mppt.power", Some(1)).await;

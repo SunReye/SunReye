@@ -298,8 +298,9 @@ impl Corrections {
         zone: &TimeZone,
         now: SystemTime,
     ) -> Result<(), storage::Error> {
-        let since = now.duration_since(UNIX_EPOCH).unwrap_or_default();
-        let to = now - Duration::from_secs(since.as_secs() % HOUR.as_secs());
+        // Whole seconds: a sub-second left on it would miss every stored hour.
+        let since = now.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+        let to = UNIX_EPOCH + Duration::from_secs(since - since % HOUR.as_secs());
         let from = to - RECENT;
         let plant = self.plant(location, zone, from..to).await?;
         let mut recent = HashMap::new();
