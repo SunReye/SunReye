@@ -23,6 +23,7 @@
 </script>
 
 <script lang="ts">
+  import ChartEntrance from "../chart-entrance/ChartEntrance.svelte";
   import { curveMonotoneX } from "d3-shape";
   import { Area, Chart, Layer, Spline } from "layerchart";
 
@@ -59,38 +60,40 @@
 </script>
 
 <div class="h-12 w-full" role="img" aria-label={label}>
-  <Chart
-    data={rows}
-    x="time"
-    y={lines[0]?.of}
-    xDomain={[new Date(span[0]), new Date(span[1])]}
-    yDomain={[...range]}
-    padding={{ top: 3, bottom: 3, left: 0, right: 0 }}
-  >
-    <Layer type="svg">
-      {#each lines as line (line.of)}
-        {#if line.filled}
-          <Area
-            y1={line.of}
-            curve={curveMonotoneX}
-            defined={(d: Hour) => d[line.of] !== null}
-            fill={line.colour}
-            fillOpacity={0.18}
-            line={{ stroke: line.colour, "stroke-width": 1.5 } as never}
-          />
-        {:else}
-          <Spline
-            y={line.of}
-            curve={curveMonotoneX}
-            defined={(d: Hour) => d[line.of] !== null}
-            stroke={line.colour}
-            fill="none"
-            stroke-width={1.5}
-            opacity={line.dashed ? 0.7 : 1}
-            stroke-dasharray={line.dashed ? "3 4" : undefined}
-          />
-        {/if}
-      {/each}
-    </Layer>
-  </Chart>
+  <ChartEntrance build="draw" ready={hours.length > 0} class="size-full">
+    <Chart
+      data={rows}
+      x="time"
+      y={lines[0]?.of}
+      xDomain={[new Date(span[0]), new Date(span[1])]}
+      yDomain={[...range]}
+      padding={{ top: 3, bottom: 3, left: 0, right: 0 }}
+    >
+      <Layer type="svg">
+        {#each lines as line (line.of)}
+          {#if line.filled}
+            <Area
+              y1={line.of}
+              curve={curveMonotoneX}
+              defined={(d: Hour) => d[line.of] !== null}
+              fill={line.colour}
+              fillOpacity={0.18}
+              line={{ stroke: line.colour, "stroke-width": 1.5 } as never}
+            />
+          {:else}
+            <Spline
+              y={line.of}
+              curve={curveMonotoneX}
+              defined={(d: Hour) => d[line.of] !== null}
+              stroke={line.colour}
+              fill="none"
+              stroke-width={1.5}
+              opacity={line.dashed ? 0.7 : 1}
+              stroke-dasharray={line.dashed ? "3 4" : undefined}
+            />
+          {/if}
+        {/each}
+      </Layer>
+    </Chart>
+  </ChartEntrance>
 </div>

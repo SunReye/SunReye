@@ -12,8 +12,10 @@
   import SpotAttribution from "../SpotAttribution.svelte";
   import { ctPerKwh } from "../tariff/format.ts";
   import ChartReading from "./ChartReading.svelte";
+  import ChartEntrance from "../chart-entrance/ChartEntrance.svelte";
 
-  let { day }: { day: Day | undefined } = $props();
+  let { day }: { day: Pick<Day, "zone" | "now" | "start" | "end" | "prices"> | undefined } =
+    $props();
 
   const HOUR = 3_600_000;
   const HEIGHT = 190;
@@ -118,27 +120,32 @@
       aria-label={m.detail_prices()}
       data-plot
     >
-      <div class="absolute inset-0 flex gap-[3px]">
-        {#each bars as bar, i (bar.at)}
-          <span
-            class="relative flex-1"
-            data-hour={bar.at}
-            data-price={bar.price}
-            data-now={(i === inForce && bar.price !== undefined) || undefined}
-          >
-            {#if bar.price !== undefined}
-              <span
-                class={[
-                  "absolute inset-x-0 rounded-sm",
-                  i === inForce ? "bg-foreground" : "bg-foreground/25",
-                ]}
-                style:top="{bar.price >= 0 ? zero - (bar.price / span) * 100 : zero}%"
-                style:height="{(Math.abs(bar.price) / span) * 100}%"
-              ></span>
-            {/if}
-          </span>
-        {/each}
-      </div>
+      <ChartEntrance build="grow" ready={known.length > 0} class="absolute inset-0">
+        <div class="absolute inset-0 flex gap-[3px]">
+          {#each bars as bar, i (bar.at)}
+            <span
+              class="relative flex-1"
+              data-hour={bar.at}
+              data-price={bar.price}
+              data-now={(i === inForce && bar.price !== undefined) || undefined}
+            >
+              {#if bar.price !== undefined}
+                <span
+                  class={[
+                    "absolute inset-x-0 rounded-sm",
+                    bar.price >= 0 ? "origin-bottom" : "origin-top",
+                    i === inForce ? "bg-foreground" : "bg-foreground/25",
+                  ]}
+                  style:top="{bar.price >= 0 ? zero - (bar.price / span) * 100 : zero}%"
+                  style:height="{(Math.abs(bar.price) / span) * 100}%"
+                  style:--i={i / bars.length}
+                  data-grow
+                ></span>
+              {/if}
+            </span>
+          {/each}
+        </div>
+      </ChartEntrance>
       {#if bottom < 0}
         <span class="absolute inset-x-0 h-px bg-foreground/30" style:top="{zero}%"></span>
       {/if}

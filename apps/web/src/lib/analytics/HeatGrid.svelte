@@ -5,6 +5,7 @@
   brushing. Keys: arrows move, Shift and arrows select columns, Enter opens or narrows (ADR 21).
 -->
 <script lang="ts">
+  import ChartEntrance from "../chart-entrance/ChartEntrance.svelte";
   import type { Attachment } from "svelte/attachments";
   import ArrowRight from "@lucide/svelte/icons/arrow-right";
   import { Button } from "#lib/components/ui/button/index.js";
@@ -204,7 +205,9 @@
       onkeydown={key}
     >
       <!-- One canvas, not a cell per element: a month of hours is 744 of them (ADR 11, 21). -->
-      <canvas class="absolute inset-0 size-full" {@attach paint}></canvas>
+      <ChartEntrance build="draw" ready={cells.length > 0} class="absolute inset-0">
+        <canvas class="absolute inset-0 size-full" {@attach paint}></canvas>
+      </ChartEntrance>
       {#if sel}
         <span
           class="pointer-events-none absolute inset-y-0 bg-brand-soft ring-1 ring-brand/50 ring-inset"

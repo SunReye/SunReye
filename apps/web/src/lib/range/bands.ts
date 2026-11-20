@@ -1,5 +1,6 @@
 // Where the band chart draws each bar, mark and gridline: plain boxes placed and sized only by
 // `transform`, so every change runs on CSS transitions (ADR 21).
+import { EXIT_MS } from "../motion/values.ts";
 import { m } from "../paraglide/messages.js";
 import { getLocale } from "../paraglide/runtime.js";
 import type { Via } from "./range.ts";
@@ -269,5 +270,5 @@ export function moves(
   const z = zoom ? zoomed(views, zoom, width) : null;
   const items = (z?.arrive ?? views).map((o) => Object.assign({}, o, { key: `${gen}:${o.key}` }));
 
-  return z ? { items, exit: 300, leave: z.leave } : { items, exit: 150, leave: shrink };
+  return z ? { items, exit: 300, leave: z.leave } : { items, exit: EXIT_MS, leave: shrink };
 }

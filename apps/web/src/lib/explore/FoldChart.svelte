@@ -4,6 +4,7 @@
   readout (ADR 21): the range's figures, or those of the period under the pointer.
 -->
 <script lang="ts">
+  import ChartEntrance from "../chart-entrance/ChartEntrance.svelte";
   import type { Period } from "../api/core.ts";
   import { m } from "../paraglide/messages.js";
   import { ticksOf } from "../range/bands.ts";
@@ -135,8 +136,12 @@
           style:width="{(share(read.end) - share(read.start)) * 100}%"
         ></div>
       {/if}
-      <canvas class="absolute inset-0 size-full" {@attach (canvas) => paintFold(canvas, painting)}
-      ></canvas>
+      <ChartEntrance build="draw" ready={bars.length > 0} class="absolute inset-0">
+        <canvas
+          class="absolute inset-0 size-full"
+          {@attach (canvas) => paintFold(canvas, painting)}
+        ></canvas>
+      </ChartEntrance>
     </div>
   </div>
 
