@@ -73,7 +73,7 @@
   }
 
   .entrance:global([data-entrance="in"]) {
-    animation: fade-in var(--motion-move) var(--motion-ease-in-out) both;
+    animation: fade-in var(--motion-enter) var(--motion-ease) both;
   }
 
   /* A window sweeps in from the left over the plot, which the inner box holds in place. */
@@ -82,11 +82,11 @@
     animation-name: sweep-in;
   }
   .entrance:global([data-entrance="in"])[data-build="draw"] > .back {
-    animation: hold-in var(--motion-move) var(--motion-ease-in-out) both;
+    animation: hold-in var(--motion-enter) var(--motion-ease) both;
   }
 
   .entrance:global([data-entrance="in"])[data-build="grow"] :global([data-grow]) {
-    animation: grow-in var(--motion-move) var(--motion-ease-in-out)
+    animation: grow-in var(--motion-enter) var(--motion-ease)
       calc(var(--i, 0) * var(--motion-stagger)) both;
   }
   .entrance:global([data-entrance="in"])[data-build="grow"] :global([data-grow="x"]) {
