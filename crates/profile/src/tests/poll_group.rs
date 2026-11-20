@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use crate::{Block, CADENCE, LoadError, Profile, Quantity};
+use crate::{Block, CADENCE, LoadError, Profile};
 use serde_json::{Value, json};
 
 fn load(groups: &Value, quantities: &Value) -> Result<Profile, LoadError> {
@@ -32,7 +32,7 @@ fn refused(key: &str, problem: &'static str) -> LoadError {
 #[test]
 fn a_poll_group_reads_its_quantities_at_its_own_cadence() {
     let profile = load(
-        &json!({ "slow": 60 }),
+        &json!({ "slow": 5 }),
         &json!([
             { "key": "power", "role": "pv.power", "register": 500, "type": "u16" },
             { "key": "temp", "role": "extra.temp", "kind": "measurement", "unit": "none", "register": 600, "type": "u16",
@@ -44,17 +44,21 @@ fn a_poll_group_reads_its_quantities_at_its_own_cadence() {
     )
     .unwrap();
 
-    let cadences: Vec<_> = profile.quantities().iter().map(Quantity::cadence).collect();
-    let slow = Duration::from_secs(60);
-    assert_eq!(cadences, [CADENCE, slow, slow, slow]);
+    let cycle = Duration::from_secs(1);
+    let cadences: Vec<_> = profile
+        .quantities()
+        .iter()
+        .map(|q| q.cadence(cycle))
+        .collect();
+    assert_eq!(cadences, [cycle, CADENCE, CADENCE, CADENCE]);
     // The computation's inputs share one transaction, in their group.
     let grouped = Block {
         grouped: true,
         ..plain(600, 2)
     };
     assert_eq!(
-        profile.poll_groups(0),
-        [(CADENCE, vec![plain(500, 1)]), (slow, vec![grouped])]
+        profile.poll_groups(0, cycle),
+        [(cycle, vec![plain(500, 1)]), (CADENCE, vec![grouped])]
     );
     // Every register is still in the one plan a capture or a dump reads.
     assert_eq!(profile.read_plan(0), [plain(500, 1), grouped]);
@@ -68,7 +72,10 @@ fn a_profile_without_poll_groups_polls_everything_at_the_default_cadence() {
     )
     .unwrap();
 
-    assert_eq!(profile.poll_groups(0), [(CADENCE, vec![plain(500, 1)])]);
+    assert_eq!(
+        profile.poll_groups(0, CADENCE),
+        [(CADENCE, vec![plain(500, 1)])]
+    );
 }
 
 #[test]

@@ -162,7 +162,7 @@ impl Polled {
         let series = quantities
             .iter()
             .map(|q| {
-                let every = cycles(q.cadence(), period);
+                let every = cycles(q.cadence(period), period);
                 (bus.intern(&q.role, q.index), q.unit(), every)
             })
             .collect();
@@ -247,7 +247,7 @@ impl Polled {
 
 /// Each poll group of `profile` with the cycles of `period` between its polls, fastest first.
 fn groups(profile: &Profile, gap_tolerance: u16, period: Duration) -> Vec<(u32, Vec<Block>)> {
-    let groups = profile.poll_groups(gap_tolerance).into_iter();
+    let groups = profile.poll_groups(gap_tolerance, period).into_iter();
     groups
         .map(|(cadence, plan)| (cycles(cadence, period), plan))
         .collect()

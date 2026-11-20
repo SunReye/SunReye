@@ -28,8 +28,6 @@ pub struct Profile {
     pub version: String,
     quantities: Vec<Quantity>,
     plan: Vec<Block>,
-    /// Each poll group's cadence and its gap-free plan, fastest first.
-    groups: Vec<(Duration, Vec<Block>)>,
     identify: Vec<IdentifyField>,
     inverter: Option<Inverter>,
     settings: Vec<Setting>,
@@ -86,7 +84,7 @@ pub struct Quantity {
     pub(crate) mapping: Vec<(f64, f64)>,
     step: f64,
     deadband: Option<f64>,
-    cadence: Duration,
+    group_cadence: Option<Duration>,
 }
 
 /// Why a deadband does not fit a quantity (ADR 4).
@@ -133,10 +131,10 @@ impl Quantity {
         self.step
     }
 
-    /// How often it is polled: its poll group's cadence, else the default.
+    /// The poll group's requested cadence, or the connection's `cycle` outside a group.
     #[must_use]
-    pub const fn cadence(&self) -> Duration {
-        self.cadence
+    pub fn cadence(&self, cycle: Duration) -> Duration {
+        self.group_cadence.unwrap_or(cycle)
     }
 
     /// The deadband its profile declares for this hardware, in its role's unit.
@@ -447,13 +445,6 @@ impl Profile {
         let groups = group_cadences(doc.poll_groups.unwrap_or_default())?;
         let quantities = compile(doc.quantities, &groups)?;
         let plan = plan::compile(&quantities, |_| true);
-        let mut cadences: Vec<Duration> = quantities.iter().map(|q| q.cadence).collect();
-        cadences.sort_unstable();
-        cadences.dedup();
-        let groups = cadences
-            .into_iter()
-            .map(|c| (c, plan::compile(&quantities, |q| q.cadence == c)))
-            .collect();
         let settings = setting::compile(doc.settings, &quantities)
             .map_err(|(key, problem)| LoadError::Setting { key, problem })?;
         if let Some(extra) = duplicate(&quantities, &settings) {
@@ -469,7 +460,6 @@ impl Profile {
             version: doc.version,
             quantities,
             plan,
-            groups,
             identify,
             inverter: doc.inverter,
             settings,
@@ -601,17 +591,26 @@ impl Profile {
         )
     }
 
-    /// Each poll group's cadence and its reads, fastest first, folded as [`Profile::read_plan`]
-    /// folds them. A profile bound to a SunSpec chain, or one without poll groups, is one group at
-    /// the default cadence.
+    /// Each poll group's cadence and its reads, folded as [`Profile::read_plan`] folds them.
+    /// Reads at the connection's `cycle` come first, followed by other cadences in order.
     #[must_use]
-    pub fn poll_groups(&self, gap_tolerance: u16) -> Vec<(Duration, Vec<Block>)> {
-        if self.chain.is_some() || self.groups.len() < 2 {
-            return vec![(CADENCE, self.read_plan(gap_tolerance))];
+    pub fn poll_groups(&self, gap_tolerance: u16, cycle: Duration) -> Vec<(Duration, Vec<Block>)> {
+        if self.chain.is_some() {
+            return vec![(cycle, self.read_plan(gap_tolerance))];
         }
-        self.groups
-            .iter()
-            .map(|(cadence, plan)| (*cadence, plan::merge_across_gaps(plan, gap_tolerance)))
+        let mut cadences: Vec<_> = self.quantities.iter().map(|q| q.cadence(cycle)).collect();
+        cadences.sort_unstable_by_key(|&cadence| (cadence != cycle, cadence));
+        cadences.dedup();
+        if cadences.len() < 2 {
+            let cadence = cadences.first().copied().unwrap_or(cycle);
+            return vec![(cadence, self.read_plan(gap_tolerance))];
+        }
+        cadences
+            .into_iter()
+            .map(|cadence| {
+                let plan = plan::compile(&self.quantities, |q| q.cadence(cycle) == cadence);
+                (cadence, plan::merge_across_gaps(&plan, gap_tolerance))
+            })
             .collect()
     }
 
@@ -728,12 +727,12 @@ fn group_cadences(groups: BTreeMap<String, u64>) -> Result<HashMap<String, Durat
 }
 
 /// How often `read` is polled: in the group `named`, or with its inputs.
-fn cadence(
+fn group_cadence(
     read: &Read,
     named: Option<&str>,
     groups: &HashMap<String, Duration>,
     quantities: &[Quantity],
-) -> Result<Duration, &'static str> {
+) -> Result<Option<Duration>, &'static str> {
     match (read, named) {
         (Read::Compute(_), Some(_)) => Err("a computed quantity polls with its inputs"),
         (Read::Compute(expr), None) => {
@@ -741,15 +740,19 @@ fn cadence(
             let first = inputs
                 .next()
                 .and_then(|i| quantities.get(i))
-                .map(|q| q.cadence);
-            if inputs.any(|i| quantities.get(i).map(|q| q.cadence) != first) {
+                .and_then(|q| q.group_cadence);
+            if inputs.any(|i| quantities.get(i).and_then(|q| q.group_cadence) != first) {
                 return Err("a computation's inputs share one poll group");
             }
-            Ok(first.unwrap_or(CADENCE))
+            Ok(first)
         }
-        (Read::Register(_), Some(name)) => groups.get(name).copied().ok_or("no such poll group"),
+        (Read::Register(_), Some(name)) => groups
+            .get(name)
+            .copied()
+            .map(Some)
+            .ok_or("no such poll group"),
         (_, Some(_)) => Err("only a register is polled in a group"),
-        (_, None) => Ok(CADENCE),
+        (_, None) => Ok(None),
     }
 }
 
@@ -772,8 +775,8 @@ fn compile(
         one_binding(&read, &quantities).map_err(refuse)?;
         let mapping = mapping(&doc, &read).map_err(refuse)?;
         let step = doc.resolution.unwrap_or_else(|| step(&read, &quantities));
-        let cadence =
-            cadence(&read, doc.poll_group.as_deref(), groups, &quantities).map_err(refuse)?;
+        let group_cadence =
+            group_cadence(&read, doc.poll_group.as_deref(), groups, &quantities).map_err(refuse)?;
         positions.insert(doc.key.clone(), quantities.len());
         let kind = kind(&doc).map_err(refuse)?;
         let unit = unit(&doc, kind).map_err(refuse)?;
@@ -789,7 +792,7 @@ fn compile(
             mapping,
             step,
             deadband: doc.deadband,
-            cadence,
+            group_cadence,
         };
         if let Some(deadband) = quantity.deadband
             && let Err(refusal) = quantity.admits(deadband)

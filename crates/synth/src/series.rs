@@ -184,7 +184,7 @@ impl Plant {
                 continue;
             }
             let cycle = Duration::from_secs(POLL.cast_unsigned());
-            let cadence = endpoint::cadence(cycle, q.cadence());
+            let cadence = endpoint::cadence(cycle, q.cadence(cycle));
             let mut policy = Policy::new(q.kind(), q.unit(), q.step(), cadence);
             policy.deadband = q.deadband().unwrap_or(policy.deadband);
             let at = (q.role.as_str(), q.index);
