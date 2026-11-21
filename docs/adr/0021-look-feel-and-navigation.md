@@ -184,6 +184,9 @@ The first integration build rendered browser defaults: plain links for navigatio
 - **A link** inside text is one link, with one focus ring.
 - **A level pushed** inside a drill-in or the builder's inspector is the drill-in's push, with its header.
 - **Explore's header** on a phone below about 415 px stands in two rows: the title, then its controls across the width. The words stay.
+- **The range control** (2026-11-21, #837) stands in the screen's header, outside every card, on every full screen over a range: History, Forecast and Tariff alike. A sheet keeps it at its head.
+- **A card's height** glides when its content changes it (data in place of a placeholder, another range, another tab), on the move token, and what stands below moves with it. A width the window sets does not glide. On the still tier the card takes its height at once. The kit's card does it, so every card does.
+- **Explore's charts** take the chart entrance whenever the chart changes, not only on the first mount: a series added builds in, a series removed fades out as its lane closes, and another mode builds its chart in.
 
 ## Considered options
 
