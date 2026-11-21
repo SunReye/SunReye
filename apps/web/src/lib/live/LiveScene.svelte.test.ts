@@ -5,13 +5,22 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { MODULE, pv } from "../builder/builder.harness.ts";
 import type { Scene } from "../builder/pv.ts";
 import { chip, frame, layout, scene, show } from "./live-scene.harness.ts";
-import { frames, framesUntil, realTimers } from "../motion/clock.harness.ts";
+import { frames, framesUntil, realTimers, until } from "../motion/clock.harness.ts";
 import { feed } from "./stream.harness.ts";
 import LiveScene from "./LiveScene.svelte";
 
-/** The scene's frames and clock on the test's clock: a tween runs out on frames, not on time. */
-function fakeFrames(): void {
+/**
+ * The scene once its first frame is drawn, on the browser's frames as it loads; its frames and
+ * clock on the test's clock after, so a tween runs out on frames, not on time.
+ */
+async function drawn() {
+  const ready = Promise.withResolvers<void>();
+  const screen = await show([], () => {}, ready.resolve);
+
+  await ready.promise;
   vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] });
+
+  return screen;
 }
 
 /** A chip showing `value`, the frames played until it does. */
@@ -36,18 +45,17 @@ afterEach(async () => {
 
 /** Draws counted once ten frames pass without one: a tween has run out. */
 async function settled(draws: () => number): Promise<number> {
-  await expect
-    .poll(
-      async () => {
-        const before = draws();
+  let still = false;
 
-        await frames(10);
+  await until(
+    () => still,
+    async () => {
+      const before = draws();
 
-        return draws() - before;
-      },
-      { interval: 0, timeout: 10_000 },
-    )
-    .toBe(0);
+      await frames(10);
+      still = draws() === before;
+    },
+  );
 
   return draws();
 }
@@ -57,9 +65,7 @@ test("a live tick and a camera move draw a short tween, then drawing stops (ADR 
   const draws = vi.spyOn(EffectComposer.prototype, "render");
   const send = feed();
 
-  fakeFrames();
-
-  const screen = await show();
+  const screen = await drawn();
 
   send(frame(600, -1200));
   await shown("Süd", "600");
@@ -120,14 +126,14 @@ test("a car appears at its place while connected, with its charge power and SOC"
 
 /** The figure's fade, once it reports ready. */
 async function fadeOnReady(): Promise<string> {
-  const ready = vi.fn<() => void>();
-  const screen = await show([], () => {}, ready);
+  const ready = Promise.withResolvers<void>();
+  const screen = await show([], () => {}, ready.resolve);
   const figure = screen.getByRole("figure", { name: "Live-Ansicht des Hauses" });
 
   // Hidden and inert until its first frame is drawn, chips included.
   expect(figure.element().closest("[inert]")).not.toBeNull();
 
-  await expect.poll(() => ready.mock.calls.length, { timeout: 15_000 }).toBe(1);
+  await ready.promise;
   await expect.element(figure).not.toHaveAttribute("inert");
   await expect.poll(() => getComputedStyle(figure.element()).opacity).toBe("1");
 
@@ -162,17 +168,18 @@ function boxes(names: readonly string[]): Record<string, DOMRect> {
 /** The chips' boxes once they rest: each is measured, then placed once more by its own size. */
 async function atRest(names: readonly string[]): Promise<Record<string, DOMRect>> {
   let last = "";
+  let still = false;
 
-  await expect
-    .poll(async () => {
+  await stepUntil(
+    () => still,
+    async () => {
       const before = last;
 
       await frames(1);
       last = JSON.stringify(boxes(names));
-
-      return last === before;
-    })
-    .toBe(true);
+      still = last === before;
+    },
+  );
 
   return boxes(names);
 }
@@ -182,9 +189,7 @@ test("on a phone the chips sit in rows around the house and keep their place", a
 
   const send = feed();
 
-  fakeFrames();
-
-  const screen = await show();
+  const screen = await drawn();
 
   send(frame(600, -1200));
   await shown("Süd", "600");
