@@ -27,28 +27,44 @@ function forecast(points: readonly Readonly<Target>[]): Held[] {
   });
 }
 
+/** Why a source was not read whole: the core's first refusal, none for a lost core. */
+export interface Unread {
+  readonly refused: Problem | undefined;
+}
+
+interface Source {
+  readonly held: ReadonlyMap<DetailRole, Held[]>;
+  readonly unread: Unread | undefined;
+}
+
 /** Each of `roles` from one source, read together; a series the core refuses or fails is empty. */
 async function source<P>(
   roles: readonly DetailRole[],
   read: (roles: readonly DetailRole[]) => Promise<readonly (Readonly<{ points: P }> | Problem)[]>,
   held: (points: P) => Held[],
-): Promise<ReadonlyMap<DetailRole, Held[]>> {
-  if (roles.length === 0) return new Map();
+): Promise<Source> {
+  if (roles.length === 0) return { held: new Map(), unread: undefined };
 
-  const answers = await read(roles).catch(() => []);
+  const answers = await read(roles).catch(() => null);
+  let unread: Unread | undefined = answers === null ? { refused: undefined } : undefined;
 
   const out = new Map<DetailRole, Held[]>();
 
   for (const [i, role] of roles.entries()) {
-    const answer = answers[i];
+    const answer = answers?.[i];
+
+    if (answer !== undefined && "problem" in answer) unread ??= { refused: answer };
 
     out.set(role, answer !== undefined && "points" in answer ? held(answer.points) : []);
   }
 
-  return out;
+  return { held: out, unread };
 }
 
-/** Each of `series` from both sources, one read a source; a series refused or failed is empty. */
+/**
+ * Each of `series` from both sources, one read a source; a series refused or failed is empty, and
+ * `unread` says why.
+ */
 export async function stored(
   core: WeatherReader,
   series: readonly Readonly<{ role: DetailRole; history: boolean; forecasts: boolean }>[],
@@ -68,7 +84,8 @@ export async function stored(
   ]);
 
   return {
-    past: (role: DetailRole) => past.get(role) ?? [],
-    ahead: (role: DetailRole) => ahead.get(role) ?? [],
+    past: (role: DetailRole) => past.held.get(role) ?? [],
+    ahead: (role: DetailRole) => ahead.held.get(role) ?? [],
+    unread: past.unread ?? ahead.unread,
   };
 }

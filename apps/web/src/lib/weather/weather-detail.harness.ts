@@ -22,6 +22,8 @@ export const each = (of: (hour: number) => number | null): readonly (number | nu
 interface Stored {
   readonly history?: Readonly<Record<string, Series>>;
   readonly forecasts?: Readonly<Record<string, Series>>;
+  /** The code the core refuses the forecasts with, as asked; none while it answers. */
+  readonly refused?: string | undefined;
 }
 
 /** A core holding `stored`, and each device it was asked for. */
@@ -29,7 +31,7 @@ function fake(stored: Stored) {
   const devices: number[] = [];
 
   const hours = (
-    source: keyof Stored,
+    source: "history" | "forecasts",
     series: string,
   ): readonly Readonly<{ at: number; value: number }>[] =>
     (stored[source]?.[series] ?? []).flatMap((value, i) =>
@@ -51,6 +53,8 @@ function fake(stored: Stored) {
     }),
     forecasts: eachSeries((device, series: string) => {
       devices.push(device);
+
+      if (stored.refused !== undefined) return { problem: stored.refused };
 
       return {
         points: hours("forecasts", series).map(({ at, value }) => ({

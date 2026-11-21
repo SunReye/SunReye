@@ -43,7 +43,7 @@ export type Attempt = components["schemas"]["Entry"];
 
 export type WriteLog = components["schemas"]["WriteLog"];
 
-export type { Problem } from "./client";
+export { settleRead, type Problem, type Settled } from "./client";
 
 export type { CatalogueSheet, Datasheet, Layout, ModuleType } from "./layouts";
 

@@ -1,5 +1,6 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
+import { settleRead } from "../api/client.ts";
 import { perSeries } from "../api/core.harness.ts";
 import { readWeatherSources, type WeatherReader } from "./weather.ts";
 
@@ -83,4 +84,27 @@ test("a detail that shows less reads only the series it names", async () => {
     `history ${WEATHER} weather.code`,
     `history ${WEATHER} weather.sunshine`,
   ]);
+});
+
+test("the detail's read fails on a refused series with the core's reason, and on a lost core", async () => {
+  const span = [at("00:00"), new Date("2026-11-17T00:00:00Z"), at("13:00")] as const;
+
+  const refused: WeatherReader = {
+    ...fake(),
+    forecasts: perSeries(() => ({ problem: "forecast.range" })),
+  };
+
+  const lost: WeatherReader = {
+    ...fake(),
+    history: () => Promise.reject(new TypeError("network")),
+  };
+
+  expect(await settleRead(readWeatherSources(refused, ...span))).toEqual({
+    failed: true,
+    refused: { problem: "forecast.range" },
+  });
+  expect(await settleRead(readWeatherSources(lost, ...span))).toEqual({
+    failed: true,
+    refused: undefined,
+  });
 });
