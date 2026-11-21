@@ -1352,6 +1352,7 @@
   "explore_hourly": "Von diesem Tag sind nur Stundenwerte aufbewahrt.",
   "explore_expired": "Zustände und gehaltene Werte reichen nicht so weit zurück.",
   "explore_failed": "Nicht geladen: {names}.",
+  "explore_refused": "Nicht geladen: {names}. {reason}",
   "explore_many": "Zu viele Wechsel in diesem Zeitraum: {names}. Wähle einen kürzeren.",
   "explore_states": "Status",
   "explore_no_unit": "ohne Einheit",

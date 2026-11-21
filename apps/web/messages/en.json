@@ -1352,6 +1352,7 @@
   "explore_hourly": "Only hourly figures are kept of this day.",
   "explore_expired": "States and held values do not reach back that far.",
   "explore_failed": "Not loaded: {names}.",
+  "explore_refused": "Not loaded: {names}. {reason}",
   "explore_many": "Too many changes in this range: {names}. Choose a shorter one.",
   "explore_states": "States",
   "explore_no_unit": "no unit",

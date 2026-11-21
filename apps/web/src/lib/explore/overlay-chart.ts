@@ -6,7 +6,7 @@ import { overlayTable, type Table } from "./csv.ts";
 import { sampleAt, type Curve } from "./curve.ts";
 import { tintOf, type OverlayPeriod } from "./overlay.ts";
 import type { Chosen } from "./picker.ts";
-import type { Reading } from "./read.ts";
+import { failedNotes, type Reading } from "./read.ts";
 import { lanesView, written, type Figure, type LaneView } from "./series-chart.ts";
 
 /** A period as the pane names and colours it. */
@@ -97,11 +97,13 @@ export function overlayNotes(rows: readonly PeriodRow[]): string[] {
 
   const said: (readonly [string, (names: string) => string])[] = [
     [named((r) => r.hourly), (names) => m.explore_overlay_hourly({ names })],
-    [named((r) => r.trouble === "failed"), (names) => m.explore_failed({ names })],
     [named((r) => r.trouble === "many"), (names) => m.explore_many({ names })],
   ];
 
-  return said.flatMap(([names, text]) => (names === "" ? [] : [text(names)]));
+  return [
+    ...said.flatMap(([names, text]) => (names === "" ? [] : [text(names)])),
+    ...failedNotes(rows.map((r: PeriodRow) => [r.period.name, r.reading] as const)),
+  ];
 }
 
 /** Each period's points, the range first, for the export. */

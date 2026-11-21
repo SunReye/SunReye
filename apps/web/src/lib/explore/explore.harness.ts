@@ -94,12 +94,15 @@ function figures({ from, to, period }: Asked): Unnamed<Statistics> {
 }
 
 /**
- * `broken`: the core refuses the catalog. `offline`: no request reaches it. `history` and
- * `statistics` answer the series reads, and `asked` lists them.
+ * `broken`: the core refuses the catalog: signed out. `offline`: no request reaches it.
+ * `refused`: the core refuses a series' reads by name, with its code. `history` and `statistics`
+ * answer the series reads, and `asked` lists them.
  */
 export const plant = {
   broken: false,
   offline: false,
+  // SAFETY: a field a test sets; null until one does.
+  refused: null as Readonly<{ series: string; code: string }> | null,
   history: halves,
   statistics: figures,
   asked: new Array<Asked>(),
@@ -108,6 +111,7 @@ export const plant = {
 export function reset(): void {
   plant.broken = false;
   plant.offline = false;
+  plant.refused = null;
   resetViews();
   plant.history = halves;
   plant.statistics = figures;
@@ -142,12 +146,26 @@ function transport(): Transport {
 
       if (read === "timezone") return Promise.resolve(Response.json({ name: "UTC" }));
 
-      if (read === "series" && !plant.broken)
-        return Promise.resolve(Response.json({ devices: DEVICES }));
+      if (read === "series")
+        return Promise.resolve(
+          plant.broken
+            ? Response.json({ status: 401, code: "auth.required" }, { status: 401 })
+            : Response.json({ devices: DEVICES }),
+        );
 
       if (forViews(request)) return answerViews(request);
 
       const url = new URL(request.url);
+
+      const { refused } = plant;
+
+      if (refused !== null && url.searchParams.getAll("series").includes(refused.series))
+        return Promise.resolve(
+          Response.json(
+            { status: 422, code: refused.code, series: refused.series },
+            { status: 422 },
+          ),
+        );
 
       if (askedOf(url, "") !== null)
         return Promise.resolve(

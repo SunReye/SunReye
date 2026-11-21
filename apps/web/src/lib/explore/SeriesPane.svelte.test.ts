@@ -240,6 +240,22 @@ test("a route past the caps says which series are not drawn, and why", async () 
     .toBeVisible();
 });
 
+test("a series the core refuses is named with the core's reason", async () => {
+  await desk();
+  plant.refused = { series: "battery.soc", code: "history.counter" };
+
+  const { screen } = await show(`s=${PLANT}:pv.power,5:battery.soc`);
+  const chart = screen.getByRole("region", { name: "Reihen" });
+
+  await expect
+    .element(
+      chart.getByText(
+        "Nicht geladen: Batterie · Ladezustand. Für einen Zähler gibt es über diesen Zeitraum keine Mittelwerte.",
+      ),
+    )
+    .toBeVisible();
+});
+
 test("a series that cannot be read is named; the others are drawn", async () => {
   await desk();
   plant.history = (asked) => {

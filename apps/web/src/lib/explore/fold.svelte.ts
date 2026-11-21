@@ -1,6 +1,6 @@
 // Fold mode's state (ADR 22): whether the series folds, the period from the hash route, and the
 // statistics read for the range, one call per fold.
-import { settleRead } from "../api/client.ts";
+import { answerOf, settleRead } from "../api/client.ts";
 import { only, type Period, type Problem } from "../api/core.ts";
 import { foldTable } from "./csv.ts";
 import {
@@ -78,15 +78,15 @@ export class Fold extends ModeView<Folded | null> {
 
     const base = { ref, period, zone, attempt, from: from.getTime(), to: to.getTime() };
 
-    // An unreachable core rejects; a refusal answers with a problem.
     const got = await settleRead(
-      core.statistics(ref.device, [ref.series], period, new Date(from), new Date(to)).then(only),
+      core
+        .statistics(ref.device, [ref.series], period, new Date(from), new Date(to))
+        .then(only)
+        .then(answerOf),
     );
 
-    if (got.failed) return { ...base, failed: true, counter: false, rows: [] };
-
-    if ("problem" in got.data)
-      return { ...base, failed: true, refused: got.data, counter: false, rows: [] };
+    if (got.failed)
+      return { ...base, failed: true, refused: got.refused, counter: false, rows: [] };
 
     return {
       ...base,

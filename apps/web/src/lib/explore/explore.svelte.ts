@@ -1,5 +1,6 @@
 // The Explore screen's state (ADR 22): its range and view from the hash route, the series catalog
 // behind the picker, and what each control does to the route. Nothing is kept outside the route.
+import { answerOf, settleRead, type Problem } from "../api/client.ts";
 import type { Core } from "../api/core.ts";
 import { parseRange, rangeParams } from "../range/params.ts";
 import { RangeRoute, type Go } from "../range/route.svelte.ts";
@@ -41,6 +42,8 @@ export class Explore {
   /** Undefined while the core answers, and after it refused. */
   #catalog = $state.raw<readonly PickerDevice[]>();
   #failed = $state(false);
+  /** Why the core refused the catalog; none for a lost core. */
+  #refused = $state.raw<Problem>();
 
   // Explore opens on today: a bare route is a day's. An address that overlays a longer range
   // reads as the day overlay opens of it.
@@ -96,23 +99,29 @@ export class Explore {
     return this.#catalog === undefined ? "loading" : "ready";
   }
 
+  /** Why the core refused the catalog, once it failed; none for a lost core. */
+  get refused(): Problem | undefined {
+    return this.#refused;
+  }
+
   /** Reads the catalog. */
   load = async (): Promise<void> => {
     const { core } = this.#input();
 
     this.#catalog = undefined;
     this.#failed = false;
+    this.#refused = undefined;
 
-    // An unreachable core rejects; a refusal answers with a problem.
-    const catalog = await core.series().catch(() => ({ problem: "network" }) as const);
+    const got = await settleRead(core.series().then(answerOf));
 
-    if ("problem" in catalog) {
+    if (got.failed) {
       this.#failed = true;
+      this.#refused = got.refused;
 
       return;
     }
 
-    this.#catalog = pickerOf(catalog);
+    this.#catalog = pickerOf(got.data);
   };
 
   isChosen = (ref: SeriesRef): boolean => this.view.series.some((r) => same(r, ref));

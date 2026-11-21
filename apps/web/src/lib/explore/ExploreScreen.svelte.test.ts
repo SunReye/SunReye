@@ -180,6 +180,23 @@ test("a chart that cannot be drawn without the catalog reads it again from its o
   expect(failed.query()).toBeNull();
 });
 
+test("a catalog the core refuses says the core's reason in the picker and the chart", async () => {
+  await desk();
+  plant.broken = true;
+
+  const { screen } = await show();
+
+  const said = (text: string) =>
+    expect
+      .element(
+        screen.getByRole("alert").filter({ hasText: text }).getByText("Bitte melde dich an."),
+      )
+      .toBeVisible();
+
+  await said("Die Reihen konnten nicht geladen werden.");
+  await said("Ohne die Liste der Reihen lässt sich das Diagramm nicht zeichnen.");
+});
+
 test("an unreachable core leaves the picker with the same way out", async () => {
   await desk();
   plant.offline = true;
