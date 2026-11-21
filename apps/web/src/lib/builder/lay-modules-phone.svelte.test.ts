@@ -118,4 +118,4 @@ test("on a phone a finger lays a row on the selected face and a tap selects one;
   await tap(handle());
   await row("Baukörper 1, Fläche 2");
   await expect.element(sheet().getByText("3 Module gesetzt", { exact: true })).toBeVisible();
-}, 60_000);
+});

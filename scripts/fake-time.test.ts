@@ -1,5 +1,7 @@
+import { Glob } from "bun";
 import { expect, test } from "bun:test";
-import { realTime } from "./fake-time.ts";
+import { SCENE } from "../apps/web/scene-tests.ts";
+import { realTime, SLOW } from "./fake-time.ts";
 
 const SRC = "apps/web/src/";
 
@@ -101,7 +103,7 @@ test("a wait's budget given by a name or a sum is refused: its length cannot be 
   expect(calls("await expect.poll(f, { timeout: SLOW_MS }).toBe(1);")).toEqual(["timeout"]);
   expect(calls("await vi.waitFor(f, { timeout: 15 * 1000 });")).toEqual(["timeout"]);
   expect(calls("await vi.waitFor(f, { interval: 50, timeout });")).toEqual(["timeout"]);
-  expect(calls(`test("draws", { timeout: MINUTE_MS }, async () => {});`)).toEqual([]);
+  expect(calls(`test("draws", { timeout: MINUTE_MS }, async () => {});`)).toEqual(["test budget"]);
 });
 
 test("a budget a file exports is refused where it is given: its uses are in other files", () => {
@@ -116,15 +118,98 @@ test("a wait whose first argument ends in a string is still a wait", () => {
   ]);
 });
 
-test("a test's own budget is no wait's", () => {
-  expect(calls(`test("draws", { timeout: 60_000 }, async () => {});`)).toEqual([]);
-  expect(calls(`test(\n  "draws",\n  { timeout: 60_000 },\n  async () => {},\n);`)).toEqual([]);
+test("a test's own budget is no wait's: it is a raised test budget", () => {
+  const budget = ["test budget"];
+
+  expect(calls(`test("draws", { timeout: 60_000 }, async () => {});`)).toEqual(budget);
+  expect(calls(`test(\n  "draws",\n  { timeout: 60_000 },\n  async () => {},\n);`)).toEqual(budget);
   expect(
     calls(`const MINUTE = { timeout: 60_000 };\ntest("drags", MINUTE, async () => {});`),
-  ).toEqual([]);
+  ).toEqual(budget);
   expect(
     calls(
       `const MINUTE = { timeout: 60_000 };\ntest(\n  "drags",\n  MINUTE,\n  async () => {},\n);`,
     ),
+  ).toEqual(budget);
+  expect(calls(`test("draws", { timeout: 10_000 }, async () => {});`)).toEqual([]);
+});
+
+test("a timer after the clock went back to the wall's, in the same block, is real time", () => {
+  const source = [
+    `test("a", async () => {`,
+    `  vi.useFakeTimers();`,
+    `  setTimeout(done, 5);`,
+    `  vi.useRealTimers();`,
+    `  await new Promise((r) => setTimeout(r, 50));`,
+    `});`,
+    ``,
+    `test("b", async () => {`,
+    `  realTimers();`,
+    `  setInterval(poll, 20);`,
+    `});`,
+    ``,
+    `test("c", () => {`,
+    `  setTimeout(done, 5);`,
+    `});`,
+  ].join("\n");
+
+  expect(found("lib/x.svelte.test.ts", source)).toEqual([
+    { call: "setTimeout after real timers", line: 5 },
+    { call: "setInterval after real timers", line: 10 },
+  ]);
+});
+
+test("putting the wall clock back as a test ends is no real time", () => {
+  const source = `afterEach(() => {\n  vi.useRealTimers();\n});\n\ntest("a", () => {\n  vi.useFakeTimers();\n  setTimeout(done, 5);\n});`;
+
+  expect(calls(source)).toEqual([]);
+});
+
+test("a wait's budget given as vi.waitFor's number is refused above vitest's", () => {
+  expect(calls("await vi.waitFor(() => drawn(), 5000);")).toEqual(["timeout"]);
+  expect(calls("await vi.waitFor(() => f(a, b), 15_000);")).toEqual(["timeout"]);
+  expect(calls("await vi.waitFor(() => drawn(), 500);")).toEqual([]);
+});
+
+test("a raised test or hook budget is refused outside the named slow scene files", () => {
+  expect(calls("vi.setConfig({ testTimeout: 60_000 });")).toEqual(["test budget"]);
+  expect(calls("export default { test: { hookTimeout: 30_000 } };")).toEqual(["test budget"]);
+  expect(calls(`test("draws", { timeout: 60_000 }, async () => {});`)).toEqual(["test budget"]);
+  expect(calls(`test("draws", async () => {\n  await x();\n}, 90_000);`)).toEqual(["test budget"]);
+  expect(
+    calls(`const MINUTE = { timeout: 60_000 };\ntest("drags", MINUTE, async () => {});`),
+  ).toEqual(["test budget"]);
+  expect(
+    found(`lib/${Object.keys(SLOW)[0]}`, `test("draws", { timeout: 60_000 }, async () => {});`),
   ).toEqual([]);
+});
+
+test("every slow file is a serial scene file and says what it measured", () => {
+  const scenes = SCENE.map((pattern) => new Glob(pattern.replace(/^src\//u, "")));
+
+  for (const [path, why] of Object.entries(SLOW))
+    expect({
+      path,
+      // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- a glob, only matched.
+      scene: scenes.some((g) => g.match(`lib/${path}`)),
+      why: /\d s/u.test(why),
+    }).toEqual({
+      path,
+      scene: true,
+      why: true,
+    });
+});
+
+test("an idle callback or a page's timed wait is real time", () => {
+  expect(calls("requestIdleCallback(() => done());")).toEqual(["requestIdleCallback"]);
+  expect(
+    calls(`vi.useFakeTimers({ toFake: ["requestIdleCallback"] });\nrequestIdleCallback(f);`),
+  ).toEqual([]);
+  expect(calls("await page.waitForTimeout(100);")).toEqual(["waitForTimeout"]);
+});
+
+test("a component harness is held to it", () => {
+  expect(
+    found("lib/range/card.harness.svelte", "<script>\n  setTimeout(done, 16);\n</script>"),
+  ).toEqual([{ call: "setTimeout", line: 2 }]);
 });

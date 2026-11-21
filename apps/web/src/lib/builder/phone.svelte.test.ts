@@ -155,7 +155,7 @@ test("by touch alone an admin builds a house from a template, lays modules on a 
   await tap(tools().getByRole("button", { name: "Rückgängig" }));
   await tap(handle());
   await expect.element(sheet().getByText(/^0 Module, davon 0 mit Optimierer$/u)).toBeVisible();
-}, 60_000);
+});
 
 test("opening a face for its modules flies the camera onto it: a tap lands in the cell under it", async () => {
   const draws = vi.spyOn(EffectComposer.prototype, "render");
