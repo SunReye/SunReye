@@ -4,6 +4,7 @@
   over the canvas. A click on an object in 3D drills the inspector to it.
 -->
 <script lang="ts">
+  import { BUILDER_SIZE } from "./size.ts";
   import { MediaQuery } from "svelte/reactivity";
   import type { Core, Device, ModuleType } from "../api/core.ts";
   import InspectorPane, { PEEK } from "./InspectorPane.svelte";
@@ -62,7 +63,8 @@
   the peeking sheet's rest must not show behind that bar. -->
 <div
   class={[
-    "relative grid overflow-clip h-[calc(100dvh-var(--bar-clear,0px))] min-h-[480px]",
+    "relative grid overflow-clip",
+    BUILDER_SIZE,
     !phone.current && "gap-3 p-3",
     !sheet && "grid-cols-[minmax(0,1fr)_minmax(320px,380px)]",
   ]}

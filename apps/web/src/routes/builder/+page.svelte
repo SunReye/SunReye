@@ -3,10 +3,12 @@
   // The glue crate's release build, which the SPA build makes first (ADR 2, 20).
   import wasm from "../../../../../target/wasm32-unknown-unknown/release/sunreye_pv_wasm.wasm?url";
   import { Button } from "#lib/components/ui/button/index.js";
+  import { Skeleton } from "#lib/components/ui/skeleton/index.js";
   import Builder from "../../lib/builder/Builder.svelte";
   import { inputsOf, limitsOf } from "../../lib/builder/checks";
   import { emptyDraft } from "../../lib/builder/modules";
   import { loadPv } from "../../lib/builder/pv";
+  import { BUILDER_SIZE } from "../../lib/builder/size.ts";
   import { m } from "../../lib/paraglide/messages.js";
 
   const core = useCore();
@@ -47,7 +49,11 @@
 <main>
   {#if webgl2}
     {#await load()}
-      <p class="p-6 text-sm text-muted-foreground">{m.builder_loading()}</p>
+      <Skeleton
+        class={["rounded-none", BUILDER_SIZE]}
+        role="status"
+        aria-label={m.builder_loading()}
+      />
     {:then { pv, start, moduleTypes, devices, location, limits, inputs }}
       <Builder {pv} {core} {start} {moduleTypes} {devices} {location} {limits} {inputs} />
     {/await}
