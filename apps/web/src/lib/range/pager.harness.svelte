@@ -4,6 +4,7 @@
 -->
 <script lang="ts">
   import "../../app.css";
+  import { Button } from "#lib/components/ui/button/index.js";
   import * as Card from "#lib/components/ui/card/index.js";
   import Pager from "./Pager.svelte";
   import type { Travel } from "./travel.svelte.ts";
@@ -30,13 +31,13 @@
   };
 </script>
 
-<button
+<Button
   onclick={() => {
     dragged = true;
     n += 1;
-  }}>Später</button
+  }}>Später</Button
 >
-<button onclick={() => (n += 1)}>Reiter</button>
+<Button onclick={() => (n += 1)}>Reiter</Button>
 <div style="width: 400px">
   <Card.Root class="py-0" data-testid="card" bind:ref={card}>
     <Pager
