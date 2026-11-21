@@ -8,7 +8,7 @@
 
 <main class="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-6">
   <PageTitle class="px-1" title={m.controls_title()} />
-  <Card.Root class="glass-ambient gap-0 py-0">
+  <Card.Root class="gap-0 py-0">
     <LoadingRows rows={4} />
   </Card.Root>
 </main>

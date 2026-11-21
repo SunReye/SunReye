@@ -5,6 +5,7 @@ import { connect, type Device, type Transport } from "../api/core.ts";
 import "../../app.css";
 import { tap } from "../builder/pointer.harness.ts";
 import DevicesStep from "./DevicesStep.svelte";
+import { pressEnabled } from "./press.harness.ts";
 import { closed } from "../motion/animations.harness.ts";
 
 /** A phone; the value editor lands at once. */
@@ -21,11 +22,11 @@ afterEach(async () => {
 
 /** Types `value` into a number row's value editor and applies it. */
 async function enter(row: string, value: string): Promise<void> {
-  await page.getByRole("button", { name: new RegExp(`^${row} `, "u") }).click();
-  await page.getByRole("button", { name: /tippen zum Eingeben/u }).click();
+  await pressEnabled(page.getByRole("button", { name: new RegExp(`^${row} `, "u") }));
+  await pressEnabled(page.getByRole("button", { name: /tippen zum Eingeben/u }));
   await userEvent.fill(page.getByRole("textbox", { name: `${row} eingeben` }), value);
   await userEvent.keyboard("{Enter}");
-  await page.getByRole("button", { name: /^Übernehmen/u }).click();
+  await pressEnabled(page.getByRole("button", { name: /^Übernehmen/u }));
   await closed(page.getByRole("dialog"));
 }
 
@@ -66,9 +67,9 @@ const PROFILES = [
 
 /** Picks the profile named `name` for the device at `at` from the catalogue, by searching for `search`. */
 async function pick(at: string, search: string, name: string): Promise<void> {
-  await page.getByRole("button", { name: `Profil für ${at}` }).click();
+  await pressEnabled(page.getByRole("button", { name: `Profil für ${at}` }));
   await userEvent.fill(page.getByRole("searchbox", { name: "Profil suchen" }), search);
-  await page.getByRole("button", { name: new RegExp(`^${name}`, "u") }).click();
+  await pressEnabled(page.getByRole("button", { name: new RegExp(`^${name}`, "u") }));
   await closed(page.getByRole("dialog"));
 }
 
@@ -135,11 +136,11 @@ test("the admin confirms a scanned device under a name of their own", async () =
   const done = vi.fn<(devices: readonly Readonly<Device>[]) => void>();
   const screen = await render(DevicesStep, { core: connect(transport), ondone: done });
 
-  await screen.getByRole("button", { name: "Netzwerk durchsuchen" }).click();
+  await pressEnabled(screen.getByRole("button", { name: "Netzwerk durchsuchen" }));
 
   await expect.element(screen.getByRole("checkbox", { name: FOUND })).toBeChecked();
   await userEvent.fill(screen.getByLabelText("Name von SUN-15K-SG05LP3-EU-SM2"), "Wechselrichter");
-  await screen.getByRole("button", { name: "Ausgewählte Geräte hinzufügen" }).click();
+  await pressEnabled(screen.getByRole("button", { name: "Ausgewählte Geräte hinzufügen" }));
 
   await expect.poll(() => done.mock.calls.length).toBe(1);
   expect(transport.calls).toEqual([
@@ -155,14 +156,14 @@ test("adding again after a refused device does not add its connection twice", as
   const done = vi.fn<(devices: readonly Readonly<Device>[]) => void>();
   const screen = await render(DevicesStep, { core: connect(transport), ondone: done });
 
-  await screen.getByRole("button", { name: "Netzwerk durchsuchen" }).click();
+  await pressEnabled(screen.getByRole("button", { name: "Netzwerk durchsuchen" }));
   await userEvent.fill(screen.getByLabelText("Name von SUN-15K-SG05LP3-EU-SM2"), "Wechselrichter");
 
   const add = screen.getByRole("button", { name: "Ausgewählte Geräte hinzufügen" });
 
-  await add.click();
+  await pressEnabled(add);
   await expect.element(screen.getByRole("alert")).toBeVisible();
-  await add.click();
+  await pressEnabled(add);
 
   await expect.poll(() => done.mock.calls.length).toBe(1);
   expect(transport.calls.filter((call) => call.startsWith("/api/v1/connections"))).toHaveLength(1);
@@ -178,14 +179,14 @@ test("the admin enters by hand an endpoint no profile recognises", async () => {
   const done = vi.fn<(devices: readonly Readonly<Device>[]) => void>();
   const screen = await render(DevicesStep, { core: connect(transport), ondone: done });
 
-  await screen.getByRole("button", { name: "Netzwerk durchsuchen" }).click();
-  await screen.getByRole("checkbox", { name: FOUND }).click();
-  await screen.getByRole("button", { name: /^Weitere Geräte im Netzwerk/u }).click();
-  await screen.getByRole("button", { name: "192.168.1.30:502 von Hand hinzufügen" }).click();
+  await pressEnabled(screen.getByRole("button", { name: "Netzwerk durchsuchen" }));
+  await pressEnabled(screen.getByRole("checkbox", { name: FOUND }));
+  await pressEnabled(screen.getByRole("button", { name: /^Weitere Geräte im Netzwerk/u }));
+  await pressEnabled(screen.getByRole("button", { name: "192.168.1.30:502 von Hand hinzufügen" }));
   await pick("192.168.1.30:502", "sunspec", "SunSpec device");
   await enter("Adresse für 192.168.1.30:502", "3");
   await userEvent.fill(screen.getByLabelText("Name des Geräts an 192.168.1.30:502"), "Zähler");
-  await screen.getByRole("button", { name: "Ausgewählte Geräte hinzufügen" }).click();
+  await pressEnabled(screen.getByRole("button", { name: "Ausgewählte Geräte hinzufügen" }));
 
   await expect.poll(() => done.mock.calls.length).toBe(1);
   expect(transport.calls.slice(1)).toEqual([
@@ -235,7 +236,7 @@ test("the admin enters an RTU gateway the scan does not probe by hand", async ()
   await pick("192.168.1.40:4196", "3em", "Pro 3EM");
   await enter("Adresse für 192.168.1.40:4196", "2");
   await userEvent.fill(screen.getByLabelText("Name des Geräts an 192.168.1.40:4196"), "Zähler");
-  await screen.getByRole("button", { name: "Ausgewählte Geräte hinzufügen" }).click();
+  await pressEnabled(screen.getByRole("button", { name: "Ausgewählte Geräte hinzufügen" }));
 
   await expect.poll(() => done.mock.calls.length).toBe(1);
   expect(transport.calls).toEqual([
@@ -247,13 +248,13 @@ test("the admin enters an RTU gateway the scan does not probe by hand", async ()
 test("hosts no profile recognises wait folded away under their own row", async () => {
   const screen = await render(DevicesStep, { core: connect(testCore()), ondone: () => {} });
 
-  await screen.getByRole("button", { name: "Netzwerk durchsuchen" }).click();
+  await pressEnabled(screen.getByRole("button", { name: "Netzwerk durchsuchen" }));
 
   const more = screen.getByRole("button", { name: /^Weitere Geräte im Netzwerk/u });
 
   await expect.element(more).toHaveAttribute("aria-expanded", "false");
   expect(screen.getByText("192.168.1.30:502").query()).toBeNull();
-  await more.click();
+  await pressEnabled(more);
   await expect.element(screen.getByText("192.168.1.30:502")).toBeVisible();
 });
 
@@ -265,7 +266,7 @@ test("a scan that finds nothing says so and offers the endpoint by hand", async 
 
   const screen = await render(DevicesStep, { core: connect(transport), ondone: () => {} });
 
-  await screen.getByRole("button", { name: "Netzwerk durchsuchen" }).click();
+  await pressEnabled(screen.getByRole("button", { name: "Netzwerk durchsuchen" }));
 
   await expect.element(screen.getByText("Kein Gerät gefunden.")).toBeVisible();
   await expect
@@ -283,7 +284,7 @@ test("a running scan shows its progress", async () => {
 
   const screen = await render(DevicesStep, { core: connect(transport), ondone: () => {} });
 
-  await screen.getByRole("button", { name: "Netzwerk durchsuchen" }).click();
+  await pressEnabled(screen.getByRole("button", { name: "Netzwerk durchsuchen" }));
 
   await expect
     .element(screen.getByRole("status").getByText(/Netzwerk wird durchsucht/u))

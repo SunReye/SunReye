@@ -1,4 +1,5 @@
 <script lang="ts">
+  import DrillCard from "../components/drill-in/drill-card.svelte";
   import type { Core } from "../api/core";
   import ProblemAlert from "../components/problem-alert.svelte";
   import { m } from "../paraglide/messages.js";
@@ -15,7 +16,7 @@
 <!-- The page is titled Tarif already: the heading names the region for assistive tech only. -->
 <section aria-labelledby="{id}-title" class="flex flex-col">
   <h2 id="{id}-title" class="sr-only">{m.tariff_title()}</h2>
-  <div class="drill-card">
+  <DrillCard>
     {#await tariff}
       <LoadingRows />
     {:then answer}
@@ -28,5 +29,5 @@
         <div class="p-4"><ProblemAlert problem={answer.problem} /></div>
       {/if}
     {/await}
-  </div>
+  </DrillCard>
 </section>

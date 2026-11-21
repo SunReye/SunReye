@@ -9,7 +9,7 @@
   import Editor from "./Editor.svelte";
   import { depth, parent, type Level } from "./levels.ts";
   import { title, type Plan } from "./outline.ts";
-  import SaveBar from "./SaveBar.svelte";
+  import DraftSaveBar from "./DraftSaveBar.svelte";
   import StringsLevel from "./StringsLevel.svelte";
   import type { Session } from "./session.svelte.ts";
 
@@ -92,6 +92,6 @@
   </DrillPush>
 
   <footer class="border-t border-border/60 p-3">
-    <SaveBar {session} />
+    <DraftSaveBar {session} />
   </footer>
 </div>

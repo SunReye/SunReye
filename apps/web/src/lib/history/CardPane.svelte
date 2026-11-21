@@ -30,6 +30,7 @@
         loading={d.loading}
         {height}
         onview={s.open}
+        onfacts={s.readFacts}
       />
     {/snippet}
     {#snippet waiting()}

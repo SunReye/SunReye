@@ -20,13 +20,6 @@
     <Card.Content class="text-2xl font-semibold tabular-nums">18.4 kWh</Card.Content>
     <Card.Footer><Button variant="outline" size="sm">Open in history</Button></Card.Footer>
   </Card.Root>
-  <Card.Root class="glass-ambient w-72">
-    <Card.Header>
-      <Card.Title>Ambient glass</Card.Title>
-      <Card.Description>A card on the backdrop</Card.Description>
-    </Card.Header>
-    <Card.Content class="text-2xl font-semibold tabular-nums">3.2 kW</Card.Content>
-  </Card.Root>
 </Demo>
 
 <Demo name="alert">

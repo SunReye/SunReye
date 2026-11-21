@@ -1,7 +1,7 @@
 <!-- A block's, a roof chimney's, a roof window's or an opening's level in the inspector (ADR 20
   Blocks). -->
 <script lang="ts">
-  import { haptics } from "../haptics.ts";
+  import { refusedInline } from "../feedback.ts";
   import BlockFieldset from "./BlockFieldset.svelte";
   import OpeningFieldset from "./OpeningFieldset.svelte";
   import type { Pv, RoofFace, Scene, Unfit } from "./pv.ts";
@@ -83,7 +83,7 @@
       const fitted = refit(pv, scene, index, change);
 
       if ("unfit" in fitted) {
-        haptics.error();
+        refusedInline();
         ({ unfit } = fitted);
       } else {
         unfit = undefined;
@@ -93,7 +93,7 @@
     oncopy={() => {
       const copied = duplicate(pv, scene, index);
 
-      if (copied === null) haptics.error();
+      if (copied === null) refusedInline();
       else onadd(copied);
 
       unfit = copied === null ? "room" : undefined;

@@ -5,7 +5,7 @@
 -->
 <script lang="ts">
   import DayTabs from "../detail/DayTabs.svelte";
-  import DetailStats from "../detail/DetailStats.svelte";
+  import StatStrip from "../components/stat-strip.svelte";
   import type { Fact } from "../detail/figures.ts";
   import { m } from "../paraglide/messages.js";
   import type { WeatherDay } from "./hourly.ts";
@@ -53,7 +53,7 @@
   {#snippet below(shown)}
     {@const stats = facts(shown)}
     {#if stats.length > 0}
-      <DetailStats {stats} />
+      <StatStrip closes="sheet" {stats} />
     {/if}
   {/snippet}
 </DayTabs>

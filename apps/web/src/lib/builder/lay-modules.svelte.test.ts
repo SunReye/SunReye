@@ -30,7 +30,8 @@ import type { Scene } from "./pv.ts";
 // Modules laid on the roof in 3D (ADR 20): a press on the selected face lays a module where the
 // pointer holds its middle, a drag a row, and a drag from a module moves it.
 
-/** Each test drives the canvas and the inspector many times: slow beside the rest of the suite. */
+/** Each test drives the canvas and the inspector many times: past vitest's 15 s on software WebGL
+ * (`SLOW` in scripts/fake-time.ts). */
 const MINUTE = 60_000;
 
 /** The template house with an empty grid on its south face. */

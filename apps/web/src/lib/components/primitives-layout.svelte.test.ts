@@ -69,6 +69,26 @@ test("a card in ambient glass is translucent with the card's corner, opaque unde
   }
 });
 
+test("every card is the kit's card in ambient glass; one may opt out by name", async () => {
+  await render(Card.Root, { children: body });
+  await render(Card.Root, { children: body, interactive: true, onclick: () => {} });
+
+  expect(document.querySelectorAll("[data-slot=card]")).toHaveLength(2);
+
+  for (const el of document.querySelectorAll("[data-slot=card]")) {
+    const card = getComputedStyle(el);
+
+    expect(alpha(card.backgroundColor)).toBeLessThan(1);
+    expect(card.backdropFilter).not.toBe("none");
+  }
+
+  const plain = await render(Card.Root, { children: body, glass: false });
+  const look = getComputedStyle(plain.container.querySelector("[data-slot=card]")!);
+
+  expect(look.backdropFilter).toBe("none");
+  expect(alpha(look.backgroundColor)).toBe(1);
+});
+
 test("an interactive card is a button that runs its press and never submits a form", async () => {
   const onclick = vi.fn<() => void>();
   const screen = await render(Card.Root, { children: body, interactive: true, onclick });
@@ -85,11 +105,11 @@ test("an interactive card is a button that runs its press and never submits a fo
   expect(onclick).toHaveBeenCalledOnce();
 });
 
-test("a stat strip lists each figure under its label, in tabular figures", async () => {
+test("a stat strip lists each fact under its label, a text or a quantity, in tabular figures", async () => {
   const screen = await render(StatStrip, {
     stats: [
-      { label: "Abdeckung", value: "98 %" },
-      { label: "Lücken", value: "3,5 h" },
+      { label: "Abdeckung", text: "98 %" },
+      { label: "Lücken", value: 3.5, unit: "h", digits: 1 },
     ],
   });
 
@@ -98,6 +118,7 @@ test("a stat strip lists each figure under its label, in tabular figures", async
   const value = screen.getByRole("definition").first();
 
   await expect.element(value).toHaveTextContent("98 %");
+  await expect.element(screen.getByRole("definition").nth(1)).toHaveTextContent("3,5 h");
   expect(getComputedStyle(value.element()).fontVariantNumeric).toBe("tabular-nums");
   expect(screen.getByRole("term").elements()).toHaveLength(2);
 });

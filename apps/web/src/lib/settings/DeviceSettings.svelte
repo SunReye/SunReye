@@ -1,5 +1,6 @@
 <!-- One device under Settings › Writes: its writes switch (ADR 7), each setting's enable (ADR 8), and the note they share. -->
 <script lang="ts">
+  import DrillCard from "../components/drill-in/drill-card.svelte";
   import Refusal, { answered } from "../setup/Refusal.svelte";
   import Eyebrow from "../components/eyebrow.svelte";
   import * as Item from "#lib/components/ui/item/index.js";
@@ -42,7 +43,7 @@
 
 <section aria-label={device.name} class="flex flex-col">
   <Eyebrow class="px-4 pt-5 pb-2">{device.name}</Eyebrow>
-  <div class="drill-card">
+  <DrillCard>
     <Item.Group class="gap-0 divide-y divide-border/60 border-y border-border/60 drill:border-y-0">
       <ToggleRow
         label={m.settings_writes_allowed()}
@@ -56,7 +57,7 @@
         <SettingEnable {core} device={device.id} {setting} {onchanged} />
       {/each}
     </Item.Group>
-  </div>
+  </DrillCard>
   {#each notes as note (note)}
     <p class="px-4 pt-2 text-xs text-muted-foreground">{note}</p>
   {/each}

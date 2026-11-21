@@ -7,6 +7,7 @@
   import DeviceLevel from "./DeviceLevel.svelte";
   import DeviceList from "./DeviceList.svelte";
   import Level from "./Level.svelte";
+  import type { IdKey } from "./level-key.ts";
 
   let {
     core,
@@ -19,8 +20,7 @@
     onreviewed,
   }: {
     core: Core;
-    /** `list`, `add`, `topology` or a device's id. */
-    key: string;
+    key: "list" | "add" | "topology" | IdKey;
     known: {
       readonly devices: readonly Device[];
       readonly connections: readonly Connection[];

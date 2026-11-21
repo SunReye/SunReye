@@ -143,6 +143,8 @@
   --motion-mark-arrive: 700ms;
   --motion-mark-float: 5s;
   --motion-mark-turn: 24s;
+  /* The backdrop's lights follow a change in production over seconds, in their own beat. */
+  --motion-light-drift: 4s;
 }
 
 .dark {
@@ -214,6 +216,7 @@
     --motion-mark-arrive: 0ms;
     --motion-mark-float: 0ms;
     --motion-mark-turn: 0ms;
+    --motion-light-drift: 0ms;
   }
 }
 
@@ -234,6 +237,7 @@
   --motion-mark-arrive: 0ms;
   --motion-mark-float: 0ms;
   --motion-mark-turn: 0ms;
+  --motion-light-drift: 0ms;
 }
 
 /* A drawer enters like a sheet and leaves faster, easing in (ADR 21). Unlayered, as vaul's own 0.5 s. */
@@ -407,20 +411,6 @@
       var(--foreground) var(--glass-destructive-mix),
       var(--glass-destructive-base)
     );
-  }
-}
-
-/* One section's rows on a drill-in page (ADR 21): on the phone's level screens an inset card of its
-   own in the kit card's look, its label above it; in two panes plain, inside the pane's card.
-   Clipped, not hidden, so a bar inside still sticks to the screen; a section with nothing to show
-   draws no card. */
-@utility drill-card {
-  :where([data-drill="level"]) & {
-    @apply glass-ambient overflow-clip rounded-xl ring-1 ring-foreground/10 elevation-1;
-
-    &:empty {
-      display: none;
-    }
   }
 }
 

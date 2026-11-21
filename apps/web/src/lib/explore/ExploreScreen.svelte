@@ -83,7 +83,7 @@
       <PickerShell {x} paned={paned.current} bind:search />
     {/if}
 
-    <Card.Root class={["min-w-0 gap-4", !full.on && "glass-ambient", look.card]}>
+    <Card.Root glass={!full.on} class={["min-w-0 gap-4", look.card]}>
       <!-- Opened with nothing chosen, the first saved view decides what is read (ADR 22). -->
       {#if !x.saved.opening}
         {#if !full.on}

@@ -2,24 +2,45 @@
 <script lang="ts">
   import { flowColour } from "../energy-colours.ts";
   import { Progress } from "#lib/components/ui/progress/index.js";
+  import type { Settled } from "../api/client.ts";
   import type { Payback } from "../api/tariff.ts";
+  import LoadFailed from "../components/load-failed.svelte";
   import TextLink from "../components/text-link.svelte";
   import { m } from "../paraglide/messages.js";
   import { money, num } from "../range/format.ts";
   import { paybackRows, paybackText } from "./payback.ts";
   import TrendChart from "./TrendChart.svelte";
 
-  let { payback, loading, height }: { payback: Payback | null; loading: boolean; height: number } =
-    $props();
+  let {
+    payback: read,
+    loading,
+    height,
+    onretry,
+  }: {
+    /** Null for a viewer, and until it is read. */
+    payback: Settled<Payback> | null;
+    loading: boolean;
+    height: number;
+    onretry: () => void;
+  } = $props();
 
+  const payback = $derived(read?.failed === false ? read.data : null);
   const shown = $derived(payback ? paybackText(payback, loading) : null);
   const rows = $derived(payback ? paybackRows(payback) : []);
+
+  const rules = $derived(
+    payback?.investment === undefined || payback.investment === null
+      ? []
+      : [{ y: payback.investment, label: m.stats_payback_investment() }],
+  );
 
   const axis = (v: number) => (v >= 1000 ? `${num(v / 1000, 1)} T€` : `${num(v)} €`);
 </script>
 
 <div class="flex min-h-[300px] flex-col gap-4">
-  {#if shown && payback}
+  {#if read?.failed}
+    <LoadFailed text={m.stats_payback_error()} refused={read.refused} {onretry} />
+  {:else if shown && payback}
     <div class="flex flex-col gap-2">
       <p class="flex flex-wrap items-baseline gap-x-2 text-sm text-muted-foreground">
         <span
@@ -53,9 +74,7 @@
             kind: "dashed",
           },
         ]}
-        rules={payback.investment == null
-          ? []
-          : [{ y: payback.investment, label: m.stats_payback_investment() }]}
+        {rules}
         fmt={money}
         axisFmt={axis}
         {height}

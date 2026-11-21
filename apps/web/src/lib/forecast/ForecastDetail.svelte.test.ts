@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { built } from "../chart-entrance/built.harness.ts";
-import { INPUTS, show, STRINGS } from "./forecast-detail.harness.ts";
+import { INPUTS, refusing, show, STRINGS } from "./forecast-detail.harness.ts";
 import { holdEntrances } from "../motion/animations.harness.ts";
 import { motion } from "../motion/tier.svelte.ts";
 
@@ -256,4 +256,19 @@ test("today's day chart, which grows live, only fades in; a later day's draws in
   } finally {
     release();
   }
+});
+
+test("a forecast the core refuses fails with its reason, never as no forecast", async () => {
+  const { screen } = await show(STRINGS, "forecast.range");
+  const failed = screen.getByRole("alert").filter({ hasText: "PV-Prognose nicht geladen" });
+
+  await expect
+    .element(failed.getByText("Dieser Prognosezeitraum ist leer oder zu lang."))
+    .toBeVisible();
+  expect(screen.getByText("Keine Prognose").query()).toBeNull();
+
+  refusing.code = undefined;
+  await failed.getByRole("button", { name: "Erneut laden" }).click();
+
+  await expect.element(screen.getByRole("tab", { name: "Heute" })).toBeVisible();
 });

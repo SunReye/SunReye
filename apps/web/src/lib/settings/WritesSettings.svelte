@@ -1,5 +1,6 @@
 <!-- Settings › Writes: per device, whether settings may be written and which are enabled (ADR 7, 8). -->
 <script lang="ts">
+  import DrillCard from "../components/drill-in/drill-card.svelte";
   import { onMount } from "svelte";
   import type { Core } from "../api/core";
   import LoadingRows from "../components/loading-rows.svelte";
@@ -36,12 +37,12 @@
 </script>
 
 {#if answer === undefined}
-  <div class="drill-card"><LoadingRows /></div>
+  <DrillCard><LoadingRows /></DrillCard>
 {:else if "problem" in answer || answer.length === 0}
   <!-- Its refusal, or that there is none: no rows to draw. -->
-  <div class="drill-card">
+  <DrillCard>
     <Listing {answer}>{#snippet items()}{/snippet}</Listing>
-  </div>
+  </DrillCard>
 {:else}
   <Listing {answer}>
     {#snippet items(list)}

@@ -8,8 +8,6 @@ import { layout, scene } from "../live/live-scene.harness.ts";
 import Hero from "./Hero.svelte";
 import { settle } from "../motion/clock.harness.ts";
 
-vi.setConfig({ testTimeout: 60_000 });
-
 /** How the core answers the scene's module types: at once, never, or not at all. */
 let types: "answer" | "hold" | "fail" = "answer";
 let held = Promise.withResolvers<void>();

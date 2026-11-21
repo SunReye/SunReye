@@ -3,11 +3,13 @@
   add or change one. Each level is a hash route (ADR 21): `add`, or a connection's id.
 -->
 <script lang="ts">
+  import DrillCard from "../components/drill-in/drill-card.svelte";
   import { onMount } from "svelte";
   import type { Connection, Core, Problem } from "../api/core";
   import DrillPush from "../components/drill-in/drill-push.svelte";
   import LoadingRows from "../components/loading-rows.svelte";
   import ConnectionsLevel from "./ConnectionsLevel.svelte";
+  import { levelKey } from "./level-key.ts";
 
   let {
     core,
@@ -67,7 +69,7 @@
 </script>
 
 {#if listed === undefined}
-  <div class="drill-card"><LoadingRows /></div>
+  <DrillCard><LoadingRows /></DrillCard>
 {:else}
   {@const known = listed}
   <!-- A level slides over the list, which shifts aside. -->
@@ -75,7 +77,7 @@
     {#snippet children(key)}
       <ConnectionsLevel
         {core}
-        {key}
+        key={levelKey(key, ["add"])}
         listed={known}
         connection={named(key) ?? seen.get(key)}
         {onlevel}

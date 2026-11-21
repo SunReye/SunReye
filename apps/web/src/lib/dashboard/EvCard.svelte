@@ -38,7 +38,7 @@
   );
 </script>
 
-<Card.Root size="sm" class="glass-ambient shrink-0 gap-0 py-0">
+<Card.Root size="sm" class="shrink-0 gap-0 py-0">
   <Pressable
     feedback
     class="flex items-center gap-3 px-4 py-3 text-left"

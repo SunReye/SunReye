@@ -21,6 +21,7 @@ const NAMED = [
   ["--motion-mark-arrive", "700ms"],
   ["--motion-mark-float", "5s"],
   ["--motion-mark-turn", "24s"],
+  ["--motion-light-drift", "4s"],
 ] as const;
 
 const token = (name: string) =>

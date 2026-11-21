@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, expect, test } from "vitest";
-import { userEvent, type Locator } from "vitest/browser";
+import { cdp, userEvent, type Locator } from "vitest/browser";
 import "../../app.css";
 import { asked, PLANT, prepare, restore, rollup, served, show } from "./detail.harness.ts";
 import { settle } from "../motion/clock.harness.ts";
+import { built } from "../chart-entrance/built.harness.ts";
+import { holdEntrances } from "../motion/animations.harness.ts";
 
 beforeEach(prepare);
 
@@ -17,6 +19,18 @@ test("a sheet's range steps, and History opens at it", async () => {
   await expect
     .element(sheet.getByRole("link", { name: /Im Verlauf öffnen · Gestern/u }))
     .toHaveAttribute("href", "#/history?range=day&at=2026-11-11");
+});
+
+test("a sheet's way onward is the text link: underlined under the pointer", async () => {
+  const { screen } = await show("production");
+
+  const onward = screen.getByRole("dialog", { name: "Produktion" }).getByRole("link", {
+    name: /Im Verlauf öffnen/u,
+  });
+
+  await userEvent.hover(onward);
+
+  await expect.poll(() => getComputedStyle(onward.element()).textDecorationLine).toBe("underline");
 });
 
 /** The figure the legend states beside `term`. */
@@ -208,4 +222,51 @@ test("the compare tab ranks strings by yield per kWp and flags a weak one", asyn
   expect(asked.filter((a) => a.series.startsWith("pv.string.power")).map((a) => a.from)).toContain(
     "2026-11-09T00:00:00.000Z",
   );
+});
+
+test("a compare tab whose module types the core refuses says why, never a blank yield", async () => {
+  served.types = () => Response.json({ status: 500, code: "internal" }, { status: 500 });
+
+  const { screen } = await show("string-2", "range=week");
+  const sheet = screen.getByRole("dialog", { name: "Nord" });
+
+  await sheet.getByRole("tab", { name: "Vergleich" }).click();
+
+  const failed = sheet.getByRole("alert").filter({ hasText: "Strings nicht geladen" });
+
+  await expect.element(failed.getByText("Interner Fehler im SunReye-Kern.")).toBeVisible();
+  expect(sheet.getByRole("table", { name: "Strings im Vergleich" }).query()).toBeNull();
+
+  served.types = null;
+  await failed.getByRole("button", { name: "Erneut laden" }).click();
+
+  await expect
+    .element(
+      sheet
+        .getByRole("table", { name: "Strings im Vergleich" })
+        .getByRole("row", { name: /Süd.*4,0/u }),
+    )
+    .toBeVisible();
+});
+
+test("the compare tab's yield bars grow from their start as they first show", async () => {
+  // Full motion, which the other tests reduce; the entrances held at their start.
+  await cdp().send("Emulation.setEmulatedMedia", { features: [] });
+  const release = holdEntrances();
+
+  try {
+    const { screen } = await show("string-2", "range=week");
+    const sheet = screen.getByRole("dialog", { name: "Nord" });
+
+    await sheet.getByRole("tab", { name: "Vergleich" }).click();
+
+    const table = sheet.getByRole("table", { name: "Strings im Vergleich" });
+
+    await expect.element(table.getByRole("row", { name: /Süd.*4,0/u })).toBeVisible();
+    await expect
+      .poll(() => built().filter((b) => b.build === "grow" && table.element().contains(b.target)))
+      .toHaveLength(2);
+  } finally {
+    release();
+  }
 });

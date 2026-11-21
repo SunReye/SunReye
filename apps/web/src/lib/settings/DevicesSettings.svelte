@@ -4,12 +4,14 @@
   or a device's id.
 -->
 <script lang="ts">
+  import DrillCard from "../components/drill-in/drill-card.svelte";
   import { onMount } from "svelte";
   import type { Connection, Core, Device, Listing, Problem } from "../api/core";
   import DrillPush from "../components/drill-in/drill-push.svelte";
   import LoadingRows from "../components/loading-rows.svelte";
   import Refusal from "../setup/Refusal.svelte";
   import DevicesLevel from "./DevicesLevel.svelte";
+  import { levelKey } from "./level-key.ts";
 
   let {
     core,
@@ -89,9 +91,9 @@
 </script>
 
 {#if listed === undefined}
-  <div class="drill-card">
+  <DrillCard>
     {#if refused}<div class="p-4"><Refusal {refused} /></div>{:else}<LoadingRows />{/if}
-  </div>
+  </DrillCard>
 {:else}
   {@const known = listed}
   <!-- A level slides over the list, which shifts aside. -->
@@ -99,7 +101,7 @@
     {#snippet children(key)}
       <DevicesLevel
         {core}
-        {key}
+        key={levelKey(key, ["add", "topology"])}
         {known}
         device={named(key) ?? seen.get(key)}
         {changed}

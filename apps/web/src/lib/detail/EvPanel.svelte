@@ -8,7 +8,7 @@
   import { Skeleton } from "#lib/components/ui/skeleton/index.js";
   import { m } from "../paraglide/messages.js";
   import type { AnalyticsInput } from "./Analytics.svelte";
-  import DetailStats from "./DetailStats.svelte";
+  import StatStrip from "../components/stat-strip.svelte";
   import { sessionTimes } from "./ev.ts";
   import { EV_RANGE } from "./ev-range.ts";
   import { pvCoveredFact } from "./facts.ts";
@@ -61,5 +61,5 @@
   {:else}
     <Skeleton class="h-20" role="status" aria-label={m.loading()} />
   {/if}
-  <DetailStats panel stats={facts} />
+  <StatStrip closes="panel" stats={facts} />
 </RangeState>

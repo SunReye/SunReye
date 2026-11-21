@@ -26,7 +26,7 @@
 <div class="flex w-full flex-col gap-4 py-6 pr-6">
   {@render heading?.("root")}
   <div class="grid grid-cols-[minmax(260px,340px)_minmax(0,1fr)] items-start gap-6">
-    <Card.Root element="nav" aria-label={label} class="glass-ambient gap-0 py-0">
+    <Card.Root element="nav" aria-label={label} class="gap-0 py-0">
       <Item.Group class="gap-0 divide-y divide-border/60">
         {#each groups as g (g.id)}
           <DrillRow group={g} current={pane?.id === g.id} onclick={() => onpick(g.id)} />
@@ -35,7 +35,7 @@
     </Card.Root>
 
     {#if pane}
-      <Card.Root element="section" aria-label={pane.label} class="glass-ambient gap-0 py-0">
+      <Card.Root element="section" aria-label={pane.label} class="gap-0 py-0">
         <h2 class="border-b border-border/60 px-4 py-3 text-[15px] font-semibold">
           {pane.label}
         </h2>

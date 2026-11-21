@@ -29,6 +29,7 @@
   import * as Item from "../ui/item/index.js";
   import { haptics } from "../../haptics.ts";
   import { Push } from "./push.svelte.ts";
+  import { carded } from "./drill-card.svelte";
   import DrillHeader from "./drill-header.svelte";
   import DrillPanes from "./drill-panes.svelte";
   import DrillRow from "./drill-row.svelte";
@@ -58,6 +59,9 @@
 
   // Two panes from 1024 px (ADR 21).
   const split = new MediaQuery("(min-width: 1024px)");
+
+  // On a phone a page is a level of its own; beside the panes it stands on the pane's card.
+  carded(() => !split.current);
 
   // The page on screen: it stays while it slides out after the route has left it, so it is seeded
   // from the route once and then moved by the slide.
@@ -203,14 +207,14 @@
         "col-start-1 row-start-1 flex min-w-0 flex-col gap-4 self-start px-4 py-6",
         covered && "hidden",
       ]}
-      style:transform="translateX({-30 * push.p}%) translateY({rootLift}px)"
-      style:opacity={1 - 0.6 * push.p}
+      style:transform="{push.layer('under').x} translateY({rootLift}px)"
+      style:opacity={push.layer("under").opacity}
       aria-hidden={push.p > 0.5}
       inert={push.p > 0.5}
     >
       <!-- Once only while the page covers the root: the page draws it too. -->
       {#if !covered}{@render heading?.("root")}{/if}
-      <Card.Root class="glass-ambient gap-0 py-0">
+      <Card.Root class="gap-0 py-0">
         <Item.Group class="gap-0 divide-y divide-border/60">
           {#each groups as g (g.id)}
             <DrillRow group={g} onclick={() => onnavigate(g.id)} />
@@ -223,7 +227,7 @@
       <section
         data-drill="page"
         class="col-start-1 row-start-1 flex min-w-0 flex-col gap-4 self-start px-4 py-6"
-        style:transform="translateX({(1 - push.p) * 100}%) translateY({pageLift}px)"
+        style:transform="{push.layer('over').x} translateY({pageLift}px)"
         aria-label={group.label}
       >
         {@render heading?.("page")}
@@ -240,7 +244,7 @@
             class="glass-ambient rounded-lg border elevation-1"
           />
         </div>
-        <!-- Its sections are cards of their own: the `drill-card` utility. -->
+        <!-- Its sections are cards of their own: `DrillCard`. -->
         <div bind:this={level} data-drill="level" class="flex min-w-0 flex-col">
           {@render page(group)}
         </div>

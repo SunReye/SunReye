@@ -4,6 +4,7 @@
   aside under a level that slides over it, in the caller's one grid cell.
 -->
 <script lang="ts">
+  import DrillCard from "../components/drill-in/drill-card.svelte";
   import type { Connection, Core, Device, Listing } from "../api/core";
   import { Button } from "#lib/components/ui/button/index.js";
   import * as Item from "#lib/components/ui/item/index.js";
@@ -46,7 +47,7 @@
 </script>
 
 <div class="min-w-0">
-  <div class="drill-card">
+  <DrillCard>
     <Item.Group class="gap-0 divide-y divide-border/60">
       {#each devices as device (device.id)}
         <DrillRow
@@ -72,6 +73,6 @@
     <div class="border-t border-border/60">
       <AddRow label={m.settings_device_add()} onclick={onadd} />
     </div>
-  </div>
+  </DrillCard>
   <ProfileUpdates {core} onapplied={() => undefined} />
 </div>

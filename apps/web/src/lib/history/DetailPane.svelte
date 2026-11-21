@@ -10,7 +10,7 @@
   import { recordedSpan } from "./summary.ts";
   import TariffTab from "./TariffTab.svelte";
 
-  let { core, got, view, route, facts, loading, height }: PaneProps = $props();
+  let { core, got, view, route, facts, loading, height, onfacts }: PaneProps = $props();
 
   const span = $derived(recordedSpan(got, begunOf(facts)));
   const payback = $derived(facts?.payback ?? null);
@@ -21,7 +21,7 @@
 {#if view.tab === "tariff"}
   <TariffTab {core} zone={got.zone} />
 {:else if view.tab === "payback"}
-  <PaybackPanel {payback} {loading} height={height - 60} />
+  <PaybackPanel {payback} {loading} height={height - 60} onretry={onfacts} />
 {:else if view.tab === "strings"}
   <StringsPanel {core} {route} {strings} sid={view.sid} />
 {:else if view.tab === "battery"}

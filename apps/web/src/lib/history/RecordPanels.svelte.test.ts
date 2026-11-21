@@ -92,3 +92,18 @@ test("under three months of savings payback has no forecast yet", async () => {
 
   await expect.element(screen.getByText(/^Eine Prognose folgt nach drei Monaten/u)).toBeVisible();
 });
+
+test("payback the core cannot read fails with its reason, never as the invite", async () => {
+  plant.paybackRefused = "internal";
+
+  const { screen } = await show(`${DAY}&metric=money&tab=payback`);
+  const failed = screen.getByRole("alert").filter({ hasText: "Amortisation nicht geladen" });
+
+  await expect.element(failed.getByText("Interner Fehler im SunReye-Kern.")).toBeVisible();
+  expect(screen.getByText(/^Ohne eingetragene Investition/u).query()).toBeNull();
+
+  plant.paybackRefused = null;
+  await failed.getByRole("button", { name: "Erneut laden" }).click();
+
+  await expect.element(screen.getByText("November 2033")).toBeVisible();
+});

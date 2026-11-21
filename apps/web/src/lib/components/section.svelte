@@ -5,6 +5,7 @@
   phone level.
 -->
 <script lang="ts">
+  import DrillCard from "./drill-in/drill-card.svelte";
   import type { Snippet } from "svelte";
   import Eyebrow from "./eyebrow.svelte";
   import * as Card from "#lib/components/ui/card/index.js";
@@ -32,7 +33,7 @@
 {/snippet}
 
 {#if card}
-  <Card.Root element="section" aria-labelledby={id} class="glass-ambient gap-0 py-0">
+  <Card.Root element="section" aria-labelledby={id} class="gap-0 py-0">
     <header class="flex min-h-12 items-center gap-3 border-b border-border/60 px-4 py-2">
       {@render heading()}
     </header>
@@ -41,7 +42,7 @@
 {:else if eyebrow}
   <section aria-labelledby={id} class="flex flex-col">
     <Eyebrow element="h2" {id} class="px-4 pt-5 pb-2">{title}</Eyebrow>
-    <div class="drill-card">{@render children()}</div>
+    <DrillCard>{@render children()}</DrillCard>
   </section>
 {:else}
   <section aria-labelledby={id} class="flex flex-col gap-3">

@@ -7,7 +7,7 @@
   import { TARIFF } from "../api/computed-devices.ts";
   import HistoryChart from "../history/HistoryChart.svelte";
   import type { AnalyticsInput } from "./Analytics.svelte";
-  import DetailStats from "./DetailStats.svelte";
+  import StatStrip from "../components/stat-strip.svelte";
   import type { SheetFlow } from "./flow.ts";
   import { FLOW_RANGE } from "./flow-range.ts";
   import RangeState from "./RangeState.svelte";
@@ -34,5 +34,5 @@
   {#if flow.price && priced}
     <HistoryChart core={input.core} device={TARIFF} series="price.import" route={input.route} />
   {/if}
-  <DetailStats panel stats={range.view} />
+  <StatStrip closes="panel" stats={range.view} />
 </RangeState>

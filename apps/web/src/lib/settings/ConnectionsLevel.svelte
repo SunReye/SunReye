@@ -1,10 +1,12 @@
 <!-- One level of Settings › Connections by its key: the list, adding a connection, or one connection. -->
 <script lang="ts">
+  import DrillCard from "../components/drill-in/drill-card.svelte";
   import type { Connection, Core, Problem } from "../api/core";
   import { m } from "../paraglide/messages.js";
   import ConnectionForm from "./ConnectionForm.svelte";
   import ConnectionList from "./ConnectionList.svelte";
   import Level from "./Level.svelte";
+  import type { IdKey } from "./level-key.ts";
   import RemoveConfirm from "./RemoveConfirm.svelte";
 
   let {
@@ -17,8 +19,7 @@
     onremove,
   }: {
     core: Core;
-    /** `list`, `add` or a connection's id. */
-    key: string;
+    key: "list" | "add" | IdKey;
     listed: readonly Connection[] | Problem;
     /** The connection the key names, if any. */
     connection: Connection | undefined;
@@ -48,7 +49,7 @@
     />
   </Level>
 {:else}
-  <div class="drill-card min-w-0">
+  <DrillCard class="min-w-0">
     <ConnectionList
       answer={listed}
       onopen={(id) => {
@@ -58,5 +59,5 @@
         onlevel("add");
       }}
     />
-  </div>
+  </DrillCard>
 {/if}

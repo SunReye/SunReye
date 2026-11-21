@@ -1,7 +1,16 @@
 // Where a series' curve is read from, by its kind and the span (ADR 22): history up to a day,
 // statistics past it; a status or held value from history at any range. One read per series, and
 // one that fails leaves the others standing.
-import { only, type Core, type History, type Period, type Statistics } from "../api/core.ts";
+import {
+  only,
+  type Core,
+  type History,
+  type Period,
+  type Problem,
+  type Statistics,
+} from "../api/core.ts";
+import { problemText } from "../i18n/problems.ts";
+import { m } from "../paraglide/messages.js";
 import type { Curve, Draw, Sample, Tier } from "./curve.ts";
 import type { Chosen } from "./picker.ts";
 
@@ -16,6 +25,8 @@ export interface Reading {
   readonly hourly: boolean;
   /** `many`: a status changed more often than one read holds. `failed`: refused or unreachable. */
   readonly trouble: "failed" | "many" | null;
+  /** Why the core refused a failed read; none for a lost core. */
+  readonly refused?: Problem | undefined;
 }
 
 const HOUR = 3_600_000;
@@ -72,10 +83,11 @@ function statisticsCurve(counter: boolean, tier: Tier, got: Figured): Curve {
   return { draw: counter ? "bars" : "line", tier, samples };
 }
 
-const failed = (curve: Curve, trouble: Reading["trouble"] = "failed"): Reading => ({
+const failed = (curve: Curve, refused?: Problem): Reading => ({
   curve,
   hourly: false,
-  trouble,
+  trouble: "failed",
+  refused,
 });
 
 const fine = (curve: Curve, hourly = false): Reading => ({ curve, hourly, trouble: null });
@@ -96,7 +108,7 @@ async function figures(ask: Ask, period: Period & Tier, hourly: boolean): Promis
   const { device, series } = ask.s.ref;
   const got = only(await ask.core.statistics(device, [series], period, ask.from, ask.to));
 
-  if ("problem" in got) return failed(ask.none);
+  if ("problem" in got) return failed(ask.none, got);
 
   const curve = statisticsCurve(ask.kind === "counter", period, got);
 
@@ -110,7 +122,9 @@ async function history(ask: Ask, rolled: boolean): Promise<Reading> {
 
   // Only a status or held value is refused for its changes (ADR 9): past 1,500 raw intervals.
   if ("problem" in got)
-    return failed(ask.none, !rolled && got.problem === "history.range" ? "many" : "failed");
+    return !rolled && got.problem === "history.range"
+      ? { curve: ask.none, hourly: false, trouble: "many" }
+      : failed(ask.none, got);
 
   if (rolled && got.points.length === 0) return figures(ask, "hour", true);
 
@@ -158,4 +172,27 @@ export function expired(
     drawn.some((d) => d.hourly) &&
     drawn.some((d) => (d.kind === "status" || d.kind === "held") && d.curve.samples.length === 0)
   );
+}
+
+/**
+ * What a chart says of its failed reads, each by its name: one note a reason, the core's where it
+ * refused, none for a lost core.
+ */
+export function failedNotes(named: readonly (readonly [string, Reading])[]): string[] {
+  const by = new Map<string, string[]>();
+
+  for (const [name, r] of named)
+    if (r.trouble === "failed") {
+      const code = r.refused?.problem ?? "";
+
+      by.set(code, [...(by.get(code) ?? []), name]);
+    }
+
+  return [...by].map(([code, all]: readonly [string, readonly string[]]) => {
+    const names = all.join(", ");
+
+    return code === ""
+      ? m.explore_failed({ names })
+      : m.explore_refused({ names, reason: problemText(code) });
+  });
 }

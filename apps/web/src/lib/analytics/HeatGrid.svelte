@@ -8,6 +8,7 @@
   import type { Attachment } from "svelte/attachments";
   import ArrowRight from "@lucide/svelte/icons/arrow-right";
   import { Button } from "#lib/components/ui/button/index.js";
+  import { brushBands, clamp } from "../chart-reading/bands.ts";
   import { ChartReader, type Move } from "../chart-reading/reader.svelte.ts";
   import { m } from "../paraglide/messages.js";
   import type { HeatColumn } from "./heat.ts";
@@ -48,7 +49,6 @@
 
   const n = $derived(cols.length);
   const dense = $derived(n >= 12 && cols.every((c) => c.tick));
-  const clamp = (v: number, hi: number) => Math.min(hi, Math.max(0, v));
 
   const MOVES: Partial<Record<Move, readonly [number, number]>> = {
     ArrowLeft: [-1, 0],
@@ -73,17 +73,7 @@
 
       return ondrill !== undefined;
     },
-    brush:
-      onbrush &&
-      ((a, b) => {
-        const [from, to] = [Math.min(a[0], b[0]), Math.max(a[0], b[0])];
-
-        if (to <= from) return false;
-
-        onbrush(from, to);
-
-        return true;
-      }),
+    brush: brushBands(([col]: readonly [number, number]) => col, onbrush),
   }));
 
   const active = $derived(reading.at);

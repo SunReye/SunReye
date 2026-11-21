@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { copies } from "./one-owner.ts";
+import { copies, RULES } from "./one-owner.ts";
 
 const LIB = "apps/web/src/lib/";
 
@@ -33,6 +33,31 @@ test("haptics outside their owners is a copy", () => {
   expect(rules("range/RangePane.svelte", source)).toEqual([]);
 });
 
+test("the builder and the range own haptics by named file, not by folder", () => {
+  const source = `import { haptics } from "../haptics.ts";`;
+  const rule = "haptics outside a shared component";
+
+  expect(rules("builder/wall-actions.ts", source)).toEqual([rule]);
+  expect(rules("builder/BuildingLevel.svelte", source)).toEqual([rule]);
+  expect(rules("range/Label.svelte", source)).toEqual([rule]);
+  expect(rules("builder/gestures.ts", source)).toEqual([]);
+});
+
+test("a chart's pointer is read by named files alone: a drag elsewhere in the builder is a copy", () => {
+  const rule = "pointer reading outside the one pointer reading";
+
+  expect(rules("builder/View.svelte", `<div onpointerdown={down}>`)).toEqual([rule]);
+  expect(rules("components/segmented.svelte", `<div onpointermove={move}>`)).toEqual([rule]);
+  expect(rules("builder/drawing.svelte.ts", `onpointermove: move,`)).toEqual([]);
+  expect(rules("components/value-editor/wheel.svelte", `<div onpointerdown={down}>`)).toEqual([]);
+});
+
+test("every owner of every rule says why it owns the behaviour", () => {
+  for (const rule of RULES)
+    for (const [owner, why] of Object.entries(rule.owners))
+      expect({ owner, why: why.trim().length > 10 }).toEqual({ owner, why: true });
+});
+
 test("svelte's transitions outside the motion modules are a copy", () => {
   const source = `import { fade } from "svelte/transition";`;
 
@@ -62,7 +87,6 @@ test("a chart read by its own pointer handlers or LayerChart's tooltip is a copy
   expect(rules("chart-reading/reader.svelte.ts", `onpointermove: this.move,`)).toEqual([]);
   // Drags that read no chart.
   expect(rules("range/pager-drag.ts", `addEventListener("pointermove", move)`)).toEqual([]);
-  expect(rules("builder/View.svelte", `<div onpointerdown={down}>`)).toEqual([]);
 });
 
 test("tests, harnesses and files outside the SPA are not held to it", () => {
@@ -93,8 +117,69 @@ test("routes are held to it too", () => {
   ]);
 });
 
-test("the haptics library itself is no copy", () => {
-  expect(rules("tariff/Zone.svelte", `import { WebHaptics } from "web-haptics";`)).toEqual([]);
+test("the haptics library or the vibration API outside the haptics module is a copy", () => {
+  const rule = "haptics library outside the haptics module";
+
+  expect(rules("tariff/Zone.svelte", `import { WebHaptics } from "web-haptics";`)).toEqual([rule]);
+  expect(rules("builder/gestures.ts", `navigator.vibrate(10);`)).toEqual([rule]);
+  expect(rules("haptics.ts", `import { WebHaptics } from "web-haptics";`)).toEqual([]);
+});
+
+test("toggle groups or tabs straight from bits-ui outside the kit are a copy", () => {
+  const rule = "bits-ui choice outside the kit";
+
+  expect(rules("tariff/Zone.svelte", `import { ToggleGroup } from "bits-ui";`)).toEqual([rule]);
+  expect(rules("tariff/Zone.svelte", `import {\n  Popover,\n  Tabs,\n} from "bits-ui";`)).toEqual([
+    rule,
+  ]);
+  expect(
+    rules("components/value-editor/value-editor.svelte", `import { Popover } from "bits-ui";`),
+  ).toEqual([]);
+  expect(rules("components/ui/tabs/tabs.svelte", `import { Tabs } from "bits-ui";`)).toEqual([]);
+});
+
+test("a card built by hand on any element but the kit card is a copy", () => {
+  const rule = "card outside the kit card";
+
+  expect(rules("tariff/Zone.svelte", `<div class="rounded-xl border p-4">`)).toEqual([rule]);
+  expect(rules("tariff/Zone.svelte", `<section\n  class="bg-card rounded-xl">`)).toEqual([rule]);
+  // A rounded image or a bordered row is no card.
+  expect(rules("tariff/Zone.svelte", `<img class="rounded-xl" />`)).toEqual([]);
+  expect(rules("tariff/Zone.svelte", `<div class="rounded-xl border-t">`)).toEqual([]);
+  expect(rules("tariff/Zone.svelte", `<Card.Root class="rounded-xl border">`)).toEqual([]);
+});
+
+test("a literal motion duration or easing outside the motion tokens is a copy", () => {
+  const rule = "motion value outside the motion tokens";
+
+  expect(rules("flow/Hub.svelte", `<div class="transition-opacity duration-300">`)).toEqual([rule]);
+  expect(rules("flow/Hub.svelte", `<div class="transition ease-in-out">`)).toEqual([rule]);
+  expect(
+    rules(
+      "flow/Hub.svelte",
+      `<style>\n  .a {\n    transition: opacity 4s steps(4);\n  }\n</style>`,
+    ),
+  ).toEqual([rule]);
+  expect(
+    rules(
+      "flow/Hub.svelte",
+      `<style>\n  .a {\n    animation: beat var(--motion-flow-pulse) ease-in-out infinite;\n  }\n</style>`,
+    ),
+  ).toEqual([rule]);
+  // The tokens, and words that only look like them.
+  expect(
+    rules("flow/Hub.svelte", `<div class="duration-(--motion-move) ease-(--motion-ease-in-out)">`),
+  ).toEqual([]);
+  expect(
+    rules(
+      "flow/Hub.svelte",
+      `<style>\n  .a {\n    transition: opacity var(--motion-base) var(--motion-ease);\n  }\n</style>`,
+    ),
+  ).toEqual([]);
+  expect(rules("flow/Hub.svelte", `// A slide eases in-out: ease-in-out\nconst ms = 300;`)).toEqual(
+    [],
+  );
+  expect(rules("motion/ease.ts", `const curve = "ease-in-out";`)).toEqual([]);
 });
 
 test("the glass card the kit card replaced is a copy wherever it comes back", () => {
@@ -106,28 +191,25 @@ test("the glass card the kit card replaced is a copy wherever it comes back", ()
   ]);
 });
 
-test("ambient glass on the kit card is the card; on anything else a copy, with its line", () => {
-  const card = `<Card.Root class="glass-ambient gap-0 py-0">`;
+test("ambient glass is the kit card's own look: named on a card or anything else, a copy", () => {
+  const rule = "glass surface outside the kit card";
 
-  expect(rules("history/Notes.svelte", card)).toEqual([]);
+  expect(rules("history/Notes.svelte", `<Card.Root class="glass-ambient gap-0 py-0">`)).toEqual([
+    rule,
+  ]);
   expect(
-    rules(
-      "history/Notes.svelte",
-      `<Card.Root\n  element="section"\n  onclick={() => open()}\n  class={cn("glass-ambient @container", className)}\n>`,
+    copies(
+      `${LIB}tariff/Form.svelte`,
+      `<Card.Root class="gap-0">\n</Card.Root>\n<div\n  class="glass-ambient p-2">`,
     ),
-  ).toEqual([]);
-  expect(
-    copies(`${LIB}tariff/Form.svelte`, `${card}</Card.Root>\n<div\n  class="glass-ambient p-2">`),
-  ).toEqual([{ rule: "glass surface outside the kit card", line: 3 }]);
-});
-
-test("ambient glass named in a script is a copy: only the card's own tag shows it is the card", () => {
+  ).toEqual([{ rule, line: 4 }]);
   expect(
     rules(
       "explore/Screen.svelte",
       `<script>\n  const look = { card: "glass-ambient" };\n</script>`,
     ),
-  ).toEqual(["glass surface outside the kit card"]);
+  ).toEqual([rule]);
+  expect(rules("components/ui/card/card.svelte", `const glassy = "glass-ambient";`)).toEqual([]);
 });
 
 test("the shell's surfaces, the sheets and the kit own their glass", () => {

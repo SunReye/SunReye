@@ -28,7 +28,7 @@
   });
 </script>
 
-<Card.Root class={cn("glass-ambient @container gap-0 py-0", className)} bind:ref={el}>
+<Card.Root class={cn("@container gap-0 py-0", className)} bind:ref={el}>
   {@render top?.()}
   {#if children}
     <div class="flex flex-col gap-4 px-3 pt-4 pb-4 sm:px-5">

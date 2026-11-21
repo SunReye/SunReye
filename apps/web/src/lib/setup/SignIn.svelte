@@ -36,7 +36,7 @@
 <main class="grid min-h-dvh place-items-center px-4 py-10">
   <div class="flex w-full max-w-sm flex-col gap-5">
     <PageTitle brand class="px-1" title={m.signin_title()} />
-    <Card.Root element="form" onsubmit={submit} class="glass-ambient gap-4 p-4">
+    <Card.Root element="form" onsubmit={submit} class="gap-4 p-4">
       <AccountSwitch bind:account />
       {#if account === "viewer"}
         <TextField label={m.signin_name()} autocomplete="username" required bind:value={name} />

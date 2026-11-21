@@ -28,7 +28,7 @@
 </script>
 
 <main class="mx-auto grid min-h-[70dvh] w-full max-w-2xl place-items-center px-4 py-6">
-  <Card.Root class="glass-ambient w-full max-w-md gap-0 py-0">
+  <Card.Root class="w-full max-w-md gap-0 py-0">
     <Empty.Root class="border-0 px-6 py-10" role="alert">
       <Empty.Header>
         <Empty.Media><ErrorMark /></Empty.Media>

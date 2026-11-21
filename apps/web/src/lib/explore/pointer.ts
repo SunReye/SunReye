@@ -15,7 +15,8 @@ export interface Target {
 /** How many bands the axis reads in. */
 const BANDS = 48;
 
-export type Pointer = ChartReader<number>;
+/** A time axis's reading: a place is an instant. */
+export type TimeReading = ChartReader<number>;
 
 /** An arrow's step from `at`, or from the middle with none read; undefined for any other key. */
 function step({ from, to }: Target, at: number | null, key: Move): number | undefined {
@@ -27,7 +28,7 @@ function step({ from, to }: Target, at: number | null, key: Move): number | unde
   return Math.min(to, Math.max(from, next));
 }
 
-export function timeReading(target: () => Target): Pointer {
+export function timeReading(target: () => Target): TimeReading {
   return new ChartReader(() => {
     const t = target();
     const { from, to, onbrush } = t;

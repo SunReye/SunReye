@@ -9,7 +9,7 @@
 </script>
 
 <Card.Root
-  class="glass-ambient sticky bottom-[calc(var(--bar-clear,0px)+0.75rem)] z-10 mx-2 mt-4 flex-row items-center gap-2 p-2"
+  class="sticky bottom-[calc(var(--bar-clear,0px)+0.75rem)] z-10 mx-2 mt-4 flex-row items-center gap-2 p-2"
 >
   <Button
     type="submit"
