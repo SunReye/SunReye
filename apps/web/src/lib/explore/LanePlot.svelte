@@ -10,7 +10,7 @@
   import LaneAxis from "./LaneAxis.svelte";
   import { paintScene } from "./paint.ts";
   import ReadingRule from "../chart-reading/ReadingRule.svelte";
-  import type { Pointer } from "./pointer.ts";
+  import type { TimeReading } from "./pointer.ts";
   import { sceneOf } from "./scene.ts";
   import { scenesOf, type Chart } from "./series-chart.ts";
 
@@ -25,7 +25,7 @@
     chart: Chart;
     /** The plot's name, with the keys that read it. */
     label: string;
-    pointer: Pointer;
+    pointer: TimeReading;
     /** Whether the plot takes its parent's room, a flex column, instead of the chart's height. */
     fill?: boolean | undefined;
     /** The plot's height as laid out, in px. */

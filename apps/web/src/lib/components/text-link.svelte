@@ -20,7 +20,7 @@
   ) & { onward?: boolean; class?: string; children: Snippet } = $props();
 
   // Pressable's own ring, so both forms share it.
-  const LOOK = $derived([
+  const look = $derived([
     "rounded-sm font-medium text-brand underline-offset-2 outline-none hover:underline focus-visible:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
     onward && "group inline-flex items-center gap-2",
   ]);
@@ -32,7 +32,7 @@
 {/snippet}
 
 {#if href === undefined}
-  <Pressable class={[LOOK, className]} {onclick}>{@render body()}</Pressable>
+  <Pressable class={[look, className]} {onclick}>{@render body()}</Pressable>
 {:else}
-  <a {href} class={[LOOK, className]}>{@render body()}</a>
+  <a {href} class={[look, className]}>{@render body()}</a>
 {/if}
