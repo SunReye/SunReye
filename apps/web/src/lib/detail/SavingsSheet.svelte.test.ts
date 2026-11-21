@@ -227,6 +227,20 @@ test("without an investment the admin reads the savings so far, and no payback",
   await expect.element(sheet.getByText("keine Investition")).toBeVisible();
 });
 
+test("a refused payback read says so with the core's reason, and its retry reads it again", async () => {
+  // `served.payback` is null: the core refuses the read.
+  const { sheet } = await sheetOf("", true);
+
+  await expect.element(sheet.getByText("Amortisation nicht geladen.")).toBeVisible();
+  await expect.element(sheet.getByText("Das darf nur der Admin.")).toBeVisible();
+  expect(sheet.element().textContent).not.toContain("Insgesamt");
+
+  served.payback = { investment: null, savings: 250, remaining: null, months: [] };
+  await userEvent.click(sheet.getByRole("button", { name: "Erneut laden" }));
+
+  await expect.element(sheet.getByText("Insgesamt")).toBeVisible();
+});
+
 test("a viewer, who may not read the investment, is not asked for it", async () => {
   const { sheet } = await sheetOf();
 
