@@ -170,6 +170,8 @@ test("the live value shows beside the handle while it drags", async () => {
 
   const value = page.getByRole("status").getByText(/^1[12],\d m$/u);
 
+  // A drag's move lands on the frame after it: the test's.
+  await settle(() => value.query() !== null);
   await expect.element(value).toBeVisible();
 
   await cdp().send("Input.dispatchMouseEvent", {

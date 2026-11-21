@@ -56,9 +56,27 @@ async function wireThree(): Promise<void> {
 
   const bar = page.getByRole("toolbar", { name: "Auswahl" });
 
-  await expect.element(bar.getByText("3 gewählt")).toBeVisible();
+  const chosen = bar.getByText("3 gewählt");
+
+  await settle(() => chosen.query() !== null);
+  await expect.element(chosen).toBeVisible();
   await tap(bar.getByRole("button", { name: "In String 1 verdrahten" }));
   await expect.element(bar).not.toBeInTheDocument();
+}
+
+/** Whether a frame played since the last look drew nothing: the scene is at rest. */
+function drawsDone(draws: {
+  readonly mock: { readonly calls: readonly unknown[] };
+}): () => boolean {
+  let last = -1;
+
+  return () => {
+    const was = last;
+
+    last = draws.mock.calls.length;
+
+    return last === was;
+  };
 }
 
 beforeEach(async () => {
@@ -138,6 +156,8 @@ test("by touch alone an admin builds a house from a template, lays modules on a 
   await expect.element(handle()).toHaveAttribute("aria-expanded", "false");
 
   await settle(() => draws.mock.calls.length > 0);
+  // The camera flies onto the face on the test's frames: at rest, a frame draws nothing.
+  await settle(drawsDone(draws));
   await wireThree();
 
   await tap(handle());

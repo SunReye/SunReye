@@ -145,7 +145,11 @@ async function placePicked() {
   await drill("Geräte", "Stellplatz 1");
   await settle(() => draws.mock.calls.length > 0);
 
-  return { scene: start.scene, undo: inspector().getByRole("button", { name: "Rückgängig" }) };
+  return {
+    scene: start.scene,
+    undo: inspector().getByRole("button", { name: "Rückgängig" }),
+    draws,
+  };
 }
 
 test("dragging a car place moves it in one undo step", async () => {
@@ -164,7 +168,7 @@ test("dragging a car place moves it in one undo step", async () => {
 });
 
 test("a car place's ring shows after Drehen and turns it", async () => {
-  const { scene, undo } = await placePicked();
+  const { scene, undo, draws } = await placePicked();
   const place: Target = { kind: "place", index: 0 };
   const ring = handles(scene, place).find(({ grip }) => grip === "turn");
 
@@ -175,9 +179,18 @@ test("a car place's ring shows after Drehen and turns it", async () => {
   const tools = page.getByRole("toolbar", { name: "Aktionen" });
 
   await tools.getByRole("button", { name: "Drehen" }).click();
+
+  const drawn = draws.mock.calls.length;
+
+  // The ring takes the pointer once it is drawn, on the test's frame.
+  await settle(() => draws.mock.calls.length > drawn);
   await mouseDrag(scene, [cx + ring.radius, 0, cz], [cx, 0, cz + ring.radius]);
 
-  await expect.element(rotation.getByText(/^90$/u)).toBeVisible();
+  const turned = rotation.getByText(/^90$/u);
+
+  // A drag lands on the frame after it: the test's.
+  await settle(() => turned.query() !== null);
+  await expect.element(turned).toBeVisible();
   await expect.element(tools.getByRole("status")).toHaveTextContent("Drehung 90°");
 
   await tools.getByRole("button", { name: "Fertig" }).click();
