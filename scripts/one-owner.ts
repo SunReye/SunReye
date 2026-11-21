@@ -1,6 +1,6 @@
 // A behaviour met on more than one screen lives in one component (ADR 21 "One behaviour, one
 // component", #836): no file of the SPA outside its owner rebuilds a segmented control, tabs in
-// another look, a haptic, a transition or a chart's entrance. A gate step;
+// another look, a haptic, a transition, a chart's entrance or a pick list. A gate step;
 // `bun scripts/one-owner.ts` lists the copies.
 
 import { Glob } from "bun";
@@ -82,6 +82,18 @@ const RULES: readonly Rule[] = [
       "dashboard/SceneStandIn.svelte",
     ],
     composes: /<ChartEntrance\b/u,
+  },
+  {
+    name: "pick list outside the select field",
+    // A pick from a list in a form is a select field; a menu holds actions only. Source cannot
+    // tell a form from a toolbar, so the menus that pick on the builder's canvas are named.
+    found: /<(?:DropdownMenu|Menubar|ContextMenu)\.RadioGroup\b|ui\/radio-group/u,
+    owners: [
+      "components/",
+      "gallery/",
+      "builder/OpeningActions.svelte",
+      "builder/WeatherMenu.svelte",
+    ],
   },
 ];
 

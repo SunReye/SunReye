@@ -107,7 +107,8 @@ test("a point moves under another through a sheet, not a dropdown per row", asyn
 
   await screen.getByRole("button", { name: "Batterie bearbeiten" }).click();
   await userEvent.fill(screen.getByLabelText("Name"), "Speicher");
-  await screen.getByRole("radio", { name: "Haus" }).click();
+  await screen.getByRole("combobox", { name: "Verschieben nach …" }).click();
+  await page.getByRole("option", { name: "Haus" }).click();
   await screen.getByRole("button", { name: "Fertig" }).click();
   await closed(page.getByRole("dialog"));
   await screen.getByRole("button", { name: "Passt so" }).click();
@@ -149,3 +150,39 @@ test("a point left out of the proposal is added back, and a point is removed", a
     },
   ]);
 });
+
+// Last: touch emulation cannot be undone (pointer stays `none`).
+test.each([
+  [390, "drawer-content"],
+  [1024, "dialog-content"],
+])(
+  "on touch at %i px the move list is a drawer over the point's sheet, and closes alone",
+  async (width, kind) => {
+    await page.viewport(width, 844);
+    await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: true });
+
+    try {
+      const { screen } = await step();
+
+      await screen.getByRole("button", { name: "Anpassen" }).click();
+      await screen.getByRole("button", { name: "Batterie bearbeiten" }).click();
+
+      const sheet = page.getByRole("dialog", { name: "Batterie" });
+
+      await expect.element(sheet).toHaveAttribute("data-slot", kind);
+      await sheet.getByRole("combobox", { name: "Verschieben nach …" }).click();
+
+      const list = page.getByRole("listbox", { name: "Verschieben nach …" });
+
+      await list.getByRole("option", { name: "Haus" }).click();
+      await closed(list);
+
+      await expect.element(sheet).toBeVisible();
+      await expect
+        .element(sheet.getByRole("combobox", { name: "Verschieben nach …" }))
+        .toHaveTextContent("Haus");
+    } finally {
+      await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: false });
+    }
+  },
+);

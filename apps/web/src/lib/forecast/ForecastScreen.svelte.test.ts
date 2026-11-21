@@ -164,36 +164,33 @@ test("lines are picked inverter first, then MPPT input, then string, with estima
 
   await render(ForecastScreen, { core: connect(transport), ...PAST_WEEK });
 
-  await card(1)
-    .getByRole("button", { name: /Gesamt/u })
-    .click();
+  const line = card(1).getByRole("combobox", { name: "Linie" });
 
-  const menu = page.getByRole("menu");
+  await expect.element(line).toHaveTextContent("Gesamt");
+  await line.click();
+
+  const menu = page.getByRole("listbox");
 
   await expect.element(menu).toBeVisible();
 
   await expect.element(menu.getByRole("group", { name: "MPPT 1" })).toBeVisible();
   await expect.element(menu.getByRole("group", { name: "MPPT 2" })).toBeVisible();
   await expect
-    .element(
-      menu.getByRole("group", { name: "MPPT 1" }).getByRole("menuitemradio", { name: /south/u }),
-    )
+    .element(menu.getByRole("group", { name: "MPPT 1" }).getByRole("option", { name: /south/u }))
     .toBeVisible();
   await expect
-    .element(
-      menu.getByRole("group", { name: "MPPT 2" }).getByRole("menuitemradio", { name: /east/u }),
-    )
+    .element(menu.getByRole("group", { name: "MPPT 2" }).getByRole("option", { name: /east/u }))
     .toBeVisible();
   // One explanation for the mark, none repeated on each line.
   await expect.element(menu.getByText(/werden zusammen gemessen/u)).toBeVisible();
   expect(document.body.textContent).not.toContain("geschätzt)");
 
-  await menu.getByRole("menuitemradio", { name: /south/u }).click();
+  await menu.getByRole("option", { name: /south/u }).click();
 
   await expect
     .poll(() => transport.asked)
     .toContain("/api/v1/devices/1/forecasts pv.string.power[4]");
-  await expect.element(card(1).getByRole("button", { name: /MPPT 1 · south/u })).toBeVisible();
+  await expect.element(line).toHaveTextContent("MPPT 1 · south ≈");
   // The chart now shows an estimate, and says so.
   await expect.element(card(1).getByText(/werden zusammen gemessen/u)).toBeVisible();
 });
@@ -223,7 +220,7 @@ test.each(SIZES)(
 
     // The inverter's name and its line picker share one row.
     const title = region.getByRole("heading", { level: 2 }).element().getBoundingClientRect();
-    const picker = region.getByRole("button").first().element().getBoundingClientRect();
+    const picker = region.getByRole("combobox").first().element().getBoundingClientRect();
 
     expect(picker.top).toBeLessThan(title.bottom);
     expect(picker.bottom).toBeGreaterThan(title.top);

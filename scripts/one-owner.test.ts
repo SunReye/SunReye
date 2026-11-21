@@ -82,3 +82,20 @@ test("routes are held to it too", () => {
 test("the haptics library itself is no copy", () => {
   expect(rules("tariff/Zone.svelte", `import { WebHaptics } from "web-haptics";`)).toEqual([]);
 });
+
+test("a radio pick outside the select field and the named menus is a copy", () => {
+  const menu = `<DropdownMenu.RadioGroup bind:value>`;
+  const radios = `import * as RadioGroup from "../components/ui/radio-group/index.js";`;
+
+  expect(rules("settings/ImportDevice.svelte", menu)).toEqual([
+    "pick list outside the select field",
+  ]);
+  expect(rules("forecast/LinePicker.svelte", `<Menubar.RadioGroup>`)).toEqual([
+    "pick list outside the select field",
+  ]);
+  expect(rules("setup/MoveField.svelte", radios)).toEqual(["pick list outside the select field"]);
+  expect(rules("components/select-field.svelte", menu)).toEqual([]);
+  expect(rules("gallery/sections/Choices.svelte", radios)).toEqual([]);
+  // A canvas toolbar's menu, not a form.
+  expect(rules("builder/WeatherMenu.svelte", menu)).toEqual([]);
+});
