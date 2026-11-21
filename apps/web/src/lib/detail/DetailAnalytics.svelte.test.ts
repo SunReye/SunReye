@@ -21,6 +21,18 @@ test("a sheet's range steps, and History opens at it", async () => {
     .toHaveAttribute("href", "#/history?range=day&at=2026-11-11");
 });
 
+test("a sheet's way onward is the text link: underlined under the pointer", async () => {
+  const { screen } = await show("production");
+
+  const onward = screen.getByRole("dialog", { name: "Produktion" }).getByRole("link", {
+    name: /Im Verlauf öffnen/u,
+  });
+
+  await userEvent.hover(onward);
+
+  await expect.poll(() => getComputedStyle(onward.element()).textDecorationLine).toBe("underline");
+});
+
 /** The figure the legend states beside `term`. */
 const valueOf = (root: Readonly<Locator>, term: string) =>
   root.getByRole("term").filter({ hasText: term }).element().nextElementSibling?.textContent;

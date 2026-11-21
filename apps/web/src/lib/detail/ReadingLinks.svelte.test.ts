@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "vitest";
+import { userEvent } from "vitest/browser";
 import "../../app.css";
 import { BATTERY, INVERTER, PLANT, prepare, restore, served, show } from "./detail.harness.ts";
 
@@ -68,4 +69,26 @@ test("a consumer's reading opens Explore on the plant's point", async () => {
   await expect
     .element(screen.getByRole("link", { name: "Wärmepumpe" }))
     .toHaveAttribute("href", `#/explore?range=day&s=${PLANT}%3Apoint.power%5B2%5D`);
+});
+
+test("a reading's row takes the one row tint as its link holds the keyboard's focus", async () => {
+  served.stored = { [BATTERY]: ["battery.soc"] };
+
+  const { screen } = await show("battery");
+
+  const link = screen.getByRole("region", { name: "Messwerte" }).getByRole("link", {
+    name: "Ladezustand",
+  });
+
+  await expect.element(link).toBeVisible();
+
+  const row = link.element().closest("dt")?.parentElement;
+
+  // Tabbed until the link holds the focus.
+  for (let i = 0; i < 40 && document.activeElement !== link.element(); i++)
+    // oxlint-disable-next-line no-await-in-loop -- one tab after another.
+    await userEvent.keyboard("{Tab}");
+
+  expect(document.activeElement).toBe(link.element());
+  expect(getComputedStyle(row!).backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
 });
