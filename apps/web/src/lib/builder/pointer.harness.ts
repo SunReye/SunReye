@@ -78,9 +78,8 @@ export async function tap(locator: Locator): Promise<void> {
     return [left + width / 2, top + height / 2];
   };
 
-  await finish(() => element.contains(document.elementFromPoint(...middle())));
-
-  // A drawer leaving or focus coming back moves the page without an animation: two looks agree.
+  // Aimed once nothing covers the target and a further step (frame callbacks run, animations
+  // ended) moved it no more: a drawer leaving or focus coming back moves it without an animation.
   let last = "";
 
   await finish(() => {
