@@ -244,13 +244,41 @@ class Height {
   }
 }
 
+/** Whether `outer`, a grid or a flex row, stretches a child styled `own` to its row's height. */
+function stretched(outer: CSSStyleDeclaration, own: CSSStyleDeclaration): boolean {
+  if (!/grid|flex/u.test(outer.display)) return false;
+
+  const align = own.alignSelf === "auto" ? outer.alignItems : own.alignSelf;
+
+  return align === "normal" || align === "stretch";
+}
+
+/**
+ * Whether `card`'s height is its container's, not its content's: it grows into a column, or a row
+ * or a grid stretches it. Gliding such a card fights its container: the glide pulls it to its
+ * content, the container pulls it back, and it wobbles until both settle.
+ */
+function sizedByParent(card: HTMLElement): boolean {
+  const parent = card.parentElement;
+
+  if (parent === null) return false;
+
+  const outer = getComputedStyle(parent);
+  const own = getComputedStyle(card);
+
+  if (/flex/u.test(outer.display) && outer.flexDirection.startsWith("column"))
+    return Number(own.flexGrow) > 0;
+
+  return stretched(outer, own);
+}
+
 /**
  * Glides `card`'s height from the one drawn to its content's whenever its content changes it, on
  * the move token and ADR 21's ease-in-out, so what stands below moves with it. What the change put
  * into the card is held back, unseen, until the card has its height, then fades in. A change
  * mid-glide eases in over the glide under way. A change of width (the window's), the still
- * tier, a change to the card's own class or style and a card that mounts take the new height at
- * once.
+ * tier, a change to the card's own class or style, a card its container sizes and a card that
+ * mounts take the new height at once.
  *
  * It hears the card's content change in the DOM, before the browser lays it out, so the glide
  * starts in the same frame and no size observer is told a size the glide then takes back.
@@ -273,7 +301,8 @@ export const glideHeight: Attachment<HTMLElement> = (card) => {
     // The glide's own marks are no change of content.
     if (records.every((record) => MARKS.has(record.attributeName))) return;
 
-    if (reframed) height.reframed();
+    // A card its container sizes takes its height at once, as one whose frame changed.
+    if (reframed || sizedByParent(card)) height.reframed();
     else height.changed(arrivals(records));
   });
 
