@@ -53,7 +53,7 @@
   </header>
 
   {#if data.failed}
-    <LoadFailed text={m.detail_error()} onretry={data.retry} />
+    <LoadFailed text={m.detail_error()} refused={data.refused} onretry={data.retry} />
   {:else}
     <RangePane model={data.travel}>
       {#snippet children(p)}
