@@ -38,6 +38,15 @@
     sceneOf(scenesOf(chart.lanes), { from: chart.from, to: chart.to, width }),
   );
 
+  /** The series each lane draws: a series added or removed builds the chart in again (ADR 21). */
+  const drawn = $derived(
+    chart.lanes
+      .map((l) =>
+        l.lane.series.map((s) => `${s.chosen.ref.device}:${s.chosen.ref.series}`).join(","),
+      )
+      .join("|"),
+  );
+
   /** Draws the lanes; again when they, the size or the theme change. */
   const paint: Attachment<HTMLCanvasElement> = (canvas) => paintScene(canvas, scene);
 
@@ -71,7 +80,7 @@
     aria-label={label}
     {...pointer.on}
   >
-    <ChartEntrance build="draw" ready={width > 0} class="absolute inset-0">
+    <ChartEntrance build="draw" ready={width > 0} key={drawn} class="absolute inset-0">
       <canvas class="absolute inset-0 size-full" aria-hidden="true" {@attach paint}></canvas>
     </ChartEntrance>
     {#each chart.lanes as lane (lane.lane.key)}

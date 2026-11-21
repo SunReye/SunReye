@@ -3,6 +3,8 @@
 	import type { HTMLAttributes } from "svelte/elements";
 	// Local: the interactive card is the app's one pressed surface (#836).
 	import { Pressable } from "../pressable/index.js";
+	// Local: a card's height glides when its content changes it (ADR 21, #837).
+	import { glideHeight } from "./glide-height.ts";
 
 	let {
 		ref = $bindable(null),
@@ -39,6 +41,7 @@
 		data-size={size}
 		class={cn(base, glass && "glass-ambient", press, className)}
 		{...restProps}
+		{@attach glideHeight}
 	>
 		{@render children?.()}
 	</Pressable>
@@ -50,6 +53,7 @@
 		data-size={size}
 		class={cn(base, glass && "glass-ambient", className)}
 		{...restProps}
+		{@attach glideHeight}
 	>
 		{@render children?.()}
 	</svelte:element>
