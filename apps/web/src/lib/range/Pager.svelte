@@ -7,6 +7,8 @@
   - keep: the same pane stays and its content moves by itself (a chart that morphs).
   A pane that is asked for again while it leaves is taken back, so a reversed switch continues from
   where it is. Only `transform` and `opacity` move.
+  A pane that slides is seen all the way, a finger's neighbour too: on a card whose height it
+  changes, only a pane swapped in place is held back until the card has its height (ADR 21).
 -->
 <script lang="ts" generics="T">
   import { untrack, type Snippet } from "svelte";
@@ -283,6 +285,7 @@
         style:--slot={p.slot}
         style:--from="{p.from}px"
         inert={p.uid !== cur}
+        data-glide-shown={p.fade ? undefined : ""}
       >
         <div class={["inner", p.fade && "fade"]}>
           <Pane data={p.uid === cur ? data : p.data} hold={p.hold} {children} />

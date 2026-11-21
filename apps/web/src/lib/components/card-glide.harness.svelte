@@ -10,6 +10,8 @@
     label = "",
     loading = false,
     frame = "",
+    travels = false,
+    builds = false,
   }: {
     /** The content's height, in px. */
     height: number;
@@ -23,6 +25,10 @@
     loading?: boolean;
     /** The card's own classes: its frame, as a screen's mode sets it. */
     frame?: string;
+    /** The content arrives on a way of its own, as a pane that slides in: seen all the way. */
+    travels?: boolean;
+    /** The content builds up as it first shows, as a chart's entrance. */
+    builds?: boolean;
   } = $props();
 </script>
 
@@ -32,10 +38,27 @@
       <p>{Array.from({ length: words }, () => "Ertrag").join(" ")}</p>
     {/if}
     {#if loading}
-      <div class="h-10"></div>
+      <div class="h-10" data-testid="placeholder"></div>
     {:else}
-      <div style:height="{height}px">{label}</div>
+      <div
+        style:height="{height}px"
+        class={{ builds }}
+        data-testid="content"
+        data-glide-shown={travels ? "" : undefined}>
+        {label}
+      </div>
     {/if}
   </Card.Root>
   <p data-testid="below">Darunter</p>
 </div>
+
+<style>
+  .builds {
+    animation: build 10s both;
+  }
+  @keyframes build {
+    from {
+      scale: 0;
+    }
+  }
+</style>

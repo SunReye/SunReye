@@ -2,7 +2,8 @@
 // component", #836): no file of the SPA outside its owner rebuilds a segmented control, tabs in
 // another look, a haptic, a transition, a chart's entrance or its reading, a pick list, a card, its
 // glass, a link, a motion value or a pulse that reduced motion does not stop, nor puts the range
-// control off a header (#837). A gate step; `bun scripts/one-owner.ts` lists the copies.
+// control off a header, nor opens or closes a card by its own transition (#837). A gate step;
+// `bun scripts/one-owner.ts` lists the copies.
 //
 // It reads source text, so it cannot see: a chart drawn by hand in `<svg>` or `<div>`s, which names
 // no chart or canvas; a second chart in a file that already holds an entrance; a card or a motion
@@ -119,6 +120,13 @@ export const RULES: readonly Rule[] = [
       "detail/day-slide.ts": "A day sheet's slide.",
       "components/ui/": KIT,
     },
+  },
+  {
+    name: "card presence outside the kit card",
+    // A card that appears or leaves stands in the kit's `Card.Presence` (ADR 21): no file takes
+    // its transition for a wrapper of its own.
+    found: first(/from "[^"]*card\/presence(?:\.[jt]s)?"/u),
+    owners: { "components/ui/": KIT },
   },
   {
     name: "pointer reading outside the one pointer reading",
