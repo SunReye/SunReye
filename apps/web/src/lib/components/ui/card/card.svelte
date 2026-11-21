@@ -28,9 +28,10 @@
 
 	// Local: elevation step 1 instead of upstream's shadow-xs (#58). While its height glides, its
 	// content keeps its size, clipped (#837). A card that appears or leaves fades on its own
-	// opacity, which `card-presence.svelte` sets from around it (#837).
+	// opacity, which `card-presence.svelte` sets from around it (#837). What is held back while the
+	// card resizes does not build up unseen: its entrance waits for the card (#837).
 	const base =
-		"data-gliding:*:flex-none opacity-(--card-presence) ring-foreground/10 bg-card text-card-foreground gap-(--card-spacing) overflow-hidden rounded-xl py-(--card-spacing) text-sm elevation-1 ring-1 [--card-spacing:--spacing(6)] has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(4)] *:[img:first-child]:rounded-t-xl *:[img:last-child]:rounded-b-xl group/card flex flex-col";
+		"data-gliding:*:flex-none [&_[data-held]]:[animation-play-state:paused]! [&_[data-held]_*]:[animation-play-state:paused]! opacity-(--card-presence) ring-foreground/10 bg-card text-card-foreground gap-(--card-spacing) overflow-hidden rounded-xl py-(--card-spacing) text-sm elevation-1 ring-1 [--card-spacing:--spacing(6)] has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(4)] *:[img:first-child]:rounded-t-xl *:[img:last-child]:rounded-b-xl group/card flex flex-col";
 
 	// Local: an interactive card rises 3px on hover and takes step 2, glows, presses in a little (a large surface; step 2 gives way to the pressed shadow) and shows the pointer (#37, #47, #58).
 	const press =

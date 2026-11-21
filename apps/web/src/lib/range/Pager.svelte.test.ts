@@ -1,8 +1,10 @@
+/* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
 import { tick } from "svelte";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { cdp } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { framesUntil, realTimers } from "../motion/clock.harness.ts";
+import { finish, hold } from "../motion/animations.harness.ts";
+import { framesUntil, playFrame, realTimers } from "../motion/clock.harness.ts";
 import Harness from "./pager.harness.svelte";
 
 beforeEach(() => {
@@ -18,6 +20,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   realTimers();
   await cdp().send("Emulation.setEmulatedMedia", { features: [] });
 });
@@ -120,4 +123,60 @@ test("still motion steps on a swipe without moving the pages", async () => {
 
   await framesUntil(() => steps.length === 1);
   await expect.element(screen.getByText("Seite 2")).toBeVisible();
+});
+
+/** The pane that shows `page`, if there is one. */
+const paneOf = (page: number) =>
+  [...card().querySelectorAll<HTMLElement>(".pane")].find((p) =>
+    p.textContent.includes(`Seite ${page}`),
+  );
+
+/** How far the pane that shows `page` is seen, and what holds it back. */
+function pane(page: number) {
+  const el = paneOf(page)!;
+
+  return { seen: Number(getComputedStyle(el).opacity), held: el.getAnimations() };
+}
+
+/** The card's own glide, held at its start. */
+const gliding = () => card().getAnimations().length > 0;
+
+test("a pane that slides in to another height is seen all the way: only content swapped in place holds back", async () => {
+  hold();
+
+  const screen = await render(Harness, { steps: [] });
+
+  playFrame();
+  await screen.getByRole("button", { name: "Später" }).click();
+  await framesUntil(gliding);
+
+  expect(pane(2).seen).toBe(1);
+  expect(pane(2).held).toEqual([]);
+
+  await finish();
+  await framesUntil(() => offset() === 0 && paneOf(1) === undefined);
+  await screen.getByRole("button", { name: "Reiter" }).click();
+  await framesUntil(gliding);
+
+  // Swapped in place: unseen until the card has its height.
+  expect(pane(3).seen).toBe(0);
+
+  await finish();
+
+  expect(pane(3).seen).toBe(1);
+});
+
+test("the neighbour a finger drags in stays seen as the card takes its height", async () => {
+  hold();
+
+  const steps: (-1 | 1)[] = [];
+
+  await render(Harness, { steps });
+
+  playFrame();
+  await drag(-220, 8, 16);
+  await framesUntil(() => steps.length === 1 && gliding());
+
+  expect(pane(2).seen).toBe(1);
+  expect(pane(2).held).toEqual([]);
 });
