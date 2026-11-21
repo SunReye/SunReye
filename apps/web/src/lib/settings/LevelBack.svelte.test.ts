@@ -53,7 +53,10 @@ test("a device's level slides in over the list, which shifts aside; landing play
 
   const level = screen.getByRole("region", { name: "Wechselrichter" });
 
-  await framesUntil(() => level.query() !== null && right(layerOf(level.element())) < 70);
+  // Mounting the level takes the page's turns, not frames: each frame played meanwhile would move
+  // the slide on, and a slow mount would see it land before the first look.
+  await expect.poll(() => level.query()).not.toBeNull();
+  await framesUntil(() => right(layerOf(level.element())) < 70);
 
   expect(right(list)).toBeLessThan(0);
   expect(vibrate).not.toHaveBeenCalled();
