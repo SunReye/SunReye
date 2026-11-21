@@ -3,8 +3,7 @@ import { page } from "vitest/browser";
 // The screen is laid out by the SPA's utilities.
 import "../../app.css";
 import { reset, show } from "./explore.harness.ts";
-import { frame } from "../motion/animations.harness.ts";
-import { stepUntil } from "../motion/clock.harness.ts";
+import { settle } from "../motion/clock.harness.ts";
 
 afterEach(reset);
 
@@ -40,9 +39,9 @@ function undrawn(): number {
 
 const bottom = (of: Element | null) => of?.getBoundingClientRect().bottom ?? Number.NaN;
 
-/** Until `off` is under a pixel: the chart lays itself out over the page's own frames. */
+/** Until `off` is under a pixel: the chart lays itself out to the sizes it is told. */
 async function fits(off: () => number): Promise<void> {
-  await stepUntil(() => off() < 1, frame);
+  await settle(() => off() < 1);
 }
 
 test.for([

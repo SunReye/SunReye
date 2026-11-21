@@ -1,6 +1,10 @@
 // Every test file's page runs in one tab of one origin: what a test leaves behind there steers the
 // files after it.
 import { afterEach } from "vitest";
+import { watchFrames } from "./lib/motion/clock.harness.ts";
+
+// What the browser does only on a frame it draws, a test does when it waits on it.
+watchFrames();
 
 afterEach(() => {
   // A browser remembered without WebGL2, the 2D view chosen.

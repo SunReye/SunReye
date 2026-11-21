@@ -1,8 +1,52 @@
 // Test harness: the frames and clock a spring, a tween or a finger's speed reads (`animate.ts`), on
-// the test's fake clock, which only the test moves on.
+// the test's fake clock, which only the test moves on; and what the browser does only on a frame
+// it draws (a frame callback, a size or an element on screen observed), done by the test when it
+// waits on it.
 import { tick } from "svelte";
 import { vi } from "vitest";
 import { turn } from "../api/settled.harness.ts";
+import {
+  framesFaked,
+  runFrameCallbacks,
+  runIdleCallbacks,
+  watchCallbacks,
+} from "./callbacks.harness.ts";
+import { scrolled, watchScreen } from "./onscreen.harness.ts";
+import { resized, watchSizes } from "./sizes.harness.ts";
+
+/**
+ * Puts the page's frame and idle callbacks and its size and on-screen observers where the harness
+ * reaches them, for every test (`page.setup.ts`): the browser still runs them, and `playFrame`
+ * runs them first when a test waits on them.
+ */
+export function watchFrames(): void {
+  watchCallbacks();
+  watchSizes();
+  watchScreen();
+}
+
+/**
+ * Does what the browser does on its next frame and in the idle time after it, now: tells its size
+ * and on-screen observers what changed, runs the frame callbacks asked for so far, then the idle
+ * ones. On the fake clock (`requestAnimationFrame` faked), its next frame instead.
+ */
+function playFrame(): void {
+  resized();
+  scrolled();
+
+  if (framesFaked()) vi.advanceTimersToNextFrame();
+  else runFrameCallbacks();
+
+  runIdleCallbacks();
+}
+
+/**
+ * Until `done` holds, does what the page waits on a frame for, again on each look. No deadline of
+ * its own, and no frame of the browser's.
+ */
+export async function settle(done: () => boolean): Promise<void> {
+  await stepUntil(done, playFrame);
+}
 
 /**
  * Takes `step` until `done` holds, the page taking its own turn after each, so an event a step

@@ -13,6 +13,8 @@ import { fill } from "./templates.ts";
 
 export { press, tap, type Pointer } from "./pointer.harness.ts";
 
+export { settle } from "../motion/clock.harness.ts";
+
 export const pv = await loadPv(new Uint8Array(await (await fetch(wasm)).arrayBuffer()));
 
 export const MODULE: ModuleType = {
