@@ -3,6 +3,7 @@ import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { connect } from "../api/core.ts";
+import { finish } from "../motion/animations.harness.ts";
 import { haptics } from "../haptics.ts";
 import { problem } from "../settings/settings.harness.ts";
 import Controls from "./Controls.svelte";
@@ -57,7 +58,12 @@ test("applying a slot's start writes minutes since midnight through the funnel",
 
   page.getByRole("spinbutton", { name: "Stunde" }).element().focus();
   await userEvent.keyboard("{ArrowUp}");
-  await userEvent.click(page.getByRole("button", { name: /^Übernehmen/u }));
+
+  const apply = page.getByRole("button", { name: /^Übernehmen/u });
+
+  // The wheel takes its step on a frame: the test's.
+  await finish(() => apply.query() !== null);
+  await userEvent.click(apply);
 
   expect(transport.writes).toEqual([
     'PUT /api/v1/devices/3/settings/battery.time_of_use.1.start {"value":420}',

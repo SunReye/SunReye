@@ -6,7 +6,6 @@
 <script lang="ts">
   import { Pressable } from "../components/ui/pressable/index.js";
   import type { Core, PvString } from "../api/core.ts";
-  import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
   import { kwh as energy, num } from "../range/format.ts";
   import type { RangeRoute } from "../range/route.svelte.ts";
@@ -121,7 +120,6 @@
           r.id === chosen?.id && "bg-foreground/[0.05]",
         ]}
         onclick={() => {
-          if (r.id !== chosen?.id) haptics.selection();
           picked = r.id;
         }}
       >

@@ -20,12 +20,11 @@ import {
   MODULE,
   press,
   pv,
+  settle,
   testCore,
   undesk,
 } from "./builder.harness.ts";
 import { saveFrom, savedFrom } from "./moment.harness.ts";
-
-const SLOW = { timeout: 15_000 };
 
 /** How many frames the canvas drew, counted from before each test renders. */
 let drawn = (): number => 0;
@@ -45,7 +44,7 @@ afterEach(async () => {
 
 /** A press in 3D on the south face where a filled face has its module `row.column`. */
 async function onTheRoof(): Promise<(key: string) => Promise<void>> {
-  await expect.poll(drawn, SLOW).toBeGreaterThan(0);
+  await settle(() => drawn() > 0);
 
   const cells = cellsOnPage(addGrid(house().scene, 0, 1, MODULE.id), 0);
 

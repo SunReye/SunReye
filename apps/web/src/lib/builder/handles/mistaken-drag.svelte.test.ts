@@ -6,25 +6,25 @@ import { render } from "vitest-browser-svelte";
 import { connect } from "../../api/core.ts";
 import Builder from "../Builder.svelte";
 import {
-  DEVICES,
   desk,
+  DEVICES,
   drill,
   house,
   inspector,
   MODULE,
   onCanvas,
   phone,
+  type Pointer,
   press,
   pv,
+  settle,
   starts,
   testCore,
   undesk,
-  type Pointer,
 } from "../builder.harness.ts";
 import { handles } from "./grips.ts";
 import { offered } from "./offered.ts";
 
-const SLOW = { timeout: 15_000 };
 const VIEW = "sunreye.builder.view";
 
 beforeEach(async () => {
@@ -50,7 +50,7 @@ async function picked() {
     devices: DEVICES,
   });
   await drill("Gebäude", "Baukörper 1");
-  await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
+  await settle(() => draws.mock.calls.length > 0);
 
   return start.scene;
 }
@@ -61,7 +61,7 @@ const swipe = ([x, y]: readonly [number, number]) =>
 
 /** Nothing was dragged: the block stands as it stood, with nothing to undo, and the view turned. */
 async function orbited(): Promise<void> {
-  await expect.poll(() => localStorage.getItem(VIEW), SLOW).not.toBeNull();
+  await settle(() => localStorage.getItem(VIEW) !== null);
   await expect
     .element(
       inspector()
@@ -155,7 +155,7 @@ test("while strings are wired a drag from the house orbits: a block has handles 
 
   await drill("Gebäude", "Szene", "Strings");
   await press("mouse", swipe(onCanvas(scene)([2, 1.5, 8])));
-  await expect.poll(() => localStorage.getItem(VIEW), SLOW).not.toBeNull();
+  await settle(() => localStorage.getItem(VIEW) !== null);
   await expect.element(inspector().getByRole("button", { name: "Rückgängig" })).toBeDisabled();
 });
 
@@ -172,7 +172,7 @@ test("on a phone a picked house's knob lies in the canvas, clear of the sheet an
     moduleTypes: [MODULE],
     devices: DEVICES,
   });
-  await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
+  await settle(() => draws.mock.calls.length > 0);
 
   const knob = offered(scene, { kind: "block", index: 0 }, pv.modules(scene, {}), false).find(
     ({ grip }) => grip === "carry",

@@ -4,6 +4,7 @@ import "../../app.css";
 import { pull } from "../components/drawer.harness.ts";
 import { unfaded } from "../scroll-fade.harness.ts";
 import { asked, BATTERY, fetched, prepare, restore, served, show } from "./detail.harness.ts";
+import { closed } from "../motion/animations.harness.ts";
 
 beforeEach(prepare);
 
@@ -173,7 +174,7 @@ test("on a desktop it is a side sheet, on a phone a drawer that a pull down or b
 
     // Back drops the hash route's figure.
     await phone.screen.rerender({ detail: null });
-    await expect.element(sheet).not.toBeInTheDocument();
+    await closed(sheet);
   } finally {
     await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: false });
   }

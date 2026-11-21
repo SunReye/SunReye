@@ -1,10 +1,12 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { cdp, userEvent } from "vitest/browser";
+import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { connect, type Transport } from "../api/core.ts";
+import { haptics } from "../haptics.ts";
 import { feed } from "../live/stream.harness.ts";
 import TopologyStep from "./TopologyStep.svelte";
+import { closed } from "../motion/animations.harness.ts";
 
 const INVERTER = { id: 1, name: "Wechselrichter", profile: "p", connection: 1, unit: 1 };
 
@@ -63,11 +65,14 @@ afterEach(async () => {
 const grid = { device: 1, role: "grid.power" };
 
 test("a correct proposal is accepted with one tap", async () => {
+  const success = vi.spyOn(haptics, "success");
   const { screen, transport, done } = await step();
 
   await screen.getByRole("button", { name: "Passt so" }).click();
 
   await expect.poll(() => done.mock.calls.length).toBe(1);
+  expect(success).toHaveBeenCalledOnce();
+  success.mockRestore();
   expect(transport.changes).toMatchObject([
     {
       points: [
@@ -104,6 +109,7 @@ test("a point moves under another through a sheet, not a dropdown per row", asyn
   await userEvent.fill(screen.getByLabelText("Name"), "Speicher");
   await screen.getByRole("radio", { name: "Haus" }).click();
   await screen.getByRole("button", { name: "Fertig" }).click();
+  await closed(page.getByRole("dialog"));
   await screen.getByRole("button", { name: "Passt so" }).click();
 
   await expect.poll(() => done.mock.calls.length).toBe(1);
@@ -125,8 +131,10 @@ test("a point left out of the proposal is added back, and a point is removed", a
   await screen.getByRole("button", { name: "Anpassen" }).click();
   await screen.getByRole("button", { name: "Messpunkt hinzufügen" }).click();
   await screen.getByRole("button", { name: "Generator" }).click();
+  await closed(page.getByRole("dialog"));
   await screen.getByRole("button", { name: "PV bearbeiten" }).click();
   await screen.getByRole("button", { name: "Entfernen" }).click();
+  await closed(page.getByRole("dialog"));
   await screen.getByRole("button", { name: "Passt so" }).click();
 
   await expect.poll(() => done.mock.calls.length).toBe(1);

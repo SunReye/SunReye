@@ -1,7 +1,7 @@
 // A real pointer through the browser's input pipeline, for the builder's component tests.
-import { expect } from "vitest";
 import { cdp, type Locator } from "vitest/browser";
 import { finish } from "../motion/animations.harness.ts";
+import { playFrame } from "../motion/clock.harness.ts";
 
 export type Pointer = "mouse" | "pen" | "touch";
 
@@ -10,6 +10,26 @@ export async function uncovered(): Promise<void> {
   await finish(
     () => document.querySelector('[data-slot="drawer-overlay"][data-state="closed"]') === null,
   );
+}
+
+/** One finger down at `first`, along `rest`, then up. */
+async function touch(
+  first: readonly [number, number],
+  rest: readonly (readonly [number, number])[],
+): Promise<void> {
+  await cdp().send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [{ x: first[0], y: first[1] }],
+  });
+
+  for (const [x, y] of rest) {
+    // oxlint-disable-next-line no-await-in-loop -- a pointer moves one step at a time.
+    await cdp().send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y }] });
+    // The page takes a move on its next frame: the test's, so no move is folded into the next.
+    playFrame();
+  }
+
+  await cdp().send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
 }
 
 /** A real pointer, through the browser's input pipeline, from `from` to `to` in page pixels. */
@@ -24,17 +44,7 @@ export async function press(
   await uncovered();
 
   if (kind === "touch") {
-    await cdp().send("Input.dispatchTouchEvent", {
-      type: "touchStart",
-      touchPoints: [{ x: first[0], y: first[1] }],
-    });
-
-    for (const [x, y] of rest) {
-      // oxlint-disable-next-line no-await-in-loop -- a pointer moves one step at a time.
-      await cdp().send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y }] });
-    }
-
-    await cdp().send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await touch(first, rest);
 
     return;
   }
@@ -57,6 +67,7 @@ export async function press(
       x,
       y,
     });
+    playFrame();
   }
 
   const [x, y] = rest.at(-1) ?? first;
@@ -79,19 +90,23 @@ export async function tap(locator: Locator): Promise<void> {
     return [left + width / 2, top + height / 2];
   };
 
-  await finish(() => element.contains(document.elementFromPoint(...middle())));
-
-  // A drawer leaving or focus coming back moves the page without an animation: two looks agree.
+  // Aimed once nothing covers the target and a further step (frame callbacks run, animations
+  // ended) moved it no more: a drawer leaving or focus coming back moves it without an animation.
   let last = "";
 
-  await expect
-    .poll(() => {
-      const was = last;
+  await finish(() => {
+    const was = last;
 
-      last = JSON.stringify(element.getBoundingClientRect());
+    last = JSON.stringify(element.getBoundingClientRect());
 
-      return last === was && element.contains(document.elementFromPoint(...middle()));
-    })
-    .toBe(true);
+    return last === was && element.contains(document.elementFromPoint(...middle()));
+  });
+
+  // The browser makes a click of the touch after it ends: the tap is over once it has landed.
+  const clicked = new Promise((landed) => {
+    element.addEventListener("click", landed, { once: true });
+  });
+
   await press("touch", [middle()]);
+  await clicked;
 }

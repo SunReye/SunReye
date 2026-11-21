@@ -3,6 +3,7 @@ import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect, type ImportStatus, type Transport } from "../api/core.ts";
 import ImportPanel from "./ImportPanel.svelte";
+import { closed } from "../motion/animations.harness.ts";
 
 const SLUG = "inverter-v3";
 
@@ -89,6 +90,7 @@ test("an archive under /share imports into the chosen device once confirmed, its
   await screen.getByRole("button", { name: `${SLUG} Nicht importieren` }).click();
   await screen.getByRole("menuitemradio", { name: "Wechselrichter (3)" }).click();
   await userEvent.keyboard("{Escape}");
+  await closed(page.getByRole("menu"));
   await expect
     .element(screen.getByRole("button", { name: `${SLUG} Wechselrichter (3)` }))
     .toBeVisible();
@@ -121,7 +123,7 @@ test("the import asks first, and cancelling sends nothing", async () => {
     .element(confirm.getByText("Importierter Verlauf lässt sich nicht wieder entfernen."))
     .toBeVisible();
   await confirm.getByRole("button", { name: "Abbrechen" }).click();
-  await expect.element(confirm).not.toBeInTheDocument();
+  await closed(confirm);
   expect(transport.sent).toEqual([]);
 });
 

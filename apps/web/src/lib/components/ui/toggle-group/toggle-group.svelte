@@ -24,6 +24,7 @@
 	import { cn } from "#lib/utils.js";
 	// Local: sliding pressed box of a `single` group (#49).
 	import { trackActive } from "#lib/motion.js";
+	import { haptics } from "#lib/haptics.ts";
 
 	// Local: the pressed look of a `single` group, drawn here from trackActive's box so it slides and
 	// resizes from item to item on the motion tokens (#49). It is `before`, under the items (they are
@@ -48,6 +49,17 @@
 			spacing?: number;
 			orientation?: "horizontal" | "vertical";
 		} = $props();
+
+	// Local: a pick of another item ticks (ADR 21 "One behaviour, one component"). bits-ui writes the
+	// value on a user's pick only; a tap on the pressed item of a `single` group writes "", which
+	// changes nothing the user sees. After the caller, so a change it writes is felt as written.
+	function pick(next: string | string[]): void {
+		const changed = Array.isArray(next) || (next !== "" && next !== value);
+
+		value = next;
+
+		if (changed) haptics.selection();
+	}
 
 	// Local: sliding pressed box of a `single` group (#49).
 	$effect(() =>
@@ -82,7 +94,7 @@ Discriminated Unions + Destructing (required for bindable) do not
 get along, so we shut typescript up by casting `value` to `never`.
 -->
 <ToggleGroupPrimitive.Root
-	bind:value={value as never}
+	bind:value={() => value as never, pick as (next: never) => void}
 	// Local: the type is destructured above, so it is passed on by hand (#49).
 	type={type as never}
 	bind:ref

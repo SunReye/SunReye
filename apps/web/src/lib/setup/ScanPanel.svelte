@@ -7,7 +7,7 @@
   import type { ScanReport } from "../api/setup.ts";
   import { Button } from "#lib/components/ui/button/index.js";
   import { m } from "../paraglide/messages.js";
-  import Refusal from "./Refusal.svelte";
+  import Refusal, { answered } from "./Refusal.svelte";
 
   let { core, onscanned }: { core: Core; onscanned: (endpoints: ScanReport["endpoints"]) => void } =
     $props();
@@ -26,7 +26,7 @@
     const report = await core.scan(subnet.trim() === "" ? undefined : subnet.trim());
 
     scanning = false;
-    refused = "problem" in report ? report : undefined;
+    refused = "problem" in report ? answered(report) : undefined;
 
     if ("problem" in report) return;
 

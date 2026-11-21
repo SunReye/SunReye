@@ -7,8 +7,8 @@ import { connect } from "../../api/core.ts";
 import Builder from "../Builder.svelte";
 import type { View } from "../camera.ts";
 import {
-  DEVICES,
   desk,
+  DEVICES,
   drill,
   house,
   inspector,
@@ -16,12 +16,12 @@ import {
   onCanvas,
   press,
   pv,
+  settle,
   testCore,
   undesk,
 } from "../builder.harness.ts";
 import { offered } from "./offered.ts";
 
-const SLOW = { timeout: 15_000 };
 const VIEW = "sunreye.builder.view";
 
 /** Low behind the house, north of it: its front wall and all before it are out of sight. */
@@ -53,7 +53,7 @@ async function picked(view?: View) {
     devices: DEVICES,
   });
   await drill("Gebäude", "Baukörper 1");
-  await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
+  await settle(() => draws.mock.calls.length > 0);
 
   return {
     scene: start.scene,
@@ -70,7 +70,7 @@ const add = () =>
 
 /** The view turned and nothing was dragged. */
 async function orbited(kept: string | null): Promise<void> {
-  await expect.poll(() => localStorage.getItem(VIEW), SLOW).not.toBe(kept);
+  await settle(() => localStorage.getItem(VIEW) !== kept);
   await expect.element(inspector().getByRole("button", { name: "Rückgängig" })).toBeDisabled();
 }
 

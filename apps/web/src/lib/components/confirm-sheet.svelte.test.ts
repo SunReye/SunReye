@@ -8,6 +8,7 @@ import "../../app.css";
 import type { Problem } from "../api/core.ts";
 import { haptics } from "../haptics.ts";
 import ConfirmSheet from "./confirm-sheet.svelte";
+import { closed } from "../motion/animations.harness.ts";
 
 const TITLE = "Speicher entfernen";
 const NOTE = "Sein Verlauf bleibt erhalten.";
@@ -59,7 +60,7 @@ test("confirming closes the confirm and says so in a toast", async () => {
 
   await action().click();
 
-  await expect.element(sheet()).not.toBeInTheDocument();
+  await closed(sheet());
   expect(onconfirm).toHaveBeenCalledOnce();
   expect(success).toHaveBeenCalledExactlyOnceWith("Entfernt.", {});
   expect(felt).toHaveBeenCalledOnce();
@@ -83,7 +84,7 @@ test("cancelling closes the confirm and does nothing", async () => {
 
   await sheet().getByRole("button", { name: "Abbrechen" }).click();
 
-  await expect.element(sheet()).not.toBeInTheDocument();
+  await closed(sheet());
   expect(onconfirm).not.toHaveBeenCalled();
 });
 
@@ -101,7 +102,7 @@ test("on touch at 390 px the same confirm is a drawer", async () => {
     await asksEverything();
     await action().click();
 
-    await expect.element(sheet()).not.toBeInTheDocument();
+    await closed(sheet());
     expect(success).toHaveBeenCalledExactlyOnceWith("Entfernt.", {});
   } finally {
     await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: false });

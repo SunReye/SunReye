@@ -6,6 +6,7 @@ import { connect, type Transport } from "../api/core.ts";
 import { tap } from "../builder/pointer.harness.ts";
 import { FakeCore } from "./devices.harness.ts";
 import Routed from "./routed.harness.svelte";
+import { closed } from "../motion/animations.harness.ts";
 
 /** A phone; the value editor and levels land at once. */
 beforeEach(async () => {
@@ -33,9 +34,10 @@ async function enter(row: string, value: string): Promise<void> {
   await userEvent.fill(page.getByRole("textbox", { name: `${row} eingeben` }), value);
   await userEvent.keyboard("{Enter}");
   await page.getByRole("button", { name: /^Übernehmen/u }).click();
+  await closed(page.getByRole("dialog"));
 }
 
-test("the admin adds a scanned Modbus device after setup, renames it and removes it", async () => {
+test("the admin adds a scanned Modbus device after setup", async () => {
   const core = new FakeCore();
   const screen = await opened(core, "devices");
 
@@ -46,6 +48,32 @@ test("the admin adds a scanned Modbus device after setup, renames it and removes
 
   await expect.element(screen.getByRole("button", { name: /^Speicher/u })).toBeVisible();
   await expect.element(screen.getByRole("button", { name: "Messpunkte prüfen" })).toBeVisible();
+  expect(core.calls).toEqual([
+    "POST /api/v1/scan {}",
+    'POST /api/v1/connections {"name":"192.168.1.40","host":"192.168.1.40","port":502,"transport":"modbus-tcp"}',
+    'POST /api/v1/devices {"connection":11,"name":"Speicher","profile":"deye-sg05lp3","variant":"5k","unit":1}',
+  ]);
+});
+
+/** A core with a second device, the storage behind the gateway. */
+function withStorage(): FakeCore {
+  const core = new FakeCore();
+
+  core.devices.push({
+    id: 12,
+    connection: 1,
+    name: "Speicher",
+    profile: "deye-sg05lp3",
+    variant: "5k",
+    unit: 2,
+  });
+
+  return core;
+}
+
+test("the admin renames a device; its profile stays fixed", async () => {
+  const core = withStorage();
+  const screen = await opened(core, "devices");
 
   await screen.getByRole("button", { name: /^Speicher/u }).click();
   await expect.element(screen.getByText("Das Profil bleibt fest", { exact: false })).toBeVisible();
@@ -53,25 +81,27 @@ test("the admin adds a scanned Modbus device after setup, renames it and removes
   await screen.getByRole("button", { name: "Speichern" }).click();
 
   await expect.element(screen.getByRole("button", { name: /^Speicher Keller/u })).toBeVisible();
+  expect(core.calls).toEqual([
+    'PUT /api/v1/devices/12 {"connection":1,"name":"Speicher Keller","profile":"deye-sg05lp3","variant":"5k","unit":2,"writes":false}',
+  ]);
+});
 
-  await screen.getByRole("button", { name: /^Speicher Keller/u }).click();
+test("the admin removes a device once confirmed; its history stays", async () => {
+  const core = withStorage();
+  const screen = await opened(core, "devices");
+
+  await screen.getByRole("button", { name: /^Speicher/u }).click();
   await screen.getByRole("button", { name: "Gerät entfernen" }).click();
 
-  const confirm = page.getByRole("dialog", { name: "Speicher Keller entfernen" });
+  const confirm = page.getByRole("dialog", { name: "Speicher entfernen" });
 
   await expect.element(confirm.getByText("Sein Verlauf bleibt erhalten.")).toBeVisible();
   await confirm.getByRole("button", { name: "Entfernen", exact: true }).click();
-  await expect.element(confirm).not.toBeInTheDocument();
+  await closed(confirm);
 
   await expect.element(screen.getByRole("button", { name: /^Wechselrichter/u })).toBeVisible();
   expect(screen.getByRole("button", { name: /^Speicher/u }).query()).toBeNull();
-  expect(core.calls).toEqual([
-    "POST /api/v1/scan {}",
-    'POST /api/v1/connections {"name":"192.168.1.40","host":"192.168.1.40","port":502,"transport":"modbus-tcp"}',
-    'POST /api/v1/devices {"connection":11,"name":"Speicher","profile":"deye-sg05lp3","variant":"5k","unit":1}',
-    'PUT /api/v1/devices/12 {"connection":11,"name":"Speicher Keller","profile":"deye-sg05lp3","variant":"5k","unit":1,"writes":false}',
-    "DELETE /api/v1/devices/12",
-  ]);
+  expect(core.calls).toEqual(["DELETE /api/v1/devices/12"]);
 });
 
 test("a device added on a connection is the variant of its family the admin picks", async () => {
@@ -82,6 +112,7 @@ test("a device added on a connection is the variant of its family the admin pick
   await tap(screen.getByRole("button", { name: "Auf einer Verbindung hinzufügen" }));
   await tap(screen.getByRole("button", { name: "Profil", exact: true }));
   await tap(page.getByRole("dialog").getByRole("button", { name: "SUN-5K-SG05LP3-EU-SM2 5 kW" }));
+  await closed(page.getByRole("dialog"));
   await expect
     .element(screen.getByRole("button", { name: "Profil", exact: true }))
     .toHaveTextContent("SUN-5K-SG05LP3-EU-SM2 5 kW");

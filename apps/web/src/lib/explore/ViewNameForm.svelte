@@ -5,7 +5,7 @@
   import { Button } from "#lib/components/ui/button/index.js";
   import { Input } from "#lib/components/ui/input/index.js";
   import { m } from "../paraglide/messages.js";
-  import Refusal from "../setup/Refusal.svelte";
+  import Refusal, { answered } from "../setup/Refusal.svelte";
 
   let {
     name: initial,
@@ -27,7 +27,7 @@
   async function submit(): Promise<void> {
     busy = true;
     // The core compares names as given: the edges' spaces are no part of one.
-    refused = await onsubmit(name.trim());
+    refused = answered(await onsubmit(name.trim()));
     busy = false;
 
     if (refused === undefined) onclose();

@@ -1,14 +1,12 @@
 import "../../app.css";
-import { expect, test } from "vitest";
+import { test } from "vitest";
 import { render } from "vitest-browser-svelte";
 import { DRY, type SceneWeather } from "../scene/weather.ts";
 import type { Geometry } from "./pv.ts";
 import SceneCanvas from "./SceneCanvas.svelte";
+import { settle } from "../motion/clock.harness.ts";
 
 // The weather on the drawn scene (ADR 23 "Scene weather"), read off the canvas's middle.
-
-// Software GL renders the sky and shadows slowly while other suites run.
-const SLOW = { timeout: 15_000 };
 
 const square = (up: number) =>
   [
@@ -72,16 +70,14 @@ test.each<readonly [string, Partial<SceneWeather>, boolean, number, number]>([
 ])("%s, and dry again the scene is as it was", async (_, weather, covered, change, at) => {
   const { drawn, screen } = await fromAbove(covered, at);
 
-  await expect.poll(drawn, SLOW).toBeGreaterThan(covered ? 0 : 100);
+  await settle(() => drawn() > (covered ? 0 : 100));
 
   const dry = drawn();
 
   await screen.rerender({ weather: { ...DRY, ...weather } });
 
-  await expect
-    .poll(() => Math.sign(change) * (drawn() - dry), SLOW)
-    .toBeGreaterThan(Math.abs(change));
+  await settle(() => Math.sign(change) * (drawn() - dry) > Math.abs(change));
 
   await screen.rerender({ weather: DRY });
-  await expect.poll(() => Math.abs(drawn() - dry), SLOW).toBeLessThan(2);
+  await settle(() => Math.abs(drawn() - dry) < 2);
 });

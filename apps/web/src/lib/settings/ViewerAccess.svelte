@@ -8,6 +8,7 @@
   import AccessForm from "./AccessForm.svelte";
   import AccessRow from "./AccessRow.svelte";
   import AccessSection from "./AccessSection.svelte";
+  import { answered } from "../feedback.ts";
 
   let { core }: { core: Core } = $props();
 
@@ -29,7 +30,7 @@
     const answer = await core.addViewer(name.trim(), password);
 
     if ("problem" in answer) {
-      refused = answer;
+      refused = answered(answer);
 
       return;
     }

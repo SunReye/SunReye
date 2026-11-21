@@ -87,7 +87,7 @@
         {/if}
       {/snippet}
       <div class="h-28 w-full" role="img" aria-label={today ? m.rd_power() : m.dash_forecast()}>
-        <DayChart rows={day.rows} now={new Date(now)} hours={clock} bare />
+        <DayChart rows={day.rows} now={new Date(now)} hours={clock} live={today} bare />
       </div>
     </WeatherRow>
   </DayRows>

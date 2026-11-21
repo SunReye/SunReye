@@ -1,6 +1,7 @@
-// Component tests run side by side under load, so none may wait on the wall clock: a file that
-// needs time to pass fakes it (`vi.useFakeTimers`) and advances it. A gate step;
-// `bun scripts/fake-time.ts` lists the real-time calls in component tests and their harnesses.
+// Component tests run side by side under load, so none may wait on the wall clock or on the
+// browser's frames: a file that needs time to pass fakes it (`vi.useFakeTimers`) and advances it,
+// and a wait has no budget beyond vitest's own. A gate step; `bun scripts/fake-time.ts` lists the
+// real-time calls in component tests and their harnesses.
 
 import { Glob } from "bun";
 
@@ -28,9 +29,63 @@ const CALLS: readonly Call[] = [
     faked: "requestAnimationFrame",
   },
   { call: "sleep", found: /\bsleep\(/u },
-  // An animation's end, awaited: it comes when the animation has played out on the wall clock.
+  // An animation's end, awaited: it comes when the animation has played out on the wall clock,
+  // and is told on the browser's next frame.
   { call: "finished", found: /\.finished\b/u },
+  { call: "onfinish", found: /\.onfinish\s*=(?!=)/u },
+  { call: "finish event", found: /addEventListener\(\s*["'`]finish["'`]/u },
+  // An animation played to wait for its end, or for the frame it ends on.
+  { call: "animate", found: /\.animate\(/u },
 ];
+
+/** Vitest's own budget for a wait (`expect.poll`, `expect.element`, `vi.waitFor`), in ms. */
+const WAIT_MS = 1000;
+
+/** A `timeout` option, with what it is given when not shorthand. */
+const BUDGET = /(?<=[{,]\s*)timeout\s*(?::\s*([^,}\n]+?))?\s*(?=[,}\n])/gu;
+
+/** Whether a budget is above vitest's: one given by a name or a sum cannot be read, so is. */
+const over = (given = "") =>
+  !/^[\d_]+$/u.test(given) || Number(given.replaceAll("_", "")) > WAIT_MS;
+
+/** A test's call up to its name and the comma after it. */
+const TEST_NAMED = /\b(?:test|it)(?:\.\w+)*\(\s*(["'`])(?:\\.|(?!\1)[^\\])*\1\s*,\s*$/u;
+
+/** Whether the text before an argument ends in a test's name: the budget is the test's own. */
+const testsOwn = (before: string) => TEST_NAMED.test(before.slice(-500));
+
+const lineAt = (source: string, index: number) => source.slice(0, index).split("\n").length;
+
+/**
+ * Where the budget at `at` is given: there, or at each use of the name it is kept under; an
+ * exported one also there, as its other uses are in files this one does not show.
+ */
+function givenAt(source: string, at: number): number[] {
+  const [, exported, name] = /(export\s+)?const\s+(\w+)\s*=\s*$/u.exec(source.slice(0, at)) ?? [];
+
+  if (name === undefined) return [at];
+
+  const uses = [...source.slice(at).matchAll(new RegExp(String.raw`\b${name}\b`, "gu"))].map(
+    // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- a match, only read.
+    (use) => at + use.index,
+  );
+
+  return exported === undefined ? uses : [at, ...uses];
+}
+
+/** Every budget above vitest's given to a wait, inline or by name, with the line it is given on. */
+function budgets(source: string): RealTime[] {
+  return (
+    [...source.matchAll(BUDGET)]
+      // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- a match, only read.
+      .filter((match) => over(match[1]))
+      // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- a match, only read.
+      .flatMap((match) => givenAt(source, source.lastIndexOf("{", match.index)))
+      .flatMap((index) =>
+        testsOwn(source.slice(0, index)) ? [] : [{ call: "timeout", line: lineAt(source, index) }],
+      )
+  );
+}
 
 /** What the file's fake timers fake; `undefined` when one call fakes them all. */
 function fakes(source: string): Set<string> | undefined {
@@ -63,10 +118,12 @@ export function realTime(path: string, source: string): RealTime[] {
     ({ faked: by }) => by === undefined || (faked !== undefined && !faked.has(by)),
   );
 
-  return source.split("\n").flatMap((text, index) =>
+  const calls = source.split("\n").flatMap((text, index) =>
     // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- a call's pattern is only read.
     real.flatMap(({ call, found }) => (found.test(text) ? [{ call, line: index + 1 }] : [])),
   );
+
+  return [...calls, ...budgets(source)].toSorted((a, b) => a.line - b.line);
 }
 
 if (import.meta.main) {

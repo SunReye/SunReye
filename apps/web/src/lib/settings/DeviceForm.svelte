@@ -10,7 +10,7 @@
   import ValueRow from "../builder/ValueRow.svelte";
   import { m } from "../paraglide/messages.js";
   import ProfilePicker from "../setup/ProfilePicker.svelte";
-  import Refusal from "../setup/Refusal.svelte";
+  import Refusal, { answered } from "../setup/Refusal.svelte";
   import ConnectionForm from "./ConnectionForm.svelte";
   import SelectField from "../components/select-field.svelte";
   import TextField from "../components/text-field.svelte";
@@ -93,7 +93,7 @@
     const answer =
       device === undefined ? await core.addDevice(draft) : await core.changeDevice(device.id, draft);
 
-    refused = "problem" in answer ? answer : undefined;
+    refused = "problem" in answer ? answered(answer) : undefined;
 
     if (!("problem" in answer)) onsaved(answer);
   }

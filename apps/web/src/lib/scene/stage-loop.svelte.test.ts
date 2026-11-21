@@ -2,6 +2,7 @@ import { flushSync } from "svelte";
 import { afterEach, expect, test, vi } from "vitest";
 import { motion } from "../motion/tier.svelte.ts";
 import { draws, open, RAIN, shut } from "./stage.harness.svelte.ts";
+import { settle } from "../motion/clock.harness.ts";
 
 // The weather loop under what falls (ADR 23 "Motion").
 
@@ -39,7 +40,7 @@ test("the scene loops while rain falls and stops when the weather turns dry", as
 });
 
 test("the loop pauses while the tab is hidden or the canvas is off screen", async () => {
-  const { canvas, looping, drawn, weather } = await open();
+  const { canvas, looping, drawn, weather, scene } = await open();
 
   weather(RAIN);
   hide(true);
@@ -51,11 +52,11 @@ test("the loop pauses while the tab is hidden or the canvas is off screen", asyn
 
   // Scrolled away.
   canvas.style.marginTop = "300vh";
-  await expect.poll(looping, { timeout: 10_000 }).toBe(false);
+  await settle(() => !scene.opening.loop.running);
   expect(await draws(drawn)).toBe(0);
 
   canvas.style.marginTop = "0";
-  await expect.poll(looping, { timeout: 10_000 }).toBe(true);
+  await settle(() => scene.opening.loop.running);
   expect(await draws(drawn)).toBeGreaterThan(0);
 });
 

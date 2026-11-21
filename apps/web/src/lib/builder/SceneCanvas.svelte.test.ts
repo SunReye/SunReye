@@ -7,9 +7,7 @@ import { presetView, type View } from "./camera.ts";
 import type { Hit } from "./scene.ts";
 import type { Geometry } from "./pv.ts";
 import SceneCanvas from "./SceneCanvas.svelte";
-
-// Software GL renders the sky and shadows slowly while other suites run.
-const SLOW = { timeout: 15_000 };
+import { settle } from "../motion/clock.harness.ts";
 
 const house: Geometry = {
   faces: [
@@ -51,7 +49,7 @@ test("ready is reported once, after the first frame is drawn", async () => {
     onready: ready,
   });
 
-  await expect.poll(() => ready.mock.calls.length, SLOW).toBe(1);
+  await settle(() => ready.mock.calls.length === 1);
 
   expect(ready.mock.results[0]?.value).toBeGreaterThan(0);
 });
@@ -75,7 +73,7 @@ test("dragging the canvas orbits the camera and reports the new view", async () 
     targetPosition: { x: 250, y: 100 },
   });
 
-  await expect.poll(() => views.length, SLOW).toBeGreaterThan(0);
+  await settle(() => views.length > 0);
   expect(views.at(-1)?.target).toEqual(start.target);
   expect(views.at(-1)?.position).not.toEqual(start.position);
 });
@@ -207,8 +205,8 @@ test.each([false, true])(
     const { drawn } = await closeUp(dark);
 
     // Near black, and too grey to read as any hue.
-    await expect.poll(() => lab(drawn() ?? [255, 255, 255]).lightness, SLOW).toBeLessThan(10);
-    await expect.poll(() => lab(drawn() ?? [255, 255, 255]).chroma, SLOW).toBeLessThan(12);
+    await settle(() => lab(drawn() ?? [255, 255, 255]).lightness < 10);
+    await settle(() => lab(drawn() ?? [255, 255, 255]).chroma < 12);
   },
 );
 
@@ -219,12 +217,12 @@ test.each([
   const { drawn, screen } = await closeUp(false, false);
   const lightness = (): number => lab(drawn() ?? [0, 0, 0]).lightness;
 
-  await expect.poll(lightness, SLOW).toBeGreaterThan(30);
+  await settle(() => lightness() > 30);
 
   const noon = lightness();
 
   await screen.rerender(sky);
-  await expect.poll(lightness, SLOW).toBeLessThan(noon - drop);
+  await settle(() => lightness() < noon - drop);
 });
 
 /** How far red leads the other channels at the canvas's middle. */
@@ -237,7 +235,7 @@ function redness(drawn: () => [number, number, number] | undefined): number {
 test("a roof in its block's colour reads in that colour's hue, redder than the finish's own", async () => {
   const own = await closeUp(false, false);
 
-  await expect.poll(() => own.drawn()?.[0] ?? 0, SLOW).toBeGreaterThan(0);
+  await settle(() => (own.drawn()?.[0] ?? 0) > 0);
 
   const plain = redness(own.drawn);
 
@@ -245,7 +243,7 @@ test("a roof in its block's colour reads in that colour's hue, redder than the f
 
   const red = await closeUp(false, false, undefined, "#9c4a32");
 
-  await expect.poll(() => redness(red.drawn), SLOW).toBeGreaterThan(plain + 30);
+  await settle(() => redness(red.drawn) > plain + 30);
 });
 
 test("a click on a module reports its grid; on the bare roof, the point it struck", async () => {

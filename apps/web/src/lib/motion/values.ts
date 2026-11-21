@@ -13,6 +13,8 @@ export const EXIT_MS = 150;
 
 /** The springs that take over from a finger at its release velocity. */
 export const SPRINGS = {
+  /** Any spring not named below. */
+  standard: { stiffness: 260, damping: 28 },
   /** A drill-in's back-swipe. */
   drillIn: { stiffness: 300, damping: 32 },
   /** A range card's pane. */

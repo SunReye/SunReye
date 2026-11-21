@@ -4,6 +4,7 @@ import { page, type Locator } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import DateField from "./date-field.svelte";
+import { closed } from "../motion/animations.harness.ts";
 
 const YEAR = new Date().getFullYear();
 
@@ -53,7 +54,7 @@ test("a compact field drops this year, names the whole day and steps years from 
   await calendar.getByRole("button", { name: new RegExp(`, 10\\. Juni ${YEAR + 4}`, "u") }).click();
 
   expect(picked).toEqual([`${YEAR + 4}-06-10`]);
-  await expect.element(calendar).not.toBeInTheDocument();
+  await closed(calendar);
 });
 
 test("a shortcut picks its day, and rests while that day is picked", async () => {
@@ -64,7 +65,7 @@ test("a shortcut picks its day, and rests while that day is picked", async () =>
   await page.getByRole("button", { name: "Heute", exact: true }).click();
 
   expect(picked).toEqual(["2026-11-15"]);
-  await expect.element(page.getByRole("grid")).not.toBeInTheDocument();
+  await closed(page.getByRole("grid"));
 
   await screen.rerender({ value: "2026-11-15" });
   await screen.getByRole("button", { name: /^Tag: /u }).click();

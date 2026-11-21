@@ -1,4 +1,4 @@
-import { createRawSnippet } from "svelte";
+import { createRawSnippet, tick } from "svelte";
 import { afterEach, expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
@@ -28,7 +28,10 @@ test("a level slides in on ADR 21's ease-in-out, cubic-bezier(0.65, 0, 0.35, 1)"
     // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the DOM's own type.
     level.getAnimations().filter((each) => Number(each.effect?.getTiming().duration) > 0);
 
-  await expect.poll(() => travels().length).toBe(1);
+  // No frame passes: the travel starts as the level is drawn.
+  await tick();
+
+  expect(travels()).toHaveLength(1);
 
   const slide = travels()[0]!;
 

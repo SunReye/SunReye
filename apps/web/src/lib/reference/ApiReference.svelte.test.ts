@@ -1,14 +1,19 @@
 import "../../app.css";
 import { setMode } from "mode-watcher";
 import { afterEach, beforeEach, expect, test } from "vitest";
+import type { Locator } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import type { Problem } from "../api/client.ts";
 import { API_DOCUMENT } from "../api/core.harness.ts";
 import type { ApiDocument } from "../api/reference.ts";
 import ApiReference from "./ApiReference.svelte";
+import { settle } from "../motion/clock.harness.ts";
 
-// Scalar draws the reference slowly while other suites run.
-const SLOW = { timeout: 15_000 };
+/** Until Scalar has loaded and drawn `heading`, as long as that takes. */
+async function shown(heading: Readonly<Locator>): Promise<void> {
+  await settle(() => heading.query() !== null);
+  await expect.element(heading).toBeVisible();
+}
 
 /** The document as the core client hands it: its server the core's root. */
 const SERVED = { ...API_DOCUMENT, servers: [{ url: "http://core.test/prefix" }] };
@@ -29,9 +34,7 @@ afterEach(() => {
 test("the reference shows the core's operations, and reaches nothing past the page", async () => {
   const screen = await render(ApiReference, { core: core(SERVED) });
 
-  await expect
-    .element(screen.getByRole("heading", { name: "Every saved view" }), SLOW)
-    .toBeVisible();
+  await shown(screen.getByRole("heading", { name: "Every saved view" }));
   // The document came from the core: no fonts, no proxy, no telemetry from elsewhere.
   expect(
     performance
@@ -44,9 +47,7 @@ test("the reference shows the core's operations, and reaches nothing past the pa
 test("following the reference leaves the router's hash as it was", async () => {
   const screen = await render(ApiReference, { core: core(SERVED) });
 
-  await expect
-    .element(screen.getByRole("heading", { name: "Every saved view" }), SLOW)
-    .toBeVisible();
+  await shown(screen.getByRole("heading", { name: "Every saved view" }));
 
   for (const link of screen.container.querySelectorAll<HTMLAnchorElement>("a[href^='#']"))
     link.click();
@@ -58,13 +59,11 @@ test("the reference wears the app's theme, follows it, and leaves the page's bod
   const before = document.body.className;
   const screen = await render(ApiReference, { core: core(SERVED) });
 
-  await expect
-    .element(screen.getByRole("heading", { name: "Every saved view" }), SLOW)
-    .toBeVisible();
+  await shown(screen.getByRole("heading", { name: "Every saved view" }));
   expect(document.body.classList.contains("dark-mode")).toBe(true);
 
   setMode("light");
-  await expect.poll(() => document.body.classList.contains("light-mode"), SLOW).toBe(true);
+  await settle(() => document.body.classList.contains("light-mode"));
 
   await screen.unmount();
   expect(document.body.className).toBe(before);

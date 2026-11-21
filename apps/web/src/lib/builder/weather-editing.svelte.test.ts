@@ -5,8 +5,10 @@ import { render } from "vitest-browser-svelte";
 import { connect, type Transport } from "../api/core.ts";
 import { eachSeries } from "../api/core.harness.ts";
 import { Studio } from "../scene/studio.ts";
+import type { Falling, SceneWeather } from "../scene/weather.ts";
 import Builder from "./Builder.svelte";
-import { DEVICES, house, inspector, MODULE, pv } from "./builder.harness.ts";
+import { DEVICES, house, inspector, MODULE, pv, settle } from "./builder.harness.ts";
+import { closed } from "../motion/animations.harness.ts";
 
 // The builder's weather (ADR 23 "Builder"): the dashboard's until the admin edits.
 
@@ -41,6 +43,30 @@ const snowedIn: Transport = {
   },
 };
 
+/** What the scene's light is told of the weather, as far as the tests read it. */
+interface Told {
+  readonly fog?: number;
+  readonly wet?: number;
+  readonly snow?: boolean;
+  readonly thunder?: boolean;
+  readonly falling?: Falling["kind"] | undefined;
+}
+
+/** Whether `got` holds every value `want` names. */
+function shows(got: SceneWeather | undefined, want: Told): boolean {
+  if (got === undefined) return false;
+
+  const told: Told = {
+    fog: got.fog,
+    wet: got.wet,
+    snow: got.snow,
+    thunder: got.thunder,
+    falling: got.falling?.kind,
+  };
+
+  return JSON.stringify({ ...told, ...want }) === JSON.stringify(told);
+}
+
 beforeEach(async () => {
   await page.viewport(1280, 900);
 });
@@ -57,12 +83,12 @@ test("the builder shows the instant's fog until a block is picked to edit, and l
     devices: DEVICES,
   });
 
-  await expect.poll(weather, { timeout: 15_000 }).toMatchObject({ fog: 1, wet: 1, snow: true });
+  await settle(() => shows(weather(), { fog: 1, wet: 1, snow: true }));
 
   // The isometric view looks at the house's middle.
   await page.getByLabelText("3D-Szene des Hauses").click();
   await expect.element(inspector().getByRole("heading", { name: "Baukörper 1" })).toBeVisible();
-  await expect.poll(weather, { timeout: 15_000 }).toMatchObject({ fog: 0, wet: 0, snow: true });
+  await settle(() => shows(weather(), { fog: 0, wet: 0, snow: true }));
 
   lighted.mockRestore();
 });
@@ -79,26 +105,28 @@ test("a trial weather from the weather button stands in for the stored one until
     devices: DEVICES,
   });
 
-  await expect.poll(weather, { timeout: 15_000 }).toMatchObject({ fog: 1, snow: true });
+  await settle(() => shows(weather(), { fog: 1, snow: true }));
 
   await page.getByRole("button", { name: "Wetter" }).click();
   await page.getByRole("menuitemradio", { name: "Gewitter" }).click();
   // The pick closes the menu.
-  await expect.element(page.getByRole("menu")).not.toBeInTheDocument();
+  await closed(page.getByRole("menu"));
 
-  await expect.poll(weather, { timeout: 15_000 }).toMatchObject({
-    fog: 0,
-    wet: 1,
-    snow: false,
-    thunder: true,
-    falling: { kind: "rain" },
-  });
+  await settle(() =>
+    shows(weather(), {
+      fog: 0,
+      wet: 1,
+      snow: false,
+      thunder: true,
+      falling: "rain",
+    }),
+  );
 
   await page.getByRole("button", { name: "Wetter" }).click();
   await expect.element(page.getByRole("menuitemradio", { name: "Gewitter" })).toBeChecked();
   await page.getByRole("menuitemradio", { name: "Gespeichert" }).click();
 
-  await expect.poll(weather, { timeout: 15_000 }).toMatchObject({ fog: 1, snow: true });
+  await settle(() => shows(weather(), { fog: 1, snow: true }));
 
   lighted.mockRestore();
 });

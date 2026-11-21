@@ -2,6 +2,7 @@ import { expect, test, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect, type Transport } from "../api/core.ts";
+import { haptics } from "../haptics.ts";
 import PasswordStep from "./PasswordStep.svelte";
 
 /** A fresh core: it takes the password, then signs the admin in with it. */
@@ -41,4 +42,18 @@ test("the admin repeats the password, which is set and signs them in", async () 
     '/api/v1/setup {"password":"solar sun"}',
     '/api/v1/login {"password":"solar sun"}',
   ]);
+});
+
+test("each mismatched submit plays the error haptic once", async () => {
+  const error = vi.spyOn(haptics, "error");
+  const screen = await render(PasswordStep, { core: connect(testCore()), ondone: () => {} });
+
+  await userEvent.fill(screen.getByLabelText("Passwort", { exact: true }), "solar sun");
+  await userEvent.fill(screen.getByLabelText("Passwort wiederholen"), "solar son");
+  await screen.getByRole("button", { name: "Passwort festlegen" }).click();
+  await expect.element(screen.getByRole("alert")).toBeVisible();
+  await screen.getByRole("button", { name: "Passwort festlegen" }).click();
+
+  expect(error).toHaveBeenCalledTimes(2);
+  error.mockRestore();
 });

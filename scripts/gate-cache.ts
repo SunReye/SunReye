@@ -40,8 +40,19 @@ async function walked(root: string, dir: string): Promise<string[]> {
   );
 }
 
+/** The environment a check may read: the build's and test's own switches, not the shell's. */
+const READ_ENV =
+  /^(?:CARGO|RUST|SOURCE_DATE_EPOCH$|NODE|BUN|VITE|DB_|DATABASE|SKIP_ENV|INVERTER|SUNREYE|TZ$|LANG$|LC_)/u;
+
+function readEnv(env: Readonly<Record<string, string | undefined>>): string[] {
+  return Object.entries(env)
+    .filter((entry: readonly [string, string | undefined]) => READ_ENV.test(entry[0]))
+    .map((entry: readonly [string, string | undefined]) => `${entry[0]}=${entry[1] ?? ""}`)
+    .toSorted();
+}
+
 /** Hashes each file once per gate run, however many steps read it. */
-export function hasher(root: string) {
+export function hasher(root: string, env: Readonly<Record<string, string | undefined>>) {
   const hashes = new Map<string, Promise<string>>();
 
   const hashOf = (path: string): Promise<string> => {
@@ -67,7 +78,7 @@ export function hasher(root: string) {
     const each = await Promise.all(paths.map(async (path) => `${path}\0${await hashOf(path)}`));
 
     return createHash("sha256")
-      .update([Bun.version, step, ...each].join("\0"))
+      .update([Bun.version, step, ...readEnv(env), ...each].join("\0"))
       .digest("hex");
   };
 }

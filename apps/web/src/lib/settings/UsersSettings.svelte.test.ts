@@ -6,6 +6,7 @@ import "../../app.css";
 import { connect, type Transport } from "../api/core.ts";
 import SettingsScreen from "./SettingsScreen.svelte";
 import { problem } from "./settings.harness.ts";
+import { closed } from "../motion/animations.harness.ts";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -121,6 +122,7 @@ test("an added viewer joins the list, and a taken name says why", async () => {
   await userEvent.fill(page.getByRole("textbox", { name: "Name" }), "Opa");
   await userEvent.fill(page.getByLabelText("Passwort"), "sonnenschein");
   await userEvent.click(page.getByRole("button", { name: "Betrachter hinzufügen" }).last());
+  await closed(page.getByRole("dialog"));
 
   await expect.element(viewers.getByRole("list").getByText("Opa", { exact: true })).toBeVisible();
 

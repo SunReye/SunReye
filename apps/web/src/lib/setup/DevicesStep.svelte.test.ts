@@ -5,6 +5,7 @@ import { connect, type Device, type Transport } from "../api/core.ts";
 import "../../app.css";
 import { tap } from "../builder/pointer.harness.ts";
 import DevicesStep from "./DevicesStep.svelte";
+import { closed } from "../motion/animations.harness.ts";
 
 /** A phone; the value editor lands at once. */
 beforeEach(async () => {
@@ -25,7 +26,7 @@ async function enter(row: string, value: string): Promise<void> {
   await userEvent.fill(page.getByRole("textbox", { name: `${row} eingeben` }), value);
   await userEvent.keyboard("{Enter}");
   await page.getByRole("button", { name: /^Übernehmen/u }).click();
-  await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+  await closed(page.getByRole("dialog"));
 }
 
 const ADDED = {
@@ -68,6 +69,7 @@ async function pick(at: string, search: string, name: string): Promise<void> {
   await page.getByRole("button", { name: `Profil für ${at}` }).click();
   await userEvent.fill(page.getByRole("searchbox", { name: "Profil suchen" }), search);
   await page.getByRole("button", { name: new RegExp(`^${name}`, "u") }).click();
+  await closed(page.getByRole("dialog"));
 }
 
 const REPORT = {
@@ -84,6 +86,9 @@ const REPORT = {
     { transport: "modbus-tcp", host: "192.168.1.30", port: 502, devices: [] },
   ],
 };
+
+/** The device the scan finds, as its checkbox names it. */
+const FOUND = "SUN-15K-SG05LP3-EU-SM2 an 192.168.1.20:8899, Adresse 1";
 
 /**
  * A core whose scan finds the report above; it adds the connection as 5 and the device as 6,
@@ -132,13 +137,7 @@ test("the admin confirms a scanned device under a name of their own", async () =
 
   await screen.getByRole("button", { name: "Netzwerk durchsuchen" }).click();
 
-  await expect
-    .element(
-      screen.getByRole("checkbox", {
-        name: "SUN-15K-SG05LP3-EU-SM2 an 192.168.1.20:8899, Adresse 1",
-      }),
-    )
-    .toBeChecked();
+  await expect.element(screen.getByRole("checkbox", { name: FOUND })).toBeChecked();
   await userEvent.fill(screen.getByLabelText("Name von SUN-15K-SG05LP3-EU-SM2"), "Wechselrichter");
   await screen.getByRole("button", { name: "Ausgewählte Geräte hinzufügen" }).click();
 
@@ -180,9 +179,7 @@ test("the admin enters by hand an endpoint no profile recognises", async () => {
   const screen = await render(DevicesStep, { core: connect(transport), ondone: done });
 
   await screen.getByRole("button", { name: "Netzwerk durchsuchen" }).click();
-  await screen
-    .getByRole("checkbox", { name: "SUN-15K-SG05LP3-EU-SM2 an 192.168.1.20:8899, Adresse 1" })
-    .click();
+  await screen.getByRole("checkbox", { name: FOUND }).click();
   await screen.getByRole("button", { name: /^Weitere Geräte im Netzwerk/u }).click();
   await screen.getByRole("button", { name: "192.168.1.30:502 von Hand hinzufügen" }).click();
   await pick("192.168.1.30:502", "sunspec", "SunSpec device");
@@ -203,6 +200,8 @@ async function gateway(): Promise<void> {
   await userEvent.fill(page.getByLabelText("Host"), "192.168.1.40");
   await enter("Port", "4196");
   await tap(page.getByRole("radio", { name: "rtu-over-tcp" }));
+  // A tap's click lands after the touch has ended: the next tap may not overtake it.
+  await expect.element(page.getByRole("radio", { name: "rtu-over-tcp" })).toBeChecked();
   await tap(page.getByRole("button", { name: "Endpunkt hinzufügen" }));
 }
 
@@ -290,11 +289,5 @@ test("a running scan shows its progress", async () => {
     .element(screen.getByRole("status").getByText(/Netzwerk wird durchsucht/u))
     .toBeVisible();
   report.resolve(Response.json(REPORT));
-  await expect
-    .element(
-      screen.getByRole("checkbox", {
-        name: "SUN-15K-SG05LP3-EU-SM2 an 192.168.1.20:8899, Adresse 1",
-      }),
-    )
-    .toBeChecked();
+  await expect.element(screen.getByRole("checkbox", { name: FOUND })).toBeChecked();
 });

@@ -7,9 +7,7 @@ import { motion } from "../motion/tier.svelte.ts";
 import { presetView } from "./camera.ts";
 import type { Geometry, Point } from "./pv.ts";
 import SceneCanvas from "./SceneCanvas.svelte";
-
-// Software GL renders the sky and shadows slowly while other suites run.
-const SLOW = { timeout: 15_000 };
+import { stepUntil } from "../motion/clock.harness.ts";
 
 type Projector = (point: Point) => readonly [number, number] | null;
 
@@ -56,13 +54,12 @@ async function flying() {
     },
   });
 
-  await expect
-    .poll(() => {
+  await stepUntil(
+    () => project !== undefined,
+    () => {
       vi.advanceTimersByTime(FRAME);
-
-      return project;
-    }, SLOW)
-    .toBeDefined();
+    },
+  );
 
   const at = (): readonly [number, number] => project?.([-4, 0, 8]) ?? [Number.NaN, Number.NaN];
 

@@ -3,7 +3,6 @@
   import Eyebrow from "../components/eyebrow.svelte";
   import type { PointDraft } from "../api/core.ts";
   import * as RadioGroup from "../components/ui/radio-group/index.js";
-  import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
   import { roleOf } from "./point-look.ts";
   import PointTile from "./PointTile.svelte";
@@ -33,7 +32,6 @@
     aria-label={m.topology_move()}
     value={String(points[index]?.parent ?? "")}
     onValueChange={(at) => {
-      haptics.selection();
       onmove(Number(at));
     }}
   >

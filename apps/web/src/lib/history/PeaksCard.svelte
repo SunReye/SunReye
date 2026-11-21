@@ -1,9 +1,7 @@
 <!-- The range's highest powers, each with its hour or, over several days, the day it opens. -->
 <script lang="ts">
-  import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import GlassCard from "../components/glass-card.svelte";
-  import { Pressable } from "../components/ui/pressable/index.js";
-  import { haptics } from "../haptics.ts";
+  import OpenRow from "../components/open-row.svelte";
   import { m } from "../paraglide/messages.js";
   import { formatPower } from "../power.ts";
   import type { Range } from "../range/range.ts";
@@ -39,18 +37,16 @@
       <li>
         {#if p.range}
           {@const range = p.range}
-          <Pressable
-            feedback
-            class="flex w-full items-baseline gap-2 px-4 py-2 text-left"
-            aria-label={m.stats_peak_open({ name: p.label, day: p.when })}
-            onclick={() => {
-              haptics.soft();
+          <OpenRow
+            class="items-baseline gap-2 px-4 py-2"
+            chevron="self-center"
+            label={m.stats_peak_open({ name: p.label, day: p.when })}
+            onopen={() => {
               onopen(range);
             }}
           >
             {@render line(p)}
-            <ChevronRight class="size-4 shrink-0 self-center text-muted-foreground" />
-          </Pressable>
+          </OpenRow>
         {:else}
           <div class="flex items-baseline gap-2 px-4 py-2">{@render line(p)}</div>
         {/if}

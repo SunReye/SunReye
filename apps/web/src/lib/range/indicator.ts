@@ -6,7 +6,7 @@ import type { Attachment } from "svelte/attachments";
 import { motion } from "../motion/tier.svelte.ts";
 
 const GLIDE =
-  "transform var(--motion-move) var(--motion-ease-in-out), opacity 150ms var(--motion-ease)";
+  "transform var(--motion-move) var(--motion-ease-in-out), opacity var(--motion-fast) var(--motion-ease)";
 
 const BOX = {
   position: "absolute",

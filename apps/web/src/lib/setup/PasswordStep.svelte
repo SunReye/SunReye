@@ -3,9 +3,8 @@
   import TextField from "../components/text-field.svelte";
   import type { Core, Problem } from "../api/core.ts";
   import { Button } from "#lib/components/ui/button/index.js";
-  import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
-  import Refusal from "./Refusal.svelte";
+  import Refusal, { answered, refusedInline } from "./Refusal.svelte";
 
   let { core, ondone }: { core: Core; ondone: () => void } = $props();
 
@@ -22,13 +21,13 @@
     mismatch = password === repeated ? undefined : m.password_mismatch();
 
     if (mismatch !== undefined) {
-      haptics.error();
+      refusedInline();
 
       return;
     }
 
     // Setting the password signs no one in; the admin signs in with it at once.
-    refused = (await core.setPassword(password)) ?? (await core.signIn(password));
+    refused = answered((await core.setPassword(password)) ?? (await core.signIn(password)));
 
     if (refused === undefined) ondone();
   }

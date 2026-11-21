@@ -3,20 +3,12 @@ import { vi } from "vitest";
 
 export { eachSeries, problem, tally } from "./core.harness.ts";
 
-/** One turn of the page's own event loop, on no timer: a response's body is read on such turns. */
+/**
+ * One turn of the page's own event loop, on no timer, after all it has queued: a response's body
+ * is read on such turns, and work the page put off till it is idle runs before it.
+ */
 export function turn(): Promise<void> {
-  const { port1, port2 } = new MessageChannel();
-
-  const turned = new Promise<void>((resolve) => {
-    port1.addEventListener("message", () => {
-      resolve();
-    });
-  });
-
-  port1.start();
-  port2.postMessage(null);
-
-  return turned;
+  return scheduler.postTask(() => {}, { priority: "background" });
 }
 
 /**

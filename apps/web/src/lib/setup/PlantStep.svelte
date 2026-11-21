@@ -7,9 +7,8 @@
   import ComboboxField from "../components/combobox-field.svelte";
   import FormField from "../components/form-field.svelte";
   import TextField from "../components/text-field.svelte";
-  import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
-  import Refusal from "./Refusal.svelte";
+  import Refusal, { answered, refusedInline } from "./Refusal.svelte";
 
   let {
     core,
@@ -68,11 +67,10 @@
         kept = undefined;
         latitudeText = String(round(coords.latitude));
         longitudeText = String(round(coords.longitude));
-        haptics.selection();
       },
       () => {
         kept = m.plant_here_refused();
-        haptics.error();
+        refusedInline();
       },
     );
   }
@@ -89,7 +87,7 @@
     const set = await core.setTimezone(zone);
     const placed = set ?? (await core.setLocation(location));
 
-    refused = placed !== undefined && "problem" in placed ? placed : undefined;
+    refused = placed !== undefined && "problem" in placed ? answered(placed) : undefined;
 
     if (refused === undefined) ondone();
   }

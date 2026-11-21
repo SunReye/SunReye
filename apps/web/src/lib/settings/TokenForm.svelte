@@ -7,6 +7,7 @@
   import { m } from "../paraglide/messages.js";
   import AccessForm from "./AccessForm.svelte";
   import { SCOPES } from "./scopes.ts";
+  import { answered } from "../feedback.ts";
 
   let {
     add,
@@ -26,7 +27,7 @@
     const answer = await add(name.trim(), scope);
 
     if ("problem" in answer) {
-      refused = answer;
+      refused = answered(answer);
 
       return;
     }

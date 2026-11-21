@@ -38,7 +38,7 @@
     {#if day === undefined}
       <Skeleton class="absolute inset-0" role="status" aria-label={m.loading()} />
     {:else}
-      <span class="absolute inset-0"><DayChart rows={day.rows} now={day.now} {hours} /></span>
+      <span class="absolute inset-0"><DayChart rows={day.rows} now={day.now} {hours} live /></span>
     {/if}
   </span>
 </Pressable>

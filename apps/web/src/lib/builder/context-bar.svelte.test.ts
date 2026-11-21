@@ -16,6 +16,7 @@ import {
   phone,
   press,
   pv,
+  settle,
   SOUTH,
   starts,
   tap,
@@ -23,8 +24,6 @@ import {
   undesk,
 } from "./builder.harness.ts";
 import { addGrid } from "./modules.ts";
-
-const SLOW = { timeout: 15_000 };
 
 /** The context toolbar on the canvas. */
 const bar = () => page.getByRole("toolbar", { name: "Aktionen" });
@@ -53,7 +52,7 @@ async function built(start = house()) {
     limits: { 1: 400 },
     inputs: { 1: [{ maxCurrent: 36, minVoltage: 160, maxVoltage: 650, startVoltage: 160 }] },
   });
-  await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
+  await settle(() => draws.mock.calls.length > 0);
 }
 
 test("nothing selected, no toolbar; a picked opening carries duplicate, night light and remove", async () => {

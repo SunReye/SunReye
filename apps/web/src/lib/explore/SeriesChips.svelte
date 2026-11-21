@@ -1,8 +1,6 @@
 <!-- The chosen series as removable chips, then "Add series" (ADR 22). -->
 <script lang="ts">
-  import Plus from "@lucide/svelte/icons/plus";
-  import { Button } from "#lib/components/ui/button/index.js";
-  import { haptics } from "../haptics.ts";
+  import AddButton from "../components/add-button.svelte";
   import { m } from "../paraglide/messages.js";
   import type { Chosen } from "./picker.ts";
   import SeriesChip from "./SeriesChip.svelte";
@@ -36,14 +34,5 @@
       {/each}
     </ul>
   {/if}
-  <Button
-    variant="outline"
-    size="sm"
-    onclick={() => {
-      haptics.light();
-      onadd();
-    }}
-  >
-    <Plus data-icon="inline-start" />{m.explore_add()}
-  </Button>
+  <AddButton text={m.explore_add()} {onadd} />
 </div>
