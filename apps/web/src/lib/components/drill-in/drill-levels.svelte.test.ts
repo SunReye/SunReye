@@ -64,7 +64,7 @@ test("no surface changes height across a drill in and out", async () => {
 
   // Every glass surface drawn, each frame of both slides.
   const stop = everyFrame(() => {
-    for (const surface of document.querySelectorAll(".glass-ambient, .drill-card")) {
+    for (const surface of document.querySelectorAll(".glass-ambient")) {
       const height = Math.round(surface.getBoundingClientRect().height);
       const before = first.get(surface) ?? height;
 
@@ -125,4 +125,24 @@ test("a level opens at its top and back returns the root to where it was", async
   // The root came back where it lands, and the level's header left from the top of the screen.
   expect([...returning.seen]).toEqual([resting]);
   expect([...leaving.seen]).toEqual([stuck]);
+});
+
+/** The card a level's text stands on. */
+const card = () =>
+  page.getByText("Seite Batterie", { exact: true }).element().closest("[data-slot=card]");
+
+test("a level's section is the kit card on a phone, and no second card in a pane", async () => {
+  await page.viewport(390, 844);
+  const phone = await render(Harness, { width: 390, initial: "battery" });
+  await until(() => offset() === 0);
+
+  expect(card()?.closest("[data-drill=level]")).not.toBeNull();
+
+  await phone.unmount();
+  await page.viewport(1280, 800);
+  await render(Harness, { width: 1200, initial: "battery" });
+
+  expect(document.querySelectorAll("section[aria-label=Batterie] [data-slot=card]")).toHaveLength(
+    0,
+  );
 });

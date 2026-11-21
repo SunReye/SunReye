@@ -68,18 +68,10 @@ export class ForecastData {
     );
   }
 
-  get travel() {
-    return this.#data.travel;
+  /** The range's read, which the card's pane travels by or states the failure of. */
+  get read() {
+    return this.#data;
   }
-
-  /** The last read of the range failed. */
-  get failed(): boolean {
-    return this.#data.failed;
-  }
-
-  retry = (): void => {
-    this.#data.retry();
-  };
 
   drill = (i: number): void => {
     this.#data.drill(i);

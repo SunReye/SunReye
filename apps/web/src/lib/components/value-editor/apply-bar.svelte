@@ -1,8 +1,8 @@
 <!-- The editor's apply, "Apply 100 A → 80 A", and the problem an apply left (ADR 21). -->
 <script lang="ts">
   import ArrowRight from "@lucide/svelte/icons/arrow-right";
-  import LoaderCircle from "@lucide/svelte/icons/loader-circle";
   import { Button } from "#lib/components/ui/button/index.js";
+  import { Spinner } from "#lib/components/ui/spinner/index.js";
   import { m } from "../../paraglide/messages.js";
   import type { Outcome } from "./editable.ts";
   import WriteProblem from "./write-problem.svelte";
@@ -55,7 +55,7 @@
 {/if}
 
 <Button size="lg" class="h-11 w-full text-[15px]" {disabled} onclick={onapply}>
-  {#if pending}<LoaderCircle class="animate-spin" />{/if}
+  {#if pending}<Spinner aria-hidden="true" />{/if}
   {label.lead}
   {#if label.from}<span class="opacity-70">{label.from}</span>{/if}
   {#if label.arrow}<ArrowRight class="size-4 opacity-70" />{/if}

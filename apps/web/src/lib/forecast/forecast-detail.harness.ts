@@ -111,6 +111,13 @@ function targets(watts: Watts | undefined, from: number, to: number) {
   return { points };
 }
 
+export interface Refusing {
+  /** What the core refuses the inverter's forecasts with, as asked; none while it answers. */
+  code: string | undefined;
+}
+
+export const refusing: Refusing = { code: undefined };
+
 /** A core storing `stored` for the inverter, and each read it was asked for. */
 function fake(stored: Readonly<Record<string, Watts>>) {
   const asked: string[] = [];
@@ -124,6 +131,8 @@ function fake(stored: Readonly<Record<string, Watts>>) {
     }),
     forecasts: perSeries((device, series: string, from: Readonly<Date>, to: Readonly<Date>) => {
       asked.push(`forecasts ${device} ${series}`);
+
+      if (refusing.code !== undefined && device !== WEATHER) return { problem: refusing.code };
 
       const of = device === WEATHER ? SKY.get(series) : stored[series];
 
@@ -165,7 +174,9 @@ const today = (stored: Readonly<Record<string, Watts>>, now = NOW) => ({
   ),
 });
 
-export async function show(stored: Parameters<typeof fake>[0] = STRINGS) {
+/** The sheet over a core storing `stored`, which refuses the inverter's forecasts with `refused`. */
+export async function show(stored: Parameters<typeof fake>[0] = STRINGS, refused?: string) {
+  refusing.code = refused;
   await page.viewport(390, 800);
   const { core, asked } = fake(stored);
   const screen = await render(ForecastDetail, { core, day: today(stored) });

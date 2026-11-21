@@ -1,5 +1,6 @@
 <!-- Test harness: the drill-in on a stand-in hash route kept in the real browser history. -->
 <script lang="ts">
+  import DrillCard from "./drill-card.svelte";
   import "../../../app.css";
   import DrillIn from "./drill-in.svelte";
 
@@ -52,11 +53,11 @@
 <div style:width="{width}px">
   <DrillIn {groups} {open} onnavigate={navigate} {back}>
     {#snippet page(group)}
-      <div class="drill-card">
+      <DrillCard>
         <p>Seite {group.label}</p>
         {#if wide}<div style="width: 900px">breit</div>{/if}
         {#if tall}<div style="height: 1600px">lang</div>{/if}
-      </div>
+      </DrillCard>
     {/snippet}
   </DrillIn>
 </div>

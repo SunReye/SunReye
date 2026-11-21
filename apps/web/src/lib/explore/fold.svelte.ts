@@ -1,6 +1,7 @@
 // Fold mode's state (ADR 22): whether the series folds, the period from the hash route, and the
 // statistics read for the range, one call per fold.
-import { only, type Period } from "../api/core.ts";
+import { answerOf, settleRead } from "../api/client.ts";
+import { only, type Period, type Problem } from "../api/core.ts";
 import { foldTable } from "./csv.ts";
 import {
   FOLD_PARAM,
@@ -24,6 +25,8 @@ export interface Folded {
   readonly from: number;
   readonly to: number;
   readonly failed: boolean;
+  /** Why the core refused the read; none for a lost core. */
+  readonly refused?: Problem | undefined;
   readonly counter: boolean;
   readonly rows: readonly FoldRow[];
 }
@@ -73,20 +76,23 @@ export class Fold extends ModeView<Folded | null> {
 
     if (this.state !== "read") return null;
 
-    // An unreachable core rejects; a refusal answers with a problem.
-    const read = await core
-      .statistics(ref.device, [ref.series], period, new Date(from), new Date(to))
-      .then(only, () => ({ problem: "network" }) as const);
-
     const base = { ref, period, zone, attempt, from: from.getTime(), to: to.getTime() };
 
-    if (!("points" in read)) return { ...base, failed: true, counter: false, rows: [] };
+    const got = await settleRead(
+      core
+        .statistics(ref.device, [ref.series], period, new Date(from), new Date(to))
+        .then(only)
+        .then(answerOf),
+    );
+
+    if (got.failed)
+      return { ...base, failed: true, refused: got.refused, counter: false, rows: [] };
 
     return {
       ...base,
       failed: false,
-      counter: isCounter(kind ?? null, read.points),
-      rows: rowsOf(read.points),
+      counter: isCounter(kind ?? null, got.data.points),
+      rows: rowsOf(got.data.points),
     };
   }
 

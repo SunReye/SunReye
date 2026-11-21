@@ -33,8 +33,8 @@
   {#if tariff !== undefined}
     <StatStrip
       stats={[
-        { label: m.tariff_import(), value: ctPerKwh(tariff["price.import"]) },
-        { label: m.tariff_export(), value: ctPerKwh(tariff["price.export"]) },
+        { label: m.tariff_import(), text: ctPerKwh(tariff["price.import"]) },
+        { label: m.tariff_export(), text: ctPerKwh(tariff["price.export"]) },
       ]}
     />
   {/if}

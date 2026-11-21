@@ -84,7 +84,7 @@
 
 <Card.Root
   size="sm"
-  class="glass-ambient grid shrink-0 grid-cols-3 gap-0 divide-x divide-border/60 py-0"
+  class="grid shrink-0 grid-cols-3 gap-0 divide-x divide-border/60 py-0"
   role="group"
   aria-label={m.dash_now()}
 >

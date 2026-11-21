@@ -1,9 +1,17 @@
 // Every test file's page runs in one tab of one origin: what a test leaves behind there steers the
 // files after it.
-import { afterEach, beforeAll } from "vitest";
+import { afterEach, beforeAll, inject } from "vitest";
 import { commands } from "vitest/browser";
 import { watchAnimations } from "./lib/motion/animations.harness.ts";
 import { watchFrames } from "./lib/motion/clock.harness.ts";
+import { watchDraws } from "./scene-draws.ts";
+
+declare module "vitest" {
+  export interface ProvidedContext {
+    /** The file runs in the serial scene project, where WebGL may draw. */
+    scene: boolean;
+  }
+}
 
 // What the browser does only on a frame it draws, a test does when it waits on it.
 watchFrames();
@@ -15,7 +23,17 @@ beforeAll(async () => {
   await commands.frameKnown();
 });
 
+// Outside the scene project nothing draws with WebGL: every page shares one software renderer.
+const drew = inject("scene")
+  ? () => false
+  : watchDraws([WebGLRenderingContext, WebGL2RenderingContext]);
+
 afterEach(() => {
+  if (drew())
+    throw new Error(
+      "This test drew with WebGL: list its file in scene-tests.ts, so it runs in the serial scene project.",
+    );
+
   // A browser remembered without WebGL2, the 2D view chosen.
   localStorage.clear();
   sessionStorage.clear();

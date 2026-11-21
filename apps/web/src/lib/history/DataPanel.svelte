@@ -52,13 +52,13 @@
     stats={[
       {
         label: m.stats_coverage({ range: label }),
-        value:
+        text:
           coverage === null
             ? "–"
             : `${num(coverage * 100, coverage < 1 && coverage > 0.99 ? 1 : 0)} %`,
       },
-      { label: m.stats_gap_total(), value: num(Math.max(0, elapsed - covered) / HOUR) },
-      { label: m.stats_recording_since(), value: since === null ? "–" : shortDay(since, true) },
+      { label: m.stats_gap_total(), text: num(Math.max(0, elapsed - covered) / HOUR) },
+      { label: m.stats_recording_since(), text: since === null ? "–" : shortDay(since, true) },
     ]}
   />
 

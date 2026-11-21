@@ -105,7 +105,7 @@
 
 <Card.Root
   size="sm"
-  class="glass-ambient @container min-h-0 gap-0 py-0 lg:flex-1"
+  class="@container min-h-0 gap-0 py-0 lg:flex-1"
   role="group"
   aria-label={m.dash_today()}
 >

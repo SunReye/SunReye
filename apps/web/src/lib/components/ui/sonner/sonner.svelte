@@ -31,7 +31,8 @@
 	{...restProps}
 >
 	{#snippet loadingIcon()}
-		<Loader2Icon class="size-4 animate-spin" />
+		<!-- Local: the spin stops under reduced motion, as the kit's spinner (ADR 21, #836). -->
+		<Loader2Icon class="size-4 animate-spin motion-reduce:animate-none" />
 	{/snippet}
 	{#snippet successIcon()}
 		<CircleCheckIcon class="size-4" />

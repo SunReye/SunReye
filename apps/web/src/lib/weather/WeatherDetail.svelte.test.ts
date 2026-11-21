@@ -113,6 +113,30 @@ test("without stored weather it says so", async () => {
   expect(screen.getByRole("img", { name: "Temperatur", exact: true }).query()).toBeNull();
 });
 
+test("weather the core refuses fails with its reason, never as no weather", async () => {
+  let refused: string | undefined = "forecast.range";
+
+  const stored = {
+    forecasts: DRY,
+    get refused() {
+      return refused;
+    },
+  };
+
+  const { screen } = await show(stored);
+  const failed = screen.getByRole("alert").filter({ hasText: "Wetter nicht geladen" });
+
+  await expect
+    .element(failed.getByText("Dieser Prognosezeitraum ist leer oder zu lang."))
+    .toBeVisible();
+  expect(screen.getByText("Keine Wetterdaten").query()).toBeNull();
+
+  refused = undefined;
+  await failed.getByRole("button", { name: "Erneut laden" }).click();
+
+  await expect.element(screen.getByRole("img", { name: "Temperatur", exact: true })).toBeVisible();
+});
+
 /** The facts row's cells: each term, its value and where it stands. */
 const facts = () =>
   [...document.querySelectorAll<HTMLElement>("dl > div")].map((cell) => ({

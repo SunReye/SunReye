@@ -35,11 +35,15 @@
     const [from, to] = [got.spans[0]?.[0] ?? 0, got.spans.at(-1)?.[1] ?? 0];
     let live = true;
 
-    void readForecast(core, inverters, from, to).then((next) => {
-      if (live) targets = next;
+    // A failed read keeps the last forecast: the range's own read says it failed.
+    void readForecast(core, inverters, from, to).then(
+      (next) => {
+        if (live) targets = next;
 
-      return next;
-    });
+        return next;
+      },
+      () => null,
+    );
 
     return () => {
       live = false;

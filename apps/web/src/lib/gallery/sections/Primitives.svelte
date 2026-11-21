@@ -2,7 +2,6 @@
 <script lang="ts">
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
   import Eyebrow from "../../components/eyebrow.svelte";
-  import GlassCard from "../../components/glass-card.svelte";
   import PageTitle from "../../components/page-title.svelte";
   import ProblemAlert from "../../components/problem-alert.svelte";
   import Section from "../../components/section.svelte";
@@ -12,9 +11,9 @@
   import Demo from "../Demo.svelte";
 
   const STATS = [
-    { label: "Coverage", value: "98 %" },
-    { label: "Gaps", value: "3.5 h" },
-    { label: "Recording since", value: "3 Mar 2024" },
+    { label: "Coverage", text: "98 %" },
+    { label: "Gaps", text: "3.5 h" },
+    { label: "Recording since", text: "3 Mar 2024" },
   ];
 </script>
 
@@ -37,11 +36,6 @@
       <p class="px-4 py-3 text-sm text-muted-foreground">A card rules its header off.</p>
     </Section>
   </div>
-</Demo>
-
-<Demo name="glass-card">
-  <GlassCard class="w-64 p-4 text-sm">Ambient glass, first step.</GlassCard>
-  <GlassCard raised class="w-64 p-4 text-sm">Raised: the second step.</GlassCard>
 </Demo>
 
 <Demo name="eyebrow">

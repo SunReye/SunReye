@@ -53,7 +53,6 @@ test("the gallery shows every primitive built on the kit", async () => {
   for (const name of [
     "page-title",
     "section",
-    "glass-card",
     "eyebrow",
     "stat-strip",
     "problem-alert",

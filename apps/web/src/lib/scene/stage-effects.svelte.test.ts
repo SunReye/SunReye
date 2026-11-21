@@ -34,4 +34,4 @@ test("the Wettereffekte switch, off, leaves the weather's light alone, at once; 
   expect(fell.mock.lastCall).toEqual([RAIN, false]);
   expect(lighted.mock.lastCall?.[3]).toMatchObject(storm);
   expect(await looping()).toBe(true);
-}, 60_000);
+});

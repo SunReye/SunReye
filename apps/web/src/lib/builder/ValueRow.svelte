@@ -51,7 +51,8 @@
       onclick={() => {
         open = true;
       }}
-      class={[props.class, "text-left", open && "bg-muted"]}
+      selected={open}
+      class={[props.class, "text-left"]}
     >
       <Item.Content>
         <Item.Title class="text-[15px] leading-snug font-normal text-wrap">{edit.name}</Item.Title>

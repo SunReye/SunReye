@@ -10,6 +10,8 @@ export interface Reads {
   readonly paths: readonly string[];
   /** Folders git ignores but the step reads, such as the SPA build the core embeds. */
   readonly built?: readonly string[];
+  /** Commands that print the version of a tool the step runs from outside the repo. */
+  readonly tools?: readonly (readonly string[])[];
 }
 
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the bytes are only read.
@@ -51,9 +53,27 @@ function readEnv(env: Readonly<Record<string, string | undefined>>): string[] {
     .toSorted();
 }
 
+/** What `command` prints, once per gate run; null when it fails. */
+function versions(root: string) {
+  const said = new Map<string, string | null>();
+
+  return (command: readonly string[]): string | null => {
+    const key = command.join("\0");
+
+    if (!said.has(key)) {
+      const run = Bun.spawnSync([...command], { cwd: root, stderr: "ignore" });
+
+      said.set(key, run.success ? decode(run.stdout).trim() : null);
+    }
+
+    return said.get(key) ?? null;
+  };
+}
+
 /** Hashes each file once per gate run, however many steps read it. */
 export function hasher(root: string, env: Readonly<Record<string, string | undefined>>) {
   const hashes = new Map<string, Promise<string>>();
+  const version = versions(root);
 
   const hashOf = (path: string): Promise<string> => {
     const known = hashes.get(path);
@@ -71,14 +91,21 @@ export function hasher(root: string, env: Readonly<Record<string, string | undef
     return found;
   };
 
-  /** What the step reads hashes to now, salted with the step itself and the runtime. */
-  return async (step: string, reads: Readonly<Reads>): Promise<string> => {
+  /**
+   * What the step reads hashes to now, salted with the step itself, the runtime and its tools'
+   * versions; null when a tool cannot say its version, so the step runs.
+   */
+  return async (step: string, reads: Readonly<Reads>): Promise<string | null> => {
+    const tools = (reads.tools ?? []).map((command) => version(command));
+
+    if (tools.includes(null)) return null;
+
     const built = await Promise.all((reads.built ?? []).map((dir) => walked(root, dir)));
     const paths = [...listed(root, reads.paths), ...built.flat()].toSorted();
     const each = await Promise.all(paths.map(async (path) => `${path}\0${await hashOf(path)}`));
 
     return createHash("sha256")
-      .update([Bun.version, step, ...readEnv(env), ...each].join("\0"))
+      .update([Bun.version, step, ...tools, ...readEnv(env), ...each].join("\0"))
       .digest("hex");
   };
 }

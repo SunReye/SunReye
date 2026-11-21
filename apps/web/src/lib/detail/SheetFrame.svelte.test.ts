@@ -160,13 +160,17 @@ test("a running range whose readings run to now marks no stop", async () => {
   expect(sheet.element().textContent).not.toContain("Messwerte bis");
 });
 
+/** How a read fails, and the reason the sheet then gives: the core's, for a refusal. */
 const FAILURES = {
-  "a lost core": () => Promise.reject(new TypeError("network")),
-  "a refusal": () =>
-    Promise.resolve(Response.json({ status: 500, code: "store.failed" }, { status: 500 })),
+  "a lost core": { fail: () => Promise.reject(new TypeError("network")), reason: null },
+  "a refusal": {
+    fail: () =>
+      Promise.resolve(Response.json({ status: 422, code: "history.range" }, { status: 422 })),
+    reason: "Dieser Zeitraum ist leer oder zu lang.",
+  },
 };
 
-for (const [name, fail] of Object.entries(FAILURES))
+for (const [name, { fail, reason }] of Object.entries(FAILURES))
   test(`a range that fails to read through ${name} says so, and a retry reads it`, async () => {
     // The sheet's hours fail; the dashboard's day read is not the sheet's to answer for.
     served.rolled = (a) => (a.series === "pv.power" && a.period === "hour" ? fail() : undefined);
@@ -178,6 +182,9 @@ for (const [name, fail] of Object.entries(FAILURES))
     await expect
       .element(alert.getByText("Dieser Zeitraum konnte nicht gelesen werden."))
       .toBeVisible();
+    expect(alert.getByText("Dieser Zeitraum ist leer oder zu lang.").query() !== null).toBe(
+      reason !== null,
+    );
     served.rolled = pv({ "2026-11-12": 4000 });
     await alert.getByRole("button", { name: "Erneut laden" }).click();
 

@@ -5,6 +5,7 @@ import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import type { LivePoint } from "../live-graph/series.ts";
 import LiveSection from "./LiveSection.svelte";
+import { sheetContext } from "./in-sheet.ts";
 
 // Still motion: the marks stand on their samples, so the pointer's place names one exactly.
 beforeAll(async () => {
@@ -29,10 +30,13 @@ const POINTS: LivePoint[] = Array.from({ length: 60 }, (_, i) => ({
 
 async function mount() {
   const screen = await render(LiveSection, {
-    spec: { colour: "rgb(200, 0, 0)", node: "pv", chart: null },
-    points: POINTS,
-    silent: null,
-    status: "live",
+    props: {
+      spec: { colour: "rgb(200, 0, 0)", node: "pv", chart: null },
+      points: POINTS,
+      silent: null,
+      status: "live",
+    },
+    context: sheetContext(),
   });
 
   const live = screen.getByRole("region", { name: "Live-Leistung" });

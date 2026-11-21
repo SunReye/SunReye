@@ -1,6 +1,7 @@
 <!-- The prices behind the money (ADR 12): the tariff in force prices the bill; it is edited in Settings › Tariff. -->
 <script lang="ts">
   import type { Core, Tariff } from "../api/core.ts";
+  import TextLink from "../components/text-link.svelte";
   import { m } from "../paraglide/messages.js";
   import { plantNow } from "../plant-day.ts";
   import { shortDay } from "../range/calendar.ts";
@@ -53,9 +54,7 @@
       <p class="max-w-[52ch] text-sm text-muted-foreground">{m.stats_tariff_none_text()}</p>
     </div>
   {/if}
-  <a
-    href="#/settings?group=tariff"
-    class="self-start text-sm font-medium text-brand underline-offset-2 outline-none hover:underline focus-visible:underline"
-    >{m.stats_tariff_edit()}</a
-  >
+  <TextLink href="#/settings?group=tariff" class="self-start text-sm">
+    {m.stats_tariff_edit()}
+  </TextLink>
 </div>

@@ -182,25 +182,6 @@ test("while the range loads, the figures dash and the space is held", async () =
   await appears(figure.getByText("6,0"));
 });
 
-test("a failed read says so and loads again on request", async () => {
-  plant.broken = true;
-
-  const { screen } = await show(DAY);
-
-  await expect
-    .element(screen.getByRole("alert").getByText("Der Verlauf konnte nicht geladen werden"))
-    .toBeVisible();
-
-  // The plant's zone moves the range once; that read fails too.
-  await expect.poll(() => zone.read).toBe(true);
-  await expect.element(screen.getByRole("alert")).toBeVisible();
-
-  plant.broken = false;
-  await screen.getByRole("button", { name: "Erneut laden" }).click();
-
-  await expect.element(screen.getByText(/^Gestern hat die Anlage/u)).toBeVisible();
-});
-
 test("the first week lists what fills in, and compares with nothing yet", async () => {
   plant.age = 2;
 

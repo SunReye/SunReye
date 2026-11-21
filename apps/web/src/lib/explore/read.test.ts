@@ -215,6 +215,20 @@ test("a refused or unreachable read fails that series alone", async () => {
   expect((await readSeries(offline, series("measurement"), ...DAY)).trouble).toBe("failed");
 });
 
+test("a refused read keeps the core's reason; an unreachable one has none", async () => {
+  const refused = core({ statistics: { problem: "auth.required" } });
+
+  const offline: Reads = {
+    history: () => Promise.reject(new TypeError("network")),
+    statistics: () => Promise.reject(new TypeError("network")),
+  };
+
+  expect((await readSeries(refused.reads, series("measurement"), ...WEEK)).refused).toEqual({
+    problem: "auth.required",
+  });
+  expect((await readSeries(offline, series("measurement"), ...DAY)).refused).toBeUndefined();
+});
+
 test("a day whose change points have expired reads hourly statistics and says so", async () => {
   const measured = core({ statistics: MEANS });
   const counted = core({ statistics: DELTAS });

@@ -1,6 +1,6 @@
 <!-- Settings › Display: this browser's motion setting (ADR 21), and what moves here and now. -->
 <script lang="ts">
-  import { Button } from "#lib/components/ui/button/index.js";
+  import TextLink from "../components/text-link.svelte";
   import SegmentRow from "./SegmentRow.svelte";
   import { motion } from "../motion/tier.svelte.ts";
   import { MOTION_SETTINGS, type MotionSetting } from "../motion/tier.ts";
@@ -38,8 +38,8 @@
   }}
 >
   {#if measuring && motion.stepped}
-    <Button variant="link" size="xs" class="self-start px-0" onclick={() => motion.remeasure()}>
+    <TextLink onclick={() => motion.remeasure()} class="self-start text-xs">
       {m.display_motion_remeasure()}
-    </Button>
+    </TextLink>
   {/if}
 </SegmentRow>

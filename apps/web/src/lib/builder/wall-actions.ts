@@ -1,7 +1,7 @@
 // What the context toolbar adds at a wall spot (ADR 20): an opening or a marker where the finger
 // was, picked at once in one undo step, the inspector left where it is; or why not, in words.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the session is edited through its own methods. */
-import { haptics } from "../haptics.ts";
+import { refusedInline } from "../feedback.ts";
 import { m } from "../paraglide/messages.js";
 import { UNFIT } from "./names.ts";
 import type { Equipment, OpeningKind } from "./pv.ts";
@@ -25,7 +25,7 @@ export function addOnWall(session: Session, add: WallAdd): string | undefined {
       : markerAt(plan.pv, draft.scene, spot, { kind: add.marker, device: add.device });
 
   if ("unfit" in scene) {
-    haptics.error();
+    refusedInline();
 
     return "opening" in add ? UNFIT[scene.unfit]() : m.marker_refused_room();
   }

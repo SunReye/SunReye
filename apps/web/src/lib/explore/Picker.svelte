@@ -71,7 +71,11 @@
   {#if x.catalog === "loading"}
     <LoadingRows rows={5} />
   {:else if x.catalog === "failed"}
-    <LoadFailed class="px-4" text={m.explore_catalog_error()} onretry={() => void x.load()} />
+    <LoadFailed
+      class="px-4"
+      text={m.explore_catalog_error()}
+      refused={x.refused}
+      onretry={() => void x.load()} />
   {:else if found.length === 0}
     <p class="px-4 py-6 text-center text-sm text-muted-foreground">
       {query.trim() === "" ? m.explore_catalog_empty() : m.explore_no_match({ query: query.trim() })}

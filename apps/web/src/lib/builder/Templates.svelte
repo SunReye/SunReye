@@ -3,7 +3,7 @@
   what it places. The nearest shape is one tap; "start empty" leaves the scene to the inspector.
 -->
 <script lang="ts">
-  import { Pressable } from "../components/ui/pressable/index.js";
+  import * as Card from "#lib/components/ui/card/index.js";
   import Plus from "@lucide/svelte/icons/plus";
   import { m } from "../paraglide/messages.js";
   import type { Pv } from "./pv.ts";
@@ -60,16 +60,15 @@
     class="grid size-full place-items-center overflow-y-auto p-6 scroll-fade-y no-scrollbar"
     style:padding-bottom="{clear + 24}px"
   >
-    <div
-      class="canvas-chip w-full max-w-3xl overflow-hidden rounded-lg border border-border/60 p-5 elevation-1"
-    >
+    <Card.Root class="canvas-chip w-full max-w-3xl gap-0 p-5">
       <h2 id="builder-templates" class="text-[15px] font-semibold">{m.builder_templates()}</h2>
       <p class="mt-1 text-sm text-muted-foreground">{m.builder_templates_hint()}</p>
       <ul class="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3">
         {#each pictures as { template, picture } (template)}
           <li>
-            <Pressable
-              class="flex w-full flex-col overflow-hidden rounded-lg bg-card text-left ring-1 ring-foreground/10 transition-press glow-hover hover:elevation-2 active:elevation-press motion-safe:hover:-translate-y-[3px] motion-safe:active:translate-y-0 motion-safe:active:scale-(--press-scale-soft)"
+            <Card.Root
+              interactive
+              class="canvas-chip w-full gap-0 py-0"
               onclick={() => {
                 onpick(template === "empty" ? undefined : fill(draft, template));
               }}
@@ -92,10 +91,10 @@
                 {/if}
               </span>
               <span class="px-3 py-2.5 text-sm font-medium">{NAMES[template]()}</span>
-            </Pressable>
+            </Card.Root>
           </li>
         {/each}
       </ul>
-    </div>
+    </Card.Root>
   </div>
 </section>

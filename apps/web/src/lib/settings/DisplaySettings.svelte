@@ -1,5 +1,6 @@
 <!-- Settings › Display (ADR 21): this browser's theme, language, 3D quality (ADR 20), frame limit, weather effects (ADR 23), motion, low-power and haptics switches. -->
 <script lang="ts">
+  import DrillCard from "../components/drill-in/drill-card.svelte";
   import * as Item from "#lib/components/ui/item/index.js";
   import FrameLimitRow from "./FrameLimitRow.svelte";
   import HapticsRow from "./HapticsRow.svelte";
@@ -11,7 +12,7 @@
   import WeatherEffectsRow from "./WeatherEffectsRow.svelte";
 </script>
 
-<div class="drill-card">
+<DrillCard>
   <Item.Group class="gap-0 divide-y divide-border/60">
     <ThemeRow />
     <LanguageRow />
@@ -22,4 +23,4 @@
     <LowPowerRow />
     <HapticsRow />
   </Item.Group>
-</div>
+</DrillCard>

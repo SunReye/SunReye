@@ -99,7 +99,7 @@ The first integration build rendered browser defaults: plain links for navigatio
 - **Enums** use a list with kbase's sliding `active-indicator`.
 - **Free-form values** (prices, coordinates, names) keep a text field.
 - **Applying:** "Apply 100 A → 80 A" runs ADR 7's write. The editor shows pending until the read-back, then closes with the outcome: confirmed, refused with its reason, or mismatch, linked to the write log. There is no separate confirmation step.
-- **Builder time slider:** stays, because it scrubs time rather than setting a value. Its day, like the day a layout applies from, is a button that opens a calendar in a popover; picking a day closes it.
+- **Builder time slider:** stays, because it scrubs time rather than setting a value. Its day, like the day a layout applies from, is a button that opens a calendar, in a popover with a mouse and a drawer on touch as every picker; picking a day closes it.
 - **Builder controls** are the registry's components (`components/ui`): no browser-default date, time, range, colour or select control. A colour beyond the swatches is typed as `#rrggbb`, a free-form value.
 
 **Glass.**
@@ -174,7 +174,16 @@ The first integration build rendered browser defaults: plain links for navigatio
 - **Haptics** fire in the component, on a change the user made: a value set by the route or by data is silent.
 - **Chart entrance:** a chart builds up as it first shows: bars grow from the baseline, each a little after the one before, and lines and areas draw in from the left, all fading in. A chart already shown tweens to its next data. The live chart and a day chart that grows live only fade, so a tick never redraws them. On the still tier a chart is drawn at once.
 - **Motion values** come from the motion tokens, never a literal, so reduced motion and the still tier stop every one.
-- **A failed read** shows the one load-failure state, with its retry.
+- **A failed read** shows the one load-failure state, with its retry. A read the core refuses is failed too, and says the core's reason: it never reads as empty data.
+- **One card** (2026-11-21): every card is the dashboard's, the kit's card in ambient glass. No screen draws a glass surface of its own.
+- **Picking one from a list** in a form is a select field; a menu holds actions only. Rows in Controls, Settings and the builder's inspector keep the value editor (above).
+- **Reading a chart** runs on one pointer reading: the hold before a finger reads, the rule and the `selection` tick as the reading crosses a band are the same on every chart.
+- **Drawer or popover** is one decision, by input (above), which every overlay asks.
+- **A placeholder** stands at the size of what replaces it, loading and empty alike.
+- **A figure** on any screen is the same component as the same figure elsewhere: the stat strip for facts, the animated number for a figure that changes in place.
+- **A link** inside text is one link, with one focus ring.
+- **A level pushed** inside a drill-in or the builder's inspector is the drill-in's push, with its header.
+- **Explore's header** on a phone below about 415 px stands in two rows: the title, then its controls across the width. The words stay.
 
 ## Considered options
 

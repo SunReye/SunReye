@@ -1,7 +1,7 @@
 <!-- The value editor (ADR 21): an anchored glass popover with a mouse, a bottom drawer on touch. -->
 <script lang="ts">
   import { Popover } from "bits-ui";
-  import { MediaQuery } from "svelte/reactivity";
+  import { input } from "../../shell/input.svelte.ts";
   import DrawerSheet from "../drawer-sheet.svelte";
   import type { Editable, Outcome } from "./editable.ts";
   import EditorBody from "./editor-body.svelte";
@@ -27,8 +27,6 @@
     below?: boolean;
   } = $props();
 
-  const mouse = new MediaQuery("(hover: hover) and (pointer: fine)");
-
   // Beside the row in the drill-in, under the row's value in two panes.
   const placement = $derived(
     below
@@ -45,7 +43,7 @@
   }
 </script>
 
-{#if mouse.current}
+{#if input.overlay === "popover"}
   <Popover.Root bind:open>
     <Popover.Portal>
       <Popover.Content

@@ -1,11 +1,14 @@
 // What the statistics screen reads once, whatever the range: the strings, whether the plant has a
 // battery or an EV, the first day it recorded, and payback (admin only, ADR 12).
+import { answerOf, settleRead, type Settled } from "../api/client.ts";
 import { only, PLANT, type Core, type PvString } from "../api/core.ts";
 import type { Payback } from "../api/tariff.ts";
 import { inputCorrections, modulePeaks } from "../analytics/string-energy.ts";
 import type { InputCorrection } from "../analytics/strings.ts";
 import { layoutStrings } from "../live/plant-facts.ts";
 import { dayOfIso } from "../range/calendar.ts";
+
+export type { Payback };
 
 export type FactsCore = Readonly<
   Pick<
@@ -22,8 +25,8 @@ export interface Facts {
   readonly since: number | null;
   /** The first hour with a reading, in ms since the epoch; null with `since`. */
   readonly begun: number | null;
-  /** Null for a viewer. */
-  readonly payback: Payback | null;
+  /** Null for a viewer, whom the core refuses it (ADR 12); a failure keeps the core's reason. */
+  readonly payback: Settled<Payback> | null;
   /** Each MPPT input's learned correction, which flags a weak string. */
   readonly corrections: readonly InputCorrection[];
   /** Each module type's watts at standard test conditions. */
@@ -79,15 +82,26 @@ async function since(core: FactsCore): Promise<Pick<Facts, "since" | "begun">> {
   return { since: dayOfIso(first.date), begun: Date.parse(hour?.start ?? first.start) };
 }
 
+/** Payback as the core answers it; null for a viewer. */
+async function payback(core: FactsCore): Promise<Settled<Payback> | null> {
+  const got = await settleRead(
+    Promise.resolve()
+      .then(() => core.payback())
+      .then(answerOf),
+  );
+
+  return got.failed && got.refused?.problem === "auth.forbidden" ? null : got;
+}
+
 /** When the record began, in ms since the epoch; 0 while it is not known. */
 export const begunOf = (facts: Readonly<Pick<Facts, "begun">> | null): number => facts?.begun ?? 0;
 
 export async function readFacts(core: FactsCore): Promise<Facts> {
-  const [strings, published, first, payback, corrections, peaks] = await Promise.all([
+  const [strings, published, first, paid, corrections, peaks] = await Promise.all([
     layoutStrings(core),
     series(core),
     since(core),
-    core.payback(),
+    payback(core),
     inputCorrections(core),
     modulePeaks(core),
   ]);
@@ -97,7 +111,7 @@ export async function readFacts(core: FactsCore): Promise<Facts> {
     battery: published.includes("battery.power"),
     ev: published.includes("ev.charge.power"),
     ...first,
-    payback: "problem" in payback ? null : payback,
+    payback: paid,
     corrections,
     peaks,
   };

@@ -35,7 +35,7 @@ test("the scene loops while rain is on the lens, fades it out once the weather c
   await playedUntil(async () => !(await looping()));
   expect(onLens(glazed)).toBeNull();
   expect(await draws(drawn)).toBe(0);
-}, 90_000);
+});
 
 test("frost on a dry day loops while it fades in and out, and stands drawn in between", async () => {
   const { looping, drawn, glazed, lens } = await open();
@@ -53,7 +53,7 @@ test("frost on a dry day loops while it fades in and out, and stands drawn in be
   await playedUntil(async () => !(await looping()));
   expect(onLens(glazed)).toBeNull();
   expect(await draws(drawn)).toBe(0);
-}, 90_000);
+});
 
 test("Niedrig puts nothing on the lens and loops for none of it", async () => {
   const { looping, glazed, lens } = await open();
@@ -83,7 +83,7 @@ test("still clears the lens at once and never loops for it", async () => {
   motion.lowPower = false;
   flushSync();
   expect(await looping()).toBe(true);
-}, 60_000);
+});
 
 test("still clears standing frost too, and full fades it in again", async () => {
   const { looping, glazed, lens } = await open();
@@ -100,4 +100,4 @@ test("still clears standing frost too, and full fades it in again", async () => 
   expect(await looping()).toBe(true);
   await playedUntil(async () => !(await looping()));
   expect(onLens(glazed)).toEqual(FROST);
-}, 90_000);
+});

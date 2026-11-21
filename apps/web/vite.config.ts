@@ -81,6 +81,8 @@ export default defineConfig({
           name: "dom",
           include: ["src/**/*.svelte.test.ts"],
           exclude: SCENE,
+          // A file here that draws with WebGL fails: it belongs in SCENE (page.setup.ts).
+          provide: { scene: false },
           sequence: { groupOrder: 0 },
         },
       },
@@ -89,6 +91,7 @@ export default defineConfig({
         test: {
           name: "scene",
           include: SCENE,
+          provide: { scene: true },
           // Without a GPU every page's WebGL runs through one software renderer: the studio scenes
           // of files run side by side starve each other into timeouts.
           fileParallelism: false,

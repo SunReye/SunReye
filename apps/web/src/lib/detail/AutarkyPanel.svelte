@@ -9,7 +9,7 @@
   import type { AnalyticsInput } from "./Analytics.svelte";
   import { autarkyFacts } from "./autarky.ts";
   import { AUTARKY_RANGE, monthAutarky } from "./autarky-range.ts";
-  import DetailStats from "./DetailStats.svelte";
+  import StatStrip from "../components/stat-strip.svelte";
   import RangeState from "./RangeState.svelte";
   import { SheetRange } from "./sheet-range.svelte.ts";
   import ShareBar from "./ShareBar.svelte";
@@ -29,7 +29,7 @@
   const month = $derived(monthAutarky(core, zone, today));
 </script>
 
-<RangeState failed={range.failed} onretry={range.retry}>
+<RangeState failed={range.failed} refused={range.refused} onretry={range.retry}>
   {#if range.view}
     {@const v = range.view}
     <ShareChart bands={v.bands} grain={v.grain} selfUse={v.all.selfUse} />
@@ -38,9 +38,9 @@
       <ShareBar title={m.detail_went()} total={v.all.production} parts={v.went} />
     </div>
     {#await month}
-      <DetailStats panel stats={autarkyFacts(v.best, v.worst, null)} />
+      <StatStrip closes="panel" stats={autarkyFacts(v.best, v.worst, null)} />
     {:then mean}
-      <DetailStats panel stats={autarkyFacts(v.best, v.worst, mean)} />
+      <StatStrip closes="panel" stats={autarkyFacts(v.best, v.worst, mean)} />
     {/await}
   {:else}
     <Skeleton class="h-52" role="status" aria-label={m.loading()} />

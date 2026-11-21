@@ -3,10 +3,11 @@
   back. "Done" always carries on, a layout saved or not: without 3D it is the only way on.
 -->
 <script lang="ts">
-  import GlassCard from "../components/glass-card.svelte";
+  import * as Card from "#lib/components/ui/card/index.js";
+  import { Skeleton } from "#lib/components/ui/skeleton/index.js";
+  import DrillHeader from "../components/drill-in/drill-header.svelte";
   // The glue crate's release build, which the SPA build makes first (ADR 2, 20).
   import wasm from "../../../../../target/wasm32-unknown-unknown/release/sunreye_pv_wasm.wasm?url";
-  import ChevronLeft from "@lucide/svelte/icons/chevron-left";
   import type { Core, Device } from "../api/core.ts";
   import { emptyDraft } from "../builder/modules";
   import { loadPv } from "../builder/pv";
@@ -49,36 +50,31 @@
 </script>
 
 <main class="flex h-dvh flex-col">
-  <!-- On a phone back keeps only its chevron, so the title shows whole or wraps. -->
-  <header
-    class="glass-ambient flex items-center gap-2 border-b border-border/60 py-1.5 pr-3 pl-1.5"
+  <DrillHeader
+    back={m.setup_title()}
+    title={m.layout_title()}
+    sub={m.setup_progress({ step, count })}
+    {onback}
+    class="glass-ambient"
   >
-    <Button variant="ghost" size="sm" onclick={onback} class="shrink-0 text-brand">
-      <ChevronLeft data-icon="inline-start" />
-      <span class="max-sm:sr-only">{m.setup_title()}</span>
-    </Button>
-    <div class="flex min-w-0 flex-1 flex-col leading-tight">
-      <h2 class="text-[15px] font-semibold text-balance break-words">{m.layout_title()}</h2>
-      <span class="text-xs text-muted-foreground tabular-nums">
-        {m.setup_progress({ step, count })}
-      </span>
-    </div>
-    <Button class="shrink-0" onclick={ondone}>{m.setup_finish()}</Button>
-  </header>
+    {#snippet action()}
+      <Button onclick={ondone}>{m.setup_finish()}</Button>
+    {/snippet}
+  </DrillHeader>
   <!-- The builder sizes itself to the screen; here it takes what the header leaves. -->
   <div class="min-h-0 flex-1 [&>div]:h-full">
     {#if webgl2}
       {#await load()}
-        <p role="status" class="p-6 text-sm text-muted-foreground">{m.builder_loading()}</p>
+        <Skeleton class="rounded-none" role="status" aria-label={m.builder_loading()} />
       {:then { Builder, pv, moduleTypes }}
         <Builder {pv} {core} start={emptyDraft()} {moduleTypes} {devices} />
       {/await}
     {:else}
       <div class="grid h-full place-items-center p-4">
-        <GlassCard class="flex max-w-sm flex-col gap-2 p-4 text-sm">
+        <Card.Root class="max-w-sm gap-2 p-4">
           <p class="font-medium">{m.builder_no_webgl()}</p>
           <p class="text-muted-foreground">{m.layout_later()}</p>
-        </GlassCard>
+        </Card.Root>
       </div>
     {/if}
   </div>

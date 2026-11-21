@@ -1,6 +1,7 @@
 // The weather at an instant (ADR 23 "The sky"), from the weather device's history and forecasts
 // (ADR 17): what the scene, the now strip and the weather detail show. Pure but for the read it
 // is handed.
+import { answerOf, settleRead, type Settled } from "../api/client.ts";
 import type { Core } from "../api/core.ts";
 import { stored } from "./stored.ts";
 
@@ -115,7 +116,10 @@ const spanOf = (from: Readonly<Date>, to: Readonly<Date>): Span => [
   new Date(to.getTime()),
 ];
 
-/** The stored weather from `from` to before `to`; a series the core refuses or fails is empty. */
+/**
+ * The stored weather from `from` to before `to`; a series the core refuses or fails is empty. The
+ * weather now only dresses the scene and the dashboard, which show nothing of what is unknown.
+ */
 export async function readWeather(
   core: WeatherReader,
   from: Readonly<Date>,
@@ -127,11 +131,22 @@ export async function readWeather(
   return Object.fromEntries(SERIES.map(({ role }) => [role, [...past(role), ...ahead(role)]]));
 }
 
+/** `readWeatherSources`, settled: a failure keeps the core's reason. */
+export function readWeatherSettled(
+  core: WeatherReader,
+  from: Readonly<Date>,
+  to: Readonly<Date>,
+  measuredTo: Readonly<Date>,
+): Promise<Settled<WeatherSources>> {
+  return settleRead(readWeatherSources(core, from, to, measuredTo));
+}
+
 /**
  * A detail's read from `from` to before `to`, its sources apart: every series, or `only` those a
  * detail other than the weather's shows.
  * @param measuredTo where history ends. A day or less of it is read raw; a longer span comes as
  * hourly means, which blur the wind's direction and its gusts.
+ * Rejects when a series is refused or not read, with the core's reason where it gave one.
  */
 export async function readWeatherSources(
   core: WeatherReader,
@@ -143,7 +158,12 @@ export async function readWeatherSources(
   const spans = { past: spanOf(from, measuredTo), ahead: spanOf(from, to) };
   const all = [...SERIES, ...DETAIL];
   const chosen = only ? all.filter((s) => only.includes(s.role)) : all;
-  const { past, ahead } = await stored(core, chosen, spans);
+  const { past, ahead, unread } = await stored(core, chosen, spans);
+
+  // A detail never shows a refusal as weather that was not stored.
+  if (unread?.refused) answerOf(unread.refused);
+
+  if (unread) throw new Error("the weather could not be read");
 
   return {
     measured: Object.fromEntries(chosen.map(({ role }) => [role, past(role)])),

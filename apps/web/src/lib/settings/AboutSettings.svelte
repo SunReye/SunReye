@@ -1,5 +1,6 @@
 <!-- Settings › About SunReye: credits whose licences ask to be shown, CC BY 4.0's title, author, source, licence and changes. The spot prices' credit also stays beside them (ADR 12). -->
 <script lang="ts">
+  import DrillCard from "../components/drill-in/drill-card.svelte";
   import * as Item from "#lib/components/ui/item/index.js";
   import { m } from "../paraglide/messages.js";
   import SpotAttribution from "../SpotAttribution.svelte";
@@ -7,7 +8,7 @@
 
 <section aria-labelledby="about-credits" class="flex flex-col">
   <h2 id="about-credits" class="px-4 pt-4 text-[15px] font-medium">{m.about_credits()}</h2>
-  <div class="drill-card drill:mt-2">
+  <DrillCard class="drill:mt-2">
     <Item.Group class="gap-0 divide-y divide-border/60">
       <Item.Root class="rounded-none border-0">
         <Item.Content>
@@ -31,5 +32,5 @@
         </Item.Content>
       </Item.Root>
     </Item.Group>
-  </div>
+  </DrillCard>
 </section>

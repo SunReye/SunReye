@@ -98,7 +98,7 @@
   .lite-flow {
     stroke-dasharray: 10 14;
     /* Stepped: 12 repaints a crossing instead of 60 a second, and it still reads as travel. */
-    animation: flow-dash var(--flow-dur, 2s) steps(12, end) infinite;
+    animation: flow-dash var(--flow-dur) steps(12, end) infinite;
   }
   .lite-flow-out {
     animation-direction: reverse;

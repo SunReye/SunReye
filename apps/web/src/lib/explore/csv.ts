@@ -26,13 +26,13 @@ export interface Table {
 }
 
 /** What a header needs of a chosen series. */
-export type Named = Pick<Chosen, "ref" | "unit">;
+export type Headed = Pick<Chosen, "ref" | "unit">;
 
 /**
  * `3:pv.power [W]`: two devices may store one series id, so the device leads as in the route.
  * @param what an overlay's period, or a band's `min` or `max`
  */
-function headOf({ ref, unit }: Named, what?: string): string {
+function headOf({ ref, unit }: Headed, what?: string): string {
   const parts = [`${ref.device}:${ref.series}`, what, unit === null ? undefined : `[${unit}]`];
 
   return parts.filter((part) => part !== undefined).join(" ");
@@ -86,7 +86,7 @@ function edgeOf(curve: Curve, edge: "lo" | "hi"): Curve | null {
 /** Series mode: each drawn series' samples, and a band's min and max beside them. */
 export function seriesTable(
   range: Range,
-  drawn: readonly { readonly chosen: Named; readonly curve: Curve }[],
+  drawn: readonly { readonly chosen: Headed; readonly curve: Curve }[],
 ): Table | null {
   return curvesTable(
     range,
@@ -106,7 +106,7 @@ export function seriesTable(
 /** Overlay mode: each period's samples on the range's clock, the period named by its first day. */
 export function overlayTable(
   range: Range,
-  chosen: Named,
+  chosen: Headed,
   periods: readonly { readonly key: string; readonly curve: Curve }[],
 ): Table | null {
   return curvesTable(
@@ -118,7 +118,7 @@ export function overlayTable(
 /** Fold mode: each period's bar, a counter's delta, or a measurement's mean with its min and max. */
 export function foldTable(
   range: Range,
-  chosen: Named,
+  chosen: Headed,
   period: Period,
   counter: boolean,
   rows: readonly FoldRow[],

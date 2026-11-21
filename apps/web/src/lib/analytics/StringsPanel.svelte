@@ -5,14 +5,19 @@
 -->
 <script lang="ts">
   import { Pressable } from "../components/ui/pressable/index.js";
-  import type { Core, PvString } from "../api/core.ts";
+  import LoadFailed from "../components/load-failed.svelte";
+  import ChartEntrance from "../chart-entrance/ChartEntrance.svelte";
   import { m } from "../paraglide/messages.js";
   import { kwh as energy, num } from "../range/format.ts";
   import type { RangeRoute } from "../range/route.svelte.ts";
   import HeatGrid from "./HeatGrid.svelte";
   import StringFlag from "./StringFlag.svelte";
-  import { inputCorrections, modulePeaks, MONTHS, stringEnergy } from "./string-energy.ts";
-  import { correctionGrid, stringRows, type InputCorrection, type StringRow } from "./strings.ts";
+  import {
+    MONTHS, stringEnergy, stringFacts, type StringFacts,
+    type PvString,
+    type StringsCore,
+  } from "./string-energy.ts";
+  import { correctionGrid, stringRows, type StringRow } from "./strings.ts";
 
   let {
     core,
@@ -20,22 +25,31 @@
     strings,
     sid,
   }: {
-    core: Readonly<Pick<Core, "statistics" | "moduleTypes" | "corrections">>;
+    core: StringsCore;
     route: RangeRoute;
     strings: readonly PvString[];
     /** The string chosen first; else a weak one, else the first. */
     sid: number | null;
   } = $props();
 
-  let pmax = $state.raw<ReadonlyMap<number, number>>(new Map());
-  let corrections = $state.raw<readonly InputCorrection[]>([]);
   let kwh = $state.raw<ReadonlyMap<number, number>>(new Map());
   let picked = $state<number | null>(null);
 
+  /** The module types and the corrections; undefined until read. */
+  let facts = $state.raw<StringFacts>();
+
+  /** Raised to read them again. */
+  let again = $state(0);
+
+  const [pmax, corrections] = $derived(
+    facts?.failed === false ? facts.data : [new Map<number, number>(), []],
+  );
+
   // What does not follow the range is read once.
   $effect(() => {
-    void modulePeaks(core).then((next) => (pmax = next));
-    void inputCorrections(core).then((next) => (corrections = next));
+    void again;
+    facts = undefined;
+    void stringFacts(core).then((got) => (facts = got));
   });
 
   $effect(() => {
@@ -43,11 +57,15 @@
     const [range, place, all] = [r.range, r.place, strings];
     let live = true;
 
-    void stringEnergy(core, all, place, range).then((next) => {
-      if (live) kwh = next;
+    // A failed read keeps the last figures: the range's own read says it failed.
+    void stringEnergy(core, all, place, range).then(
+      (next) => {
+        if (live) kwh = next;
 
-      return next;
-    });
+        return next;
+      },
+      () => null,
+    );
 
     return () => {
       live = false;
@@ -103,22 +121,30 @@
 </script>
 
 <div class="@container flex flex-col gap-4">
+  {#if facts?.failed}
+    <LoadFailed
+      text={m.strings_error()}
+      refused={facts.refused}
+      onretry={() => {
+        again++;
+      }}
+    />
+  {:else}
+  <!-- The yield bars grow as the yields first show (ADR 21 "Chart entrance"). -->
+  <ChartEntrance build="grow" ready={rows.some((r) => r.perKwp !== null)}>
   <div role="table" aria-label={m.strings_table()} class="text-sm">
     <div role="row" class={[COLS, "border-b border-border/60 pb-1.5 text-xs text-muted-foreground"]}>
       <span role="columnheader">{m.strings_string()}</span>
       <span role="columnheader" class="text-right">{m.strings_yield()}</span>
       <span role="columnheader" class="text-right">{m.strings_ratio()}</span>
     </div>
-    {#each rows as r (r.id)}
+    {#each rows as r, i (r.id)}
       <Pressable
         feedback
         role="row"
         aria-selected={r.id === chosen?.id}
-        class={[
-          COLS,
-          "w-full border-b border-border/60 py-2 text-left",
-          r.id === chosen?.id && "bg-foreground/[0.05]",
-        ]}
+        selected={r.id === chosen?.id}
+        class={[COLS, "w-full border-b border-border/60 py-2 text-left"]}
         onclick={() => {
           picked = r.id;
         }}
@@ -139,7 +165,11 @@
             >{r.perKwp === null ? "–" : num(r.perKwp, r.perKwp < 100 ? 1 : 0)}</span
           >
           <span class="h-1 w-full max-w-24 bg-foreground/10"
-            ><span class="block h-full bg-solar" style:width="{((r.perKwp ?? 0) / best) * 100}%"
+            ><span
+              class="block h-full origin-left bg-solar"
+              style:width="{((r.perKwp ?? 0) / best) * 100}%"
+              style:--i={i / rows.length}
+              data-grow="x"
             ></span></span
           >
         </span>
@@ -148,6 +178,7 @@
     {/each}
     <p class="pt-2 text-xs text-muted-foreground">{m.strings_foot({ range: route.label })}</p>
   </div>
+  </ChartEntrance>
 
   {#if chosen}
     <section
@@ -189,5 +220,6 @@
         </div>
       {/if}
     </section>
+  {/if}
   {/if}
 </div>

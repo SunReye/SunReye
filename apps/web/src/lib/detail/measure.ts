@@ -36,17 +36,6 @@ export interface Measure {
 
 export type MeasureCore = Readonly<Pick<Core, "statistics">>;
 
-/** The core with every refusal thrown. */
-export const strict = (core: MeasureCore): MeasureCore => ({
-  statistics: async (...args: Readonly<Parameters<MeasureCore["statistics"]>>) => {
-    const read = await core.statistics(...args);
-
-    for (const one of read) if ("problem" in one) throw new Error(one.problem);
-
-    return read;
-  },
-});
-
 /** Readings that end this far before the end read have not stopped: the open hour lags its flush. */
 export const LAG_MS = 15 * 60_000;
 
@@ -70,15 +59,13 @@ const EUR: Sum = { unit: "€", digits: euroDigits, per: 1 };
 
 /** A series' integral over the span, in `sum`'s unit. */
 function integral(core: MeasureCore, device: number, series: string, sum: Sum): Measure {
-  const sure = strict(core);
-
   return {
     device,
     series,
     unit: sum.unit,
     digits: sum.digits,
     read: async (from, to, period) => {
-      const rolled = await rollups(sure, device, series, period, new Date(from), new Date(to));
+      const rolled = await rollups(core, device, series, period, new Date(from), new Date(to));
       const total = coveredSum(rolled);
 
       return {
@@ -96,8 +83,6 @@ function kwh(rolled: readonly Rolled[]): number {
 
 /** The share of `whole`'s energy that `part` holds, in %: the house load met on site is autarky. */
 function shareOf(core: MeasureCore, part: string, whole: string): Measure {
-  const sure = strict(core);
-
   return {
     device: PLANT,
     // The record's edges and stops follow what the share is of.
@@ -107,7 +92,7 @@ function shareOf(core: MeasureCore, part: string, whole: string): Measure {
     points: true,
     read: async (from, to, period) => {
       const [of = [], all = []] = await rollupsOf(
-        sure,
+        core,
         PLANT,
         [part, whole],
         period,

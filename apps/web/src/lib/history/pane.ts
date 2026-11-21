@@ -35,6 +35,8 @@ export interface PaneProps {
   height: number;
   /** Opens another view of the screen; back returns. */
   onview: (patch: Readonly<Record<string, string | null>>) => void;
+  /** Reads the facts again, after a part of them failed. */
+  onfacts: () => void;
 }
 
 const CHARTS: ReadonlySet<Tab> = new Set<Tab>(["time", "years", "pattern", "forecast"]);

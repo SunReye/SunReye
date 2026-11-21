@@ -8,7 +8,7 @@ import type { Range } from "../range/range.ts";
 import { seriesTable, type Table } from "./csv.ts";
 import { axisOf, sampleAt, tickDigits, valueDigits, type Axis, type Sample } from "./curve.ts";
 import type { Lane, Lanes, LaneSeries } from "./lanes.ts";
-import { expired, type Reading } from "./read.ts";
+import { expired, failedNotes, type Reading } from "./read.ts";
 import { layout, yOf, type LaneBox, type LaneScene } from "./scene.ts";
 
 /** A chosen series, as the lanes hold it. */
@@ -212,11 +212,13 @@ export function notesOf({ plan, readings }: Loaded): string[] {
     [plan.absent.length > 0, () => m.explore_absent({ names: names(plan.absent) })],
     [drawn.some((d) => d.hourly), m.explore_hourly],
     [expired(drawn), m.explore_expired],
-    [troubled("failed").length > 0, () => m.explore_failed({ names: names(troubled("failed")) })],
     [troubled("many").length > 0, () => m.explore_many({ names: names(troubled("many")) })],
   ];
 
-  return said.flatMap(([on, text]) => (on ? [text()] : []));
+  return [
+    ...said.flatMap(([on, text]) => (on ? [text()] : [])),
+    ...failedNotes(drawn.map((d) => [d.chosen.label, d] as const)),
+  ];
 }
 
 /** The drawn series' points, for the export. */

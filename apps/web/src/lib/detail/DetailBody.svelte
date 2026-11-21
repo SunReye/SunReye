@@ -13,7 +13,7 @@
 
 <script lang="ts">
   import DetailHead from "./DetailHead.svelte";
-  import DetailStats from "./DetailStats.svelte";
+  import StatStrip from "../components/stat-strip.svelte";
   import { RangeHead } from "./head.svelte.ts";
   import HistoryLink from "./HistoryLink.svelte";
   import LiveSection from "./LiveSection.svelte";
@@ -108,7 +108,7 @@
   {/if}
 
   {#if shown.stats.length > 0}
-    <DetailStats stats={shown.stats} />
+    <StatStrip closes="sheet" stats={shown.stats} />
   {/if}
 
   <!-- The PV forecast's days end on the Forecast screen, their own way onward (ADR 21). -->

@@ -1,6 +1,6 @@
 <!-- The first week: what is already there and when the rest fills in. -->
 <script lang="ts">
-  import GlassCard from "../components/glass-card.svelte";
+  import * as Card from "#lib/components/ui/card/index.js";
   import Check from "@lucide/svelte/icons/check";
   import Circle from "@lucide/svelte/icons/circle";
   import { Button } from "#lib/components/ui/button/index.js";
@@ -33,7 +33,7 @@
   });
 </script>
 
-<GlassCard element="section" aria-label={m.stats_filling()}>
+<Card.Root element="section" aria-label={m.stats_filling()} class="gap-0 py-0">
   <h2 class="px-4 pt-3 text-sm font-semibold">{m.stats_filling()}</h2>
   <p class="px-4 pt-1 pb-2 text-xs text-muted-foreground">
     {m.stats_filling_text({ date: shortDay(since, true) })}
@@ -55,4 +55,4 @@
       >{m.stats_import()}</Button
     >
   </div>
-</GlassCard>
+</Card.Root>
