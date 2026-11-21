@@ -1,12 +1,31 @@
-import { afterEach, expect, test } from "vitest";
+import { tick } from "svelte";
+import { afterEach, expect, test, vi } from "vitest";
 // The screen is laid out by the SPA's utilities.
 import "../../app.css";
+import { settled } from "../api/settled.harness.ts";
 import { iso } from "../range/calendar.ts";
 import { asked, plant, reset, show, TODAY, YESTERDAY, zone } from "./statistics.harness.ts";
+import { realTimers } from "../motion/clock.harness.ts";
 
-afterEach(reset);
+afterEach(() => {
+  realTimers();
+  reset();
+});
 
 const DAY = `range=day&at=${YESTERDAY}`;
+
+/** The movement, a finger's pace and the address's catching up, on the test's clock. */
+function fakeClock(): void {
+  vi.useFakeTimers({
+    toFake: [
+      "setTimeout",
+      "clearTimeout",
+      "requestAnimationFrame",
+      "cancelAnimationFrame",
+      "performance",
+    ],
+  });
+}
 
 test("the range's answer: production against the day before, and a breakdown that balances", async () => {
   const { screen } = await show(DAY);
@@ -48,15 +67,15 @@ test("a step the router then catches up with reads the new day once", async () =
   // The first day is drawn: its reads are done.
   await expect.element(screen.getByText(/^Gestern hat die Anlage 6,0 kWh erzeugt/u)).toBeVisible();
   urls.length = 0;
+  fakeClock();
 
   await screen.getByRole("button", { name: "Früher" }).first().click();
   // The address follows once the movement is over; the router hands the screen its params.
-  await expect.poll(() => went.length, { timeout: 2000 }).toBeGreaterThan(0);
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(went.length).toBeGreaterThan(0);
   await screen.rerender({ params: new URLSearchParams(`range=day&at=${iso(TODAY - 2)}`) });
-  // A second load would start as the screen takes the params; give it a moment to show.
-  await new Promise((done) => {
-    setTimeout(done, 300);
-  });
+  // A second load would start as the screen takes the params.
+  await settled(() => urls.length);
 
   const reads = urls.filter((url) => /\/(statistics|history)\?/u.test(url));
 
@@ -259,20 +278,21 @@ test("a finger dragging the card pages the range to the neighbour it uncovers", 
     bubbles: true,
   });
 
+  fakeClock();
   target.dispatchEvent(new PointerEvent("pointerdown", at(0)));
 
   for (let i = 1; i <= 8; i++) {
-    // oxlint-disable-next-line no-await-in-loop -- the moves are paced like a finger's.
-    await new Promise((resolve) => {
-      setTimeout(resolve, 16);
-    });
+    vi.advanceTimersByTime(16);
     target.dispatchEvent(new PointerEvent("pointermove", at(-30 * i)));
   }
+
+  await tick();
 
   // The day after is drawn beside the card's pane while the finger holds it.
   expect(document.querySelectorAll(".pane.aside").length).toBeGreaterThan(0);
   target.dispatchEvent(new PointerEvent("pointerup", at(-240)));
+  await vi.advanceTimersByTimeAsync(1000);
 
   // Today is the default day, so the address names no date.
-  await expect.poll(() => went.at(-1)?.patch).toMatchObject({ range: "day", at: null });
+  expect(went.at(-1)?.patch).toMatchObject({ range: "day", at: null });
 });

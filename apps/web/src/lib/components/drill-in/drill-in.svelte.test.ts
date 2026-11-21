@@ -1,20 +1,24 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { tick } from "svelte";
 import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { HAPTICS } from "../../haptics.ts";
 import { motion } from "../../motion/tier.svelte.ts";
 import Harness from "./drill-in.harness.svelte";
-import { child, frame, offset, rect, until } from "./drill-in.probe.ts";
+import { browserBack, child, frame, offset, rect, until } from "./drill-in.probe.ts";
+import { realTimers } from "../../motion/clock.harness.ts";
 
 let vibrate: ReturnType<typeof vi.fn<() => boolean>>;
 
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] });
   vibrate = vi.fn(() => true);
   Object.defineProperty(navigator, "vibrate", { value: vibrate, configurable: true });
   localStorage.setItem(HAPTICS, "on");
 });
 
 afterEach(async () => {
+  realTimers();
   localStorage.removeItem(HAPTICS);
   motion.lowPower = false;
   await cdp().send("Emulation.setEmulatedMedia", { features: [] });
@@ -54,11 +58,10 @@ test("a reversed slide continues from where it is", async () => {
   await until(() => offset() < 70);
   const before = offset();
 
-  history.back();
+  await browserBack();
   await frame();
 
-  // Frame length varies under load, so assert direction, not distance: no snap
-  // back in (a restart) and no snap out (a jump to gone).
+  // No snap back in (a restart) and no snap out (a jump to gone).
   expect(offset()).toBeGreaterThan(before - 20);
   expect(child()).not.toBeNull();
   await until(() => child() === null);
@@ -122,18 +125,14 @@ async function swipe(dx: number, steps: number, ms: number, release = true): Pro
 
   const at = (x: number) => ({ pointerId: 1, clientX: left + x, clientY: top + 20, bubbles: true });
 
-  const moveTo = async (i: number): Promise<void> => {
-    if (i > steps) return;
-
-    await new Promise((resolve) => {
-      setTimeout(resolve, ms);
-    });
-    box.dispatchEvent(new PointerEvent("pointermove", at(4 + (dx * i) / steps)));
-    await moveTo(i + 1);
-  };
-
   box.dispatchEvent(new PointerEvent("pointerdown", at(4)));
-  await moveTo(1);
+
+  for (let i = 1; i <= steps; i++) {
+    vi.advanceTimersByTime(ms);
+    box.dispatchEvent(new PointerEvent("pointermove", at(4 + (dx * i) / steps)));
+  }
+
+  await tick();
 
   if (release) box.dispatchEvent(new PointerEvent("pointerup", at(4 + dx)));
 }

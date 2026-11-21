@@ -1,10 +1,25 @@
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import { haptics } from "../haptics.ts";
+import { framesUntil, realTimers } from "../motion/clock.harness.ts";
 import Harness from "./card.harness.svelte";
 import { dragBy } from "./drag.harness.ts";
 
+beforeEach(() => {
+  // The finger's speed and the pane's spring on the test's clock.
+  vi.useFakeTimers({
+    toFake: [
+      "setTimeout",
+      "clearTimeout",
+      "requestAnimationFrame",
+      "cancelAnimationFrame",
+      "performance",
+    ],
+  });
+});
+
 afterEach(() => {
+  realTimers();
   vi.restoreAllMocks();
 });
 
@@ -43,7 +58,7 @@ test("let go past the threshold, the pane slides to the next range with one sele
   await expect.poll(() => steps).toEqual([1]);
   expect(selection).toHaveBeenCalledOnce();
   // The spring settles to a thousandth of a pixel: most of a second.
-  await expect.poll(offset, { timeout: 2000 }).toBe(0);
+  await framesUntil(() => offset() === 0);
   await expect.element(screen.getByText("Tag -1")).toBeVisible();
   expect(screen.getByText("Tag -2").query()).toBeNull();
 });

@@ -4,6 +4,7 @@ import { sveltekit } from "@sveltejs/kit/vite";
 import tailwindcss from "@tailwindcss/vite";
 import { playwright } from "@vitest/browser-playwright";
 import { defineConfig } from "vitest/config";
+import { SCENE } from "./scene-tests.ts";
 
 /** Every lucide icon the sources import, so each new icon is pre-bundled without a list to keep. */
 function icons(): string[] {
@@ -20,16 +21,6 @@ function icons(): string[] {
 
   return [...found].toSorted();
 }
-
-/** Test files that draw the 3D scene, or a page that may; they run one at a time, after the rest. */
-const SCENE = [
-  "src/routes/**/*.svelte.test.ts",
-  "src/lib/builder/**/*.svelte.test.ts",
-  "src/lib/scene/**/*.svelte.test.ts",
-  "src/lib/live/**/*.svelte.test.ts",
-  "src/lib/cars/**/*.svelte.test.ts",
-  "src/lib/dashboard/**/*.svelte.test.ts",
-];
 
 export default defineConfig({
   plugins: [
@@ -65,6 +56,10 @@ export default defineConfig({
     ],
   },
   test: {
+    // Budgets for a page under load: shards run side by side, and a wait ends when its condition holds.
+    testTimeout: 30_000,
+    expect: { poll: { timeout: 5000 } },
+    setupFiles: ["src/page.setup.ts"],
     browser: {
       enabled: true,
       headless: true,

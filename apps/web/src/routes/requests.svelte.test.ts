@@ -1,9 +1,9 @@
 // How many requests a screen makes as it opens, against a fake core: a redundant read shows here.
-import { beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect } from "../lib/api/core.ts";
-import { eachSeries, problem, settled, tally } from "../lib/api/core.harness.ts";
+import { eachSeries, problem, settled, tally } from "../lib/api/settled.harness.ts";
 import { coreContext } from "../lib/shell/core.ts";
 import App from "./shell.harness.svelte";
 import History from "./history/+page.svelte";
@@ -101,7 +101,13 @@ const fake = (request: Request) => {
   return Promise.resolve(answer(request.url));
 };
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 beforeEach(async () => {
+  // The screens' timers run on the fake clock, which `settled` runs on.
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   urls.length = 0;
   await page.viewport(1280, 900);
 });
@@ -122,9 +128,8 @@ test("the dashboard opens on one read of each thing it shows", async () => {
   const screen = await render(App);
 
   await expect.element(screen.getByRole("group", { name: "Heute" })).toBeVisible();
-  await settled(() => urls.length);
 
-  expect(tally(urls)).toEqual({
+  const reads = {
     session: 1,
     devices: 1,
     layout: 1,
@@ -144,7 +149,14 @@ test("the dashboard opens on one read of each thing it shows", async () => {
     // The weather now, once for the scene's sky and the day alike, every role in one read a source.
     [`devices/${WEATHER}/history`]: 1,
     [`devices/${WEATHER}/forecasts`]: 1,
-  });
+  };
+
+  // The scene asks for its reads once mounted: after a paint, an idle main thread and the warm-up
+  // worker's answer, none of them on the fake clock.
+  await expect.poll(() => tally(urls), { timeout: 15_000 }).toEqual(reads);
+  await settled(() => urls.length);
+
+  expect(tally(urls)).toEqual(reads);
 });
 
 test("History opened from the dashboard reads nothing the dashboard already read", async () => {
@@ -158,6 +170,11 @@ test("History opened from the dashboard reads nothing the dashboard already read
   const dashboard = await render(Home, { context });
 
   await expect.element(dashboard.getByRole("group", { name: "Heute" })).toBeVisible();
+  // The scene asks for its reads once mounted: after a paint, an idle main thread and the warm-up
+  // worker's answer, none of them on the fake clock.
+  await expect
+    .poll(() => tally(urls), { timeout: 15_000 })
+    .toMatchObject({ capabilities: 1, "module-types": 1 });
   await settled(() => urls.length);
   await dashboard.unmount();
   urls.length = 0;
@@ -181,7 +198,7 @@ test("History opened from the dashboard reads nothing the dashboard already read
 
 test("a dashboard minute reads only today's energies and money", async () => {
   vi.useFakeTimers({
-    toFake: ["setInterval", "clearInterval", "Date"],
+    toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
     now: new Date("2026-11-12T10:01:30Z"),
   });
 

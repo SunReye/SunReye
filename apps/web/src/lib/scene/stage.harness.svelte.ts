@@ -3,6 +3,7 @@
 import { flushSync } from "svelte";
 import { vi } from "vitest";
 import { PerspectiveCamera } from "three";
+import { frames, framesUntil } from "../motion/clock.harness.ts";
 import { motion } from "../motion/tier.svelte.ts";
 import { weatherEffects } from "./weather-effects.svelte.ts";
 import { quality } from "./quality.svelte.ts";
@@ -22,6 +23,7 @@ let close: (() => void) | undefined;
 
 /** Closes the studio opened and puts this browser's switches back: after each test. */
 export function shut(): void {
+  vi.useRealTimers();
   close?.();
   close = undefined;
   quality.choice = "auto";
@@ -30,8 +32,10 @@ export function shut(): void {
   localStorage.clear();
 }
 
-/** What the studio is asked for, and the frames counted. */
+/** What the studio is asked for, and the frames counted, on frames the test plays. */
 function watched() {
+  vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] });
+
   return {
     // This host draws in software: its frames are no evidence, and none may strain a later test.
     counted: vi.spyOn(motion, "frame").mockImplementation(() => {}),
@@ -49,6 +53,21 @@ function onScreen(): HTMLCanvasElement {
   document.body.append(canvas);
 
   return canvas;
+}
+
+/** Opens `scene` once `built`, on the frames played until its first is drawn. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the scene opens in place.
+async function opened(scene: Lit, built: Readonly<Promise<void>>): Promise<void> {
+  let done = false;
+
+  const opening = scene.opening.open(built, noop, noop).then(() => {
+    done = true;
+
+    return done;
+  });
+
+  await framesUntil(() => done);
+  await opening;
 }
 
 /** A lit studio on a canvas on screen, opened once `built`, under a weather the test sets. */
@@ -78,7 +97,7 @@ export async function open(built: Readonly<Promise<void>> = Promise.resolve()) {
 
   if (scene === undefined) throw new TypeError("no scene");
 
-  await scene.opening.open(built, noop, noop);
+  await opened(scene, built);
 
   /** The weather turns to what it was but for `next`. */
   const turn = (next: Partial<SceneWeather>): void => {
@@ -101,16 +120,6 @@ export async function open(built: Readonly<Promise<void>> = Promise.resolve()) {
     },
     under: turn,
   };
-}
-
-/** `count` of the display's frames, one after the other. */
-async function frames(count: number): Promise<void> {
-  if (count === 0) return;
-
-  await new Promise((resolve) => {
-    requestAnimationFrame(resolve);
-  });
-  await frames(count - 1);
 }
 
 /** How often the studio draws on its own over eight frames, once what was asked for is drawn. */

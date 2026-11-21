@@ -1,7 +1,17 @@
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
-import { expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { INPUTS, show, STRINGS } from "./forecast-detail.harness.ts";
+import { motion } from "../motion/tier.svelte.ts";
+
+// Still: a figure stands at its value at once, where it would roll up to it frame by frame.
+beforeEach(() => {
+  motion.lowPower = true;
+});
+
+afterEach(() => {
+  motion.lowPower = false;
+});
 
 /** Each line's name and expected energy, as its bar's row reads. */
 const lines = () =>
@@ -79,7 +89,7 @@ test("today's facts are one row on a narrow phone: the sky's sunshine, the best 
     .poll(() => row().map((cell) => cell.querySelector("dt")?.textContent.trim()))
     .toEqual(["Sonnenschein", "Beste 3 h", "Heute bisher", "Ø Abweichung"]);
   expect(document.querySelectorAll("[data-facts] dl")).toHaveLength(1);
-  // Polled: the figures roll up to their values.
+  // Polled: the figures follow the read.
   await expect.poll(() => figure("facts", "Sonnenschein")).toBe("3,0 h");
   // One line inside the screen, nothing cut short.
   expect(new Set(row().map((cell) => Math.round(cell.getBoundingClientRect().top))).size).toBe(1);

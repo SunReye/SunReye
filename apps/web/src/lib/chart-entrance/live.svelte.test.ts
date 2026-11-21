@@ -1,11 +1,16 @@
 // A chart that grows live only fades in, once, so a tick never redraws it (ADR 21 "Chart entrance").
-import { expect, test } from "vitest";
+import { tick } from "svelte";
+import { beforeEach, expect, test } from "vitest";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import DayChart from "../dashboard/DayChart.svelte";
 import LiveArea from "../live-graph/LiveArea.svelte";
-import { built, expectBuilds, finish } from "./built.harness.ts";
+import { built, expectBuilds } from "./built.harness.ts";
 import { quarters, HOUR, T0 } from "./charts.fixtures.ts";
+import { finish, holdEntrances } from "../motion/animations.harness.ts";
+
+// Entrances held at their start: a test reads one before it has played out.
+beforeEach(holdEntrances);
 
 test("the day chart fades in", async () => {
   await render(DayChart, {
@@ -34,13 +39,11 @@ test("a tick never redraws the live graph", async () => {
   const screen = await render(LiveArea, live(30));
 
   await expectBuilds("fade");
-  finish();
+  await finish();
   await expect.poll(built).toEqual([]);
 
   await screen.rerender(live(31));
-  await new Promise((resolve) => {
-    requestAnimationFrame(resolve);
-  });
+  await tick();
 
   expect(built()).toEqual([]);
 });

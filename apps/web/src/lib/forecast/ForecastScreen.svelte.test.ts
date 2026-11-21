@@ -1,9 +1,9 @@
-import { expect, onTestFinished, test } from "vitest";
+import { expect, onTestFinished, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 // The chart is laid out by the SPA's utilities.
 import "../../app.css";
-import { settled } from "../api/core.harness.ts";
+import { settled } from "../api/settled.harness.ts";
 import { connect } from "../api/core.ts";
 import { aside as asideOf, dragBy, letGo } from "../range/drag.harness.ts";
 import { locales, setLocale } from "../paraglide/runtime.js";
@@ -250,6 +250,11 @@ test.each(SIZES)(
 const aside = (device: number) => asideOf(card(device).element());
 
 test("a finger drags an inverter's card to the earlier week, reading nothing more than an arrow", async () => {
+  // The screen's timers, and the clock a finger's speed is read on, run on the test's clock.
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+  onTestFinished(() => {
+    vi.useRealTimers();
+  });
   const transport = testCore(WEEK);
   const went: string[] = [];
 

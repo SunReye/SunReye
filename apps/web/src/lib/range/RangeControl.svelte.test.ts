@@ -1,4 +1,4 @@
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
@@ -6,8 +6,23 @@ import type { Bounds, Kind, Ranged } from "./range.ts";
 import { haptics } from "../haptics.ts";
 import { dragBy } from "./drag.harness.ts";
 import RangeControl from "./RangeControl.svelte";
+import { realTimers } from "../motion/clock.harness.ts";
+
+beforeEach(() => {
+  // The finger's speed and the pane's spring on the test's clock.
+  vi.useFakeTimers({
+    toFake: [
+      "setTimeout",
+      "clearTimeout",
+      "requestAnimationFrame",
+      "cancelAnimationFrame",
+      "performance",
+    ],
+  });
+});
 
 afterEach(() => {
+  realTimers();
   vi.restoreAllMocks();
 });
 

@@ -1,5 +1,5 @@
 // Bars grow from their baseline as they first show (ADR 21 "Chart entrance").
-import { expect, test } from "vitest";
+import { beforeEach, expect, test } from "vitest";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import PriceChart from "../detail/PriceChart.svelte";
@@ -8,6 +8,10 @@ import LineBars from "../forecast/LineBars.svelte";
 import HourBars from "../weather/HourBars.svelte";
 import { expectBuilds } from "./built.harness.ts";
 import { bands, hours, priceDay } from "./charts.fixtures.ts";
+import { holdEntrances } from "../motion/animations.harness.ts";
+
+// Entrances held at their start: a test reads one before it has played out.
+beforeEach(holdEntrances);
 
 /** Where the bar of an hour priced `price` grows from, down from its top, and its height. */
 function origin(price: number) {

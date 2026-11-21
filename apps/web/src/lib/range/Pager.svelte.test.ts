@@ -1,9 +1,24 @@
-import { afterEach, expect, test } from "vitest";
+import { tick } from "svelte";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { cdp } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
+import { framesUntil, realTimers } from "../motion/clock.harness.ts";
 import Harness from "./pager.harness.svelte";
 
+beforeEach(() => {
+  vi.useFakeTimers({
+    toFake: [
+      "setTimeout",
+      "clearTimeout",
+      "requestAnimationFrame",
+      "cancelAnimationFrame",
+      "performance",
+    ],
+  });
+});
+
 afterEach(async () => {
+  realTimers();
   await cdp().send("Emulation.setEmulatedMedia", { features: [] });
 });
 
@@ -16,10 +31,6 @@ function offset(): number {
   const transform = card().querySelector<HTMLElement>(".track")?.style.transform ?? "";
 
   return transform === "" ? 0 : Number(/translateX\(([-\d.]+)px\)/u.exec(transform)?.[1]);
-}
-
-async function until(done: () => boolean): Promise<void> {
-  await expect.poll(done, { timeout: 2000 }).toBe(true);
 }
 
 /** A finger drags the card by `dx` px in `steps` moves `ms` apart. */
@@ -37,14 +48,13 @@ async function drag(dx: number, steps: number, ms: number, release = true): Prom
   card().dispatchEvent(new PointerEvent("pointerdown", at(0)));
 
   for (let i = 1; i <= steps; i++) {
-    // oxlint-disable-next-line no-await-in-loop -- the moves are paced like a finger's.
-    await new Promise((resolve) => {
-      setTimeout(resolve, ms);
-    });
+    vi.advanceTimersByTime(ms);
     card().dispatchEvent(new PointerEvent("pointermove", at((dx * i) / steps)));
   }
 
   if (release) card().dispatchEvent(new PointerEvent("pointerup", at(dx)));
+
+  await tick();
 }
 
 test("a drag draws the neighbour beside the page and follows the finger", async () => {
@@ -62,9 +72,9 @@ test("a drag past the threshold pages to the neighbour", async () => {
 
   await drag(-220, 8, 16);
 
-  await until(() => steps.length === 1);
+  await framesUntil(() => steps.length === 1);
   expect(steps).toEqual([1]);
-  await until(() => offset() === 0);
+  await framesUntil(() => offset() === 0);
   await expect.element(screen.getByText("Seite 2")).toBeVisible();
   expect(screen.getByText("Seite 1").query()).toBeNull();
 });
@@ -75,7 +85,7 @@ test("a drag back to the earlier page steps back", async () => {
   await render(Harness, { steps });
   await drag(220, 8, 16);
 
-  await until(() => steps.length === 1);
+  await framesUntil(() => steps.length === 1);
   expect(steps).toEqual([-1]);
 });
 
@@ -85,7 +95,7 @@ test("a short drag springs back without paging", async () => {
 
   await drag(-40, 8, 30);
 
-  await until(() => offset() === 0);
+  await framesUntil(() => offset() === 0);
   expect(steps).toEqual([]);
   await expect.element(screen.getByText("Seite 1")).toBeVisible();
 });
@@ -108,6 +118,6 @@ test("still motion steps on a swipe without moving the pages", async () => {
     }),
   );
 
-  await until(() => steps.length === 1);
+  await framesUntil(() => steps.length === 1);
   await expect.element(screen.getByText("Seite 2")).toBeVisible();
 });

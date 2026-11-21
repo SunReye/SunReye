@@ -81,6 +81,8 @@ const steps: readonly (readonly [Command, Reads?])[] = [
   [["bun", "scripts/native-controls.ts"], JS],
   // A shared behaviour lives in one component (ADR 21, #836).
   [["bun", "scripts/one-owner.ts"], JS],
+  // Component tests run side by side under load: none waits on the wall clock.
+  [["bun", "scripts/fake-time.ts"], JS],
   // The built glass keeps its blur in Chromium (#763).
   [["bun", "scripts/built-css.ts"], JS],
   [["cargo", "deny", "--workspace", "check"], RUST],

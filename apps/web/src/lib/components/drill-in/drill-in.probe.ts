@@ -1,10 +1,12 @@
-// What the drill-in's tests read off the page.
-import { expect } from "vitest";
+// What the drill-in's tests read off the page, on frames the test plays (`fakeFrames`).
+import { tick } from "svelte";
+import { vi } from "vitest";
+import { framesUntil } from "../../motion/clock.harness.ts";
 
-export function frame(): Promise<number> {
-  return new Promise((resolve) => {
-    requestAnimationFrame(resolve);
-  });
+/** One frame on the fake clock, its updates drawn. */
+export async function frame(): Promise<void> {
+  vi.advanceTimersToNextFrame();
+  await tick();
 }
 
 export function child(): HTMLElement | null {
@@ -20,12 +22,31 @@ export function offset(): number {
     : Number(/translateX\(([-\d.]+)%\)/u.exec(transform)?.[1]);
 }
 
-export async function until(done: () => boolean): Promise<void> {
-  await expect.poll(done, { timeout: 2000 }).toBe(true);
-}
+export const until = framesUntil;
 
 export function rect(element: Element | null | undefined): DOMRect {
   if (!element) throw new Error("missing element");
 
   return element.getBoundingClientRect();
+}
+
+/** Browser back, once the route has heard it. */
+export async function browserBack(): Promise<void> {
+  const popped = new Promise((resolve) => {
+    addEventListener("popstate", resolve, { once: true });
+  });
+
+  history.back();
+  await popped;
+  await tick();
+}
+
+/** Scrolls the window to `y`, once the page has heard it, as a finger's scroll is. */
+export async function scrolled(y: number): Promise<void> {
+  const heard = new Promise((resolve) => {
+    addEventListener("scroll", resolve, { once: true });
+  });
+
+  scrollTo(0, y);
+  await heard;
 }

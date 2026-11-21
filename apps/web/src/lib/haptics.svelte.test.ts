@@ -3,6 +3,7 @@ import { cdp } from "vitest/browser";
 import { WebHaptics } from "web-haptics";
 import { HAPTICS, haptics } from "./haptics.ts";
 import { LOW_POWER } from "./motion/tier.ts";
+import { realTimers } from "./motion/clock.harness.ts";
 
 let vibrate: ReturnType<typeof vi.fn<() => boolean>>;
 
@@ -49,18 +50,19 @@ test("nothing but ADR 21's events can be triggered", () => {
   ]);
 });
 
-test("the library's own switch never shows, even where it carries the haptics (iOS)", async () => {
+test("the library's own switch never shows, even where it carries the haptics (iOS)", () => {
   const supported = WebHaptics.isSupported;
   // iOS has no Vibration API; the library falls back to clicking its switch.
   Object.defineProperty(WebHaptics, "isSupported", { value: false, configurable: true });
 
+  vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame"] });
+
   try {
     haptics.soft();
     // The library builds its switch on the next frame at the latest.
-    await new Promise((resolve) => {
-      requestAnimationFrame(resolve);
-    });
+    vi.advanceTimersToNextFrame();
   } finally {
+    realTimers();
     Object.defineProperty(WebHaptics, "isSupported", { value: supported, configurable: true });
   }
 

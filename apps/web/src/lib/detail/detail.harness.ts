@@ -4,6 +4,7 @@ import { vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import { connect, type Transport } from "../api/core.ts";
 import { eachAnswer } from "../api/core.harness.ts";
+import { turn } from "../api/settled.harness.ts";
 import { merge } from "../api/frames.ts";
 import Dashboard from "../dashboard/Dashboard.svelte";
 import { feed } from "../live/stream.harness.ts";
@@ -129,6 +130,12 @@ export const fetched: string[] = [];
 /** Each request's path, once a request. */
 export const requested: string[] = [];
 
+/** Runs `then` once the page has taken its turn: after what it was sent before. */
+async function later(then: () => void): Promise<void> {
+  await turn();
+  then();
+}
+
 /** Feeds the stream the served frame, folded as the core's stream folds it (ADR 9). */
 function streamed(): void {
   const send = feed();
@@ -145,18 +152,16 @@ function streamed(): void {
   send(first);
 
   // The stream breaks; the reconnect finds no core.
-  if (served.breaks) {
-    setTimeout(() => {
+  if (served.breaks)
+    void later(() => {
       send({ ...first, lost: Date.now() });
-    }, 50);
-  }
+    });
 
-  if (served.tick) {
-    setTimeout(() => {
+  if (served.tick)
+    void later(() => {
       vi.setSystemTime(Date.now() + 1000);
       send(merge(first, { devices: IMPORTING }, Date.now()));
-    }, 50);
-  }
+    });
 }
 
 const plan = () => Response.json(INVERTER_PLAN);

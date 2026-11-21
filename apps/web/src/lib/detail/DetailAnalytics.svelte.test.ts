@@ -125,6 +125,10 @@ test("the heat tab reads the range's hours and draws them on one canvas", async 
   );
 });
 
+/** How many columns the heat grid has read: a pointer or a key reads its column off them. */
+const columns = (grid: Readonly<Locator>) =>
+  grid.element().nextElementSibling?.nextElementSibling?.children.length;
+
 /** A mouse press, move and release on `el` from column `a` to column `b` of `n`. */
 function drag(el: Element, n: number, a: number, b: number): void {
   const box = el.getBoundingClientRect();
@@ -153,6 +157,7 @@ test("dragging across the heat grid's days narrows the range to them", async () 
   const grid = sheet.getByRole("group", { name: /Produktion nach Tageszeit/u });
 
   await expect.element(grid).toBeVisible();
+  await expect.poll(() => columns(grid)).toBe(7);
   drag(grid.element(), 7, 1, 2);
 
   await expect
@@ -169,6 +174,7 @@ test("keys select a span of the heat grid's days, which narrows the range", asyn
   const grid = sheet.getByRole("group", { name: /Produktion nach Tageszeit/u });
 
   await expect.element(grid).toBeVisible();
+  await expect.poll(() => columns(grid)).toBe(7);
   const el = grid.element();
 
   if (el instanceof HTMLElement) el.focus();

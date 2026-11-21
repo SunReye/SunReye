@@ -38,6 +38,8 @@ async function mount() {
   const live = screen.getByRole("region", { name: "Live-Leistung" });
 
   await expect.element(live.getByText("Live · letzte 2 Minuten")).toBeVisible();
+  // The plot is drawn once its box is measured, a frame after the section shows.
+  await expect.poll(() => document.querySelector("[data-plot]")).not.toBeNull();
 
   return { screen, live };
 }
@@ -71,11 +73,15 @@ function finger(type: string, ago: number): void {
 const rule = () => plot().querySelector("[data-read]");
 
 test("the pointer on the live graph reads the sample under it in the header; leaving restores it", async () => {
-  vi.useFakeTimers({ toFake: ["Date"], now: T0 });
+  vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"], now: T0 });
 
   const { live } = await mount();
 
   await userEvent.hover(plot(), { position: before(30) });
+  // Every look of a wait moves the fake clock on, the hover's own too: the reading's next tick
+  // reads it at the newest sample's time again.
+  vi.setSystemTime(T0 - 1000);
+  vi.advanceTimersByTime(1000);
 
   // 30 s before the newest sample: the 29th, 2,9 kW.
   await expect.element(live.getByText("vor 30 s")).toBeVisible();
@@ -97,6 +103,8 @@ test("a stalled stream's sample ages from now, ticking, not from the newest samp
   const { live } = await mount();
 
   await userEvent.hover(plot(), { position: before(30) });
+  vi.setSystemTime(T0 + 19_000);
+  vi.advanceTimersByTime(1000);
   await expect.element(live.getByText("vor 50 s")).toBeVisible();
 
   vi.advanceTimersByTime(5000);

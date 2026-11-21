@@ -3,6 +3,7 @@ import { page, userEvent } from "vitest/browser";
 // The screen is laid out by the SPA's utilities.
 import "../../app.css";
 import { reset, show, showIn } from "./explore.harness.ts";
+import { finish } from "../motion/animations.harness.ts";
 
 afterEach(reset);
 
@@ -247,13 +248,11 @@ test.for([
     };
 
     // The slide in from the dashboard is over: only this screen is left, at rest.
-    await expect
-      .poll(() => {
-        const screens = [...document.querySelectorAll("[data-screen]")];
+    await finish(() => {
+      const screens = [...document.querySelectorAll("[data-screen]")];
 
-        return screens.length === 1 && screens[0]!.getAnimations().length === 0;
-      })
-      .toBe(true);
+      return screens.length === 1 && screens[0]!.getAnimations().length === 0;
+    });
     await expect.element(item).toBeVisible();
     expect(covered()).toBe(false);
 

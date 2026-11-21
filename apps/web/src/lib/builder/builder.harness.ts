@@ -111,7 +111,6 @@ export async function enter(row: string, value: string): Promise<void> {
   await userEvent.fill(page.getByRole("textbox", { name: `${row} eingeben` }), value);
   await userEvent.keyboard("{Enter}");
   await page.getByRole("button", { name: /^Übernehmen/u }).click();
-  await closed();
 }
 
 /** Picks `option` in a choice row's value editor and applies it. */
@@ -121,26 +120,6 @@ export async function choose(row: string, option: string): Promise<void> {
     .click();
   await page.getByRole("radiogroup", { name: row }).getByRole("radio", { name: option }).click();
   await page.getByRole("button", { name: /^Übernehmen/u }).click();
-  await closed();
-}
-
-const scrim = () => document.querySelector('[data-slot="drawer-overlay"]');
-
-/** Until the value editor's scrim has faded out: while it fades, it takes a tap meant for the scene. */
-function closed(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const started = performance.now();
-
-    const poll = setInterval(() => {
-      if (!scrim()) {
-        clearInterval(poll);
-        resolve();
-      } else if (performance.now() - started > 10_000) {
-        clearInterval(poll);
-        reject(new Error("the value editor's scrim stayed"));
-      }
-    }, 20);
-  });
 }
 
 export async function gridOnTheSouthFace(transport: Transport) {
