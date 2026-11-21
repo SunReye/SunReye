@@ -1,5 +1,6 @@
 // The band chart's reading (ADR 21): the core's pointer reading, a place being a band's index. Keys
 // start from the band being read, or the latest that has happened.
+import { brushBands, clamp } from "../chart-reading/bands.ts";
 import { ChartReader, type Move } from "../chart-reading/reader.svelte.ts";
 import type { Band } from "./bands.ts";
 
@@ -11,8 +12,6 @@ export interface Target {
   /** Told the band being read, as it changes, for a chart that reads along. */
   readonly onread?: ((index: number | null) => void) | undefined;
 }
-
-const clamp = (v: number, last: number) => Math.min(last, Math.max(0, v));
 
 function step(bands: readonly Band[], from: number | null, key: Move): number | undefined {
   const last = bands.length - 1;
@@ -51,17 +50,7 @@ export function bandReading(target: () => Target): ChartReader<number> {
 
           return true;
         },
-        brush:
-          onbrush &&
-          ((a, b) => {
-            const [from, to] = [Math.min(a, b), Math.max(a, b)];
-
-            if (to <= from) return false;
-
-            onbrush(from, to);
-
-            return true;
-          }),
+        brush: brushBands((i: number) => i, onbrush),
       };
     },
     {
