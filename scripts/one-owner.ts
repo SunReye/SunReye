@@ -53,6 +53,7 @@ const RULES: readonly Rule[] = [
     found: /from "(?:[^"]*\/)?haptics(?:\.[jt]s)?"/u,
     owners: [
       "components/",
+      "chart-reading/",
       "range/",
       "builder/",
       "feedback.ts",

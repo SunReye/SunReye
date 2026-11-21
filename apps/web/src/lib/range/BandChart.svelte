@@ -10,7 +10,7 @@
     of the plot from the chosen span, the new ones start inside it;
   - a gridline keeps its value: it travels to that value's place on the new scale.
   The caller keeps it under about 62 bands. The legend is the readout: it shows the range's sums and,
-  while a band is active, that band's values, so nothing floats under a finger (`reading.svelte.ts`).
+  while a band is active, that band's values, so nothing floats under a finger (`chart-reading/`).
 -->
 <script lang="ts">
   import { untrack } from "svelte";
@@ -35,7 +35,7 @@
   import BandLegend, { type Legend } from "./BandLegend.svelte";
   import BandTicks from "./BandTicks.svelte";
   import { Presence, type Kept } from "./presence.svelte.ts";
-  import { Reading } from "./reading.svelte.ts";
+  import { bandReading } from "./reading.svelte.ts";
 
   let {
     bands,
@@ -94,7 +94,6 @@
   const upMax = $derived(scale.upMax);
   const zero = $derived(scale.zero);
 
-  let plot = $state<HTMLElement | null>(null);
   let plotHeight = $state(0);
   let plotW = $state(0);
 
@@ -178,9 +177,14 @@
   const hasMarks = $derived(bands.some((b) => (b.mark ?? null) !== null));
   const hasGhosts = $derived(bands.some((b) => (b.ghost ?? null) !== null));
 
-  const reading = new Reading(() => ({ bands, plot, ondrill, onbrush, onread }));
-  const active = $derived(reading.active);
-  const sel = $derived(reading.sel);
+  const reading = bandReading(() => ({ bands, ondrill, onbrush, onread }));
+  const active = $derived(reading.at);
+
+  /** The span being selected, in order. */
+  const sel = $derived(
+    reading.brush ? ([Math.min(...reading.brush), Math.max(...reading.brush)] as const) : null,
+  );
+
   const shown = $derived(active !== null && active < bands.length ? bands[active]! : null);
 
   const readout = $derived<Readout>(
@@ -319,7 +323,6 @@
 
       <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
       <div
-        bind:this={plot}
         bind:clientHeight={plotHeight}
         bind:clientWidth={plotW}
         class={[
@@ -332,13 +335,7 @@
         tabindex="0"
         data-scrub
         aria-label={m.range_chart_keys({ chart: label })}
-        onpointerdown={reading.down}
-        onpointermove={reading.move}
-        onpointerup={reading.up}
-        onpointerleave={reading.leave}
-        onpointercancel={reading.cancel}
-        onkeydown={reading.key}
-        onblur={reading.blur}
+        {...reading.on}
       >
         <BandTicks list={ticks.list} />
         {#if loading}

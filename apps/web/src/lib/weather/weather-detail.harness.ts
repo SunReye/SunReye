@@ -5,6 +5,7 @@ import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { perSeries as eachSeries } from "../api/core.harness.ts";
 import type { WeatherReader } from "./weather.ts";
+import { sheetContext } from "../detail/in-sheet.ts";
 import WeatherDetail from "./WeatherDetail.svelte";
 
 export const WEATHER = 4_294_967_295;
@@ -108,7 +109,12 @@ export const DRY = {
 export async function show(stored: Parameters<typeof fake>[0]) {
   await page.viewport(390, 800);
   const { core, devices } = fake(stored);
-  const screen = await render(WeatherDetail, { core, day: DAY });
+
+  // The sheet the weather opens in, whose charts read a held finger.
+  const screen = await render(WeatherDetail, {
+    props: { core, day: DAY },
+    context: sheetContext(),
+  });
 
   return { screen, devices };
 }

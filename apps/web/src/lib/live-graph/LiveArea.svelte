@@ -152,8 +152,10 @@
           />
         </Layer>
       </Chart>
+      <!-- A finger's reading ticks once per sample it crosses, not per px. -->
       <ChartReading
         {slots}
+        band={(slot) => Math.floor((slot / slots) * (WINDOW_MS / interval))}
         bind:read
         class="absolute inset-y-0 right-0"
         style="left: {PADDING.left}px"
