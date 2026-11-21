@@ -186,7 +186,7 @@ The first integration build rendered browser defaults: plain links for navigatio
 - **Explore's header** on a phone below about 415 px stands in two rows: the title, then its controls across the width. The words stay.
 - **The range control** (2026-11-21, #837) stands in the screen's header, outside every card, on every full screen over a range: History, Forecast and Tariff alike. A sheet keeps it at its head.
 - **A card's height** glides when its content changes it (data in place of a placeholder, another range, another tab), on the move token, and what stands below moves with it. A width the window sets does not glide. On the still tier the card takes its height at once. The kit's card does it, so every card does.
-- **Explore's charts** take the chart entrance whenever the chart changes, not only on the first mount: a series added builds in, a series removed fades out as its lane closes, and another mode builds its chart in.
+- **Explore's charts** take the chart entrance whenever the chart changes, not only on the first mount: a series added builds the chart in again, a series removed leaves as its drawing before fades out over the chart built without it, and another mode builds its chart in. The lanes share one canvas (ADR 22), so a lane does not close on its own; the card glides to its new height.
 
 ## Considered options
 
