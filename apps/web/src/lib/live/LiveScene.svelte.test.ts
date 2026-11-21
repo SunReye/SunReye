@@ -132,7 +132,10 @@ test("a car appears at its place while connected, with its charge power and SOC"
     },
   });
 
-  await expect.element((await chip("E-Auto", "7,4")).getByText("63")).toBeVisible();
+  const soc = (await chip("E-Auto", "7,4")).getByText("63");
+
+  await finish(() => soc.query() !== null);
+  await expect.element(soc).toBeVisible();
 });
 
 /** The figure's fade, once it reports ready. */
