@@ -1,5 +1,6 @@
 // What the string comparison reads from the core: each string's energy in a range, its module
 // types' peak power and each MPPT input's learned correction.
+import { answerOf, settleRead, type Settled } from "../api/client.ts";
 import type { Core, PvString } from "../api/core.ts";
 import { bandFigure, periodOf, rollups } from "../history/history.ts";
 import { dayOf, fmt } from "../range/calendar.ts";
@@ -27,24 +28,32 @@ export async function stringEnergy(
   return new Map(await Promise.all(strings.map((s) => read(s))));
 }
 
-/** Each module type's watts at standard test conditions; none while they cannot be read. */
+/** Each module type's watts at standard test conditions; a refusal is thrown (`answerOf`). */
 export async function modulePeaks(
   core: Readonly<Pick<Core, "moduleTypes">>,
 ): Promise<Map<number, number>> {
-  const types = await core.moduleTypes();
+  const types = answerOf(await core.moduleTypes());
 
-  return new Map(
-    "problem" in types ? [] : types.map((t: Readonly<(typeof types)[number]>) => [t.id, t.pmax]),
-  );
+  return new Map(types.map((t: Readonly<(typeof types)[number]>) => [t.id, t.pmax]));
 }
 
-/** Each MPPT input's learned correction; none while it cannot be read. */
+/** Each MPPT input's learned correction; a refusal is thrown (`answerOf`). */
 export async function inputCorrections(
   core: Readonly<Pick<Core, "corrections">>,
 ): Promise<readonly InputCorrection[]> {
-  const read = await core.corrections();
+  return answerOf(await core.corrections()).inputs;
+}
 
-  return "inputs" in read ? read.inputs : [];
+/** What every string's yield and ratio needs: the module types' peaks and the inputs' corrections. */
+export type StringFacts = Settled<
+  readonly [ReadonlyMap<number, number>, readonly InputCorrection[]]
+>;
+
+/** The module types' peaks and the inputs' corrections, settled together. */
+export function stringFacts(
+  core: Readonly<Pick<Core, "moduleTypes" | "corrections">>,
+): Promise<StringFacts> {
+  return settleRead(Promise.all([modulePeaks(core), inputCorrections(core)]));
 }
 
 /** The correction grid's columns: the twelve months. */

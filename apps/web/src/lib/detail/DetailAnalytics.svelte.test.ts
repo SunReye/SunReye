@@ -209,3 +209,28 @@ test("the compare tab ranks strings by yield per kWp and flags a weak one", asyn
     "2026-11-09T00:00:00.000Z",
   );
 });
+
+test("a compare tab whose module types the core refuses says why, never a blank yield", async () => {
+  served.types = () => Response.json({ status: 500, code: "internal" }, { status: 500 });
+
+  const { screen } = await show("string-2", "range=week");
+  const sheet = screen.getByRole("dialog", { name: "Nord" });
+
+  await sheet.getByRole("tab", { name: "Vergleich" }).click();
+
+  const failed = sheet.getByRole("alert").filter({ hasText: "Strings nicht geladen" });
+
+  await expect.element(failed.getByText("Interner Fehler im SunReye-Kern.")).toBeVisible();
+  expect(sheet.getByRole("table", { name: "Strings im Vergleich" }).query()).toBeNull();
+
+  served.types = null;
+  await failed.getByRole("button", { name: "Erneut laden" }).click();
+
+  await expect
+    .element(
+      sheet
+        .getByRole("table", { name: "Strings im Vergleich" })
+        .getByRole("row", { name: /Süd.*4,0/u }),
+    )
+    .toBeVisible();
+});

@@ -6,13 +6,14 @@
 <script lang="ts">
   import { Pressable } from "../components/ui/pressable/index.js";
   import type { Core, PvString } from "../api/core.ts";
+  import LoadFailed from "../components/load-failed.svelte";
   import { m } from "../paraglide/messages.js";
   import { kwh as energy, num } from "../range/format.ts";
   import type { RangeRoute } from "../range/route.svelte.ts";
   import HeatGrid from "./HeatGrid.svelte";
   import StringFlag from "./StringFlag.svelte";
-  import { inputCorrections, modulePeaks, MONTHS, stringEnergy } from "./string-energy.ts";
-  import { correctionGrid, stringRows, type InputCorrection, type StringRow } from "./strings.ts";
+  import { MONTHS, stringEnergy, stringFacts, type StringFacts } from "./string-energy.ts";
+  import { correctionGrid, stringRows, type StringRow } from "./strings.ts";
 
   let {
     core,
@@ -27,15 +28,24 @@
     sid: number | null;
   } = $props();
 
-  let pmax = $state.raw<ReadonlyMap<number, number>>(new Map());
-  let corrections = $state.raw<readonly InputCorrection[]>([]);
   let kwh = $state.raw<ReadonlyMap<number, number>>(new Map());
   let picked = $state<number | null>(null);
 
+  /** The module types and the corrections; undefined until read. */
+  let facts = $state.raw<StringFacts>();
+
+  /** Raised to read them again. */
+  let again = $state(0);
+
+  const [pmax, corrections] = $derived(
+    facts?.failed === false ? facts.data : [new Map<number, number>(), []],
+  );
+
   // What does not follow the range is read once.
   $effect(() => {
-    void modulePeaks(core).then((next) => (pmax = next));
-    void inputCorrections(core).then((next) => (corrections = next));
+    void again;
+    facts = undefined;
+    void stringFacts(core).then((got) => (facts = got));
   });
 
   $effect(() => {
@@ -107,6 +117,15 @@
 </script>
 
 <div class="@container flex flex-col gap-4">
+  {#if facts?.failed}
+    <LoadFailed
+      text={m.strings_error()}
+      refused={facts.refused}
+      onretry={() => {
+        again++;
+      }}
+    />
+  {:else}
   <div role="table" aria-label={m.strings_table()} class="text-sm">
     <div role="row" class={[COLS, "border-b border-border/60 pb-1.5 text-xs text-muted-foreground"]}>
       <span role="columnheader">{m.strings_string()}</span>
@@ -190,5 +209,6 @@
         </div>
       {/if}
     </section>
+  {/if}
   {/if}
 </div>

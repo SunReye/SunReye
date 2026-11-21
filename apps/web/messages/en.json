@@ -858,6 +858,7 @@
   "heat_kwh": "{value} kWh",
   "heat_kwh_mean": "{value} kWh on average",
   "heat_scale": "{value} kWh per hour",
+  "strings_error": "Strings not loaded.",
   "strings_table": "Strings compared",
   "strings_string": "String",
   "strings_yield": "kWh per kWp",

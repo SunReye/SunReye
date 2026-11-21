@@ -81,6 +81,8 @@ export interface Served {
   publishes: readonly string[];
   /** Answers the inverter's forecasts in place of its plan; null for the plan. */
   forecasts: (() => Response | Promise<Response>) | null;
+  /** Answers the module types in place of the one served; null for it. */
+  types: (() => Response) | null;
 }
 
 export const served: Served = {
@@ -96,6 +98,7 @@ export const served: Served = {
   payback: null,
   publishes: [],
   forecasts: null,
+  types: null,
 };
 
 /** The series catalog: each stored series a measurement since the month began. */
@@ -166,6 +169,8 @@ function streamed(): void {
 
 const plan = () => Response.json(INVERTER_PLAN);
 
+const MODULE_TYPES = { moduleTypes: [{ id: 1, name: "M", pmax: 300 }] };
+
 /** Each path but statistics', and what the fake core answers there to query `q`. */
 const ROUTES = new Map<string, (q: Readonly<URLSearchParams>) => Response | Promise<Response>>([
   ["/api/v1/topology", () => Response.json(TOPOLOGY)],
@@ -182,7 +187,7 @@ const ROUTES = new Map<string, (q: Readonly<URLSearchParams>) => Response | Prom
     "/api/v1/devices",
     () => Response.json({ status: 403, code: "auth.forbidden" }, { status: 403 }),
   ],
-  ["/api/v1/module-types", () => Response.json({ moduleTypes: [{ id: 1, name: "M", pmax: 300 }] })],
+  ["/api/v1/module-types", () => served.types?.() ?? Response.json(MODULE_TYPES)],
   ["/api/v1/corrections", () => Response.json(CORRECTIONS)],
   [
     "/api/v1/costs",
@@ -257,6 +262,7 @@ export async function prepare(): Promise<void> {
   served.payback = null;
   served.publishes = [];
   served.forecasts = null;
+  served.types = null;
   served.last = "2026-11-12T12:00:00Z";
   vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-12T12:20:00Z") });
   await cdp().send("Emulation.setEmulatedMedia", {
