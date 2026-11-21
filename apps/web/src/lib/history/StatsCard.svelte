@@ -62,6 +62,7 @@
         size="block"
         text={m.stats_error_title()}
         detail={m.stats_error_text()}
+        refused={s.data.refused}
         onretry={s.data.retry}
       />
     {/if}

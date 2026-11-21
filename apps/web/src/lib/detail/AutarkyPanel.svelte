@@ -29,7 +29,7 @@
   const month = $derived(monthAutarky(core, zone, today));
 </script>
 
-<RangeState failed={range.failed} onretry={range.retry}>
+<RangeState failed={range.failed} refused={range.refused} onretry={range.retry}>
   {#if range.view}
     {@const v = range.view}
     <ShareChart bands={v.bands} grain={v.grain} selfUse={v.all.selfUse} />

@@ -32,7 +32,7 @@
   );
 </script>
 
-<RangeState failed={range.failed} onretry={range.retry}>
+<RangeState failed={range.failed} refused={range.refused} onretry={range.retry}>
   {#if range.view}
     <DetailStats panel stats={range.view} />
   {:else}

@@ -1,5 +1,6 @@
 // One series' rollups over a range (ADR 3, 9): a band reads a power's energy or any other series'
 // mean from the core's hourly or daily rollups, never by integrating a history.
+import { answerOf } from "../api/client.ts";
 import type { Core } from "../api/core.ts";
 import { grainOf, t0Of, t1Of, type Range } from "../range/range.ts";
 
@@ -50,7 +51,8 @@ function piecesOf(period: RollupPeriod, from: number, to: number): (readonly [nu
 
 /**
  * Each of `series`' rollups starting from `from` to before `to`, in order, read together in
- * pieces the core serves; a series refused is empty.
+ * pieces the core serves; a refusal rejects with the core's reason (`Refused`), as a failed read,
+ * never as an empty range.
  */
 export async function rollupsOf(
   core: Readonly<Pick<Core, "statistics">>,
@@ -72,7 +74,7 @@ export async function rollupsOf(
     for (const read of reads) {
       const one = read[i];
 
-      for (const p of one !== undefined && "points" in one ? one.points : [])
+      for (const p of one === undefined ? [] : answerOf(one).points)
         out.push({
           start: Date.parse(p.start),
           end: Date.parse(p.end),

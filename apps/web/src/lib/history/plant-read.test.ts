@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { settleRead } from "../api/client.ts";
 import { connect } from "../api/core.ts";
 import { eachSeries } from "../api/core.harness.ts";
 import { readPlant } from "./plant-read.ts";
@@ -88,8 +89,9 @@ test("a series the plant lacks reads as none", async () => {
   const point = { start: "2016-01-01T10:00:00Z", end: "2016-01-01T11:00:00Z", mean: 900 };
   const day = { date: "2016-01-01", start: "2016-01-01T00:00:00Z", end: "2016-01-02T00:00:00Z" };
 
+  // The core answers a series it stores nothing of with no points.
   const { core } = fake((s, kind) => {
-    if (s === "battery.charge.power") return { problem: { code: "history.series", status: 404 } };
+    if (s === "battery.charge.power") return { points: [] };
 
     return kind === "history"
       ? { points: [point] }
@@ -104,4 +106,15 @@ test("a series the plant lacks reads as none", async () => {
   expect(plant.days.pv).toEqual([
     { start: T0, end: T0 + DAY, integral: 900, mean: 37.5, max: null, covered: DAY },
   ]);
+});
+
+test("a refused read fails with the core's reason, never as an empty range", async () => {
+  const { core } = fake((_, kind) =>
+    kind === "statistics" ? { problem: { code: "history.range", status: 422 } } : { points: [] },
+  );
+
+  expect(await settleRead(readPlant(core, T0, T0 + DAY))).toMatchObject({
+    failed: true,
+    refused: { problem: "history.range" },
+  });
 });

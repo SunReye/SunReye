@@ -6,7 +6,6 @@ import type { Fact } from "./figures.ts";
 import { periodOf, rollups } from "../history/history.ts";
 import { readFlows } from "../history/plant-read.ts";
 import { flowFacts, type SheetFlow, type FlowRead } from "./flow.ts";
-import { strict } from "./measure.ts";
 import type { RangeInput, RangeReader } from "./sheet-range.svelte.ts";
 
 export interface FlowInput extends RangeInput {
@@ -25,11 +24,11 @@ export const FLOW_RANGE: RangeReader<FlowInput, FlowRead, Fact[]> = {
     const ran = from.getTime() < until.getTime();
 
     const read = (device: number, series: string) =>
-      ran ? rollups(strict(core), device, series, period, from, until) : Promise.resolve([]);
+      ran ? rollups(core, device, series, period, from, until) : Promise.resolve([]);
 
     const [peak, flows, money] = await Promise.all([
       read(PLANT, flow.series),
-      flow.cover && ran ? readFlows(strict(core), period, from.getTime(), until.getTime()) : null,
+      flow.cover && ran ? readFlows(core, period, from.getTime(), until.getTime()) : null,
       flow.money === null ? null : read(TARIFF, flow.money.series),
     ]);
 
