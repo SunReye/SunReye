@@ -83,6 +83,8 @@
     },
   });
 
+  push.nest();
+
   // The page covers the root, which is then left out of the layout.
   // svelte-ignore state_referenced_locally
   let covered = $state(open !== null);

@@ -98,3 +98,37 @@ test.for([
     await expect.element(screen.getByRole("button", { name: "Gerät hinzufügen" })).toBeVisible();
   },
 );
+
+test("a swipe from the screen's edge on a device's level goes back to the list, not out of Devices", async () => {
+  const { screen } = await devices();
+
+  await screen.getByRole("button", { name: /^Wechselrichter/u }).click();
+
+  const level = screen.getByRole("region", { name: "Wechselrichter" });
+
+  await framesUntil(() => level.query() !== null && right(layerOf(level.element())) === 0);
+
+  const box = document.querySelector("[data-drill=box]")!;
+  const { left, top } = box.getBoundingClientRect();
+  const at = (x: number) => ({ pointerId: 1, clientX: left + x, clientY: top + 80, bubbles: true });
+
+  box.dispatchEvent(new PointerEvent("pointerdown", at(4)));
+
+  for (let i = 1; i <= 8; i++) {
+    vi.advanceTimersByTime(16);
+    box.dispatchEvent(new PointerEvent("pointermove", at(4 + 32 * i)));
+  }
+
+  await tick();
+  // The finger moves the device's level, not the Devices page under it.
+  expect(document.querySelector<HTMLElement>("[data-drill=page]")?.style.transform).toMatch(
+    /^translateX\(0%\)/u,
+  );
+  expect(right(layerOf(level.element()))).toBeGreaterThan(50);
+  box.dispatchEvent(new PointerEvent("pointerup", at(260)));
+
+  await framesUntil(() => level.query() === null);
+
+  await expect.element(screen.getByRole("button", { name: "Gerät hinzufügen" })).toBeVisible();
+  expect(document.querySelector("[data-drill=page]")).not.toBeNull();
+});

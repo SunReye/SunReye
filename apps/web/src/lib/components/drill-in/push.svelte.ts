@@ -3,6 +3,8 @@
 // let go, a spring takes over at its speed. A landed slide plays `soft`. Both land at once on the
 // still tier. Its users lay the levels out from `p`.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM's events, only read. */
+import { getContext, hasContext, onDestroy, setContext } from "svelte";
+import { createAttachmentKey } from "svelte/attachments";
 import { spring, tween, VelocityTracker } from "../../animate.ts";
 import { haptics } from "../../haptics.ts";
 import { released, settle, slideMs } from "./drill.ts";
@@ -12,6 +14,12 @@ const EDGE = 28;
 
 /** How far a finger moves right before the swipe is taken as one, in px. */
 const SLOP = 6;
+
+/** The push around a component, for a push inside it to nest under. */
+const OUTER = Symbol("push");
+
+/** Pointer events a push has acted on: the pushes around it leave them alone. */
+const consumed = new WeakSet<Event>();
 
 export interface PushHooks {
   /** The slide now heads for `to`, before its first frame. */
@@ -33,6 +41,12 @@ export class Push {
   #cancel: (() => void) | undefined;
   #tracker = new VelocityTracker();
   #swipe: { id: number; x0: number; p0: number; active: boolean; box: HTMLElement } | undefined;
+  /** The pushes inside this one's levels. */
+  #inner = new Set<Push>();
+  #box: HTMLElement | undefined;
+  #may: () => boolean = () => false;
+  /** The push a finger down on this box started a swipe of: this one or one inside it. */
+  #taken: Push | undefined;
 
   constructor(at: 0 | 1, hooks: PushHooks) {
     this.p = at;
@@ -78,39 +92,84 @@ export class Push {
   }
 
   /**
-   * The pointer handlers of the box the levels slide in: a finger near its left edge on a pushed
-   * level, while `may` holds, starts a swipe back.
+   * Nests this push under the one around the calling component, during its setup: a swipe that
+   * starts on the outer box, as in its padding, goes back on the innermost pushed level.
+   */
+  nest(): void {
+    const outer = hasContext(OUTER) ? getContext<Push>(OUTER) : undefined;
+
+    setContext(OUTER, this);
+
+    if (outer === undefined) return;
+
+    outer.#inner.add(this);
+    onDestroy(() => {
+      outer.#inner.delete(this);
+    });
+  }
+
+  /**
+   * The pointer handlers of the box the levels slide in, and its attachment: a finger near its left
+   * edge on a pushed level, while `may` holds, starts a swipe back.
    */
   handlers(may: () => boolean) {
+    this.#may = may;
+
     const up = (e: PointerEvent) => {
-      this.#up(e);
+      if (!consumed.has(e) && (this.#taken ?? this).#up(e)) consumed.add(e);
     };
 
     return {
-      onpointerdown: (e: PointerEvent & { currentTarget: HTMLElement }) => {
-        if (may()) this.#down(e, e.currentTarget);
+      [createAttachmentKey()]: (box: HTMLElement) => {
+        this.#box = box;
+
+        return () => {
+          this.#box = undefined;
+        };
+      },
+      onpointerdown: (e: PointerEvent) => {
+        if (consumed.has(e)) return;
+
+        this.#taken = this.#press(e);
+
+        if (this.#taken !== undefined) consumed.add(e);
       },
       onpointermove: (e: PointerEvent) => {
-        this.#move(e);
+        if (!consumed.has(e) && (this.#taken ?? this).#move(e)) consumed.add(e);
       },
       onpointerup: up,
       onpointercancel: up,
     };
   }
 
-  #down(e: PointerEvent, box: HTMLElement): void {
-    if (this.#target !== 1 || e.clientX - box.getBoundingClientRect().left > EDGE) return;
+  /** The innermost push a finger down starts a swipe of, if any. */
+  #press(e: PointerEvent): Push | undefined {
+    for (const inner of this.#inner) {
+      const taken = inner.#press(e);
 
-    // The innermost push takes the swipe: a level pushed inside another goes back one level.
-    e.stopPropagation();
+      if (taken !== undefined) return taken;
+    }
+
+    const box = this.#box;
+
+    if (box === undefined || this.#target !== 1 || !this.#may()) return undefined;
+
+    const { left, width } = box.getBoundingClientRect();
+
+    // A push off screen, or a finger away from its edge.
+    if (width === 0 || e.clientX - left > EDGE) return undefined;
+
     this.#swipe = { id: e.pointerId, x0: e.clientX, p0: this.p, active: false, box };
     this.#tracker.reset();
+
+    return this;
   }
 
-  #move(e: PointerEvent): void {
+  /** Whether the finger moved this push's swipe. */
+  #move(e: PointerEvent): boolean {
     const swipe = this.#swipe;
 
-    if (swipe?.id !== e.pointerId) return;
+    if (swipe?.id !== e.pointerId) return false;
 
     const dx = e.clientX - swipe.x0;
 
@@ -121,20 +180,23 @@ export class Push {
       swipe.box.setPointerCapture(e.pointerId);
     }
 
-    if (!swipe.active) return;
+    if (swipe.active) {
+      this.p = Math.max(0, Math.min(1, swipe.p0 - dx / swipe.box.offsetWidth));
+      this.#tracker.push(this.p);
+    }
 
-    this.p = Math.max(0, Math.min(1, swipe.p0 - dx / swipe.box.offsetWidth));
-    this.#tracker.push(this.p);
+    return true;
   }
 
-  #up(e: PointerEvent): void {
+  /** Whether the finger let go of this push's swipe. */
+  #up(e: PointerEvent): boolean {
     const swipe = this.#swipe;
 
-    if (swipe?.id !== e.pointerId) return;
+    if (swipe?.id !== e.pointerId) return false;
 
     this.#swipe = undefined;
 
-    if (!swipe.active) return;
+    if (!swipe.active) return true;
 
     const velocity = this.#tracker.velocity();
     const to = settle(this.p, velocity);
@@ -142,5 +204,7 @@ export class Push {
     this.slide(to, velocity);
 
     if (to === 0) this.#hooks.back();
+
+    return true;
   }
 }

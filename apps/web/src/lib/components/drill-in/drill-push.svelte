@@ -54,6 +54,8 @@
     },
   });
 
+  push.nest();
+
   $effect(() => {
     const next = at;
     const deep = depth;
