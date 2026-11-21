@@ -25,7 +25,6 @@ async function enter(row: string, value: string): Promise<void> {
   await userEvent.fill(page.getByRole("textbox", { name: `${row} eingeben` }), value);
   await userEvent.keyboard("{Enter}");
   await page.getByRole("button", { name: /^Übernehmen/u }).click();
-  // Gone, and focus back on its row: a tap before that lands where the page then moves.
   await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
 }
 
