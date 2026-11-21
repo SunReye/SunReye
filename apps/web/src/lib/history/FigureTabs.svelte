@@ -51,7 +51,8 @@
       role="tab"
       aria-selected={on}
       feedback
-      class={[FIGURE, on && "bg-foreground/[0.05] hover:bg-foreground/[0.07]"]}
+      selected={on}
+      class={FIGURE}
       onclick={() => {
         pick(f.id);
       }}
@@ -91,7 +92,8 @@
     role="tab"
     aria-selected={on}
     feedback
-      class={[FIGURE, on && "bg-foreground/[0.05] hover:bg-foreground/[0.07]"]}
+    selected={on}
+    class={FIGURE}
     onclick={() => {
       pick("plant");
     }}

@@ -5,6 +5,7 @@
 <script lang="ts">
   import { Checkbox } from "#lib/components/ui/checkbox/index.js";
   import * as Item from "#lib/components/ui/item/index.js";
+  import { FEEDBACK } from "#lib/components/ui/pressable/index.js";
   import type { Outcome } from "../components/value-editor/editable.ts";
   import WriteProblem from "../components/value-editor/write-problem.svelte";
   import { m } from "../paraglide/messages.js";
@@ -46,7 +47,7 @@
         {...props}
         class={[
           props.class,
-          control.writable ? "cursor-pointer hover:bg-muted/60" : "cursor-default",
+          control.writable ? ["cursor-pointer", FEEDBACK] : "cursor-default",
         ]}
       >
         <Item.Content>

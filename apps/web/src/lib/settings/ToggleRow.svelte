@@ -1,6 +1,7 @@
 <!-- A settings row that turns one thing on or off: its name, a line of status or range, and a switch. -->
 <script lang="ts">
   import * as Item from "#lib/components/ui/item/index.js";
+  import { FEEDBACK } from "#lib/components/ui/pressable/index.js";
   import { Switch } from "#lib/components/ui/switch/index.js";
 
   let {
@@ -26,7 +27,7 @@
   {#snippet child({ props })}
     <label
       {...props}
-      class={[props.class, "flex-nowrap", disabled ? "cursor-default" : "cursor-pointer hover:bg-muted/60"]}
+      class={[props.class, "flex-nowrap", disabled ? "cursor-default" : ["cursor-pointer", FEEDBACK]]}
     >
       <Item.Content class="min-w-0">
         <Item.Title class="text-[15px] leading-snug font-normal text-wrap">{label}</Item.Title>

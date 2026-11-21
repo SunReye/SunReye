@@ -35,11 +35,9 @@
         <Pressable
           feedback
           aria-pressed={on}
+          selected={on}
           disabled={off}
-          class={[
-            "flex min-h-10 w-full items-center gap-2 px-4 py-1.5 text-left touch:min-h-12",
-            on && "bg-foreground/[0.05]",
-          ]}
+          class="flex min-h-10 w-full items-center gap-2 px-4 py-1.5 text-left touch:min-h-12"
           onclick={() => {
             onpick(each.ref);
           }}

@@ -7,6 +7,7 @@
   import Ellipsis from "@lucide/svelte/icons/ellipsis";
   import { Badge } from "#lib/components/ui/badge/index.js";
   import * as Card from "#lib/components/ui/card/index.js";
+  import { FEEDBACK } from "#lib/components/ui/pressable/index.js";
   import * as Item from "#lib/components/ui/item/index.js";
   import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
   import DrawerSheet from "#lib/components/drawer-sheet.svelte";
@@ -100,7 +101,7 @@
               onclick={() => {
                 moreOpen = false;
               }}
-              class={[props["class"], "text-left active:bg-muted"]}
+              class={[props["class"], "text-left", FEEDBACK]}
             >
               <Item.Media variant="icon"><item.icon /></Item.Media>
               <Item.Content
