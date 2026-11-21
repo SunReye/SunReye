@@ -1,6 +1,6 @@
 <!-- Stored value: every day moves this bar (ADR 12). It opens the payback tab. -->
 <script lang="ts">
-  import { Pressable } from "../components/ui/pressable/index.js";
+  import * as Card from "#lib/components/ui/card/index.js";
   import { Progress } from "#lib/components/ui/progress/index.js";
   import FigureNumber from "./FigureNumber.svelte";
   import type { Payback } from "../api/tariff.ts";
@@ -20,10 +20,7 @@
 </script>
 
 <div class={["tuck", tucked && "tucked"]} inert={tucked}>
-  <Pressable
-    class="glass-ambient flex w-full flex-col gap-2 rounded-lg px-4 py-3 text-left ring-1 ring-foreground/10 outline-none transition-shadow hover:ring-foreground/25 focus-visible:ring-2 focus-visible:ring-ring"
-    onclick={onopen}
-  >
+  <Card.Root interactive class="glass-ambient w-full gap-2 px-4 py-3" onclick={onopen}>
     <span class="flex w-full items-baseline justify-between gap-2">
       <span class="text-sm font-semibold">{m.stats_payback()}</span>
       <span class="text-sm font-semibold tabular-nums"
@@ -51,7 +48,7 @@
           : m.stats_payback_saved_until({ ...amounts, year: String(year) })}
       {/if}
     </span>
-  </Pressable>
+  </Card.Root>
 </div>
 
 <style>

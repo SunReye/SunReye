@@ -32,7 +32,7 @@
   <Button
     variant="outline"
     size="sm"
-    class="glass-ambient"
+    class="canvas-chip"
     href="#/builder"
   >
     <Box data-icon="inline-start" />

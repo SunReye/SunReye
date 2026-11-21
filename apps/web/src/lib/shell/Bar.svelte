@@ -6,6 +6,7 @@
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import Ellipsis from "@lucide/svelte/icons/ellipsis";
   import { Badge } from "#lib/components/ui/badge/index.js";
+  import * as Card from "#lib/components/ui/card/index.js";
   import * as Item from "#lib/components/ui/item/index.js";
   import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
   import DrawerSheet from "#lib/components/drawer-sheet.svelte";
@@ -87,9 +88,8 @@
 <DrawerSheet bind:open={moreOpen} label={m.nav_more()}>
   <div class="flex flex-col gap-3 px-4 pt-1 pb-2">
     <h2 class="px-1 text-lg font-semibold">{m.nav_more()}</h2>
-    <Item.Group
-      class="glass-ambient gap-0 divide-y divide-border/60 overflow-hidden rounded-lg border border-border/60"
-    >
+    <Card.Root class="glass-ambient gap-0 py-0">
+      <Item.Group class="gap-0 divide-y divide-border/60">
       {#each more as item (item.route)}
         <Item.Root class="rounded-none border-0">
           {#snippet child({ props })}
@@ -114,6 +114,7 @@
           {/snippet}
         </Item.Root>
       {/each}
-    </Item.Group>
+      </Item.Group>
+    </Card.Root>
   </div>
 </DrawerSheet>
