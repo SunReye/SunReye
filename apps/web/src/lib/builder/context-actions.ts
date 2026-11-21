@@ -1,7 +1,7 @@
 // What the context toolbar's actions make of a session (ADR 20): each is also in the inspector,
 // through the same functions of the draft.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the session is edited through its own methods. */
-import { haptics } from "../haptics.ts";
+import { refusedInline } from "../feedback.ts";
 import { bodyOf } from "./handles/body.ts";
 import { turnable } from "./handles/offered.ts";
 import { handled } from "./levels.ts";
@@ -49,7 +49,7 @@ export function duplicateAt(session: Session): boolean {
   const copied = level.kind === "opening" ? duplicate(plan.pv, draft.scene, level.index) : null;
 
   if (copied === null) {
-    haptics.error();
+    refusedInline();
 
     return false;
   }

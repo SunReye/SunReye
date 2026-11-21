@@ -1,7 +1,7 @@
 // Copy and paste for wall openings (ADR 20): Ctrl or Cmd with C remembers the picked opening, with
 // V adds a copy of it as "Duplizieren" does. A text field keeps its own keys.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the session is edited through its own methods. */
-import { haptics } from "../haptics.ts";
+import { refusedInline } from "../feedback.ts";
 import type { Opening } from "./pv.ts";
 import type { Session } from "./session.svelte.ts";
 import { pasted } from "./wall-openings.ts";
@@ -30,7 +30,7 @@ export class OpeningClipboard {
     const scene = pasted(plan.pv, draft.scene, copied);
 
     if (scene === null) {
-      haptics.error();
+      refusedInline();
 
       return;
     }

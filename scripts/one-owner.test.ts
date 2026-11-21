@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { copies } from "./one-owner.ts";
+import { copies, RULES } from "./one-owner.ts";
 
 const LIB = "apps/web/src/lib/";
 
@@ -33,6 +33,31 @@ test("haptics outside their owners is a copy", () => {
   expect(rules("range/RangePane.svelte", source)).toEqual([]);
 });
 
+test("the builder and the range own haptics by named file, not by folder", () => {
+  const source = `import { haptics } from "../haptics.ts";`;
+  const rule = "haptics outside a shared component";
+
+  expect(rules("builder/wall-actions.ts", source)).toEqual([rule]);
+  expect(rules("builder/BuildingLevel.svelte", source)).toEqual([rule]);
+  expect(rules("range/Label.svelte", source)).toEqual([rule]);
+  expect(rules("builder/gestures.ts", source)).toEqual([]);
+});
+
+test("a chart's pointer is read by named files alone: a drag elsewhere in the builder is a copy", () => {
+  const rule = "pointer reading outside the one pointer reading";
+
+  expect(rules("builder/View.svelte", `<div onpointerdown={down}>`)).toEqual([rule]);
+  expect(rules("components/segmented.svelte", `<div onpointermove={move}>`)).toEqual([rule]);
+  expect(rules("builder/drawing.svelte.ts", `onpointermove: move,`)).toEqual([]);
+  expect(rules("components/value-editor/wheel.svelte", `<div onpointerdown={down}>`)).toEqual([]);
+});
+
+test("every owner of every rule says why it owns the behaviour", () => {
+  for (const rule of RULES)
+    for (const [owner, why] of Object.entries(rule.owners))
+      expect({ owner, why: why.trim().length > 10 }).toEqual({ owner, why: true });
+});
+
 test("svelte's transitions outside the motion modules are a copy", () => {
   const source = `import { fade } from "svelte/transition";`;
 
@@ -62,7 +87,6 @@ test("a chart read by its own pointer handlers or LayerChart's tooltip is a copy
   expect(rules("chart-reading/reader.svelte.ts", `onpointermove: this.move,`)).toEqual([]);
   // Drags that read no chart.
   expect(rules("range/pager-drag.ts", `addEventListener("pointermove", move)`)).toEqual([]);
-  expect(rules("builder/View.svelte", `<div onpointerdown={down}>`)).toEqual([]);
 });
 
 test("tests, harnesses and files outside the SPA are not held to it", () => {
