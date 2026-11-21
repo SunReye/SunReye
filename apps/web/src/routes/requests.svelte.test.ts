@@ -151,7 +151,8 @@ test("the dashboard opens on one read of each thing it shows", async () => {
     [`devices/${WEATHER}/forecasts`]: 1,
   };
 
-  // The scene's reads follow its WASM, which loads over the network on no fake clock.
+  // The scene asks for its reads once mounted: after a paint, an idle main thread and the warm-up
+  // worker's answer, none of them on the fake clock.
   await expect.poll(() => tally(urls), { timeout: 15_000 }).toEqual(reads);
   await settled(() => urls.length);
 
@@ -169,7 +170,8 @@ test("History opened from the dashboard reads nothing the dashboard already read
   const dashboard = await render(Home, { context });
 
   await expect.element(dashboard.getByRole("group", { name: "Heute" })).toBeVisible();
-  // The scene's reads follow its WASM, which loads over the network on no fake clock.
+  // The scene asks for its reads once mounted: after a paint, an idle main thread and the warm-up
+  // worker's answer, none of them on the fake clock.
   await expect
     .poll(() => tally(urls), { timeout: 15_000 })
     .toMatchObject({ capabilities: 1, "module-types": 1 });
