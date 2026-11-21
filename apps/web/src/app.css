@@ -143,6 +143,8 @@
   --motion-mark-arrive: 700ms;
   --motion-mark-float: 5s;
   --motion-mark-turn: 24s;
+  /* The backdrop's lights follow a change in production over seconds, in their own beat. */
+  --motion-light-drift: 4s;
 }
 
 .dark {
@@ -214,6 +216,7 @@
     --motion-mark-arrive: 0ms;
     --motion-mark-float: 0ms;
     --motion-mark-turn: 0ms;
+    --motion-light-drift: 0ms;
   }
 }
 
@@ -234,6 +237,7 @@
   --motion-mark-arrive: 0ms;
   --motion-mark-float: 0ms;
   --motion-mark-turn: 0ms;
+  --motion-light-drift: 0ms;
 }
 
 /* A drawer enters like a sheet and leaves faster, easing in (ADR 21). Unlayered, as vaul's own 0.5 s. */

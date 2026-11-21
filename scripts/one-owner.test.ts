@@ -117,8 +117,69 @@ test("routes are held to it too", () => {
   ]);
 });
 
-test("the haptics library itself is no copy", () => {
-  expect(rules("tariff/Zone.svelte", `import { WebHaptics } from "web-haptics";`)).toEqual([]);
+test("the haptics library or the vibration API outside the haptics module is a copy", () => {
+  const rule = "haptics library outside the haptics module";
+
+  expect(rules("tariff/Zone.svelte", `import { WebHaptics } from "web-haptics";`)).toEqual([rule]);
+  expect(rules("builder/gestures.ts", `navigator.vibrate(10);`)).toEqual([rule]);
+  expect(rules("haptics.ts", `import { WebHaptics } from "web-haptics";`)).toEqual([]);
+});
+
+test("toggle groups or tabs straight from bits-ui outside the kit are a copy", () => {
+  const rule = "bits-ui choice outside the kit";
+
+  expect(rules("tariff/Zone.svelte", `import { ToggleGroup } from "bits-ui";`)).toEqual([rule]);
+  expect(rules("tariff/Zone.svelte", `import {\n  Popover,\n  Tabs,\n} from "bits-ui";`)).toEqual([
+    rule,
+  ]);
+  expect(
+    rules("components/value-editor/value-editor.svelte", `import { Popover } from "bits-ui";`),
+  ).toEqual([]);
+  expect(rules("components/ui/tabs/tabs.svelte", `import { Tabs } from "bits-ui";`)).toEqual([]);
+});
+
+test("a card built by hand on any element but the kit card is a copy", () => {
+  const rule = "card outside the kit card";
+
+  expect(rules("tariff/Zone.svelte", `<div class="rounded-xl border p-4">`)).toEqual([rule]);
+  expect(rules("tariff/Zone.svelte", `<section\n  class="bg-card rounded-xl">`)).toEqual([rule]);
+  // A rounded image or a bordered row is no card.
+  expect(rules("tariff/Zone.svelte", `<img class="rounded-xl" />`)).toEqual([]);
+  expect(rules("tariff/Zone.svelte", `<div class="rounded-xl border-t">`)).toEqual([]);
+  expect(rules("tariff/Zone.svelte", `<Card.Root class="rounded-xl border">`)).toEqual([]);
+});
+
+test("a literal motion duration or easing outside the motion tokens is a copy", () => {
+  const rule = "motion value outside the motion tokens";
+
+  expect(rules("flow/Hub.svelte", `<div class="transition-opacity duration-300">`)).toEqual([rule]);
+  expect(rules("flow/Hub.svelte", `<div class="transition ease-in-out">`)).toEqual([rule]);
+  expect(
+    rules(
+      "flow/Hub.svelte",
+      `<style>\n  .a {\n    transition: opacity 4s steps(4);\n  }\n</style>`,
+    ),
+  ).toEqual([rule]);
+  expect(
+    rules(
+      "flow/Hub.svelte",
+      `<style>\n  .a {\n    animation: beat var(--motion-flow-pulse) ease-in-out infinite;\n  }\n</style>`,
+    ),
+  ).toEqual([rule]);
+  // The tokens, and words that only look like them.
+  expect(
+    rules("flow/Hub.svelte", `<div class="duration-(--motion-move) ease-(--motion-ease-in-out)">`),
+  ).toEqual([]);
+  expect(
+    rules(
+      "flow/Hub.svelte",
+      `<style>\n  .a {\n    transition: opacity var(--motion-base) var(--motion-ease);\n  }\n</style>`,
+    ),
+  ).toEqual([]);
+  expect(rules("flow/Hub.svelte", `// A slide eases in-out: ease-in-out\nconst ms = 300;`)).toEqual(
+    [],
+  );
+  expect(rules("motion/ease.ts", `const curve = "ease-in-out";`)).toEqual([]);
 });
 
 test("the glass card the kit card replaced is a copy wherever it comes back", () => {

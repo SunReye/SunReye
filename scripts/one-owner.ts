@@ -1,10 +1,16 @@
 // A behaviour met on more than one screen lives in one component (ADR 21 "One behaviour, one
 // component", #836): no file of the SPA outside its owner rebuilds a segmented control, tabs in
-// another look, a haptic, a transition, a chart's entrance or its reading, a pick list, a card's
-// glass, a link or a pulse that reduced motion does not stop. A gate step; `bun scripts/one-owner.ts`
-// lists the copies.
+// another look, a haptic, a transition, a chart's entrance or its reading, a pick list, a card, its
+// glass, a link, a motion value or a pulse that reduced motion does not stop. A gate step;
+// `bun scripts/one-owner.ts` lists the copies.
+//
+// It reads source text, so it cannot see: a chart drawn by hand in `<svg>` or `<div>`s, which names
+// no chart or canvas; a second chart in a file that already holds an entrance; a card or a motion
+// value built from a variable or a class it does not know; a pointer read through a library's own
+// handlers.
 
 import { Glob } from "bun";
+import { first, glass, handCard, literalMotion, unstopped } from "./one-owner-find.ts";
 
 const SRC = "apps/web/src/";
 
@@ -19,38 +25,6 @@ interface Rule {
   readonly found: (source: string) => number | undefined;
   /** Paths under `lib/` that own the behaviour, as prefixes, each with why it does. */
   readonly owners: Readonly<Record<string, string>>;
-}
-
-/** The first match of `pattern`, unless the file holds the shared piece itself (`composes`). */
-const first =
-  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the patterns are only read.
-  (pattern: RegExp, composes?: RegExp) =>
-    (source: string): number | undefined =>
-      composes?.test(source) === true ? undefined : pattern.exec(source)?.index;
-
-/** The source with its comments blanked, every offset kept. */
-const uncommented = (source: string): string =>
-  source.replaceAll(/<!--[\s\S]*?-->|\/\*[\s\S]*?\*\/|(?<![:"'`\w])\/\/.*$/gmu, (comment) =>
-    comment.replaceAll(/[^\n]/gu, " "),
-  );
-
-/** The first `glass-ambient` outside a comment: the kit card draws it, so no file names it. */
-const glass = (source: string): number | undefined =>
-  /glass-ambient/u.exec(uncommented(source))?.index;
-
-/** The first pulse or spin whose own class string does not stop it under reduced motion. */
-function unstopped(commented: string): number | undefined {
-  const source = uncommented(commented);
-
-  for (const { index } of source.matchAll(/(?<![\w:-])animate-(?:pulse|spin)(?![\w-])/gu)) {
-    const open = Math.max(...['"', "'", "`"].map((quote) => source.lastIndexOf(quote, index)));
-
-    const close = source.indexOf(source.charAt(open), index);
-
-    if (!source.slice(open, close).includes("motion-reduce:animate-none")) return index;
-  }
-
-  return undefined;
 }
 
 const KIT = "The kit (ADR 11): each control carries its own look, motion and haptic.";
@@ -108,6 +82,31 @@ export const RULES: readonly Rule[] = [
       "shell/Rail.svelte": "The rail's pin, `soft` (ADR 21).",
       "setup/AddSheet.svelte": "A primary press, `light`.",
       "setup/SignIn.svelte": "A primary press, `light`.",
+    },
+  },
+  {
+    name: "haptics library outside the haptics module",
+    found: first(/from "web-haptics"|\bnavigator\.vibrate\b/u),
+    owners: { "haptics.ts": "The one haptics module (ADR 21): its switch and its presets." },
+  },
+  {
+    name: "bits-ui choice outside the kit",
+    found: first(/import\s*\{[^}]*\b(?:ToggleGroup|Tabs)\b[^}]*\}\s*from\s*"bits-ui"/u),
+    owners: { "components/ui/": KIT },
+  },
+  {
+    name: "card outside the kit card",
+    found: handCard,
+    owners: { "components/ui/": KIT, "gallery/": GALLERY },
+  },
+  {
+    name: "motion value outside the motion tokens",
+    found: literalMotion,
+    owners: {
+      "motion.ts": "The motion tokens' own values.",
+      "motion/": "The motion modules.",
+      "animate.ts": "Springs and tweens run on the tokens' values in script.",
+      "components/ui/input-otp/input-otp-slot.svelte": "A text caret's blink, no motion.",
     },
   },
   {

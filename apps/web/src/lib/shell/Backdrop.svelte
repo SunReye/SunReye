@@ -127,6 +127,6 @@
 
   .drifting [data-light] {
     /* A change in production comes on over seconds, in the lights' own beat. */
-    transition: opacity 4s steps(4);
+    transition: opacity var(--motion-light-drift) steps(4);
   }
 </style>
