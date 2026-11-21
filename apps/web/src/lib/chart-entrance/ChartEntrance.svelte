@@ -1,5 +1,7 @@
 <!--
-  A chart's entrance (ADR 21 "Chart entrance"): it builds up as its first data shows, once per mount.
+  A chart's entrance (ADR 21 "Chart entrance"): it builds up as its first data shows, once per mount
+  and once per `key`: a chart keyed by what it draws builds again when that changes, while what it
+  drew before fades out over it. A keyed chart's box is positioned, for the frame leaving.
   - `grow`: bars grow from their baseline, each a little after the one before. A bar opts in with
     `data-grow` (`data-grow="x"` grows sideways), sets its `transform-origin` at its baseline and
     `--i`, its place in the stagger from 0 to 1.
@@ -17,32 +19,48 @@
   import type { Snippet } from "svelte";
   import type { Attachment } from "svelte/attachments";
   import type { ClassValue } from "svelte/elements";
+  import { fade } from "../motion.ts";
 
   let {
     build,
     ready,
+    key,
     class: className,
     children,
   }: {
     build: Build;
     /** The first data is drawn. */
     ready: boolean;
+    /** What the chart draws, when a change of it builds the chart again (ADR 21, Explore's charts). */
+    key?: unknown;
     class?: ClassValue;
     children: Snippet;
   } = $props();
 
-  /** Once per mount. */
-  let started = false;
+  /** Each frame, a mount or a key, builds once. */
+  const started = new WeakSet<HTMLElement>();
 
   /** The tokens are 0 on the still tier and under reduced motion: nothing to build. */
   const still = (el: HTMLElement) =>
     getComputedStyle(el).getPropertyValue("--motion-move").trim() === "0ms";
 
+  /** `--motion-exit` on `el`, in ms. */
+  const exit = (el: HTMLElement) =>
+    Number(getComputedStyle(el).getPropertyValue("--motion-exit").trim().replace(/ms$/u, ""));
+
+  /** The frame before stands over the next as it fades; its effects are paused, so it keeps its drawing. */
+  function leave(el: HTMLElement) {
+    el.style.position = "absolute";
+    el.style.inset = "0";
+
+    return fade(el, { duration: exit(el) });
+  }
+
   // Set on the element itself, not through the template, so its animations exist at once.
   const enter: Attachment<HTMLElement> = (el) => {
-    if (!ready || started) return;
+    if (!ready || started.has(el)) return;
 
-    started = true;
+    started.add(el);
 
     if (still(el)) return;
 
@@ -61,35 +79,40 @@
   };
 </script>
 
-<div class={["entrance", className]} data-build={build} {@attach enter}>
-  <div class="back">{@render children()}</div>
+<div class={["entrance", className]} data-build={build}>
+  {#key key}
+    <div class="frame" {@attach enter} out:leave>
+      <div class="back">{@render children()}</div>
+    </div>
+  {/key}
 </div>
 
 <style>
+  .frame,
   .back {
     position: relative;
     width: 100%;
     height: 100%;
   }
 
-  .entrance:global([data-entrance="in"]) {
+  .frame:global([data-entrance="in"]) {
     animation: fade-in var(--motion-enter) var(--motion-ease) both;
   }
 
   /* A window sweeps in from the left over the plot, which the inner box holds in place. */
-  .entrance:global([data-entrance="in"])[data-build="draw"] {
+  [data-build="draw"] > .frame:global([data-entrance="in"]) {
     overflow: hidden;
     animation-name: sweep-in;
   }
-  .entrance:global([data-entrance="in"])[data-build="draw"] > .back {
+  [data-build="draw"] > .frame:global([data-entrance="in"]) > .back {
     animation: hold-in var(--motion-enter) var(--motion-ease) both;
   }
 
-  .entrance:global([data-entrance="in"])[data-build="grow"] :global([data-grow]) {
+  [data-build="grow"] > .frame:global([data-entrance="in"]) :global([data-grow]) {
     animation: grow-in var(--motion-enter) var(--motion-ease)
       calc(var(--i, 0) * var(--motion-stagger)) both;
   }
-  .entrance:global([data-entrance="in"])[data-build="grow"] :global([data-grow="x"]) {
+  [data-build="grow"] > .frame:global([data-entrance="in"]) :global([data-grow="x"]) {
     animation-name: grow-x-in;
   }
 
