@@ -103,6 +103,8 @@ test("a stalled stream's sample ages from now, ticking, not from the newest samp
   const { live } = await mount();
 
   await userEvent.hover(plot(), { position: before(30) });
+  vi.setSystemTime(T0 + 19_000);
+  vi.advanceTimersByTime(1000);
   await expect.element(live.getByText("vor 50 s")).toBeVisible();
 
   vi.advanceTimersByTime(5000);
