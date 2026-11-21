@@ -1,6 +1,7 @@
 // Every test file's page runs in one tab of one origin: what a test leaves behind there steers the
 // files after it.
-import { afterEach } from "vitest";
+import { afterEach, beforeAll } from "vitest";
+import { commands } from "vitest/browser";
 import { watchAnimations } from "./lib/motion/animations.harness.ts";
 import { watchFrames } from "./lib/motion/clock.harness.ts";
 
@@ -8,6 +9,11 @@ import { watchFrames } from "./lib/motion/clock.harness.ts";
 watchFrames();
 
 watchAnimations();
+
+// Playwright knows the file's frame before the file's first command looks it up.
+beforeAll(async () => {
+  await commands.frameKnown();
+});
 
 afterEach(() => {
   // A browser remembered without WebGL2, the 2D view chosen.
