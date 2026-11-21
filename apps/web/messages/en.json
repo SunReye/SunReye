@@ -1039,6 +1039,7 @@
   "stats_note_open": "Open",
   "stats_payback": "Payback",
   "stats_payback_saved": "{saved} of {investment} saved",
+  "stats_payback_error": "Payback not loaded.",
   "stats_payback_none": "Without an investment there is no payback. Enter it under Settings › Tariff.",
   "stats_payback_done": "The investment has paid for itself.",
   "stats_payback_note": "Visible to admins only, as it names the investment. Savings are the bill without the plant less the bill with it, each hour at the tariff then in force.",

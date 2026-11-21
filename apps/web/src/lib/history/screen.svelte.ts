@@ -6,7 +6,7 @@ import { stringRows } from "../analytics/strings.ts";
 import { rangeKey, type Range } from "../range/range.ts";
 import { RangeRoute, type Go } from "../range/route.svelte.ts";
 import { RangeTravel, type Travel } from "../range/travel.svelte.ts";
-import { readFacts, type Facts } from "./facts.ts";
+import { readFacts, type Facts, type Payback } from "./facts.ts";
 import type { Note } from "./notes.ts";
 
 export type { Summary } from "./summary.ts";
@@ -52,6 +52,8 @@ export class Statistics {
   readonly #cmp = $derived(this.view.cmp);
 
   readonly #shown: { metric: Metric; tab: StatsView["tab"] };
+  /** Raised to read the facts again. */
+  #again = $state(0);
   readonly #travel: RangeTravel<Loaded>;
 
   constructor(input: () => { core: StatisticsCore; params: URLSearchParams; go: Go }) {
@@ -72,6 +74,8 @@ export class Statistics {
 
     $effect(() => {
       let live = true;
+
+      void this.#again;
 
       const read = async () => {
         // The facts only refine the screen; a failed read leaves them unread, and the chart's own
@@ -122,10 +126,16 @@ export class Statistics {
     }),
   );
 
-  /** Null for a viewer, and until the facts are read. */
-  get payback(): Facts["payback"] {
-    return this.facts?.payback ?? null;
+  /** Null for a viewer, until the facts are read, and while it cannot be read. */
+  get payback(): Payback | null {
+    const read = this.facts?.payback;
+
+    return read?.failed === false ? read.data : null;
   }
+
+  readFacts = (): void => {
+    this.#again++;
+  };
 
   /** The payback tab is open, so the card beside the chart steps back. */
   get paybackOpen(): boolean {
