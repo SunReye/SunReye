@@ -1,6 +1,6 @@
 <!-- One device under Settings › Writes: its writes switch (ADR 7), each setting's enable (ADR 8), and the note they share. -->
 <script lang="ts">
-  import Refusal from "../setup/Refusal.svelte";
+  import Refusal, { answered } from "../setup/Refusal.svelte";
   import Eyebrow from "../components/eyebrow.svelte";
   import * as Item from "#lib/components/ui/item/index.js";
   import type { Capabilities, Core, Device, Problem } from "../api/core";
@@ -35,7 +35,7 @@
     const { id, ...draft } = device;
     const answer = await core.changeDevice(id, { ...draft, writes: on });
 
-    problem = "problem" in answer ? answer : undefined;
+    problem = "problem" in answer ? answered(answer) : undefined;
     onchanged();
   }
 </script>

@@ -12,7 +12,7 @@
   import LocaleSwitch from "../LocaleSwitch.svelte";
   import { m } from "../paraglide/messages.js";
   import AccountSwitch from "./AccountSwitch.svelte";
-  import Refusal from "./Refusal.svelte";
+  import Refusal, { answered } from "./Refusal.svelte";
 
   let { core, onsignedin }: { core: Core; onsignedin: () => void } = $props();
 
@@ -27,7 +27,7 @@
   async function submit(event: SubmitEvent): Promise<void> {
     event.preventDefault();
     haptics.light();
-    refused = await core.signIn(password, account === "viewer" ? name.trim() : undefined);
+    refused = answered(await core.signIn(password, account === "viewer" ? name.trim() : undefined));
 
     if (refused === undefined) onsignedin();
   }

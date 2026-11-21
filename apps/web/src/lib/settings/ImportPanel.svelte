@@ -6,7 +6,7 @@
   import ImportOutcome from "./ImportOutcome.svelte";
   import ImportSources from "./ImportSources.svelte";
   import ImportStart from "./ImportStart.svelte";
-  import Refusal from "../setup/Refusal.svelte";
+  import Refusal, { answered } from "../setup/Refusal.svelte";
 
   let { core }: { core: Core } = $props();
 
@@ -54,7 +54,7 @@
     const answer = await core.uploadImport(file);
 
     if ("problem" in answer) {
-      refused = answer;
+      refused = answered(answer);
 
       return;
     }

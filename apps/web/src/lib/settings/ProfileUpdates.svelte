@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Refusal from "../setup/Refusal.svelte";
+  import Refusal, { answered } from "../setup/Refusal.svelte";
   import type { Core, Declared, Problem, Update } from "../api/core";
   import { m } from "../paraglide/messages.js";
   import { Button } from "#lib/components/ui/button/index.js";
@@ -22,7 +22,7 @@
   async function apply(id: string): Promise<void> {
     pending = true;
     const answer = await core.apply(id);
-    problem = "problem" in answer ? answer : undefined;
+    problem = "problem" in answer ? answered(answer) : undefined;
     pending = false;
     updates = core.updates();
     onapplied();

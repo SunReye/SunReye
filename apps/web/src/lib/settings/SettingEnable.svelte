@@ -1,6 +1,6 @@
 <!-- One setting under Settings › Writes: its name, what a write may carry, and the admin's enable (ADR 8). -->
 <script lang="ts">
-  import Refusal from "../setup/Refusal.svelte";
+  import Refusal, { answered } from "../setup/Refusal.svelte";
   import type { Core, Problem, Setting } from "../api/core";
   import { clock } from "../components/value-editor/editable.ts";
   import { m } from "../paraglide/messages.js";
@@ -41,7 +41,7 @@
 
   async function change(on: boolean): Promise<void> {
     pending = true;
-    problem = await core.enable(device, setting.key, on);
+    problem = answered(await core.enable(device, setting.key, on));
     pending = false;
     onchanged();
   }

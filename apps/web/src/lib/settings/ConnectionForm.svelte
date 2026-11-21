@@ -8,7 +8,7 @@
   import { Button } from "#lib/components/ui/button/index.js";
   import ValueRow from "../builder/ValueRow.svelte";
   import { m } from "../paraglide/messages.js";
-  import Refusal from "../setup/Refusal.svelte";
+  import Refusal, { answered } from "../setup/Refusal.svelte";
   import { POLL_SECONDS, polled, portOf, secretsOf, TRANSPORTS } from "./connection-draft.ts";
   import SecretField from "./SecretField.svelte";
   import SelectField from "../components/select-field.svelte";
@@ -119,7 +119,7 @@
         : await core.changeConnection(connection.id, draft());
 
     saving = false;
-    refused = "problem" in answer ? answer : undefined;
+    refused = "problem" in answer ? answered(answer) : undefined;
 
     if (!("problem" in answer)) onsaved(answer);
   }
