@@ -112,6 +112,31 @@ test("surroundings add a hedge, a ground surface and a fence, each opening its o
   await expect.element(inspector().getByRole("button", { name: starts("Krone") })).toBeVisible();
 });
 
+test("a deeper level is the drill-in's push, under the drill-in's header", async () => {
+  await render(Builder, {
+    pv,
+    core: connect(testCore()),
+    start: house(),
+    moduleTypes: [MODULE],
+    devices: DEVICES,
+  });
+
+  await drill("Gebäude");
+
+  const title = inspector().getByRole("heading", { name: "Gebäude" });
+
+  await expect.element(title).toBeVisible();
+
+  const header = title.element().closest("[data-drill=header]");
+
+  expect(header).not.toBeNull();
+  expect(header?.closest("[data-push]")).not.toBeNull();
+
+  await drill("Szene");
+  await expect.element(inspector().getByRole("heading", { name: "Szene" })).toBeVisible();
+  await expect.element(title).not.toBeInTheDocument();
+});
+
 /** Form controls the browser draws in its own style; the slider and hidden pickers are styled or unseen. */
 const PLAIN =
   "select, textarea, fieldset, input:not([data-slot='input']):not([type='range']):not(.sr-only)";
