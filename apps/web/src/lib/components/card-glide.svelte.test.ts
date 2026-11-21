@@ -237,8 +237,9 @@ async function drawnOver(heights: readonly [number, ...number[]], every: number)
   for (const height of heights.slice(1)) {
     // oxlint-disable-next-line no-await-in-loop -- one change after another, mid-glide.
     await screen.rerender({ height });
+    // The change is taken up: its glide stands at its start.
     // oxlint-disable-next-line no-await-in-loop -- as above.
-    await settle(() => glides(card).length > 0);
+    await settle(() => glides(card)[0]?.currentTime === 0);
 
     for (let i = 0; i < every; i++) drawn.push(frame(card));
   }
