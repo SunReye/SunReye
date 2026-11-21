@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { deal } from "./components.ts";
+import { deal, picked } from "./components.ts";
 
 const scene = (file: string, ms: number) => ({ file, ms, scene: true });
 const dom = (file: string, ms: number) => ({ file, ms, scene: false });
@@ -25,4 +25,24 @@ test("the other files are dealt by their time on their own, a tie to the shard w
 
 test("more shards than files leaves the rest empty", () => {
   expect(deal([dom("x", 5), dom("y", 5)], 3)).toEqual([["x"], ["y"], []]);
+});
+
+test("the arguments before the first option pick the files whose path holds one of them", () => {
+  const files = [
+    "src/a/One.svelte.test.ts",
+    "src/b/Two.svelte.test.ts",
+    "src/b/Three.svelte.test.ts",
+  ];
+
+  expect(picked(files, ["src/b", "Three", "-t", "src/a", "--reporter=dot"])).toEqual({
+    files: ["src/b/Two.svelte.test.ts", "src/b/Three.svelte.test.ts"],
+    options: ["-t", "src/a", "--reporter=dot"],
+  });
+});
+
+test("no file filter keeps every file", () => {
+  expect(picked(["x", "y"], ["--bail", "1"])).toEqual({
+    files: ["x", "y"],
+    options: ["--bail", "1"],
+  });
 });

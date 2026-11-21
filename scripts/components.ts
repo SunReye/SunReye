@@ -1,6 +1,7 @@
 // The component tests in shards side by side (ADR 13), each a vitest of its own with its own
 // browser: the 3D scene starves a browser's one software renderer, not the machine's cores.
-// `COMPONENT_SHARDS` sets how many; any further arguments go to each vitest. The files are dealt
+// `COMPONENT_SHARDS` sets how many. Arguments before the first option pick the files, as vitest's
+// filters do; the options go to each vitest. The files are dealt
 // by how long each took last time, so no shard waits on the others.
 
 import { availableParallelism } from "node:os";
@@ -60,6 +61,28 @@ export function deal(files: readonly Timed[], n: number): string[][] {
   return dealt;
 }
 
+export interface Picked {
+  readonly files: string[];
+  /** The arguments for each vitest. */
+  readonly options: string[];
+}
+
+/**
+ * The files whose path holds one of the arguments before the first option, all without one, and
+ * the options: vitest would run every file it is handed that matches no filter, too.
+ */
+export function picked(files: readonly string[], args: readonly string[]): Picked {
+  const first = args.findIndex((arg) => arg.startsWith("-"));
+  const filters = args.slice(0, first === -1 ? args.length : first);
+
+  return {
+    files: files.filter(
+      (file) => filters.length === 0 || filters.some((filter) => file.includes(filter)),
+    ),
+    options: args.slice(filters.length),
+  };
+}
+
 /** Each file's time on its last run, in ms, read off vitest's results cache. */
 async function lastTimes(web: string): Promise<Map<string, number>> {
   const times = new Map<string, number>();
@@ -91,7 +114,12 @@ if (import.meta.main) {
 
   const scenes = SCENE.map((pattern) => new Glob(pattern));
 
-  const files = [...new Glob("src/**/*.svelte.test.ts").scanSync(web)].map((file) => {
+  const { files: chosen, options } = picked(
+    [...new Glob("src/**/*.svelte.test.ts").scanSync(web)],
+    process.argv.slice(2),
+  );
+
+  const files = chosen.map((file) => {
     // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- a glob, only matched.
     const scene = scenes.some((glob) => glob.match(file));
 
@@ -102,7 +130,7 @@ if (import.meta.main) {
     .filter((shard: readonly string[]) => shard.length > 0)
     .map(
       (shard: readonly string[]) =>
-        Bun.spawn(["vitest", "run", ...shard, ...process.argv.slice(2)], {
+        Bun.spawn(["vitest", "run", ...shard, ...options], {
           cwd: web,
           stdio: ["ignore", "inherit", "inherit"],
         }).exited,
