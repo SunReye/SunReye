@@ -30,7 +30,7 @@ export function watchFrames(): void {
  * and on-screen observers what changed, runs the frame callbacks asked for so far, then the idle
  * ones. On the fake clock (`requestAnimationFrame` faked), its next frame instead.
  */
-function playFrame(): void {
+export function playFrame(): void {
   resized();
   scrolled();
 

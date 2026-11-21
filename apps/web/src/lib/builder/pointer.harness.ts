@@ -1,5 +1,4 @@
 // A real pointer through the browser's input pipeline, for the builder's component tests.
-import { expect } from "vitest";
 import { cdp, type Locator } from "vitest/browser";
 import { finish } from "../motion/animations.harness.ts";
 
@@ -84,14 +83,19 @@ export async function tap(locator: Locator): Promise<void> {
   // A drawer leaving or focus coming back moves the page without an animation: two looks agree.
   let last = "";
 
-  await expect
-    .poll(() => {
-      const was = last;
+  await finish(() => {
+    const was = last;
 
-      last = JSON.stringify(element.getBoundingClientRect());
+    last = JSON.stringify(element.getBoundingClientRect());
 
-      return last === was && element.contains(document.elementFromPoint(...middle()));
-    })
-    .toBe(true);
+    return last === was && element.contains(document.elementFromPoint(...middle()));
+  });
+
+  // The browser makes a click of the touch after it ends: the tap is over once it has landed.
+  const clicked = new Promise((landed) => {
+    element.addEventListener("click", landed, { once: true });
+  });
+
   await press("touch", [middle()]);
+  await clicked;
 }
