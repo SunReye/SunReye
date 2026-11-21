@@ -1,10 +1,21 @@
-import { expect, test } from "vitest";
-import { page, userEvent, type Locator } from "vitest/browser";
+import { afterEach, beforeEach, expect, test } from "vitest";
+import { cdp, page, userEvent, type Locator } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { connect } from "../api/core.ts";
 import { testCore } from "../tariff/tariff.harness.ts";
 import TariffSettings from "./TariffSettings.svelte";
+
+/** The value editor's wheels land at once: a spring would turn on the browser's frames. */
+beforeEach(async () => {
+  await cdp().send("Emulation.setEmulatedMedia", {
+    features: [{ name: "prefers-reduced-motion", value: "reduce" }],
+  });
+});
+
+afterEach(async () => {
+  await cdp().send("Emulation.setEmulatedMedia", { features: [] });
+});
 
 /** A row's text as read, its spaces (no-break ones too) made plain. */
 function text(row: Readonly<Locator>): string {
@@ -135,10 +146,8 @@ async function wheelTo(group: string, field: string, hours: number, shows: strin
   await userEvent.keyboard("{ArrowUp}".repeat(hours));
 
   const apply = page.getByRole("button", { name: /^Übernehmen/u });
-  // The wheel settles on the hour before apply takes it.
-  await expect
-    .poll(() => apply.element().textContent)
-    .toContain(`${String(hours).padStart(2, "0")}:00`);
+
+  expect(apply.element().textContent).toContain(`${String(hours).padStart(2, "0")}:00`);
   await userEvent.click(apply);
   await expect.element(fields.getByRole("button", { name: shows })).toBeVisible();
 }
