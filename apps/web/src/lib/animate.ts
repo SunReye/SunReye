@@ -3,6 +3,7 @@
 
 import { easeInOut } from "./motion/ease.ts";
 import { motion } from "./motion/tier.svelte.ts";
+import { SPRINGS } from "./motion/values.ts";
 
 export interface SpringOptions {
   stiffness?: number;
@@ -21,7 +22,7 @@ export function spring(
   opts: Readonly<SpringOptions> = {},
   onDone?: () => void,
 ): () => void {
-  const { stiffness = 260, damping = 28, mass = 1, precision = 0.001 } = opts;
+  const { stiffness, damping, mass = 1, precision = 0.001 } = { ...SPRINGS.standard, ...opts };
   let x = from;
   let v = opts.velocity ?? 0;
 

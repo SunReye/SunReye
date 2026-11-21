@@ -48,10 +48,10 @@
 
   // Only `full` pays for the tile's glow and tint transitions: one 34 px blur per node.
   const boxTransition = $derived(
-    tier === "full" ? "transition-[box-shadow,border-color,background-color] duration-500" : "",
+    tier === "full" ? "transition-[box-shadow,border-color,background-color] duration-(--motion-flow-tile)" : "",
   );
 
-  const gaugeEase = $derived(tier === "full" ? "transition:stroke-dashoffset 500ms linear" : "");
+  const gaugeEase = $derived(tier === "full" ? "transition:stroke-dashoffset var(--motion-flow-tile) linear" : "");
 
   const boxStyle = $derived.by(() => {
     const border = hasSoc ? "transparent" : active ? node.accent : "var(--border)";
@@ -70,7 +70,7 @@
 <div
   class={[
     "absolute -translate-x-1/2 -translate-y-1/2",
-    tier === "full" && "transition-opacity duration-500",
+    tier === "full" && "transition-opacity duration-(--motion-flow-tile)",
     !active && "opacity-70",
   ]}
   style="left:{node.at.x * 100}%;top:{node.at.y * 100}%"

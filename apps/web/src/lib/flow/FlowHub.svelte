@@ -87,7 +87,7 @@
 <style>
   /* The ring beats only at `full`: same period at every load, the plant changes the amplitude. */
   .hub-ring {
-    animation: hub-pulse 2.6s ease-in-out infinite;
+    animation: hub-pulse var(--motion-flow-pulse) ease-in-out infinite;
   }
   .hub-still {
     animation: none;
