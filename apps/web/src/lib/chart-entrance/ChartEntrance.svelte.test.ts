@@ -85,6 +85,18 @@ test("a chart already shown does not build again: its next data arrives in place
   expect(built()).toEqual([]);
 });
 
+test("a chart keyed anew builds again", async () => {
+  const screen = await render(Harness, { build: "grow", ready: true, key: "a" });
+
+  await expect.poll(grows).toHaveLength(3);
+  await finish();
+  await expect.poll(built).toEqual([]);
+
+  await screen.rerender({ build: "grow", ready: true, key: "b" });
+
+  await expect.poll(grows).toHaveLength(3);
+});
+
 test("on the still tier a chart is drawn at once", async () => {
   document.documentElement.dataset["motion"] = "still";
   await render(Harness, { build: "grow", ready: true });
