@@ -2,6 +2,7 @@
 // mean from the core's hourly or daily rollups, never by integrating a history.
 import { answerOf } from "../api/client.ts";
 import type { Core } from "../api/core.ts";
+import { kwh, num } from "../range/format.ts";
 import { grainOf, t0Of, t1Of, type Range } from "../range/range.ts";
 
 const H = 3_600_000;
@@ -101,6 +102,16 @@ export async function rollups(
   const [rolled] = await rollupsOf(core, device, [series], period, from, to);
 
   return rolled ?? [];
+}
+
+/** How a series' figures are written, and what one of its units is worth in them. */
+export function readsOf(s: string) {
+  if (isPower(s)) return { fmt: kwh, unit: "kWh", per: 1 };
+
+  if (s.startsWith("price."))
+    return { fmt: (v: number) => `${num(v, 2)} ct/kWh`, unit: "ct/kWh", per: 100 };
+
+  return { fmt: (v: number) => num(v, 1), unit: "", per: 1 };
 }
 
 /**
