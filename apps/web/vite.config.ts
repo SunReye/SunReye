@@ -56,6 +56,9 @@ export default defineConfig({
     ],
   },
   test: {
+    // Budgets for a page under load: shards run side by side, and a wait ends when its condition holds.
+    testTimeout: 30_000,
+    expect: { poll: { timeout: 5000 } },
     browser: {
       enabled: true,
       headless: true,

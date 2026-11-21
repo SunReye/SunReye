@@ -138,43 +138,34 @@ async function datasheet(): Promise<void> {
 const placed = (count: string) =>
   inspector().getByText(new RegExp(`^${count} Module gesetzt$`, "u"));
 
-// A journey of some forty steps: on a loaded host the steps, not any clock, take the time.
-test(
-  "from an empty core an admin creates a module type, fills a roof face and wires a string",
-  {
-    timeout: 60_000,
-  },
-  async () => {
-    const draws = vi.spyOn(EffectComposer.prototype, "render");
-    const core = emptyCore();
+test("from an empty core an admin creates a module type, fills a roof face and wires a string", async () => {
+  const draws = vi.spyOn(EffectComposer.prototype, "render");
+  const core = emptyCore();
 
-    await opened(core);
-    await page.getByRole("button", { name: "Einfamilienhaus mit Satteldach" }).click();
+  await opened(core);
+  await page.getByRole("button", { name: "Einfamilienhaus mit Satteldach" }).click();
 
-    await drill("Module", SOUTH, "Neuer Modultyp");
-    await datasheet();
-    await inspector().getByRole("button", { name: "Modultyp anlegen" }).click();
+  await drill("Module", SOUTH, "Neuer Modultyp");
+  await datasheet();
+  await inspector().getByRole("button", { name: "Modultyp anlegen" }).click();
 
-    expect(core.posts).toEqual([DATASHEET]);
+  expect(core.posts).toEqual([DATASHEET]);
 
-    // The new type lays the face's grid at once.
-    await inspector().getByRole("button", { name: "Fläche füllen" }).click();
-    await expect.element(placed("16")).toBeVisible();
+  // The new type lays the face's grid at once.
+  await inspector().getByRole("button", { name: "Fläche füllen" }).click();
+  await expect.element(placed("16")).toBeVisible();
 
-    await drill("Module", "Szene", "Strings", "String hinzufügen");
-    await expect.poll(() => draws.mock.calls.length).toBeGreaterThan(0);
+  await drill("Module", "Szene", "Strings", "String hinzufügen");
+  await expect.poll(() => draws.mock.calls.length).toBeGreaterThan(0);
 
-    const cells = cellsOnPage(addGrid(house().scene, 0, 1, MODULE.id), 0);
+  const cells = cellsOnPage(addGrid(house().scene, 0, 1, MODULE.id), 0);
 
-    await press("mouse", [cells("0.0")]);
-    await page.getByRole("button", { name: "In String 1 verdrahten" }).click();
+  await press("mouse", [cells("0.0")]);
+  await page.getByRole("button", { name: "In String 1 verdrahten" }).click();
 
-    await drill("Strings");
-    await expect
-      .element(inspector().getByText(/^1 Module, davon 0 mit Optimierer$/u))
-      .toBeVisible();
-  },
-);
+  await drill("Strings");
+  await expect.element(inspector().getByText(/^1 Module, davon 0 mit Optimierer$/u)).toBeVisible();
+});
 
 test("an existing module type is offered on the face, and picking it lays the grid", async () => {
   await render(Builder, {
