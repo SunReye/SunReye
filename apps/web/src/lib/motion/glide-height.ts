@@ -1,16 +1,28 @@
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
 // A card's height glides when its content changes it (ADR 21 "One behaviour, one component").
 import type { Attachment } from "svelte/attachments";
+import { tokenMs } from "./token.ts";
+
+interface Start {
+  readonly from: number;
+  readonly at: CSSNumberish | null;
+}
+
+interface Carried extends Start {
+  readonly to: number;
+}
+
+/** What a change finds before it measures: the height drawn and the glide under way. */
+interface Before {
+  readonly drawn: number | undefined;
+  readonly carried: Carried | undefined;
+}
 
 interface Glide {
   readonly animation: Animation;
   readonly from: number;
   readonly to: number;
 }
-
-/** The move token in ms: 0 on the still tier and under reduced motion. */
-const moveMs = (style: CSSStyleDeclaration) =>
-  Number(style.getPropertyValue("--motion-move").trim().replace(/ms$/u, "")) || 0;
 
 /** A card's height as its content sets it, and the glide to it. */
 class Height {
@@ -27,22 +39,34 @@ class Height {
 
   /** Its content changed: from the height drawn to the content's, unless its width changed. */
   changed(): void {
+    const before = this.#before();
+    const widened = this.#widened();
+    const height = this.#measure();
+
+    if (widened || before.drawn === undefined || before.drawn === height) return;
+
+    this.#run(Height.#start(before.carried, before.drawn, height), height);
+  }
+
+  /** The height drawn and the glide under way, which stops. A cancelled animation has no time,
+   * so it is read first. */
+  #before(): Before {
     const was = this.#glide;
-    const drawn = was === undefined ? this.#height : this.#card.offsetHeight;
-    const at = was?.animation.currentTime ?? null;
+
+    if (was === undefined) return { drawn: this.#height, carried: undefined };
+
+    const drawn = this.#card.offsetHeight;
+    const carried = { from: was.from, to: was.to, at: was.animation.currentTime };
 
     this.stop();
 
-    const { offsetWidth: width, offsetHeight: height } = this.#card;
-    const widened = this.#width !== undefined && this.#width !== width;
+    return { drawn, carried };
+  }
 
-    this.#measure();
-
-    if (drawn === undefined || widened || drawn === height) return;
-
-    // A change that leaves the height where the glide is going (a figure ticking): it carries on.
-    if (was?.to === height) this.#run(was.from, height, at);
-    else this.#run(drawn, height, null);
+  /** A change that leaves the height where the glide is going (a figure ticking) carries it on;
+   * any other glides from the height drawn. */
+  static #start(carried: Carried | undefined, drawn: number, height: number): Start {
+    return carried?.to === height ? carried : { from: drawn, at: null };
   }
 
   /** The card resized with no change to its content (a row it stands in, the window): no glide.
@@ -64,22 +88,32 @@ class Height {
     this.#glide = undefined;
   }
 
-  #measure(): void {
+  /** Whether the card's width changed since its content last did: the window's change. */
+  #widened(): boolean {
+    return this.#width !== undefined && this.#width !== this.#card.offsetWidth;
+  }
+
+  #measure(): number {
     this.#height = this.#card.offsetHeight;
     this.#width = this.#card.offsetWidth;
+
+    return this.#height;
   }
 
   // `min-height` and `max-height`, not `height`: a child's percentage height stays `auto`, so a
   // chart sized to the card does not resize on every frame. The card's `overflow: hidden` clips.
-  #run(from: number, to: number, at: CSSNumberish | null): void {
-    const style = getComputedStyle(this.#card);
-    const duration = moveMs(style);
+  #run(start: Start, to: number): void {
+    const { from, at } = start;
+    const duration = tokenMs(this.#card, "--motion-move");
 
     if (duration === 0) return;
 
     const animation = this.#card.animate(
       { minHeight: [`${from}px`, `${to}px`], maxHeight: [`${from}px`, `${to}px`] },
-      { duration, easing: style.getPropertyValue("--motion-ease-in-out").trim() },
+      {
+        duration,
+        easing: getComputedStyle(this.#card).getPropertyValue("--motion-ease-in-out").trim(),
+      },
     );
 
     if (at !== null) animation.currentTime = at;

@@ -42,7 +42,7 @@
   const drawn = $derived(
     chart.lanes
       .map((l) =>
-        l.lane.series.map((s) => `${s.chosen.ref.device}:${s.chosen.ref.series}:${s.colour}`).join(","),
+        l.lane.series.map((s) => `${s.chosen.ref.device}:${s.chosen.ref.series}`).join(","),
       )
       .join("|"),
   );
