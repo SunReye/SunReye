@@ -166,3 +166,44 @@ test("a series the catalog does not list has nothing stored, and the pane says s
 
   await expect.element(screen.getByText(/nichts aufgezeichnet/u)).toBeVisible();
 });
+
+test("the legend reads the day under the pointer, the month between days, and a finger's day stays", async () => {
+  await desk();
+
+  const { screen } = await fold("pv.power");
+  const chart = screen.getByRole("img", { name: "PV · Leistung je Zeitraum" });
+
+  await expect.element(chart).toBeVisible();
+
+  const box = chart.element().getBoundingClientRect();
+  // October has 31 days; a day's middle stands at (day − ½) / 31 of the axis.
+  const x = (day: number) => box.left + (box.width * (day - 0.5)) / 31;
+  const y = box.top + box.height / 2;
+
+  const point = (type: string, day: number, pointerType = "mouse") => {
+    chart
+      .element()
+      .dispatchEvent(
+        new PointerEvent(type, { clientX: x(day), clientY: y, pointerType, bubbles: true }),
+      );
+  };
+
+  /** The legend's title. */
+  const title = () =>
+    chart.element().closest("figure")!.querySelector("figcaption span")!.textContent;
+
+  const month = title();
+
+  point("pointermove", 1);
+  await expect.poll(title).toContain("1. Oktober");
+
+  // No statistics on the 2nd: the month is read.
+  point("pointermove", 2);
+  await expect.poll(title).toBe(month);
+
+  point("pointerleave", 2);
+  point("pointerdown", 4, "touch");
+  point("pointerup", 4, "touch");
+  point("pointerleave", 4, "touch");
+  await expect.poll(title).toContain("4. Oktober");
+});
