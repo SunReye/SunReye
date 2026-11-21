@@ -207,8 +207,8 @@
         "col-start-1 row-start-1 flex min-w-0 flex-col gap-4 self-start px-4 py-6",
         covered && "hidden",
       ]}
-      style:transform="translateX({-30 * push.p}%) translateY({rootLift}px)"
-      style:opacity={1 - 0.6 * push.p}
+      style:transform="{push.layer('under').x} translateY({rootLift}px)"
+      style:opacity={push.layer("under").opacity}
       aria-hidden={push.p > 0.5}
       inert={push.p > 0.5}
     >
@@ -227,7 +227,7 @@
       <section
         data-drill="page"
         class="col-start-1 row-start-1 flex min-w-0 flex-col gap-4 self-start px-4 py-6"
-        style:transform="translateX({(1 - push.p) * 100}%) translateY({pageLift}px)"
+        style:transform="{push.layer('over').x} translateY({pageLift}px)"
         aria-label={group.label}
       >
         {@render heading?.("page")}

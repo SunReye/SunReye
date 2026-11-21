@@ -54,6 +54,16 @@ export class Push {
     this.#hooks = hooks;
   }
 
+  /**
+   * How a layer stands at the slide's point: the level left behind shifts left and dims, the one
+   * pushed slides in from the right.
+   */
+  layer(which: "under" | "over"): { readonly x: string; readonly opacity: number } {
+    return which === "under"
+      ? { x: `translateX(${-30 * this.p}%)`, opacity: 1 - 0.6 * this.p }
+      : { x: `translateX(${(1 - this.p) * 100}%)`, opacity: 1 };
+  }
+
   /** Where the slide heads, or rests. */
   get target(): 0 | 1 {
     return this.#target;

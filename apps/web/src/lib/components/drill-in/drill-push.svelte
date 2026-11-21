@@ -90,11 +90,12 @@
 >
   {#each layers as key (key)}
     {@const above = key === under}
+    {@const layer = push.layer(above ? "under" : "over")}
     <section
       data-push={above ? "under" : "over"}
       class={["col-start-1 row-start-1 flex min-h-0 min-w-0 flex-col", !above && "z-10"]}
-      style:transform={above ? `translateX(${-30 * push.p}%)` : `translateX(${(1 - push.p) * 100}%)`}
-      style:opacity={above ? 1 - 0.6 * push.p : 1}
+      style:transform={layer.x}
+      style:opacity={layer.opacity}
       inert={above}
     >
       {@render children(key)}
