@@ -2,7 +2,13 @@
 
 export type MotionToken = "--motion-move" | "--motion-exit";
 
-/** `token` on `el`, in ms; 0 where it is unset. */
+/**
+ * `token` on `el`, in ms; 0 where it is unset. A custom property reads as written, and the built
+ * stylesheet writes `300ms` as `.3s`: both units are read.
+ */
 export function tokenMs(el: Element, token: MotionToken): number {
-  return Number(getComputedStyle(el).getPropertyValue(token).trim().replace(/ms$/u, "")) || 0;
+  const written = getComputedStyle(el).getPropertyValue(token).trim();
+  const time = Number(written.replace(/m?s$/u, "")) || 0;
+
+  return written.endsWith("ms") ? time : time * 1000;
 }
