@@ -1,7 +1,9 @@
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { page, userEvent } from "vitest/browser";
+import { built } from "../chart-entrance/built.harness.ts";
 import { INPUTS, show, STRINGS } from "./forecast-detail.harness.ts";
+import { holdEntrances } from "../motion/animations.harness.ts";
 import { motion } from "../motion/tier.svelte.ts";
 
 // Still: a figure stands at its value at once, where it would roll up to it frame by frame.
@@ -224,4 +226,34 @@ test("a plant without a forecast says so", async () => {
 
   await expect.element(screen.getByText("Keine Prognose")).toBeVisible();
   expect(screen.getByRole("tab", { name: "Heute" }).query()).toBeNull();
+});
+
+/** How the day chart named `name` builds as it first shows. */
+async function builds(name: string): Promise<string[]> {
+  await expect.element(page.getByRole("img", { name })).toBeVisible();
+
+  const chart = page.getByRole("img", { name }).element();
+  const own = () => built().filter((b) => chart.contains(b.target));
+
+  await expect.poll(() => own().length).toBeGreaterThan(0);
+
+  return own().map((b) => b.build);
+}
+
+test("today's day chart, which grows live, only fades in; a later day's draws in", async () => {
+  motion.lowPower = false;
+
+  const release = holdEntrances();
+
+  try {
+    const { screen } = await show();
+
+    expect(new Set(await builds("Leistung"))).toEqual(new Set(["fade"]));
+
+    await screen.getByRole("tab", { name: "Sonntag" }).click();
+
+    expect(await builds("Prognose")).toContain("draw");
+  } finally {
+    release();
+  }
 });
