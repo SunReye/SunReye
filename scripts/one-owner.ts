@@ -21,19 +21,12 @@ interface Rule {
   readonly composes?: RegExp;
 }
 
-// Fired by the user's own gesture in places no shared component covers yet. The list only shrinks.
+// The haptics switch's own row, the rail's pin (ADR 21) and two primary presses. The list only shrinks.
 const HAPTICS_HELD = [
-  "analytics/StringsPanel.svelte",
-  "dashboard/CameraLock.svelte",
-  "explore/",
-  "forecast/LinePicker.svelte",
-  "history/FigureTabs.svelte",
-  "history/NotesCard.svelte",
-  "history/PeaksCard.svelte",
-  "settings/DisplaySettings.svelte",
   "settings/HapticsRow.svelte",
-  "setup/",
-  "shell/",
+  "setup/AddSheet.svelte",
+  "setup/SignIn.svelte",
+  "shell/Rail.svelte",
 ];
 
 const RULES: readonly Rule[] = [
