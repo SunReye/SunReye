@@ -105,11 +105,11 @@ test("an interactive card is a button that runs its press and never submits a fo
   expect(onclick).toHaveBeenCalledOnce();
 });
 
-test("a stat strip lists each figure under its label, in tabular figures", async () => {
+test("a stat strip lists each fact under its label, a text or a quantity, in tabular figures", async () => {
   const screen = await render(StatStrip, {
     stats: [
-      { label: "Abdeckung", value: "98 %" },
-      { label: "Lücken", value: "3,5 h" },
+      { label: "Abdeckung", text: "98 %" },
+      { label: "Lücken", value: 3.5, unit: "h", digits: 1 },
     ],
   });
 
@@ -118,6 +118,7 @@ test("a stat strip lists each figure under its label, in tabular figures", async
   const value = screen.getByRole("definition").first();
 
   await expect.element(value).toHaveTextContent("98 %");
+  await expect.element(screen.getByRole("definition").nth(1)).toHaveTextContent("3,5 h");
   expect(getComputedStyle(value.element()).fontVariantNumeric).toBe("tabular-nums");
   expect(screen.getByRole("term").elements()).toHaveLength(2);
 });

@@ -11,9 +11,9 @@
   import Demo from "../Demo.svelte";
 
   const STATS = [
-    { label: "Coverage", value: "98 %" },
-    { label: "Gaps", value: "3.5 h" },
-    { label: "Recording since", value: "3 Mar 2024" },
+    { label: "Coverage", text: "98 %" },
+    { label: "Gaps", text: "3.5 h" },
+    { label: "Recording since", text: "3 Mar 2024" },
   ];
 </script>
 

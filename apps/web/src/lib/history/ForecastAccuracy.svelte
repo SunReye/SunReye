@@ -16,9 +16,9 @@
 
 <StatStrip
   stats={[
-    { label: m.stats_forecast_error(), value: acc[0] },
-    { label: m.stats_forecast_bias(), value: acc[1] },
-    { label: m.stats_forecast_days(), value: acc[2] },
+    { label: m.stats_forecast_error(), text: acc[0] },
+    { label: m.stats_forecast_bias(), text: acc[1] },
+    { label: m.stats_forecast_days(), text: acc[2] },
   ]}
 />
 <p class="max-w-[68ch] text-xs text-muted-foreground">

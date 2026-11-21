@@ -2,7 +2,7 @@
   one row of its sunshine and its best window, today also how the forecast holds, then the way on
   to the Forecast screen on that day. -->
 <script lang="ts">
-  import DetailStats from "../detail/DetailStats.svelte";
+  import StatStrip from "../components/stat-strip.svelte";
   import OnwardLink from "../detail/OnwardLink.svelte";
   import { dayFacts, holdFacts, onward } from "./ahead-facts.ts";
   import type { ShownDay } from "./ahead-shown.ts";
@@ -33,6 +33,6 @@
 </script>
 
 {#if stats.length > 0}
-  <div data-facts><DetailStats {stats} /></div>
+  <div data-facts><StatStrip closes="sheet" {stats} /></div>
 {/if}
 <OnwardLink href={link.href}>{link.label}</OnwardLink>

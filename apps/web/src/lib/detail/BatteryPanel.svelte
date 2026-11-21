@@ -10,7 +10,7 @@
   import { batteryFacts } from "./battery.ts";
   import { BATTERY_RANGE } from "./battery-range.ts";
   import BatteryOverview from "./BatteryOverview.svelte";
-  import DetailStats from "./DetailStats.svelte";
+  import StatStrip from "../components/stat-strip.svelte";
   import RangeState from "./RangeState.svelte";
   import { SheetRange } from "./sheet-range.svelte.ts";
   import type { Analytics } from "./sheets.ts";
@@ -39,5 +39,5 @@
   {/snippet}
 </AnalyticsTabs>
 <RangeState failed={range.failed} refused={range.refused} onretry={range.retry}>
-  <DetailStats panel stats={batteryFacts(range.view?.efficiency ?? null, range.view?.cycles ?? null)} />
+  <StatStrip closes="panel" stats={batteryFacts(range.view?.efficiency ?? null, range.view?.cycles ?? null)} />
 </RangeState>

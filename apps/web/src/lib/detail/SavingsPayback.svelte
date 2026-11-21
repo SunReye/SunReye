@@ -2,7 +2,7 @@
   only the admin reads (ADR 12). A refused or failed read leaves the row out, as History does. -->
 <script lang="ts">
   import type { Core } from "../api/core.ts";
-  import DetailStats from "./DetailStats.svelte";
+  import StatStrip from "../components/stat-strip.svelte";
   import { paybackFacts } from "./savings.ts";
 
   let { core }: { core: Readonly<Pick<Core, "payback">> } = $props();
@@ -12,7 +12,7 @@
 
 {#await payback then read}
   {#if !("problem" in read)}
-    <DetailStats stats={paybackFacts(read)} />
+    <StatStrip closes="sheet" stats={paybackFacts(read)} />
   {/if}
 {:catch}
   <!-- A lost core leaves the row out too. -->
