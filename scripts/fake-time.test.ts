@@ -97,6 +97,19 @@ test("a wait's budget is found beside other options and as oxfmt lays it out", (
   ]);
 });
 
+test("a wait's budget given by a name or a sum is refused: its length cannot be read", () => {
+  expect(calls("await expect.poll(f, { timeout: SLOW_MS }).toBe(1);")).toEqual(["timeout"]);
+  expect(calls("await vi.waitFor(f, { timeout: 15 * 1000 });")).toEqual(["timeout"]);
+  expect(calls("await vi.waitFor(f, { interval: 50, timeout });")).toEqual(["timeout"]);
+  expect(calls(`test("draws", { timeout: MINUTE_MS }, async () => {});`)).toEqual([]);
+});
+
+test("a budget a file exports is refused where it is given: its uses are in other files", () => {
+  expect(found("lib/x.harness.ts", "export const SLOW = { timeout: 15_000 };")).toEqual([
+    { call: "timeout", line: 1 },
+  ]);
+});
+
 test("a wait whose first argument ends in a string is still a wait", () => {
   expect(calls(`await expect.poll(() => x ?? "", { timeout: 9000 }).toBe("a");`)).toEqual([
     "timeout",

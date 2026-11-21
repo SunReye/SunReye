@@ -41,7 +41,12 @@ const CALLS: readonly Call[] = [
 /** Vitest's own budget for a wait (`expect.poll`, `expect.element`, `vi.waitFor`), in ms. */
 const WAIT_MS = 1000;
 
-const BUDGET = /\btimeout:\s*([\d_]+)/gu;
+/** A `timeout` option, with what it is given when not shorthand. */
+const BUDGET = /(?<=[{,]\s*)timeout\s*(?::\s*([^,}\n]+?))?\s*(?=[,}\n])/gu;
+
+/** Whether a budget is above vitest's: one given by a name or a sum cannot be read, so is. */
+const over = (given = "") =>
+  !/^[\d_]+$/u.test(given) || Number(given.replaceAll("_", "")) > WAIT_MS;
 
 /** A test's call up to its name and the comma after it. */
 const TEST_NAMED = /\b(?:test|it)(?:\.\w+)*\(\s*(["'`])(?:\\.|(?!\1)[^\\])*\1\s*,\s*$/u;
@@ -51,16 +56,21 @@ const testsOwn = (before: string) => TEST_NAMED.test(before.slice(-500));
 
 const lineAt = (source: string, index: number) => source.slice(0, index).split("\n").length;
 
-/** Where the budget at `at` is given: there, or at each use of the name it is kept under. */
+/**
+ * Where the budget at `at` is given: there, or at each use of the name it is kept under; an
+ * exported one also there, as its other uses are in files this one does not show.
+ */
 function givenAt(source: string, at: number): number[] {
-  const name = /const\s+(\w+)\s*=\s*$/u.exec(source.slice(0, at))?.[1];
+  const [, exported, name] = /(export\s+)?const\s+(\w+)\s*=\s*$/u.exec(source.slice(0, at)) ?? [];
 
   if (name === undefined) return [at];
 
-  return [...source.slice(at).matchAll(new RegExp(String.raw`\b${name}\b`, "gu"))].map(
+  const uses = [...source.slice(at).matchAll(new RegExp(String.raw`\b${name}\b`, "gu"))].map(
     // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- a match, only read.
     (use) => at + use.index,
   );
+
+  return exported === undefined ? uses : [at, ...uses];
 }
 
 /** Every budget above vitest's given to a wait, inline or by name, with the line it is given on. */
@@ -68,7 +78,7 @@ function budgets(source: string): RealTime[] {
   return (
     [...source.matchAll(BUDGET)]
       // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- a match, only read.
-      .filter((match) => Number((match[1] ?? "0").replaceAll("_", "")) > WAIT_MS)
+      .filter((match) => over(match[1]))
       // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- a match, only read.
       .flatMap((match) => givenAt(source, source.lastIndexOf("{", match.index)))
       .flatMap((index) =>
