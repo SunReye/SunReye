@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runGate } from "./gate.ts";
+import { runGate, type Step } from "./gate.ts";
 
 let dir = "";
 
@@ -14,8 +14,8 @@ afterEach(async () => {
   await rm(dir, { recursive: true });
 });
 
-function record(mark: string): string[] {
-  return ["sh", "-c", `echo ${mark} >> ${join(dir, "log")}`];
+function record(mark: string): Step {
+  return { run: ["sh", "-c", `echo ${mark} >> ${join(dir, "log")}`] };
 }
 
 test("a green gate runs every step in order", async () => {
@@ -26,7 +26,7 @@ test("a green gate runs every step in order", async () => {
 });
 
 test("the gate stops at the first failing step and turns red", async () => {
-  const code = await runGate([record("a"), ["sh", "-c", "exit 3"], record("c")]);
+  const code = await runGate([record("a"), { run: ["sh", "-c", "exit 3"] }, record("c")]);
 
   expect(code).toBe(3);
   expect(await readFile(join(dir, "log"), "utf8")).toBe("a\n");
@@ -58,7 +58,7 @@ test("a step runs again once its inputs change", async () => {
 
 test("a failed step is never remembered as green", async () => {
   const inputs = { hash: "one" };
-  const failing = ["sh", "-c", `echo f >> ${join(dir, "log")}; exit 1`];
+  const failing = { run: ["sh", "-c", `echo f >> ${join(dir, "log")}; exit 1`] };
 
   expect(await runGate([failing], cached(inputs))).toBe(1);
   expect(await runGate([failing], cached(inputs))).toBe(1);
