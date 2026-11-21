@@ -1,6 +1,7 @@
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
 // A card's height glides when its content changes it (ADR 21 "One behaviour, one component").
 import type { Attachment } from "svelte/attachments";
+import { easeInOut } from "../../../motion/ease.ts";
 import { tokenMs } from "../../../motion/token.ts";
 
 const px = (value: string) => Number(value.replace(/px$/u, "")) || 0;
@@ -31,10 +32,49 @@ function contentHeight(card: HTMLElement): number {
   return Math.max(end, px(style.paddingTop)) + px(style.paddingBottom) + edges;
 }
 
+/** One change of the content's height under way: `by` px, begun `age` ms ago. */
+interface Change {
+  readonly by: number;
+  readonly age: number;
+}
+
+/** Where a glide to `to` draws the card `ms` on, each change easing in over `duration`. */
+const drawnAt = (to: number, changes: readonly Change[], duration: number, ms: number) =>
+  changes.reduce((at, { by, age }) => at - by * (1 - easeInOut((age + ms) / duration)), to);
+
+/** `changes` as they stand `ms` on: the ones played out are in the height the glide goes to. */
+const aged = (changes: readonly Change[], duration: number, ms: number) =>
+  changes.map(({ by, age }) => ({ by, age: age + ms })).filter(({ age }) => age < duration);
+
+/** Heights along a glide, close enough that straight lines between them read as its curve. */
+const SAMPLES = 32;
+
+/** The glide as keyframes: both heights, so the card is neither squeezed nor stretched. */
+function keyframes(to: number, changes: readonly Change[], duration: number) {
+  const heights = Array.from(
+    { length: SAMPLES + 1 },
+    (_, i) => `${drawnAt(to, changes, duration, (i / SAMPLES) * duration)}px`,
+  );
+
+  return { minHeight: heights, maxHeight: heights };
+}
+
+/**
+ * Plays `animation` over `frames` from their start. The same animation, sought: one begun anew
+ * would wait for the next frame to start, and the card would stand still for it.
+ */
+function replay(animation: Animation, frames: ReturnType<typeof keyframes>): void {
+  if (animation.effect instanceof KeyframeEffect) animation.effect.setKeyframes(frames);
+
+  animation.currentTime = 0;
+}
+
 interface Glide {
   readonly animation: Animation;
-  readonly from: number;
   readonly to: number;
+  /** The changes under way when the animation was last at its start. */
+  readonly changes: readonly Change[];
+  readonly duration: number;
 }
 
 /** A card's height as its content sets it, and the glide to it. */
@@ -68,8 +108,9 @@ class Height {
   }
 
   /**
-   * Its content changed mid-glide. A glide begun anew waits a frame to start, so one begun on each
-   * frame of a swipe's slide would never move: the glide runs on unless the height it goes to moved.
+   * Its content changed mid-glide: the glide goes on unless the height it goes to moved. Then the
+   * new change eases in over the ones under way, so the card keeps the speed it has: a glide begun
+   * anew from rest on every change stutters, and one begun on each frame of a swipe never moves.
    */
   #moved(glide: Glide): void {
     const height = contentHeight(this.#card);
@@ -77,12 +118,15 @@ class Height {
     // Layout offsets are whole pixels: a pixel apart is where the glide goes.
     if (Math.abs(height - glide.to) <= 1) return;
 
-    const drawn = this.#card.offsetHeight;
-
-    this.stop();
     this.#height = height;
     this.#width = this.#card.offsetWidth;
-    this.#run(drawn, height);
+
+    const { animation, duration } = glide;
+    const under = aged(glide.changes, duration, Number(animation.currentTime));
+    const changes = [...under, { by: height - glide.to, age: 0 }];
+
+    replay(animation, keyframes(height, changes, duration));
+    this.#glide = { animation, to: height, changes, duration };
   }
 
   /** The card resized with no change to its content (a row it stands in, the window): no glide.
@@ -128,28 +172,23 @@ class Height {
 
     if (duration === 0) return;
 
-    const animation = this.#card.animate(
-      { minHeight: [`${from}px`, `${to}px`], maxHeight: [`${from}px`, `${to}px`] },
-      {
-        duration,
-        easing: getComputedStyle(this.#card).getPropertyValue("--motion-ease-in-out").trim(),
-      },
-    );
+    const changes = [{ by: to - from, age: 0 }];
+    const animation = this.#card.animate(keyframes(to, changes, duration), { duration });
 
-    const glide: Glide = { animation, from, to };
-
-    this.#glide = glide;
+    this.#glide = { animation, to, changes, duration };
     // The content keeps its size, clipped, rather than squeezed to the glide's (`card.svelte`).
     this.#card.dataset["gliding"] = "";
     animation.addEventListener("finish", () => {
-      if (this.#glide === glide) this.#ended();
+      // An end told late, after a change sought the glide back to its start, is not its end.
+      if (Number(animation.currentTime) >= duration) this.#ended();
     });
   }
 }
 
 /**
  * Glides `card`'s height from the one drawn to its content's whenever its content changes it, on
- * the move token, so what stands below moves with it. A change of width (the window's), the still
+ * the move token and ADR 21's ease-in-out, so what stands below moves with it. A change mid-glide
+ * eases in over the glide under way. A change of width (the window's), the still
  * tier, a change to the card's own class or style and a card that mounts take the new height at
  * once.
  *

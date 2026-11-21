@@ -215,3 +215,62 @@ test("content that changes mid-glide glides on from the height drawn", async () 
 
   expect(card.offsetHeight).toBe(height + 160);
 });
+
+/** A frame of a held glide, in ms. */
+const FRAME = 16;
+
+/** Plays one frame of the card's held glides: the height it is then drawn at. */
+function frame(card: HTMLElement): number {
+  for (const glide of glides(card)) glide.currentTime = Number(glide.currentTime) + FRAME;
+
+  return card.getBoundingClientRect().height;
+}
+
+/**
+ * The card's height on each frame as its content takes each of `heights` in turn, `every` frames
+ * apart, until it has landed on the last.
+ */
+async function drawnOver(heights: readonly [number, ...number[]], every: number) {
+  const { screen, card } = await shown({ height: heights[0] });
+  const drawn = [card.getBoundingClientRect().height];
+
+  for (const height of heights.slice(1)) {
+    // oxlint-disable-next-line no-await-in-loop -- one change after another, mid-glide.
+    await screen.rerender({ height });
+    // oxlint-disable-next-line no-await-in-loop -- as above.
+    await settle(() => glides(card).length > 0);
+
+    for (let i = 0; i < every; i++) drawn.push(frame(card));
+  }
+
+  // A glide lasts under 40 frames.
+  for (let i = 0; i < 40; i++) drawn.push(frame(card));
+
+  await screen.unmount();
+
+  return drawn;
+}
+
+/** The change from each value to the next. */
+const changes = (values: readonly number[]) => values.slice(1).map((v, i) => v - (values[i] ?? v));
+
+/** The frames on which the card moved: until it landed. */
+const moving = (drawn: readonly number[]) =>
+  changes(drawn.slice(0, drawn.indexOf(drawn.at(-1)!) + 1));
+
+/** The largest change of speed from one frame to the next, in px a frame. */
+const jolt = (drawn: readonly number[]) =>
+  Math.max(...changes(moving(drawn)).map((change) => Math.abs(change)));
+
+test("content that changes again and again mid-glide keeps the card moving: it never stands, turns back or jolts", async () => {
+  // A glide alone sets what smooth is: how fast its speed changes at most.
+  const alone = jolt(await drawnOver([40, 120], 0));
+  // Each change comes as the glide before it is at its fastest.
+  const drawn = await drawnOver([40, 120, 200, 280], 9);
+  const steps = moving(drawn);
+
+  expect(drawn.at(-1)).toBe(drawn[0]! + 240);
+  expect(Math.min(...steps)).toBeGreaterThan(0);
+  // Two glides are under way at once at most: no more than both changing speed together.
+  expect(jolt(drawn)).toBeLessThanOrEqual(2 * alone);
+});
