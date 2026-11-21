@@ -37,7 +37,11 @@ const lanes = () =>
   );
 
 /** The canvases in the chart of series mode: one per drawing, the one before while it leaves. */
-const drawings = () => document.querySelectorAll('section[aria-label="Reihen"] canvas').length;
+const canvases = () => [
+  ...document.querySelectorAll<HTMLCanvasElement>('section[aria-label="Reihen"] canvas'),
+];
+
+const drawings = () => canvases().length;
 
 /** The screen at `query`, its first entrance played out. */
 async function shown(query = "", mode = "Reihen") {
@@ -68,16 +72,24 @@ test("a series the overlay does not draw leaves its chart in place", async () =>
   expect(builds("Überlagern")).toEqual([]);
 });
 
-test("a series removed fades out with its lane as the chart builds in without it", async () => {
+test("a series removed fades out in the drawing before, as the chart builds in without it", async () => {
   const screen = await shown(`s=${PLANT}:pv.power,5:battery.soc`);
+  const [before] = canvases();
+  const pixels = before?.toDataURL();
 
   hold();
   await screen.getByRole("button", { name: "Batterie · Ladezustand entfernen" }).click();
 
   await expect.poll(lanes).toEqual([expect.stringContaining("PV · Leistung")]);
-  expect(drawings()).toBe(2);
-  // The drawing before, with the lane removed, fades out.
-  expect(leaving().filter((el) => el.querySelector("canvas") !== null)).toHaveLength(1);
+  // The drawing before, the lane removed still in it, fades out over the next.
+  const gone = leaving().find((el) => el.querySelector("canvas") !== null);
+
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the DOM, only read.
+  const next = canvases().find((c) => c !== before);
+
+  expect(gone?.querySelector("canvas")).toBe(before);
+  expect(before?.toDataURL()).toBe(pixels);
+  expect(next?.toDataURL()).not.toBe(pixels);
   await expect.poll(() => builds("Reihen")).toContain("draw");
 
   await finish();
@@ -112,4 +124,13 @@ test("on the still tier a series added or removed is drawn at once", async () =>
 
   expect(drawings()).toBe(1);
   expect(builds("Reihen")).toEqual([]);
+});
+
+test("a period the overlay adds builds its chart in", async () => {
+  const screen = await shown(`mode=overlay&s=${PLANT}:pv.power`, "Überlagern");
+
+  await screen.getByRole("button", { name: "Tag davor" }).click();
+
+  await expect.poll(lanes).toEqual([expect.stringMatching(/Gestern/u)]);
+  await expect.poll(() => builds("Überlagern")).toContain("draw");
 });
