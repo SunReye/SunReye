@@ -1,6 +1,6 @@
 // A motion token as a script reads it (ADR 21): 0 on the still tier and under reduced motion.
 
-export type MotionToken = "--motion-move" | "--motion-exit";
+export type MotionToken = "--motion-move" | "--motion-exit" | "--motion-base";
 
 /**
  * `token` on `el`, in ms; 0 where it is unset. A custom property reads as written, and the built

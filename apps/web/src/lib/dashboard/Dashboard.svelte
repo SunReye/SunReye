@@ -10,7 +10,7 @@
   import { Recorded } from "../live-graph/recorded.svelte.ts";
   import type { Go } from "../range/route.svelte.ts";
   import { followDay, type Day } from "./day-follow.ts";
-  import EvCard from "./EvCard.svelte";
+  import EvCards from "./EvCards.svelte";
   import Hero from "./Hero.svelte";
   import NowStrip from "./NowStrip.svelte";
   import TodayPanel from "./TodayPanel.svelte";
@@ -100,14 +100,7 @@
   <div class="flex min-h-0 min-w-0 flex-col gap-3">
     <NowStrip spot={values?.[SPOT]} tariff={values?.[TARIFF]} {day} {onopen} />
     <TodayPanel tariff={values?.[TARIFF]} {day} {onopen} />
-    {#each loadpoints as loadpoint (loadpoint.id)}
-      <EvCard
-        device={loadpoint.id}
-        name={names.get(loadpoint.id)}
-        values={loadpoint.values}
-        {onopen}
-      />
-    {/each}
+    <EvCards {loadpoints} {names} {onopen} />
   </div>
 </main>
 

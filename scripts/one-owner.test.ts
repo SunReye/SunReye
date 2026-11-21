@@ -287,3 +287,12 @@ test("a range control outside a screen's header or a sheet's head is a copy", ()
   expect(rules("range/RangeScreen.svelte", source)).toEqual([]);
   expect(rules("detail/Analytics.svelte", source)).toEqual([]);
 });
+
+test("a card's presence transition outside the kit card is a copy", () => {
+  const source = `import { presence } from "#lib/components/ui/card/presence.ts";`;
+  const wrapper = `import { Presence } from "#lib/components/ui/card/index.js";`;
+
+  expect(rules("history/Aside.svelte", source)).toEqual(["card presence outside the kit card"]);
+  expect(rules("components/ui/card/card-presence.svelte", source)).toEqual([]);
+  expect(rules("history/Aside.svelte", wrapper)).toEqual([]);
+});

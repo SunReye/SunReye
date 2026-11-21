@@ -1,6 +1,7 @@
 <!-- Beside the chart: the breakdown, the peaks, what stands out, and payback or, in the first week, what fills in. -->
 <script lang="ts">
   import type { Payback } from "../api/tariff.ts";
+  import { Presence } from "#lib/components/ui/card/index.js";
   import BreakdownCard from "./BreakdownCard.svelte";
   import Filling from "./Filling.svelte";
   import type { Note } from "./notes.ts";
@@ -51,20 +52,23 @@
   const shown = $derived(summary ?? NOTHING);
 </script>
 
-<aside class="grid content-start gap-4 sm:max-lg:grid-cols-2">
+<!-- A column, so a card that appears or leaves glides what stands below (ADR 21); in two columns it does so at once. -->
+<aside
+  class="flex flex-col gap-4 sm:max-lg:grid sm:max-lg:grid-cols-2 sm:max-lg:content-start"
+>
   <BreakdownCard {label} rows={shown.breakdown} against={shown.against} {loading} />
 
   {#if shown.peaks.length > 0 && !loading}
-    <PeaksCard {label} peaks={shown.peaks} onopen={onrange} />
+    <Presence><PeaksCard {label} peaks={shown.peaks} onopen={onrange} /></Presence>
   {/if}
 
   {#if shown.notes.length > 0 && !loading}
-    <NotesCard notes={shown.notes} {onnote} />
+    <Presence><NotesCard notes={shown.notes} {onnote} /></Presence>
   {/if}
 
   {#if fresh}
-    <Filling {since} {today} />
+    <Presence><Filling {since} {today} /></Presence>
   {:else if payback}
-    <PaybackCard {payback} {loading} {tucked} onopen={onpayback} />
+    <Presence><PaybackCard {payback} {loading} {tucked} onopen={onpayback} /></Presence>
   {/if}
 </aside>

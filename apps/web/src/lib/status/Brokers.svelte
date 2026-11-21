@@ -1,15 +1,38 @@
 <script lang="ts">
   import Section from "../components/section.svelte";
-  import type { Connection } from "../api/core";
+  import { settleRead } from "../api/client.ts";
+  import type { Connection, Core } from "../api/core";
+  import { Presence } from "#lib/components/ui/card/index.js";
   import * as Item from "#lib/components/ui/item/index.js";
   import { m } from "../paraglide/messages.js";
 
-  /** Every connection; only brokers report a state. */
-  let { connections }: { connections: readonly Connection[] } = $props();
+  /** Every connection, once the core answers; a viewer's is refused. Only brokers report a state. */
+  let { answer }: { answer: ReturnType<Core["connections"]> } = $props();
+
+  // What the core last answered, kept while it is asked again: the card neither leaves nor comes
+  // back on a refresh, and it appears on the screen already shown (ADR 21).
+  let connections = $state.raw<readonly Connection[]>([]);
+
+  $effect(() => {
+    let latest = true;
+
+    const take = async () => {
+      // A core lost mid-read leaves what it last answered.
+      const read = await settleRead(answer);
+
+      if (latest && !read.failed) connections = "problem" in read.data ? [] : read.data;
+    };
+
+    void take();
+
+    return () => {
+      latest = false;
+    };
+  });
 
   let brokers = $derived(connections.filter((c) => c.status));
 
-  function state(broker: Connection): string {
+  function told(broker: Connection): string {
     const error = broker.status?.lastError;
 
     if (broker.status?.connected === true) return m.broker_connected();
@@ -19,7 +42,8 @@
 </script>
 
 {#if brokers.length > 0}
-  <Section card title={m.status_brokers()}>
+  <Presence>
+    <Section card title={m.status_brokers()}>
     <Item.Group class="gap-0 divide-y divide-border/60">
       {#each brokers as broker (broker.id)}
         {@const up = broker.status?.connected === true}
@@ -32,10 +56,11 @@
           </Item.Media>
           <Item.Content>
             <Item.Title class="text-[15px] font-normal">{broker.name}</Item.Title>
-            <Item.Description class={{ "text-destructive": !up }}>{state(broker)}</Item.Description>
+            <Item.Description class={{ "text-destructive": !up }}>{told(broker)}</Item.Description>
           </Item.Content>
         </Item.Root>
       {/each}
     </Item.Group>
-  </Section>
+    </Section>
+  </Presence>
 {/if}

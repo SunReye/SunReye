@@ -32,10 +32,6 @@
   </header>
   <Problems answer={problems} />
   <!-- Connections are admin only; a viewer sees no brokers. -->
-  {#await connections then answer}
-    {#if !("problem" in answer)}
-      <Brokers connections={answer} />
-    {/if}
-  {/await}
+  <Brokers answer={connections} />
   <Log answer={logs} />
 </main>

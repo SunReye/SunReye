@@ -5,6 +5,8 @@ import Footer from "./card-footer.svelte";
 import Header from "./card-header.svelte";
 import Title from "./card-title.svelte";
 import Root from "./card.svelte";
+// Local: a card that appears or leaves (#837).
+import Presence from "./card-presence.svelte";
 
 export {
   Root,
@@ -14,6 +16,7 @@ export {
   Header,
   Title,
   Action,
+  Presence,
   //
   Root as Card,
   Content as CardContent,
@@ -22,4 +25,5 @@ export {
   Header as CardHeader,
   Title as CardTitle,
   Action as CardAction,
+  Presence as CardPresence,
 };
