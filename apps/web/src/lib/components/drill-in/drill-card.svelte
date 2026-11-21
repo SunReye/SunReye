@@ -7,8 +7,10 @@
 <script lang="ts" module>
   import { createContext } from "svelte";
 
+  const [levelCards, setCarded, inDrillIn] = createContext<() => boolean>();
+
   /** Whether a page stands as a level of its own: its sections are cards. */
-  export const [levelCards, carded, inDrillIn] = createContext<() => boolean>();
+  export const carded = setCarded;
 </script>
 
 <script lang="ts">

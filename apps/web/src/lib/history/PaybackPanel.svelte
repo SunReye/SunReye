@@ -28,6 +28,12 @@
   const shown = $derived(payback ? paybackText(payback, loading) : null);
   const rows = $derived(payback ? paybackRows(payback) : []);
 
+  const rules = $derived(
+    payback?.investment === undefined || payback.investment === null
+      ? []
+      : [{ y: payback.investment, label: m.stats_payback_investment() }],
+  );
+
   const axis = (v: number) => (v >= 1000 ? `${num(v / 1000, 1)} T€` : `${num(v)} €`);
 </script>
 
@@ -68,9 +74,7 @@
             kind: "dashed",
           },
         ]}
-        rules={payback.investment == null
-          ? []
-          : [{ y: payback.investment, label: m.stats_payback_investment() }]}
+        {rules}
         fmt={money}
         axisFmt={axis}
         {height}

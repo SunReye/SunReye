@@ -136,6 +136,24 @@ function askedOf(url: URL, series: string): Asked | null {
   };
 }
 
+const catalog = () =>
+  plant.broken
+    ? Response.json({ status: 401, code: "auth.required" }, { status: 401 })
+    : Response.json({ devices: DEVICES });
+
+/** The core's refusal of a read asking for the refused series. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the DOM's own type.
+function refusedOf(url: URL): Response | null {
+  const { refused } = plant;
+
+  if (refused === null || !url.searchParams.getAll("series").includes(refused.series)) return null;
+
+  return Response.json(
+    { status: 422, code: refused.code, series: refused.series },
+    { status: 422 },
+  );
+}
+
 function transport(): Transport {
   return {
     base: "http://core.test/",
@@ -146,26 +164,15 @@ function transport(): Transport {
 
       if (read === "timezone") return Promise.resolve(Response.json({ name: "UTC" }));
 
-      if (read === "series")
-        return Promise.resolve(
-          plant.broken
-            ? Response.json({ status: 401, code: "auth.required" }, { status: 401 })
-            : Response.json({ devices: DEVICES }),
-        );
+      if (read === "series") return Promise.resolve(catalog());
 
       if (forViews(request)) return answerViews(request);
 
       const url = new URL(request.url);
 
-      const { refused } = plant;
+      const refusal = refusedOf(url);
 
-      if (refused !== null && url.searchParams.getAll("series").includes(refused.series))
-        return Promise.resolve(
-          Response.json(
-            { status: 422, code: refused.code, series: refused.series },
-            { status: 422 },
-          ),
-        );
+      if (refusal !== null) return Promise.resolve(refusal);
 
       if (askedOf(url, "") !== null)
         return Promise.resolve(

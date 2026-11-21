@@ -19,7 +19,7 @@ export interface Copy {
   readonly line: number;
 }
 
-interface Rule {
+export interface Rule {
   readonly name: string;
   /** Where the first copy in a source starts, if it holds one. */
   readonly found: (source: string) => number | undefined;

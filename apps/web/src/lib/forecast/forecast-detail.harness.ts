@@ -111,7 +111,7 @@ function targets(watts: Watts | undefined, from: number, to: number) {
   return { points };
 }
 
-interface Refusing {
+export interface Refusing {
   /** What the core refuses the inverter's forecasts with, as asked; none while it answers. */
   code: string | undefined;
 }

@@ -28,7 +28,7 @@ function forecast(points: readonly Readonly<Target>[]): Held[] {
 }
 
 /** Why a source was not read whole: the core's first refusal, none for a lost core. */
-export interface Unread {
+interface Unread {
   readonly refused: Problem | undefined;
 }
 
@@ -46,19 +46,20 @@ async function source<P>(
   if (roles.length === 0) return { held: new Map(), unread: undefined };
 
   const answers = await read(roles).catch(() => null);
-  let unread: Unread | undefined = answers === null ? { refused: undefined } : undefined;
+  const refused = answers?.find((a): a is Problem => "problem" in a);
 
-  const out = new Map<DetailRole, Held[]>();
+  const out = new Map(
+    roles.map((role, i): [DetailRole, Held[]] => {
+      const answer = answers?.[i];
 
-  for (const [i, role] of roles.entries()) {
-    const answer = answers?.[i];
+      return [role, answer !== undefined && "points" in answer ? held(answer.points) : []];
+    }),
+  );
 
-    if (answer !== undefined && "problem" in answer) unread ??= { refused: answer };
-
-    out.set(role, answer !== undefined && "points" in answer ? held(answer.points) : []);
-  }
-
-  return { held: out, unread };
+  return {
+    held: out,
+    unread: answers === null ? { refused: undefined } : refused && { refused },
+  };
 }
 
 /**

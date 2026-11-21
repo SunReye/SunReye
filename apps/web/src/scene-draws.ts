@@ -10,14 +10,14 @@ const DRAWS = [
 ] as const;
 
 /** A WebGL context, as its draw calls see it. */
-interface Context {
+export interface Context {
   readonly canvas: unknown;
 }
 
-type Draw = (this: Context, ...args: readonly number[]) => void;
+export type Draw = (this: Context, ...args: readonly number[]) => void;
 
 /** A WebGL context's prototype, as far as its draw calls. */
-type Drawing = Partial<Record<(typeof DRAWS)[number], Draw>>;
+export type Drawing = Partial<Record<(typeof DRAWS)[number], Draw>>;
 
 /**
  * Watches every draw call on the contexts' prototypes from now; the returned function says whether

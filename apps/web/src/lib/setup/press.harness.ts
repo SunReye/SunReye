@@ -8,7 +8,7 @@ import type { Locator } from "vitest/browser";
  * for a test of what a press does, not of where the pointer lands.
  */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- vitest's locator, only read.
-export async function press(target: Locator): Promise<void> {
+export async function pressEnabled(target: Locator): Promise<void> {
   await expect.element(target).toBeEnabled();
 
   const element = target.element();
