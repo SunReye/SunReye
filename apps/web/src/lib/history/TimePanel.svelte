@@ -29,6 +29,9 @@
   } = $props();
 
   const chart = $derived(chartOf(metric, got, begun));
+
+  // A range still loading may yet be compared: the legend keeps the comparison's place.
+  const compared = $derived(loading || chart.bands.some((b) => (b.mark ?? null) !== null));
 </script>
 
 <BandChart
@@ -36,7 +39,7 @@
   up={chart.up}
   down={chart.down}
   groups={chart.groups}
-  markLabel={chart.bands.some((b) => b.mark != null) ? baselineLabel(got.range, got.cmp) : ""}
+  markLabel={compared ? baselineLabel(got.range, got.cmp) : ""}
   via={got.via}
   summary={{ title: m.range_sum({ range: rangeLabel(got.cal, got.range) }), ...chart.summary }}
   fmt={chart.fmt}
