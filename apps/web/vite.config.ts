@@ -22,6 +22,12 @@ function icons(): string[] {
   return [...found].toSorted();
 }
 
+function release(): string {
+  const cargo = readFileSync(`${import.meta.dirname}/../../Cargo.toml`, "utf8");
+
+  return /^\[workspace\.package\]\nversion = "([^"]+)"/mu.exec(cargo)?.[1] ?? "dev";
+}
+
 export default defineConfig({
   plugins: [
     tailwindcss(),
@@ -30,6 +36,9 @@ export default defineConfig({
       // Hash router and relative paths: the SPA works at `/` and under any ingress prefix (ADR 11).
       adapter: adapter({ precompress: true }),
       router: { type: "hash" },
+      // The release's version, not the build's time: the same sources build the same SPA, which
+      // the core embeds and the gate's cache hashes (ADR 13).
+      version: { name: release() },
     }),
   ],
   // Pre-bundled up front: discovering them mid-run reloads the browser and fails the files in flight.

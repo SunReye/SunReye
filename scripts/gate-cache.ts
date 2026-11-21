@@ -37,8 +37,6 @@ async function walked(root: string, dir: string): Promise<string[]> {
       .filter((entry) => entry.isFile())
       // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- a directory entry is only read.
       .map((entry) => join(entry.parentPath, entry.name).slice(root.length))
-      // Stamped with the build's time on every build; no step reads it.
-      .filter((path) => !path.endsWith("version.json"))
   );
 }
 
