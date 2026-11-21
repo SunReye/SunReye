@@ -4,6 +4,7 @@ import { sveltekit } from "@sveltejs/kit/vite";
 import tailwindcss from "@tailwindcss/vite";
 import { playwright } from "@vitest/browser-playwright";
 import { defineConfig } from "vitest/config";
+import { frameKnown } from "./browser-commands.ts";
 import { SCENE } from "./scene-tests.ts";
 
 /** Every lucide icon the sources import, so each new icon is pre-bundled without a list to keep. */
@@ -71,6 +72,7 @@ export default defineConfig({
       headless: true,
       provider: playwright(),
       instances: [{ browser: "chromium" }],
+      commands: { frameKnown },
     },
     projects: [
       {

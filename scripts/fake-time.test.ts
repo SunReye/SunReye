@@ -57,3 +57,74 @@ test("harnesses are held to it; sources, unit tests and files outside the SPA ar
   expect(found("lib/range/range.test.ts", source)).toEqual([]);
   expect(realTime("scripts/x.svelte.test.ts", source)).toEqual([]);
 });
+
+test("waiting on an animation's end or a frame it is told on is real time", () => {
+  expect(calls("animation.onfinish = () => done();")).toEqual(["onfinish"]);
+  expect(calls(`animation.addEventListener("finish", done, { once: true });`)).toEqual([
+    "finish event",
+  ]);
+  expect(calls("const drawn = document.createElement('div').animate([], 0);")).toEqual(["animate"]);
+});
+
+test("a finish named for something else is no animation's end", () => {
+  expect(calls("await render(Setup, { core, onfinish: () => {} });")).toEqual([]);
+  expect(calls("expect(probe.frame().passes).toEqual([]);")).toEqual([]);
+  expect(calls(`const keys = ["finish", "start"];`)).toEqual([]);
+});
+
+test("a wait's budget above vitest's second is real time, named or not", () => {
+  expect(calls("await expect.poll(drawn, { timeout: 15_000 }).toBe(1);")).toEqual(["timeout"]);
+  expect(calls("await expect.element(button, { timeout: 2000 }).toBeVisible();")).toEqual([
+    "timeout",
+  ]);
+  expect(calls("await vi.waitFor(drawn, { timeout: 5000 });")).toEqual(["timeout"]);
+  expect(
+    found(
+      "lib/x.svelte.test.ts",
+      "const SLOW = { timeout: 15_000 };\n\nawait expect.poll(f, SLOW).toBe(1);",
+    ),
+  ).toEqual([{ call: "timeout", line: 3 }]);
+  expect(calls("await expect.poll(drawn, { timeout: 1000 }).toBe(1);")).toEqual([]);
+});
+
+test("a wait's budget is found beside other options and as oxfmt lays it out", () => {
+  expect(calls("await expect.poll(f, { timeout: 15_000, interval: 50 }).toBe(1);")).toEqual([
+    "timeout",
+  ]);
+  expect(calls("await vi.waitFor(f, { interval: 50, timeout: 5000 });")).toEqual(["timeout"]);
+  expect(calls("await expect\n  .poll(f, {\n    timeout: 15_000,\n  })\n  .toBe(1);")).toEqual([
+    "timeout",
+  ]);
+});
+
+test("a wait's budget given by a name or a sum is refused: its length cannot be read", () => {
+  expect(calls("await expect.poll(f, { timeout: SLOW_MS }).toBe(1);")).toEqual(["timeout"]);
+  expect(calls("await vi.waitFor(f, { timeout: 15 * 1000 });")).toEqual(["timeout"]);
+  expect(calls("await vi.waitFor(f, { interval: 50, timeout });")).toEqual(["timeout"]);
+  expect(calls(`test("draws", { timeout: MINUTE_MS }, async () => {});`)).toEqual([]);
+});
+
+test("a budget a file exports is refused where it is given: its uses are in other files", () => {
+  expect(found("lib/x.harness.ts", "export const SLOW = { timeout: 15_000 };")).toEqual([
+    { call: "timeout", line: 1 },
+  ]);
+});
+
+test("a wait whose first argument ends in a string is still a wait", () => {
+  expect(calls(`await expect.poll(() => x ?? "", { timeout: 9000 }).toBe("a");`)).toEqual([
+    "timeout",
+  ]);
+});
+
+test("a test's own budget is no wait's", () => {
+  expect(calls(`test("draws", { timeout: 60_000 }, async () => {});`)).toEqual([]);
+  expect(calls(`test(\n  "draws",\n  { timeout: 60_000 },\n  async () => {},\n);`)).toEqual([]);
+  expect(
+    calls(`const MINUTE = { timeout: 60_000 };\ntest("drags", MINUTE, async () => {});`),
+  ).toEqual([]);
+  expect(
+    calls(
+      `const MINUTE = { timeout: 60_000 };\ntest(\n  "drags",\n  MINUTE,\n  async () => {},\n);`,
+    ),
+  ).toEqual([]);
+});

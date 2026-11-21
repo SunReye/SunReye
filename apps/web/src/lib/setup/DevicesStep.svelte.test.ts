@@ -5,6 +5,7 @@ import { connect, type Device, type Transport } from "../api/core.ts";
 import "../../app.css";
 import { tap } from "../builder/pointer.harness.ts";
 import DevicesStep from "./DevicesStep.svelte";
+import { closed } from "../motion/animations.harness.ts";
 
 /** A phone; the value editor lands at once. */
 beforeEach(async () => {
@@ -25,7 +26,7 @@ async function enter(row: string, value: string): Promise<void> {
   await userEvent.fill(page.getByRole("textbox", { name: `${row} eingeben` }), value);
   await userEvent.keyboard("{Enter}");
   await page.getByRole("button", { name: /^Übernehmen/u }).click();
-  await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+  await closed(page.getByRole("dialog"));
 }
 
 const ADDED = {
@@ -68,6 +69,7 @@ async function pick(at: string, search: string, name: string): Promise<void> {
   await page.getByRole("button", { name: `Profil für ${at}` }).click();
   await userEvent.fill(page.getByRole("searchbox", { name: "Profil suchen" }), search);
   await page.getByRole("button", { name: new RegExp(`^${name}`, "u") }).click();
+  await closed(page.getByRole("dialog"));
 }
 
 const REPORT = {

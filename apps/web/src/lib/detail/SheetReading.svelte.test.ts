@@ -4,6 +4,7 @@ import { cdp, page } from "vitest/browser";
 import "../../app.css";
 import { held, press } from "../components/drawer.harness.ts";
 import { prepare, restore, show } from "./detail.harness.ts";
+import { settle } from "../motion/clock.harness.ts";
 
 // Inside a sheet a finger reads a chart after a hold, so the drawer does not follow it (ADR 21
 // "Sheet content"); a full screen reads at once (range/BandReading.svelte.test.ts).
@@ -92,7 +93,7 @@ async function phoneDrawer() {
   await expect.element(sheet.getByText("8,0 kWh").first()).toBeVisible();
 
   held(await press(drawer, 60));
-  await expect.poll(() => drawer.style.transform).not.toContain("60px");
+  await settle(() => !drawer.style.transform.includes("60px"));
 
   // A synthetic pointer has no capture to take.
   plot().setPointerCapture = () => {};

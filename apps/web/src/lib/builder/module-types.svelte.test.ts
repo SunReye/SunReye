@@ -16,12 +16,11 @@ import {
   MODULE,
   press,
   pv,
+  settle,
   SOUTH,
   undesk,
 } from "./builder.harness.ts";
 import { addGrid, emptyDraft } from "./modules.ts";
-import { frame } from "../motion/animations.harness.ts";
-import { stepUntil } from "../motion/clock.harness.ts";
 
 // Module types in the builder (ADR 17, 20): a face's modules start from a type the admin picks or
 // enters from its datasheet; the core keeps it.
@@ -175,8 +174,8 @@ test("a face filled with a module type the core just added wires into a string",
   await expect.element(placed("16")).toBeVisible();
 
   await drill("Module", "Szene", "Strings", "String hinzufügen");
-  // The scene is built and drawn: on the page's own frames, as long as it takes.
-  await stepUntil(() => draws.mock.calls.length > 0, frame);
+  // The scene is built and drawn, as long as it takes.
+  await settle(() => draws.mock.calls.length > 0);
 
   const cells = cellsOnPage(addGrid(house().scene, 0, 1, added.id), 0);
 

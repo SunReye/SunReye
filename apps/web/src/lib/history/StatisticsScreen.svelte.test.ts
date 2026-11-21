@@ -5,7 +5,7 @@ import "../../app.css";
 import { settled } from "../api/settled.harness.ts";
 import { iso } from "../range/calendar.ts";
 import { asked, plant, reset, show, TODAY, YESTERDAY, zone } from "./statistics.harness.ts";
-import { realTimers } from "../motion/clock.harness.ts";
+import { appears, fakeFrames, realTimers } from "../motion/clock.harness.ts";
 
 afterEach(() => {
   realTimers();
@@ -163,6 +163,8 @@ test("a route that names question and tab opens them, as after a reload or back"
 });
 
 test("while the range loads, the figures dash and the space is held", async () => {
+  fakeFrames();
+
   const open = Promise.withResolvers<void>();
 
   plant.gate = open.promise;
@@ -177,7 +179,7 @@ test("while the range loads, the figures dash and the space is held", async () =
   expect(card?.getBoundingClientRect().height).toBeGreaterThanOrEqual(348);
 
   open.resolve();
-  await expect.element(figure.getByText("6,0")).toBeVisible();
+  await appears(figure.getByText("6,0"));
 });
 
 test("a failed read says so and loads again on request", async () => {

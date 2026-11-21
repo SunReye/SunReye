@@ -6,8 +6,8 @@ import { connect } from "../../api/core.ts";
 import Builder from "../Builder.svelte";
 import {
   choose,
-  DEVICES,
   desk,
+  DEVICES,
   drill,
   enter,
   house,
@@ -16,6 +16,7 @@ import {
   onCanvas,
   press,
   pv,
+  settle,
   SOUTH,
   testCore,
   undesk,
@@ -24,7 +25,6 @@ import { addGrid } from "../modules.ts";
 import { place } from "../placing.ts";
 import { handles } from "./grips.ts";
 
-const SLOW = { timeout: 15_000 };
 const MINUTE = { timeout: 60_000 };
 
 beforeEach(async () => {
@@ -69,7 +69,7 @@ test("a chimney dragged onto a module removes it, in the drag's undo step", MINU
     moduleTypes: [MODULE],
     devices: DEVICES,
   });
-  await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
+  await settle(() => draws.mock.calls.length > 0);
   await expect.element(modules(2)).toBeVisible();
 
   const onPage = onCanvas(draft.scene);
@@ -102,7 +102,7 @@ test(
       moduleTypes: [MODULE],
       devices: DEVICES,
     });
-    await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
+    await settle(() => draws.mock.calls.length > 0);
 
     await drill("Gebäude", "Dachfenster hinzufügen");
     await expect.element(inspector().getByRole("heading", { name: "Dachfenster 1" })).toBeVisible();

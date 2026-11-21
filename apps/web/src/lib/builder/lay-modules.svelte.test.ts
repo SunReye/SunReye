@@ -7,20 +7,21 @@ import { connect, type Transport } from "../api/core.ts";
 import Builder from "./Builder.svelte";
 import {
   cellsOnPage,
+  choose,
   desk,
   DEVICES,
   drill,
   faceOnPage,
+  filledFace,
   house,
   inspector,
   MODULE,
   press,
   pv,
+  settle,
   SOUTH,
-  choose,
   testCore,
   undesk,
-  filledFace,
 } from "./builder.harness.ts";
 import { saveFrom } from "./moment.harness.ts";
 import { addGrid, type Draft } from "./modules.ts";
@@ -28,8 +29,6 @@ import type { Scene } from "./pv.ts";
 
 // Modules laid on the roof in 3D (ADR 20): a press on the selected face lays a module where the
 // pointer holds its middle, a drag a row, and a drag from a module moves it.
-
-const SLOW = { timeout: 15_000 };
 
 /** Each test drives the canvas and the inspector many times: slow beside the rest of the suite. */
 const MINUTE = 60_000;
@@ -74,7 +73,7 @@ async function opened(draft: Draft, transport: Readonly<Transport> = testCore())
   });
 
   await drill("Module", SOUTH);
-  await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
+  await settle(() => draws.mock.calls.length > 0);
 }
 
 /** The modules of the south face as the last save sent them, their places in millimetres. */

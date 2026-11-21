@@ -13,8 +13,6 @@ import { blurred } from "./over-canvas.harness.ts";
 // Canvas chips (ADR 21 "Glass") in the builder: nothing that lies over the 3D canvas blurs what
 // is behind it, and all of it stays readable without the blur.
 
-const SLOW = { timeout: 15_000 };
-
 const sheet = () => page.getByRole("region", { name: "Szene bearbeiten" });
 const handle = () => page.getByRole("button", { name: "Szene bearbeiten" });
 const tools = () => page.getByRole("toolbar", { name: "Werkzeuge" });
@@ -44,7 +42,7 @@ async function built(start: Draft = builder.house()): Promise<void> {
     moduleTypes: [builder.MODULE],
     devices: builder.DEVICES,
   });
-  await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
+  await builder.settle(() => draws.mock.calls.length > 0);
 }
 
 test("on a phone nothing over the 3D canvas has a backdrop blur: its buttons, slider, status line, tools, toolbar and sheet", async () => {

@@ -8,8 +8,8 @@ import { haptics } from "../../haptics.ts";
 import Builder from "../Builder.svelte";
 import type { View } from "../camera.ts";
 import {
-  DEVICES,
   desk,
+  DEVICES,
   drill,
   house,
   inspector,
@@ -17,13 +17,13 @@ import {
   onCanvas,
   press,
   pv,
+  settle,
   starts,
   testCore,
   undesk,
 } from "../builder.harness.ts";
 import { offered } from "./offered.ts";
 
-const SLOW = { timeout: 15_000 };
 const VIEW = "sunreye.builder.view";
 
 /** Straight above the house's middle, north up. */
@@ -65,7 +65,7 @@ async function picked(turn = 0, view?: View) {
     devices: DEVICES,
   });
   await drill("Gebäude", "Baukörper 1");
-  await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
+  await settle(() => draws.mock.calls.length > 0);
 
   return { scene: start.scene, onPage: onCanvas(start.scene, view) };
 }

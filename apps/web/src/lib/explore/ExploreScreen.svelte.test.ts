@@ -3,6 +3,7 @@ import { cdp, page, userEvent } from "vitest/browser";
 // The screen is laid out by the SPA's utilities.
 import "../../app.css";
 import { plant, reset, show } from "./explore.harness.ts";
+import { closed } from "../motion/animations.harness.ts";
 
 afterEach(reset);
 
@@ -225,7 +226,7 @@ test("a drawer closed without a pick goes back over its own step", async () => {
 
   await userEvent.keyboard("{Escape}");
 
-  await expect.element(drawer).not.toBeInTheDocument();
+  await closed(drawer);
   // One more back leaves Explore: no entry of the closed drawer is left behind.
   await expect.poll(() => entries.map(String)).toEqual(["s=5%3Abattery.soc"]);
 });
@@ -250,7 +251,7 @@ test("under the bar the picker is a drawer: Add series opens it, a pick closes i
 
     await drawer.getByRole("button", { name: /^Eingang 2 · Leistung/u }).click();
 
-    await expect.element(drawer).not.toBeInTheDocument();
+    await closed(drawer);
     await expect
       .element(
         screen

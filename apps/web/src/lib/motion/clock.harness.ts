@@ -1,8 +1,56 @@
 // Test harness: the frames and clock a spring, a tween or a finger's speed reads (`animate.ts`), on
-// the test's fake clock, which only the test moves on.
+// the test's fake clock, which only the test moves on; and what the browser does only on a frame
+// it draws (a frame callback, a size or an element on screen observed), done by the test when it
+// waits on it.
 import { tick } from "svelte";
-import { vi } from "vitest";
+import { expect, vi } from "vitest";
+import type { Locator } from "vitest/browser";
 import { turn } from "../api/settled.harness.ts";
+import {
+  framesFaked,
+  runFrameCallbacks,
+  runIdleCallbacks,
+  watchCallbacks,
+} from "./callbacks.harness.ts";
+import { scrolled, watchScreen } from "./onscreen.harness.ts";
+import { resized, watchSizes } from "./sizes.harness.ts";
+
+/**
+ * Puts the page's frame and idle callbacks and its size and on-screen observers where the harness
+ * reaches them, for every test (`page.setup.ts`): the browser still runs them, and `playFrame`
+ * runs them first when a test waits on them.
+ */
+export function watchFrames(): void {
+  watchCallbacks();
+  watchSizes();
+  watchScreen();
+}
+
+/**
+ * Does what the browser does on its next frame and in the idle time after it, now: tells its size
+ * and on-screen observers what changed, runs the frame callbacks asked for so far, then the idle
+ * ones. On the fake clock (`requestAnimationFrame` faked), its next frame too; frames a test
+ * stands in for itself, off the fake clock, are left to it.
+ */
+export function playFrame(): void {
+  resized();
+  scrolled();
+  // Asked for before the clock was faked, they would wait for the real one: Svelte's frame loop,
+  // asked once, would hold every tween after it still.
+  runFrameCallbacks();
+
+  if (framesFaked() && vi.isFakeTimers()) vi.advanceTimersToNextFrame();
+
+  runIdleCallbacks();
+}
+
+/**
+ * Until `done` holds, does what the page waits on a frame for, again on each look. No deadline of
+ * its own, and no frame of the browser's.
+ */
+export async function settle(done: () => boolean): Promise<void> {
+  await stepUntil(done, playFrame);
+}
 
 /**
  * Takes `step` until `done` holds, the page taking its own turn after each, so an event a step
@@ -23,7 +71,7 @@ export async function stepUntil(
 
 /** Plays `count` frames on the fake clock (`requestAnimationFrame` faked), their updates drawn. */
 export async function frames(count: number): Promise<void> {
-  for (let i = 0; i < count; i++) vi.advanceTimersToNextFrame();
+  for (let i = 0; i < count; i++) playFrame();
 
   await tick();
 }
@@ -33,9 +81,20 @@ export async function frames(count: number): Promise<void> {
  * an event the frames wait on (a route's `popstate`) lands as it would.
  */
 export async function framesUntil(done: () => boolean): Promise<void> {
-  await stepUntil(done, () => {
-    vi.advanceTimersToNextFrame();
-  });
+  await settle(done);
+}
+
+/** Puts the page's frames on the fake clock: a tween or a spring moves as the test plays them. */
+export function fakeFrames(): void {
+  vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] });
+}
+
+/** Until what `locator` finds is on the page, what it waits a frame for done on the test's step;
+ * then that it shows. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- vitest's locator, only read.
+export async function appears(locator: Locator): Promise<void> {
+  await settle(() => locator.query() !== null);
+  await expect.element(locator).toBeVisible();
 }
 
 /**

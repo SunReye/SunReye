@@ -4,21 +4,29 @@ import { render } from "vitest-browser-svelte";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { MODULE, pv } from "../builder/builder.harness.ts";
 import type { Scene } from "../builder/pv.ts";
-import { chip, frame, layout, scene, show } from "./live-scene.harness.ts";
-import { frames, framesUntil, realTimers, stepUntil } from "../motion/clock.harness.ts";
+import { chip, finish, frame, layout, scene, show } from "./live-scene.harness.ts";
+import { frames, framesUntil, realTimers, settle, stepUntil } from "../motion/clock.harness.ts";
 import { feed } from "./stream.harness.ts";
 import LiveScene from "./LiveScene.svelte";
 
 /**
- * The scene once its first frame is drawn, on the browser's frames as it loads; its frames and
- * clock on the test's clock after, so a tween runs out on frames, not on time.
+ * The scene once its first frame is drawn, its frames and clock on the test's clock throughout,
+ * so a tween runs out on frames, not on time.
  */
 async function drawn() {
-  const ready = Promise.withResolvers<void>();
-  const screen = await show([], () => {}, ready.resolve);
-
-  await ready.promise;
   vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] });
+
+  let ready = false;
+
+  const screen = await show(
+    [],
+    () => {},
+    () => {
+      ready = true;
+    },
+  );
+
+  await settle(() => ready);
 
   return screen;
 }
@@ -61,6 +69,9 @@ async function settled(draws: () => number): Promise<number> {
 }
 
 test("a live tick and a camera move draw a short tween, then drawing stops (ADR 20)", async () => {
+  // Each frame of the tween is drawn in software: a small canvas keeps them few milliseconds.
+  await page.viewport(480, 360);
+
   // Each draw runs the studio's passes once.
   const draws = vi.spyOn(EffectComposer.prototype, "render");
   const send = feed();
@@ -121,21 +132,34 @@ test("a car appears at its place while connected, with its charge power and SOC"
     },
   });
 
-  await expect.element((await chip("E-Auto", "7,4")).getByText("63")).toBeVisible();
+  const soc = (await chip("E-Auto", "7,4")).getByText("63");
+
+  await finish(() => soc.query() !== null);
+  await expect.element(soc).toBeVisible();
 });
 
 /** The figure's fade, once it reports ready. */
 async function fadeOnReady(): Promise<string> {
-  const ready = Promise.withResolvers<void>();
-  const screen = await show([], () => {}, ready.resolve);
+  let ready = false;
+
+  const screen = await show(
+    [],
+    () => {},
+    () => {
+      ready = true;
+    },
+  );
+
   const figure = screen.getByRole("figure", { name: "Live-Ansicht des Hauses" });
 
   // Hidden and inert until its first frame is drawn, chips included.
   expect(figure.element().closest("[inert]")).not.toBeNull();
 
-  await ready.promise;
+  await settle(() => ready);
   await expect.element(figure).not.toHaveAttribute("inert");
-  await expect.poll(() => getComputedStyle(figure.element()).opacity).toBe("1");
+  // The fade runs to its end.
+  await finish();
+  expect(getComputedStyle(figure.element()).opacity).toBe("1");
 
   return getComputedStyle(figure.element()).transitionDuration;
 }
