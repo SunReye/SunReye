@@ -7,6 +7,7 @@ import { connect } from "../../api/core.ts";
 import Builder from "../Builder.svelte";
 import type { View } from "../camera.ts";
 import {
+  atRest,
   desk,
   DEVICES,
   drill,
@@ -180,10 +181,8 @@ test("a car place's ring shows after Drehen and turns it", async () => {
 
   await tools.getByRole("button", { name: "Drehen" }).click();
 
-  const drawn = draws.mock.calls.length;
-
   // The ring takes the pointer once it is drawn, on the test's frame.
-  await settle(() => draws.mock.calls.length > drawn);
+  await settle(atRest(draws));
   await mouseDrag(scene, [cx + ring.radius, 0, cz], [cx, 0, cz + ring.radius]);
 
   const turned = rotation.getByText(/^90$/u);

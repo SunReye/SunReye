@@ -132,6 +132,21 @@ export async function choose(row: string, option: string): Promise<void> {
   await apply();
 }
 
+/** Whether a frame played since the last look drew nothing: the scene is at rest. */
+export function atRest(draws: {
+  readonly mock: { readonly calls: readonly unknown[] };
+}): () => boolean {
+  let last = -1;
+
+  return () => {
+    const was = last;
+
+    last = draws.mock.calls.length;
+
+    return last === was;
+  };
+}
+
 export async function gridOnTheSouthFace(transport: Transport) {
   const screen = await render(Builder, {
     pv,

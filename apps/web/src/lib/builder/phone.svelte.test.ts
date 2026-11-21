@@ -6,6 +6,7 @@ import { render } from "vitest-browser-svelte";
 import { connect } from "../api/core.ts";
 import Builder from "./Builder.svelte";
 import {
+  atRest,
   cellsOnPage,
   DEVICES,
   filledFace,
@@ -62,21 +63,6 @@ async function wireThree(): Promise<void> {
   await expect.element(chosen).toBeVisible();
   await tap(bar.getByRole("button", { name: "In String 1 verdrahten" }));
   await expect.element(bar).not.toBeInTheDocument();
-}
-
-/** Whether a frame played since the last look drew nothing: the scene is at rest. */
-function drawsDone(draws: {
-  readonly mock: { readonly calls: readonly unknown[] };
-}): () => boolean {
-  let last = -1;
-
-  return () => {
-    const was = last;
-
-    last = draws.mock.calls.length;
-
-    return last === was;
-  };
 }
 
 beforeEach(async () => {
@@ -157,7 +143,7 @@ test("by touch alone an admin builds a house from a template, lays modules on a 
 
   await settle(() => draws.mock.calls.length > 0);
   // The camera flies onto the face on the test's frames: at rest, a frame draws nothing.
-  await settle(drawsDone(draws));
+  await settle(atRest(draws));
   await wireThree();
 
   await tap(handle());
