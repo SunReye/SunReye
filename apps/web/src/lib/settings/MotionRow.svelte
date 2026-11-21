@@ -2,9 +2,8 @@
 <script lang="ts">
   import { Button } from "#lib/components/ui/button/index.js";
   import SegmentRow from "./SegmentRow.svelte";
-  import { haptics } from "../haptics.ts";
   import { motion } from "../motion/tier.svelte.ts";
-  import { MOTION_SETTINGS, parseMotionSetting, type MotionSetting } from "../motion/tier.ts";
+  import { MOTION_SETTINGS, type MotionSetting } from "../motion/tier.ts";
   import { m } from "../paraglide/messages.js";
 
   const CHOICES: Readonly<Record<MotionSetting, () => string>> = {
@@ -27,13 +26,6 @@
       : m.display_motion_hint();
   });
 
-  function choose(next: string): void {
-    // A segment pressed again sends nothing: the choice stays.
-    if (next === "" || next === motion.setting) return;
-
-    motion.setting = parseMotionSetting(next);
-    haptics.selection();
-  }
 </script>
 
 <SegmentRow
@@ -41,7 +33,9 @@
   value={motion.setting}
   options={MOTION_SETTINGS.map((setting) => [setting, CHOICES[setting]()] as const)}
   hint={moving}
-  onchange={choose}
+  onchange={(next) => {
+    motion.setting = next;
+  }}
 >
   {#if measuring && motion.stepped}
     <Button variant="link" size="xs" class="self-start px-0" onclick={() => motion.remeasure()}>

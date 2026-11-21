@@ -1,12 +1,19 @@
 import { createRawSnippet } from "svelte";
-import { expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
+import { hold } from "../motion/animations.harness.ts";
 import Level from "./Level.svelte";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 const children = createRawSnippet(() => ({ render: () => "<p>Seite</p>" }));
 
 test("a level slides in on ADR 21's ease-in-out, cubic-bezier(0.65, 0, 0.35, 1)", async () => {
+  hold();
+
   const screen = await render(Level, {
     back: "Geräte",
     title: "Speicher",

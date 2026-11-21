@@ -1,14 +1,22 @@
+/* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
 import { createRawSnippet } from "svelte";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { cdp, page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { haptics } from "../haptics.ts";
+import { finish } from "../motion/animations.harness.ts";
 import { motion } from "../motion/tier.svelte.ts";
 import DrawerSheet from "./drawer-sheet.svelte";
 import { held, press } from "./drawer.harness.ts";
 
+beforeEach(() => {
+  // vaul tells a fling and a drawer still opening by `Date`, which the finger moves on.
+  vi.useFakeTimers({ toFake: ["Date"] });
+});
+
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   motion.lowPower = false;
@@ -58,7 +66,7 @@ test("the drawer follows the finger and settles back open with a soft tap when l
   // Held still: a slow release is no fling.
   held(release);
 
-  await expect.poll(lift).toBe(0);
+  await finish(() => lift() === 0);
   await expect.element(sheet()).toBeVisible();
   expect(soft).toHaveBeenCalledOnce();
 });
@@ -71,8 +79,44 @@ test("a pull down closes the drawer with a soft tap", async () => {
 
   release();
 
-  await expect.element(sheet()).not.toBeInTheDocument();
+  await finish(() => sheet().query() === null);
   expect(soft).toHaveBeenCalledOnce();
+});
+
+test("closed after a small drag, the drawer slides out without coming back", async () => {
+  await cdp().send("Emulation.setEmulatedMedia", { features: [] });
+
+  const { rerender } = await opened();
+  const drawer = sheet().element();
+
+  // A tap's finger slop: the drawer follows it a few px and settles back on the lift.
+  held(await press(drawer, 4));
+
+  const settling = drawer.getAnimations();
+
+  await rerender({ open: false });
+  // The slide out has started.
+  await expect.poll(() => drawer.getAnimations().some((a) => !settling.includes(a))).toBe(true);
+
+  // Every motion on the drawer held, then played through together a frame at a time; the tap's
+  // click lands a few frames after the lift, so the settle runs that far ahead.
+  const moving = drawer.getAnimations();
+  const LEAD = 50;
+  const end = Math.max(...moving.map((a) => Number(a.effect?.getComputedTiming().endTime)));
+  const tops: number[] = [];
+
+  for (const a of moving) a.pause();
+
+  for (let t = 0; t <= end; t += 16) {
+    for (const a of moving) a.currentTime = settling.includes(a) ? t + LEAD : t;
+
+    tops.push(drawer.getBoundingClientRect().top);
+  }
+
+  const rises = tops.filter((top, i) => i > 0 && top < tops[i - 1]! - 1);
+
+  expect(rises).toEqual([]);
+  expect(tops.at(-1)).toBeGreaterThan(tops[0]! + 100);
 });
 
 test("the scrim dims the page without blurring it", async () => {

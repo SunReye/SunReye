@@ -3,6 +3,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { haptics } from "../haptics.ts";
+import { finish } from "../motion/animations.harness.ts";
 import Shell from "./Shell.svelte";
 import "../../app.css";
 
@@ -119,7 +120,7 @@ test("expanding never moves the content", async () => {
   const content = screen.getByText("page");
 
   // After the route's entrance.
-  for (const animation of document.getAnimations()) animation.finish();
+  await finish();
 
   const before = content.element().getBoundingClientRect();
 

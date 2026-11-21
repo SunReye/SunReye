@@ -24,7 +24,7 @@
 >
   <PageTitle wide title={m.tariff_title()} />
   <PricesNow />
-  <RangeCard model={route}>
+  <RangeCard>
     <RangeControl model={route} />
     <Section title={m.tariff_costs()}>
       <Costs {core} {route} />

@@ -106,7 +106,7 @@ test("a failed load leaves the 2D flow with a retry that loads the scene", async
   expect(flowShown()).toBe(true);
 
   types = "answer";
-  await page.getByRole("button", { name: "Erneut versuchen" }).click();
+  await page.getByRole("button", { name: "Erneut laden" }).click();
 
   await expect.element(sceneFigure(), SLOW).toBeVisible();
   await expect.poll(flowShown, SLOW).toBe(false);
@@ -165,28 +165,17 @@ test("the camera is locked: one finger scrolls the page, until the lock is opene
     await expect.element(sceneFigure(), SLOW).toBeVisible();
     await expect.poll(() => getComputedStyle(sceneFigure().element()).opacity, SLOW).toBe("1");
 
-    await swipe();
+    // The swipe's fling coasts on; it must be over before the page goes back up.
+    const coasted = new Promise((done) => {
+      addEventListener("scrollend", done, { once: true });
+    });
 
-    await expect.poll(() => scrollY).toBeGreaterThan(0);
+    await swipe();
+    await coasted;
+
+    expect(scrollY).toBeGreaterThan(0);
     expect(localStorage.getItem(KEPT)).toBeNull();
 
-    // The swipe's fling coasts on; it must be over before the page goes back up.
-    let was = -1;
-
-    await expect
-      .poll(async () => {
-        await new Promise<void>((done) => {
-          requestAnimationFrame(() => {
-            done();
-          });
-        });
-        const still = scrollY === was;
-
-        was = scrollY;
-
-        return still;
-      }, SLOW)
-      .toBe(true);
     scrollTo(0, 0);
     await page.getByRole("button", { name: "Kamera bewegen" }).click();
     await swipe();

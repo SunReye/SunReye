@@ -168,6 +168,14 @@ The first integration build rendered browser defaults: plain links for navigatio
   Nothing else vibrates.
 - **Setting:** a per-browser switch under Settings › Display. It defaults to on for touch devices and is forced off by the low-power switch and reduced motion.
 
+**One behaviour, one component** (2026-11-20, #836). A behaviour a user meets on more than one screen lives in one shared component, which carries its look, motion and haptic. A screen composes it and never rebuilds it. A gate step, like the kit's own (ADR 11), refuses a copy outside its owner.
+- **Range travel:** every card over the range is a range card, whose content travels in the pager: a finger drags it 1:1 with the neighbour beside it, drawn loading, and on release a spring takes over at the finger's velocity; an arrow step morphs the chart in place. Each step is a `selection`. History, Forecast and Tariff alike.
+- **Choosing one of a few:** the segmented control, in the hero's 3D/2D look: small, inside a hairline ring, its pressed box sliding from choice to choice. Tabs that switch content take the same look and stay tabs. The bottom bar, swatches and History's figures, which are each a figure rather than a word, are not segmented.
+- **Haptics** fire in the component, on a change the user made: a value set by the route or by data is silent.
+- **Chart entrance:** a chart builds up as it first shows: bars grow from the baseline, each a little after the one before, and lines and areas draw in from the left, all fading in. A chart already shown tweens to its next data. The live chart and a day chart that grows live only fade, so a tick never redraws them. On the still tier a chart is drawn at once.
+- **Motion values** come from the motion tokens, never a literal, so reduced motion and the still tier stop every one.
+- **A failed read** shows the one load-failure state, with its retry.
+
 ## Considered options
 
 - **An always-expanded rail on touch tablets.** Rejected: it costs the hero about 180 px for labels a tap on the logo shows.

@@ -1,9 +1,30 @@
-import { expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import type { Bounds, Kind, Ranged } from "./range.ts";
+import { haptics } from "../haptics.ts";
+import { dragBy } from "./drag.harness.ts";
 import RangeControl from "./RangeControl.svelte";
+import { realTimers } from "../motion/clock.harness.ts";
+
+beforeEach(() => {
+  // The finger's speed and the pane's spring on the test's clock.
+  vi.useFakeTimers({
+    toFake: [
+      "setTimeout",
+      "clearTimeout",
+      "requestAnimationFrame",
+      "cancelAnimationFrame",
+      "performance",
+    ],
+  });
+});
+
+afterEach(() => {
+  realTimers();
+  vi.restoreAllMocks();
+});
 
 const BOUNDS: Bounds = {
   from: "2026-11-03",
@@ -91,3 +112,45 @@ test("a custom bound's date is picked from a calendar, between its limits", asyn
   expect(changes).toEqual([["2026-11-03", "2026-11-10", 0, 24]]);
   await expect.element(page.getByRole("grid")).not.toBeInTheDocument();
 });
+
+test("a flick on the range's label steps it once, with one tick", async () => {
+  const selection = vi.spyOn(haptics, "selection");
+  const { steps, model } = control();
+
+  await render(RangeControl, { model });
+  await dragBy(page.getByText("November 2026").element(), 120);
+
+  expect(steps).toEqual([-1]);
+  expect(selection).toHaveBeenCalledOnce();
+});
+
+test.each([400, 470, 520])(
+  "in a %i px column, the kinds and the stepper never run past it",
+  async (width) => {
+    const column = document.createElement("div");
+
+    column.style.width = `${width}px`;
+    document.body.append(column);
+
+    try {
+      const { model } = control();
+
+      const screen = await render(RangeControl, {
+        target: column,
+        props: { model: { ...model, label: "KW 45 · 3. Nov.–9. Nov. 2025" } },
+      });
+
+      await expect.element(screen.getByRole("radio", { name: "Woche" })).toBeVisible();
+
+      // Boxes, not scrollWidth: on touch a 44 px hit area reaches past a control unseen.
+      const right = Math.max(
+        // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- a DOM element is mutable.
+        ...[...column.querySelectorAll("button")].map((each) => each.getBoundingClientRect().right),
+      );
+
+      expect(right).toBeLessThanOrEqual(column.getBoundingClientRect().right);
+    } finally {
+      column.remove();
+    }
+  },
+);

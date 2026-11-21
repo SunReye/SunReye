@@ -1,5 +1,6 @@
 // Its own file: no other test may load three.js into this page first.
 import "../../app.css";
+import { tick } from "svelte";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
@@ -8,6 +9,7 @@ import type { SceneLayout } from "../live/dashboard.ts";
 import { motion } from "../motion/tier.svelte.ts";
 import { warm } from "../scene/warm.ts";
 import Hero from "./Hero.svelte";
+import { realTimers } from "../motion/clock.harness.ts";
 
 const layout: SceneLayout = {
   appliesFrom: "2026-11-01T00:00:00Z",
@@ -47,14 +49,16 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  realTimers();
   vi.unstubAllGlobals();
   motion.lowPower = false;
 });
 
-const frame = () =>
-  new Promise((resolve) => {
-    requestAnimationFrame(resolve);
-  });
+/** One frame on the test's clock, its updates drawn. */
+async function frame(): Promise<void> {
+  vi.advanceTimersToNextFrame();
+  await tick();
+}
 
 test.each([
   [
@@ -76,6 +80,7 @@ test.each([
     },
   ],
 ])("with %s the scene is never requested and the flow shows", async (_, given) => {
+  vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame"] });
   given();
 
   const screen = await render(Hero, {

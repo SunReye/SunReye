@@ -1,7 +1,7 @@
 // A control's write through ADR 7's funnel, as the value editor and the schedule switch apply it.
-import { toast } from "svelte-sonner";
 import type { Core } from "../api/core";
 import type { Outcome } from "../components/value-editor/editable.ts";
+import { confirmed } from "../feedback.ts";
 import { haptics } from "../haptics.ts";
 import { m } from "../paraglide/messages.js";
 import { editorOutcome } from "../settings/outcomes";
@@ -27,9 +27,9 @@ export async function apply(
 
   await on.onwritten(written);
 
+  // A refusal shows inline beside the control (`WriteProblem`): only its haptic plays here.
   if (outcome.kind === "confirmed") {
-    haptics.success();
-    toast.success(`${written.setting.name ?? written.setting.key}: ${on.text(written)}`, {
+    confirmed(`${written.setting.name ?? written.setting.key}: ${on.text(written)}`, {
       description: m.controls_confirmed({ before }),
     });
   } else haptics.error();

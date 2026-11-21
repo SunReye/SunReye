@@ -1,10 +1,14 @@
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
-import { afterEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { cdp } from "vitest/browser";
+import { finish, hold } from "../motion/animations.harness.ts";
 import { motion } from "../motion/tier.svelte.ts";
 import { DRY, show } from "./weather-detail.harness.ts";
 
+beforeEach(hold);
+
 afterEach(() => {
+  vi.restoreAllMocks();
   motion.lowPower = false;
 });
 
@@ -36,9 +40,7 @@ async function midway(): Promise<number[]> {
 
 /** Ends every travel: the arriving day is alone and at rest. */
 async function landed(): Promise<void> {
-  for (const animation of document.getAnimations()) animation.finish();
-
-  await expect.poll(() => shownDays()).toHaveLength(1);
+  await finish(() => shownDays().length === 1);
 }
 
 test("a later day slides in from the right, an earlier one from the left", async () => {

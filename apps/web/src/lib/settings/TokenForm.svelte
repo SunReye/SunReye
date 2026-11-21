@@ -3,7 +3,7 @@
   import KeyRound from "@lucide/svelte/icons/key-round";
   import type { CreatedToken, Problem, Scope } from "../api/core";
   import { Input } from "#lib/components/ui/input/index.js";
-  import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
+  import Segmented from "../components/segmented.svelte";
   import { m } from "../paraglide/messages.js";
   import AccessForm from "./AccessForm.svelte";
   import { SCOPES } from "./scopes.ts";
@@ -21,10 +21,6 @@
   let name = $state("");
   let scope = $state<Scope>("read");
   let refused = $state.raw<Problem>();
-
-  function choose(next: string): void {
-    if (next === "read" || next === "admin") scope = next;
-  }
 
   async function submit(): Promise<void> {
     const answer = await add(name.trim(), scope);
@@ -48,16 +44,18 @@
   </label>
   <div class="flex flex-col gap-1.5 text-sm">
     <span id="access-scope">{m.access_scope()}</span>
-    <ToggleGroup.Root
-      type="single"
-      variant="outline"
-      bind:value={() => scope, choose}
-      aria-labelledby="access-scope"
-      class="self-start"
-    >
-      {#each Object.entries(SCOPES) as [value, label] (value)}
-        <ToggleGroup.Item {value} class="px-4">{label()}</ToggleGroup.Item>
-      {/each}
-    </ToggleGroup.Root>
+    <div class="self-start">
+      <Segmented
+        options={[
+          ["read", SCOPES.read()],
+          ["admin", SCOPES.admin()],
+        ]}
+        value={scope}
+        labelledby="access-scope"
+        onchange={(next) => {
+          scope = next;
+        }}
+      />
+    </div>
   </div>
 </AccessForm>

@@ -6,6 +6,7 @@ import { cdp, page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import type { Problem } from "../api/core.ts";
+import { haptics } from "../haptics.ts";
 import ConfirmSheet from "./confirm-sheet.svelte";
 
 const TITLE = "Speicher entfernen";
@@ -53,13 +54,15 @@ test("with a mouse at 1280 px a confirm is a dialog", async () => {
 
 test("confirming closes the confirm and says so in a toast", async () => {
   const success = vi.spyOn(toast, "success");
+  const felt = vi.spyOn(haptics, "success");
   const onconfirm = await opened();
 
   await action().click();
 
   await expect.element(sheet()).not.toBeInTheDocument();
   expect(onconfirm).toHaveBeenCalledOnce();
-  expect(success).toHaveBeenCalledExactlyOnceWith("Entfernt.");
+  expect(success).toHaveBeenCalledExactlyOnceWith("Entfernt.", {});
+  expect(felt).toHaveBeenCalledOnce();
 });
 
 test("a refusal stays in the open confirm, beside the action, without a toast", async () => {
@@ -99,7 +102,7 @@ test("on touch at 390 px the same confirm is a drawer", async () => {
     await action().click();
 
     await expect.element(sheet()).not.toBeInTheDocument();
-    expect(success).toHaveBeenCalledExactlyOnceWith("Entfernt.");
+    expect(success).toHaveBeenCalledExactlyOnceWith("Entfernt.", {});
   } finally {
     await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: false });
   }

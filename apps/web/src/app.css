@@ -131,6 +131,8 @@
   --motion-enter: 350ms;
   --motion-exit: 150ms;
   --motion-ease-exit: cubic-bezier(0.55, 0.055, 0.675, 0.19);
+  /* How long the last of a row of arrivals waits after the first (a chart's bars). */
+  --motion-stagger: 120ms;
 }
 
 .dark {
@@ -194,6 +196,7 @@
     --motion-move: 0ms;
     --motion-enter: 0ms;
     --motion-exit: 0ms;
+    --motion-stagger: 0ms;
   }
 }
 
@@ -206,6 +209,7 @@
   --motion-move: 0ms;
   --motion-enter: 0ms;
   --motion-exit: 0ms;
+  --motion-stagger: 0ms;
 }
 
 /* A drawer enters like a sheet and leaves faster, easing in (ADR 21). Unlayered, as vaul's own 0.5 s. */
@@ -218,6 +222,9 @@
 [data-slot="drawer-overlay"][data-state="closed"] {
   animation-duration: var(--motion-exit);
   animation-timing-function: var(--motion-ease-exit);
+  /* vaul's 0.5 s settle after a drag (a tap's finger slop) outlasts this exit: still running, it
+     held the drawer open after the exit until it ended. */
+  transition: none !important;
 }
 
 /* An overlay on the still tier: no keyframes, and no transition left inline by a drag (vaul). */
@@ -467,11 +474,9 @@
 }
 
 /* On ambient glass and a canvas chip the registry's muted pressed box disappears; lift it a step. */
-:is(
-    .glass-ambient,
-    .glass-ambient *,
-    .canvas-chip,
-    .canvas-chip *
-  )[data-slot="toggle-group"]::before {
+:is(.glass-ambient, .glass-ambient *, .canvas-chip, .canvas-chip *):is(
+    [data-slot="toggle-group"],
+    [data-slot="tabs-list"][data-variant="segmented"]
+  )::before {
   background-color: color-mix(in oklab, var(--foreground) 13%, transparent);
 }

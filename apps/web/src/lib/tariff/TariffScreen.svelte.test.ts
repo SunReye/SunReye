@@ -1,8 +1,10 @@
-import { expect, test } from "vitest";
+import { expect, onTestFinished, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 // The chart is laid out by the SPA's utilities.
 import "../../app.css";
+import { settled } from "../api/settled.harness.ts";
 import { connect, SPOT, TARIFF } from "../api/core.ts";
+import { aside, dragBy, letGo } from "../range/drag.harness.ts";
 import { feed } from "../live/stream.harness.ts";
 import { NOW, testCore } from "./tariff.harness.ts";
 import TariffScreen from "./TariffScreen.svelte";
@@ -80,4 +82,48 @@ test("money over time and payback live in History, which the screen links to", a
     .element(screen.getByRole("link", { name: "Im Verlauf ansehen" }))
     .toHaveAttribute("href", "#/history?metric=money");
   await expect.element(screen.getByRole("button", { name: "Speichern" })).not.toBeInTheDocument();
+});
+
+test("a finger drags the costs to the earlier month, read only once it is shown", async () => {
+  // The screen's timers, and the clock a finger's speed is read on, run on the test's clock.
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+  onTestFinished(() => {
+    vi.useRealTimers();
+  });
+
+  const core = testCore({
+    "GET /api/v1/costs": () => Response.json(COSTS),
+    "GET /api/v1/timezone": () => Response.json({ name: "UTC" }),
+  });
+
+  const went: (string | null | undefined)[] = [];
+
+  const screen = await render(TariffScreen, {
+    core: connect(core),
+    params: new URLSearchParams("range=month&at=2026-11-01"),
+    go: (patch: Readonly<Record<string, string | null>>) => {
+      went.push(patch.at);
+    },
+  });
+
+  await expect.element(screen.getByText("0,45 €")).toBeVisible();
+
+  const costs = () => core.sent.filter((s) => s.route.startsWith("GET /api/v1/costs")).length;
+
+  await settled(costs);
+
+  const before = costs();
+  const title = screen.getByRole("heading", { name: "Kosten und Ersparnis" }).element();
+  const card = title.closest<HTMLElement>("[data-slot=card]")!;
+
+  await dragBy(title, 240, { hold: true });
+  // October stands beside November, drawn loading: nothing is read for it yet.
+  expect(aside(card)).toBeGreaterThan(0);
+  expect(costs()).toBe(before);
+
+  letGo(title);
+  await expect.poll(() => went.at(-1)).toBe("2026-10-01");
+  await settled(costs);
+  expect(core.sent.at(-1)?.route).toContain("from=2026-10-01");
+  expect(costs()).toBe(before + 1);
 });

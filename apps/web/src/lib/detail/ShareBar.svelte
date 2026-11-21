@@ -1,6 +1,7 @@
 <!-- One composition bar of the autarky sheet (ADR 21 "Sheet content"): what a whole split into
   over the range, its parts' shares beside their keys. Without a whole, an empty track and dashes. -->
 <script lang="ts">
+  import ChartEntrance from "../chart-entrance/ChartEntrance.svelte";
   import { kwh, num } from "../range/format.ts";
   import type { Part } from "./autarky.ts";
 
@@ -22,13 +23,15 @@
     <span class="font-medium">{title}</span>
     <span class="text-muted-foreground tabular-nums">{kwh(total)}</span>
   </div>
-  <div class="flex h-2 gap-px overflow-hidden rounded-full bg-muted" aria-hidden="true">
-    {#each parts as p (p.label)}
-      {#if p.share}
-        <span class="h-full" style:width="{p.share}%" style:background={p.colour}></span>
-      {/if}
-    {/each}
-  </div>
+  <ChartEntrance build="draw" ready={parts.some((p) => p.share)}>
+    <div class="flex h-2 gap-px overflow-hidden rounded-full bg-muted" aria-hidden="true">
+      {#each parts as p (p.label)}
+        {#if p.share}
+          <span class="h-full" style:width="{p.share}%" style:background={p.colour}></span>
+        {/if}
+      {/each}
+    </div>
+  </ChartEntrance>
   <ul class="flex flex-wrap gap-x-4 gap-y-0.5 text-xs">
     {#each parts as p (p.label)}
       <li class="flex items-center gap-1.5">

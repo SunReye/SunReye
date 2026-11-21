@@ -1,16 +1,19 @@
-import { afterEach, beforeEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { connect } from "../api/core.ts";
+import { finish, hold } from "../motion/animations.harness.ts";
 import { FakeCore } from "./devices.harness.ts";
 import Routed from "./routed.harness.svelte";
 
 beforeEach(async () => {
+  hold();
   await page.viewport(390, 800);
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   // The levels move the hash.
   history.replaceState(null, "", location.pathname + location.search);
 });
@@ -19,11 +22,6 @@ afterEach(() => {
 const travels = (node: Element) =>
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the DOM's own type.
   node.getAnimations().filter((each) => Number(each.effect?.getTiming().duration) > 0);
-
-/** Lands every travel on `node`. */
-function land(node: Element): void {
-  for (const each of travels(node)) each.finish();
-}
 
 /** How far right of its place `node` is drawn, in its own widths. */
 const right = (node: Element) =>
@@ -52,8 +50,7 @@ test.for([
     const node = level.element();
 
     // The slide in has landed: back starts from rest.
-    land(node);
-    await expect.poll(() => node.getAnimations().length).toBe(0);
+    await finish(() => node.getAnimations().length === 0);
     await back();
 
     // The list is back under the level, which is on its way out.

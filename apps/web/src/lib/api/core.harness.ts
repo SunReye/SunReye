@@ -57,17 +57,6 @@ export function tally(urls: readonly string[]) {
   return Object.fromEntries(counts);
 }
 
-/** Resolves once `count` has held still for `ms`: a screen has made every request it will. */
-export async function settled(count: () => number, ms = 600): Promise<void> {
-  const last = count();
-
-  await new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-
-  if (count() !== last) await settled(count, ms);
-}
-
 /** A core that answers every request with `response` and keeps what it was sent. */
 export function answering(response: Response): Transport & { readonly sent: Request[] } {
   const sent: Request[] = [];

@@ -1,9 +1,10 @@
 <script lang="ts">
   import { untrack, type Snippet } from "svelte";
-  import { cubicOut } from "svelte/easing";
   import { Tween } from "svelte/motion";
   import { tickGlideMs } from "../live/stream.svelte.ts";
+  import { ease } from "../motion.ts";
   import { motion } from "../motion/tier.svelte.ts";
+  import { COUNT_UP_MS } from "../motion/values.ts";
   import { getLocale } from "../paraglide/runtime.js";
 
   // Live ticks glide for slightly longer than the tick (ADR 21); a halted stream steps to its last
@@ -33,7 +34,7 @@
 
   const tween = new Tween(
     untrack(() => (appear ? 0 : (value ?? 0))),
-    { duration: 900, easing: cubicOut },
+    { duration: COUNT_UP_MS, easing: ease },
   );
 
   let first = untrack(() => appear || value === null);
@@ -42,7 +43,7 @@
     if (value === null) return;
     const glide = duration === undefined ? tickGlideMs() : motion.still ? 0 : duration;
 
-    void tween.set(value, { duration: glide > 0 && first ? 900 : glide });
+    void tween.set(value, { duration: glide > 0 && first ? COUNT_UP_MS : glide });
     first = false;
   });
 

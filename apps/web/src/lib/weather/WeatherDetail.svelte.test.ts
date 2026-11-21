@@ -1,7 +1,17 @@
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
-import { expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test } from "vitest";
 import { page } from "vitest/browser";
 import { DRY, each, show, WEATHER } from "./weather-detail.harness.ts";
+import { motion } from "../motion/tier.svelte.ts";
+
+// Still: a figure stands at its value at once, where it would roll up to it frame by frame.
+beforeEach(() => {
+  motion.lowPower = true;
+});
+
+afterEach(() => {
+  motion.lowPower = false;
+});
 
 const bars = (attribute: string) =>
   [...document.querySelectorAll("[data-mm]")].map((b) =>
@@ -129,7 +139,7 @@ test("today's facts are one row on a narrow phone: the sky now, then the day's",
   await expect.element(screen.getByText("Heiter")).toBeVisible();
 
   expect(document.querySelectorAll("dl")).toHaveLength(1);
-  // Polled: the figures roll up to their values.
+  // Polled: the figures follow the read.
   await expect
     .poll(() => facts().map(({ term, value }) => [term, value]))
     .toEqual([

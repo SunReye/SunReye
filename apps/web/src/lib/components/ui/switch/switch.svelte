@@ -1,21 +1,31 @@
 <script lang="ts">
 	import { Switch as SwitchPrimitive } from "bits-ui";
 	import { cn, type WithoutChildrenOrChild } from "#lib/utils.js";
+	import { haptics } from "#lib/haptics.ts";
 
 	let {
 		ref = $bindable(null),
 		class: className,
 		checked = $bindable(false),
+		onCheckedChange,
 		size = "default",
 		...restProps
 	}: WithoutChildrenOrChild<SwitchPrimitive.RootProps> & {
 		size?: "sm" | "default";
 	} = $props();
+
+	// Local: the toggle's `selection` lives here, so no caller plays it (ADR 21). bits-ui calls
+	// this on a user's change only; after the caller, so a switch that turns haptics on is felt.
+	function changed(next: boolean): void {
+		onCheckedChange?.(next);
+		haptics.selection();
+	}
 </script>
 
 <SwitchPrimitive.Root
 	bind:ref
 	bind:checked
+	onCheckedChange={changed}
 	data-slot="switch"
 	data-size={size}
 	class={cn(

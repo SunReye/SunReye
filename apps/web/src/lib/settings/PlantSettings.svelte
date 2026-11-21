@@ -1,8 +1,8 @@
 <!-- Settings › Plant: the plant timezone and location, as set up on the first run. -->
 <script lang="ts">
-  import { toast } from "svelte-sonner";
   import type { Core } from "../api/core";
   import LoadingRows from "../components/loading-rows.svelte";
+  import { confirmed } from "../feedback.ts";
   import { m } from "../paraglide/messages.js";
   import PlantStep from "../setup/PlantStep.svelte";
 
@@ -29,7 +29,7 @@
       current={plant}
       action={m.settings_save()}
       ondone={() => {
-        toast.success(m.settings_saved());
+        confirmed(m.settings_saved());
       }}
     />
   {/await}

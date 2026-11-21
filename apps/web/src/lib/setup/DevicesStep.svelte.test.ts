@@ -25,6 +25,7 @@ async function enter(row: string, value: string): Promise<void> {
   await userEvent.fill(page.getByRole("textbox", { name: `${row} eingeben` }), value);
   await userEvent.keyboard("{Enter}");
   await page.getByRole("button", { name: /^Übernehmen/u }).click();
+  await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
 }
 
 const ADDED = {

@@ -4,6 +4,7 @@ import { sveltekit } from "@sveltejs/kit/vite";
 import tailwindcss from "@tailwindcss/vite";
 import { playwright } from "@vitest/browser-playwright";
 import { defineConfig } from "vitest/config";
+import { SCENE } from "./scene-tests.ts";
 
 /** Every lucide icon the sources import, so each new icon is pre-bundled without a list to keep. */
 function icons(): string[] {
@@ -21,6 +22,12 @@ function icons(): string[] {
   return [...found].toSorted();
 }
 
+function release(): string {
+  const cargo = readFileSync(`${import.meta.dirname}/../../Cargo.toml`, "utf8");
+
+  return /^\[workspace\.package\]\nversion = "([^"]+)"/mu.exec(cargo)?.[1] ?? "dev";
+}
+
 export default defineConfig({
   plugins: [
     tailwindcss(),
@@ -29,6 +36,9 @@ export default defineConfig({
       // Hash router and relative paths: the SPA works at `/` and under any ingress prefix (ADR 11).
       adapter: adapter({ precompress: true }),
       router: { type: "hash" },
+      // The release's version, not the build's time: the same sources build the same SPA, which
+      // the core embeds and the gate's cache hashes (ADR 13).
+      version: { name: release() },
     }),
   ],
   // Pre-bundled up front: discovering them mid-run reloads the browser and fails the files in flight.
@@ -55,15 +65,37 @@ export default defineConfig({
     ],
   },
   test: {
-    include: ["src/**/*.svelte.test.ts"],
-    // Without a GPU every page's WebGL runs through one software renderer: the studio scenes of
-    // files run side by side starve each other into timeouts.
-    fileParallelism: false,
+    // Budgets for a page under load: shards run side by side, and a wait ends when its condition holds.
+    testTimeout: 30_000,
+    expect: { poll: { timeout: 5000 } },
+    setupFiles: ["src/page.setup.ts"],
     browser: {
       enabled: true,
       headless: true,
       provider: playwright(),
       instances: [{ browser: "chromium" }],
     },
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: "dom",
+          include: ["src/**/*.svelte.test.ts"],
+          exclude: SCENE,
+          sequence: { groupOrder: 0 },
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "scene",
+          include: SCENE,
+          // Without a GPU every page's WebGL runs through one software renderer: the studio scenes
+          // of files run side by side starve each other into timeouts.
+          fileParallelism: false,
+          sequence: { groupOrder: 1 },
+        },
+      },
+    ],
   },
 });

@@ -1,12 +1,18 @@
 // The drill-in's levels on a phone: no surface resizes as they trade places, and each keeps its
 // own scroll position (ADR 21).
-import { afterEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import Harness from "./drill-in.harness.svelte";
-import { child, frame, offset, rect, until } from "./drill-in.probe.ts";
+import { child, frame, offset, rect, scrolled, until } from "./drill-in.probe.ts";
+import { realTimers } from "../../motion/clock.harness.ts";
+
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] });
+});
 
 afterEach(async () => {
+  realTimers();
   await page.viewport(414, 896);
 });
 
@@ -89,7 +95,7 @@ test("a level opens at its top and back returns the root to where it was", async
   const row = screen.getByRole("button", { name: /Gruppe 9/u });
   const rowTop = topOf(() => row.elements()[0] ?? null);
 
-  scrollTo(0, 300);
+  await scrolled(300);
 
   const resting = Math.round(rect(row.element()).top);
   const opening = watch(rowTop);
@@ -103,9 +109,7 @@ test("a level opens at its top and back returns the root to where it was", async
   expect([...opening.seen]).toEqual([resting]);
 
   // A scroll the page has seen, as a finger's is before it reaches back.
-  scrollTo(0, 150);
-  await frame();
-  await frame();
+  await scrolled(150);
 
   const stuck = Math.round(rect(header()).top);
   const leaving = watch(topOf(header));

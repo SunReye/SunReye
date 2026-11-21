@@ -1,8 +1,9 @@
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
 import { createRawSnippet } from "svelte";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { cdp, page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
+import { finish, hold } from "../motion/animations.harness.ts";
 import { motion } from "../motion/tier.svelte.ts";
 import Shell from "./Shell.svelte";
 import "../../app.css";
@@ -12,7 +13,10 @@ const goto = vi.fn((_url: string) => Promise.resolve());
 
 const children = createRawSnippet(() => ({ render: () => "<p>page</p>" }));
 
+beforeEach(hold);
+
 afterEach(() => {
+  vi.restoreAllMocks();
   motion.lowPower = false;
 });
 
@@ -54,9 +58,7 @@ async function midway(): Promise<number[]> {
 
 /** Ends every travel: the arriving screen is alone and at rest. */
 async function landed(): Promise<void> {
-  for (const animation of document.getAnimations()) animation.finish();
-
-  await expect.poll(() => screens()).toHaveLength(1);
+  await finish(() => screens().length === 1);
 }
 
 function shell(current: string | null) {

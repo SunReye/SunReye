@@ -43,7 +43,7 @@ const legendOf = (reference: boolean, ghost: Key | null) => ({
   bare: false,
   approx: false,
   unmeasured: false,
-  duration: 0,
+  glide: false,
 });
 
 interface Box {

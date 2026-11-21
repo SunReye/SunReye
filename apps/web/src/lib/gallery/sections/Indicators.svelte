@@ -1,4 +1,5 @@
 <script lang="ts">
+  import LoadFailed from "../../components/load-failed.svelte";
   import { Badge } from "../../components/ui/badge/index.js";
   import { Button } from "../../components/ui/button/index.js";
   import { Kbd } from "../../components/ui/kbd/index.js";
@@ -56,5 +57,18 @@
     <span>Battery</span>
     <Separator orientation="vertical" />
     <span>Grid</span>
+  </div>
+</Demo>
+
+<Demo name="load-failed">
+  <div class="flex w-96 flex-col gap-4">
+    <LoadFailed text="This range could not be read." onretry={() => {}} />
+    <LoadFailed size="quiet" text="3D view not loaded" onretry={() => {}} />
+    <LoadFailed
+      size="block"
+      text="History could not be loaded"
+      detail="Live values keep running; the range and view stay as they are."
+      onretry={() => {}}
+    />
   </div>
 </Demo>

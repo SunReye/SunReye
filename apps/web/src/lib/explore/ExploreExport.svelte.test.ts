@@ -135,8 +135,8 @@ function rows(screen: Awaited<ReturnType<typeof show>>["screen"]) {
   return { title: title!, controls };
 }
 
-test("on a phone the export stands in one row with the title, the mode switch and fullscreen", async () => {
-  await page.viewport(390, 844);
+test("on a large phone the export stands in one row with the title, the mode switch and fullscreen", async () => {
+  await page.viewport(430, 932);
 
   const { screen } = await show();
 
@@ -146,22 +146,25 @@ test("on a phone the export stands in one row with the title, the mode switch an
   const tops = [title, ...controls];
 
   expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(8);
-  expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390);
+  expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(430);
 });
 
-test("on a phone too narrow for that the controls share a row of their own under the title", async () => {
-  await page.viewport(360, 740);
+test.each([360, 390])(
+  "on a %i px phone, too narrow for that, the controls share a row of their own under the title",
+  async (width) => {
+    await page.viewport(width, 740);
 
-  const { screen } = await show();
+    const { screen } = await show();
 
-  await expect.element(screen.getByRole("button", { name: "Als CSV exportieren" })).toBeVisible();
+    await expect.element(screen.getByRole("button", { name: "Als CSV exportieren" })).toBeVisible();
 
-  const { title, controls } = rows(screen);
+    const { title, controls } = rows(screen);
 
-  expect(Math.max(...controls) - Math.min(...controls)).toBeLessThanOrEqual(8);
-  expect(Math.min(...controls)).toBeGreaterThan(title + 8);
-  expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(360);
-});
+    expect(Math.max(...controls) - Math.min(...controls)).toBeLessThanOrEqual(8);
+    expect(Math.min(...controls)).toBeGreaterThan(title + 8);
+    expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width);
+  },
+);
 
 test("with nothing plotted there is nothing to export", async () => {
   await page.viewport(1280, 800);

@@ -5,19 +5,22 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { MODULE, pv } from "../builder/builder.harness.ts";
 import type { Scene } from "../builder/pv.ts";
 import { chip, frame, layout, scene, show } from "./live-scene.harness.ts";
+import { frames, framesUntil, realTimers } from "../motion/clock.harness.ts";
 import { feed } from "./stream.harness.ts";
 import LiveScene from "./LiveScene.svelte";
 
-/** Lets the browser paint `count` frames; a loop would draw in each of them. */
-async function frames(count: number): Promise<void> {
-  if (count === 0) return;
+/** The scene's frames and clock on the test's clock: a tween runs out on frames, not on time. */
+function fakeFrames(): void {
+  vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] });
+}
 
-  await new Promise<void>((painted) => {
-    requestAnimationFrame(() => {
-      painted();
-    });
-  });
-  await frames(count - 1);
+/** A chip showing `value`, the frames played until it does. */
+async function shown(name: string, value: string) {
+  const button = page.getByRole("button", { name: `${name}: Details` });
+
+  await framesUntil(() => button.getByText(value, { exact: true }).query() !== null);
+
+  return chip(name, value);
 }
 
 beforeEach(async () => {
@@ -26,6 +29,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  realTimers();
   vi.restoreAllMocks();
   await cdp().send("Emulation.setEmulatedMedia", { features: [] });
 });
@@ -41,7 +45,7 @@ async function settled(draws: () => number): Promise<number> {
 
         return draws() - before;
       },
-      { timeout: 10_000 },
+      { interval: 0, timeout: 10_000 },
     )
     .toBe(0);
 
@@ -51,18 +55,21 @@ async function settled(draws: () => number): Promise<number> {
 test("a live tick and a camera move draw a short tween, then drawing stops (ADR 20)", async () => {
   // Each draw runs the studio's passes once.
   const draws = vi.spyOn(EffectComposer.prototype, "render");
-  const tick = feed();
+  const send = feed();
+
+  fakeFrames();
+
   const screen = await show();
 
-  tick(frame(600, -1200));
-  await chip("Süd", "600");
+  send(frame(600, -1200));
+  await shown("Süd", "600");
 
   const first = await settled(() => draws.mock.calls.length);
 
   expect(first).toBeGreaterThan(0);
 
-  tick(frame(700, -1100));
-  await chip("Süd", "700");
+  send(frame(700, -1100));
+  await shown("Süd", "700");
 
   const ticked = await settled(() => draws.mock.calls.length);
 
@@ -74,6 +81,7 @@ test("a live tick and a camera move draw a short tween, then drawing stops (ADR 
     sourcePosition: { x: 100, y: 100 },
     targetPosition: { x: 250, y: 100 },
   });
+  await frames(10);
 
   expect(draws.mock.calls.length).toBeGreaterThan(ticked);
 });
@@ -156,9 +164,10 @@ async function atRest(names: readonly string[]): Promise<Record<string, DOMRect>
   let last = "";
 
   await expect
-    .poll(() => {
+    .poll(async () => {
       const before = last;
 
+      await frames(1);
       last = JSON.stringify(boxes(names));
 
       return last === before;
@@ -171,11 +180,14 @@ async function atRest(names: readonly string[]): Promise<Record<string, DOMRect>
 test("on a phone the chips sit in rows around the house and keep their place", async () => {
   await page.viewport(390, 600);
 
-  const tick = feed();
+  const send = feed();
+
+  fakeFrames();
+
   const screen = await show();
 
-  tick(frame(600, -1200));
-  await chip("Süd", "600");
+  send(frame(600, -1200));
+  await shown("Süd", "600");
 
   const names = ["Süd", "Wechselrichter", "Netz", "Haus"];
   const figure = screen.getByRole("figure", { name: "Live-Ansicht des Hauses" }).element();
@@ -196,8 +208,8 @@ test("on a phone the chips sit in rows around the house and keep their place", a
   }
 
   // A tick redraws the scene with the camera still: no chip moves.
-  tick(frame(700, -1100));
-  await chip("Süd", "700");
+  send(frame(700, -1100));
+  await shown("Süd", "700");
   await frames(5);
 
   const second = boxes(names);
