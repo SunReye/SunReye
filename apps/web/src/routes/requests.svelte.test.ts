@@ -3,7 +3,15 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect } from "../lib/api/core.ts";
-import { eachSeries, problem, settled, tally } from "../lib/api/settled.harness.ts";
+import {
+  eachSeries,
+  fakeClock,
+  problem,
+  restoreClock,
+  sceneMayMount,
+  settled,
+  tally,
+} from "./requests.harness.ts";
 import { coreContext } from "../lib/shell/core.ts";
 import App from "./shell.harness.svelte";
 import History from "./history/+page.svelte";
@@ -102,12 +110,11 @@ const fake = (request: Request) => {
 };
 
 afterEach(() => {
-  vi.useRealTimers();
+  restoreClock();
 });
 
 beforeEach(async () => {
-  // The screens' timers run on the fake clock, which `settled` runs on.
-  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  fakeClock();
   urls.length = 0;
   await page.viewport(1280, 900);
 });
@@ -151,9 +158,7 @@ test("the dashboard opens on one read of each thing it shows", async () => {
     [`devices/${WEATHER}/forecasts`]: 1,
   };
 
-  // The scene asks for its reads once mounted: after a paint, an idle main thread and the warm-up
-  // worker's answer, none of them on the fake clock.
-  await expect.poll(() => tally(urls), { timeout: 15_000 }).toEqual(reads);
+  await sceneMayMount();
   await settled(() => urls.length);
 
   expect(tally(urls)).toEqual(reads);
@@ -170,12 +175,9 @@ test("History opened from the dashboard reads nothing the dashboard already read
   const dashboard = await render(Home, { context });
 
   await expect.element(dashboard.getByRole("group", { name: "Heute" })).toBeVisible();
-  // The scene asks for its reads once mounted: after a paint, an idle main thread and the warm-up
-  // worker's answer, none of them on the fake clock.
-  await expect
-    .poll(() => tally(urls), { timeout: 15_000 })
-    .toMatchObject({ capabilities: 1, "module-types": 1 });
+  await sceneMayMount();
   await settled(() => urls.length);
+  expect(tally(urls)).toMatchObject({ capabilities: 1, "module-types": 1 });
   await dashboard.unmount();
   urls.length = 0;
 
@@ -197,28 +199,21 @@ test("History opened from the dashboard reads nothing the dashboard already read
 });
 
 test("a dashboard minute reads only today's energies and money", async () => {
-  vi.useFakeTimers({
-    toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
-    now: new Date("2026-11-12T10:01:30Z"),
+  fakeClock(["setInterval", "clearInterval", "Date"], Date.parse("2026-11-12T10:01:30Z"));
+
+  const core = connect({
+    base: `${location.origin}/`,
+    fetch: (request) => fake(request) ?? Promise.resolve(answer("")),
   });
 
-  try {
-    const core = connect({
-      base: `${location.origin}/`,
-      fetch: (request) => fake(request) ?? Promise.resolve(answer("")),
-    });
+  const screen = await render(Dashboard, { core, layout: null, admin: true });
 
-    const screen = await render(Dashboard, { core, layout: null, admin: true });
+  await expect.element(screen.getByRole("group", { name: "Heute" })).toBeVisible();
+  await settled(() => urls.length);
+  urls.length = 0;
 
-    await expect.element(screen.getByRole("group", { name: "Heute" })).toBeVisible();
-    await settled(() => urls.length);
-    urls.length = 0;
+  vi.advanceTimersByTime(60_000);
+  await settled(() => urls.length);
 
-    vi.advanceTimersByTime(60_000);
-    await settled(() => urls.length);
-
-    expect(tally(urls)).toEqual({ [`devices/${PLANT}/statistics`]: 1, costs: 1 });
-  } finally {
-    vi.useRealTimers();
-  }
+  expect(tally(urls)).toEqual({ [`devices/${PLANT}/statistics`]: 1, costs: 1 });
 });
