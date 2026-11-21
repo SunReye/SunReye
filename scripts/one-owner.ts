@@ -1,6 +1,6 @@
 // A behaviour met on more than one screen lives in one component (ADR 21 "One behaviour, one
 // component", #836): no file of the SPA outside its owner rebuilds a segmented control, tabs in
-// another look, a haptic, a transition or a chart's entrance. A gate step;
+// another look, a haptic, a transition, a chart's entrance or its pointer reading. A gate step;
 // `bun scripts/one-owner.ts` lists the copies.
 
 import { Glob } from "bun";
@@ -70,6 +70,20 @@ const RULES: readonly Rule[] = [
       "shell/route-slide.ts",
       "detail/day-slide.ts",
       "components/ui/",
+    ],
+  },
+  {
+    name: "pointer reading outside the one pointer reading",
+    found:
+      /\bonpointer(?:down|move)\b|addEventListener\(\s*["'`]pointer(?:down|move)|\btooltipContext\b/u,
+    // Drags and wheels that read no chart.
+    owners: [
+      "chart-reading/",
+      "components/",
+      "builder/",
+      "gallery/",
+      "shell/Rail.svelte",
+      "range/pager-drag.ts",
     ],
   },
   {
