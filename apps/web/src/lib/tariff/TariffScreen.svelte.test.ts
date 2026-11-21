@@ -75,6 +75,15 @@ test("the range's savings and costs read in the chart's legend, as the core tota
     );
 });
 
+test("the range control stands in the screen's header, outside every card, as History's does", async () => {
+  const screen = await render(TariffScreen, { core: connect(testCore({})), ...NOW });
+  const kind = screen.getByRole("group", { name: "Zeitraum" });
+
+  await expect.element(kind).toBeVisible();
+  expect(kind.element().closest("[data-slot=card]")).toBeNull();
+  expect(kind.element().closest("main > header")).not.toBeNull();
+});
+
 test("money over time and payback live in History, which the screen links to", async () => {
   const screen = await render(TariffScreen, { core: connect(testCore({})), ...NOW });
 

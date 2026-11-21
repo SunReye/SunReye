@@ -1,8 +1,8 @@
 // A behaviour met on more than one screen lives in one component (ADR 21 "One behaviour, one
 // component", #836): no file of the SPA outside its owner rebuilds a segmented control, tabs in
 // another look, a haptic, a transition, a chart's entrance or its reading, a pick list, a card, its
-// glass, a link, a motion value or a pulse that reduced motion does not stop. A gate step;
-// `bun scripts/one-owner.ts` lists the copies.
+// glass, a link, a motion value or a pulse that reduced motion does not stop, nor puts the range
+// control off a header (#837). A gate step; `bun scripts/one-owner.ts` lists the copies.
 //
 // It reads source text, so it cannot see: a chart drawn by hand in `<svg>` or `<div>`s, which names
 // no chart or canvas; a second chart in a file that already holds an entrance; a card or a motion
@@ -192,6 +192,18 @@ export const RULES: readonly Rule[] = [
       "gallery/": GALLERY,
       "builder/OpeningActions.svelte": "A canvas toolbar's menu, not a form.",
       "builder/WeatherMenu.svelte": "A canvas toolbar's menu, not a form.",
+    },
+  },
+  {
+    name: "range control outside a header",
+    // It stands in a screen's header, outside every card, or at a sheet's head (ADR 21).
+    found: first(/range\/RangeControl\.svelte|from "\.\/RangeControl\.svelte"/u),
+    owners: {
+      "range/RangeScreen.svelte": "A full screen's header over one range.",
+      "history/StatsHeader.svelte": "History's header, beside its compare control.",
+      "explore/ExploreHeader.svelte": "Explore's header, beside its actions.",
+      "detail/Analytics.svelte": "A sheet's head.",
+      "gallery/": GALLERY,
     },
   },
 ];
