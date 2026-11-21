@@ -6,6 +6,7 @@
   import ConnectionForm from "./ConnectionForm.svelte";
   import ConnectionList from "./ConnectionList.svelte";
   import Level from "./Level.svelte";
+  import type { IdKey } from "./level-key.ts";
   import RemoveConfirm from "./RemoveConfirm.svelte";
 
   let {
@@ -18,8 +19,7 @@
     onremove,
   }: {
     core: Core;
-    /** `list`, `add` or a connection's id. */
-    key: string;
+    key: "list" | "add" | IdKey;
     listed: readonly Connection[] | Problem;
     /** The connection the key names, if any. */
     connection: Connection | undefined;

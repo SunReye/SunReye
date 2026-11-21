@@ -11,6 +11,7 @@
   import LoadingRows from "../components/loading-rows.svelte";
   import Refusal from "../setup/Refusal.svelte";
   import DevicesLevel from "./DevicesLevel.svelte";
+  import { levelKey } from "./level-key.ts";
 
   let {
     core,
@@ -100,7 +101,7 @@
     {#snippet children(key)}
       <DevicesLevel
         {core}
-        {key}
+        key={levelKey(key, ["add", "topology"])}
         {known}
         device={named(key) ?? seen.get(key)}
         {changed}

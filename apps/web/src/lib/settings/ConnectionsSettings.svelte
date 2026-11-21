@@ -9,6 +9,7 @@
   import DrillPush from "../components/drill-in/drill-push.svelte";
   import LoadingRows from "../components/loading-rows.svelte";
   import ConnectionsLevel from "./ConnectionsLevel.svelte";
+  import { levelKey } from "./level-key.ts";
 
   let {
     core,
@@ -76,7 +77,7 @@
     {#snippet children(key)}
       <ConnectionsLevel
         {core}
-        {key}
+        key={levelKey(key, ["add"])}
         listed={known}
         connection={named(key) ?? seen.get(key)}
         {onlevel}
