@@ -1,7 +1,8 @@
 import "../../app.css";
-import { afterEach, beforeEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
+import { frames, realTimers } from "../motion/clock.harness.ts";
 import { connect } from "../api/core.ts";
 import Builder from "./Builder.svelte";
 import { uncovered } from "./pointer.harness.ts";
@@ -9,6 +10,7 @@ import {
   desk,
   DEVICES,
   drill,
+  enter,
   gridOnTheSouthFace,
   house,
   inspector,
@@ -135,6 +137,48 @@ test("a deeper level is the drill-in's push, under the drill-in's header", async
   await drill("Szene");
   await expect.element(inspector().getByRole("heading", { name: "Szene" })).toBeVisible();
   await expect.element(title).not.toBeInTheDocument();
+});
+
+/** What the open level's length row reads. */
+const length = () =>
+  inspector()
+    .getByRole("button", { name: starts("Länge (m)") })
+    .first()
+    .element().textContent;
+
+test("a removed object's level slides away as it was, not as the object after it", async () => {
+  await render(Builder, {
+    pv,
+    core: connect(testCore()),
+    start: house(),
+    moduleTypes: [MODULE],
+    devices: DEVICES,
+  });
+
+  await drill("Umgebung", "Hecke hinzufügen");
+  await enter("Länge (m)", "7");
+  await drill("Umgebung", "Hecke hinzufügen", "Umgebung", "Hecke 1");
+
+  await expect.poll(length).toContain("7");
+
+  // The slide runs, frame by frame.
+  await undesk();
+  vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] });
+
+  try {
+    await inspector().getByRole("button", { name: "Entfernen" }).click();
+    await frames(3);
+
+    // Still on its way out, it shows the hedge it was.
+    const leaving = [...document.querySelectorAll("[data-push] section")].map((each) =>
+      each.getAttribute("aria-label"),
+    );
+
+    expect(leaving).toContain("Hecke 1");
+    expect(length()).toContain("7");
+  } finally {
+    realTimers();
+  }
 });
 
 /** Form controls the browser draws in its own style; the slider and hidden pickers are styled or unseen. */

@@ -8,7 +8,7 @@
   import DrillPush from "../components/drill-in/drill-push.svelte";
   import Editor from "./Editor.svelte";
   import { depth, parent, type Level } from "./levels.ts";
-  import { title } from "./outline.ts";
+  import { title, type Plan } from "./outline.ts";
   import SaveBar from "./SaveBar.svelte";
   import StringsLevel from "./StringsLevel.svelte";
   import type { Session } from "./session.svelte.ts";
@@ -23,9 +23,6 @@
   } = $props();
 
   const level = $derived(session.level);
-
-  /** A level's name, in its header and on its children's back button. */
-  const named = (at: Level): string => title(at, session.plan);
 
   function go(at: Level): void {
     session.go(at);
@@ -44,6 +41,14 @@
 
   const key = $derived(keyOf(level));
   const up = $derived(level.kind === "root" ? null : keyOf(parent(level)));
+
+  // The plan each level last showed: one sliding away stays as it was, as a removed object's
+  // index would otherwise name its neighbour.
+  const plans = new Map<string, Plan>();
+
+  $effect.pre(() => {
+    plans.set(key, session.plan);
+  });
 </script>
 
 <div class="flex h-full min-h-0 flex-col">
@@ -58,20 +63,21 @@
   >
     {#snippet children(shown)}
       {@const at = levels.get(shown) ?? level}
+      {@const plan = shown === key ? session.plan : (plans.get(shown) ?? session.plan)}
       <DrillHeader
-        back={at.kind === "root" ? undefined : named(parent(at))}
-        title={named(at)}
+        back={at.kind === "root" ? undefined : title(parent(at), plan)}
+        title={title(at, plan)}
         onback={() => {
           go(parent(at));
         }}
       />
-      <section class="flex min-h-0 flex-1 flex-col overflow-y-auto scroll-fade-y" aria-label={named(at)}>
+      <section class="flex min-h-0 flex-1 flex-col overflow-y-auto scroll-fade-y" aria-label={title(at, plan)}>
         {#if at.kind === "section" && at.section === "strings"}
           <StringsLevel {session} />
           {@render check()}
         {:else}
           <Editor
-            plan={session.plan}
+            {plan}
             moduleTypes={session.moduleTypes}
             types={session}
             level={at}
