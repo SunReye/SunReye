@@ -43,11 +43,6 @@ export function built(): Built[] {
 /** Whether `a` comes to an end: a live dot pulses for good. */
 const ends = (a: Animation) => a.effect?.getComputedTiming().endTime !== Infinity;
 
-/** Every animation on the page that ends run to its end. */
-export function finish(): void {
-  for (const a of document.getAnimations()) if (ends(a)) a.finish();
-}
-
 const builds = () => built().map((b) => b.build);
 
 /**

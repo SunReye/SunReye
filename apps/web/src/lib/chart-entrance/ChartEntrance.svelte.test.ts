@@ -2,8 +2,8 @@
 import { tick } from "svelte";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { render } from "vitest-browser-svelte";
-import { holdEntrances } from "../motion/animations.harness.ts";
-import { built, finish } from "./built.harness.ts";
+import { finish, holdEntrances } from "../motion/animations.harness.ts";
+import { built } from "./built.harness.ts";
 import Harness from "./entrance.harness.svelte";
 
 beforeEach(holdEntrances);
@@ -75,7 +75,7 @@ test("a chart already shown does not build again: its next data arrives in place
   const screen = await render(Harness, { build: "grow", ready: true });
 
   await expect.poll(() => built().length).toBeGreaterThan(0);
-  finish();
+  await finish();
   await expect.poll(built).toEqual([]);
 
   await screen.rerender({ build: "grow", ready: true, count: 6 });
