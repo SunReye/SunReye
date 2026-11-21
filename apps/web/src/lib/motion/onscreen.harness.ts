@@ -1,6 +1,7 @@
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
 // Test harness: the page's on-screen observers, told by the test when it waits on what shows
 // rather than on the browser's next frame. The browser still tells them; a change is told once.
+import { starved } from "./callbacks.harness.ts";
 
 /** What `target` shows of itself in the window, as an observer with no root and no margin sees. */
 function entryOf(target: Element): IntersectionObserverEntry {
@@ -42,6 +43,8 @@ class Observer extends IntersectionObserver {
     const last = new Map<Element, boolean>();
 
     super((entries, observer) => {
+      if (starved && observer instanceof Observer && observers.has(observer)) return;
+
       const news = entries.filter((entry) => {
         const was = last.get(entry.target);
 

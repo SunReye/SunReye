@@ -3,6 +3,8 @@
 // `COMPONENT_SHARDS` sets how many. Arguments before the first option pick the files, as vitest's
 // filters do; the options go to each vitest. The files are dealt
 // by how long each took last time, so no shard waits on the others.
+// `VITE_STARVE_FRAMES=1` withholds the browser's frames from the page (`callbacks.harness.ts`): a
+// test that still waits on one fails. The gate does not set it; run it after touching a wait.
 
 import { availableParallelism } from "node:os";
 import { Glob } from "bun";

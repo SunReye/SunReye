@@ -42,6 +42,13 @@ class Asked<Callback> {
   }
 }
 
+/**
+ * The browser's frames withheld from the page (`VITE_STARVE_FRAMES=1`): its frame and idle
+ * callbacks and its observers' entries reach the page only through the harness, so a test that
+ * still waits on a frame of the browser's fails instead of passing on an idle machine.
+ */
+export const starved = import.meta.env["VITE_STARVE_FRAMES"] === "1";
+
 let frames: Asked<FrameRequestCallback> | undefined;
 let idles: Asked<IdleRequestCallback> | undefined;
 
@@ -62,15 +69,19 @@ export function watchCallbacks(): void {
 
   ownFrame = (callback) =>
     frameAsked.ask(callback, (run) =>
-      browserFrame((now) => {
-        if (run()) callback(now);
-      }),
+      starved
+        ? 0
+        : browserFrame((now) => {
+            if (run()) callback(now);
+          }),
     );
   ownIdle = (callback, options) =>
     idleAsked.ask(callback, (run) =>
-      browserIdle((deadline) => {
-        if (run()) callback(deadline);
-      }, options),
+      starved
+        ? 0
+        : browserIdle((deadline) => {
+            if (run()) callback(deadline);
+          }, options),
     );
   frames = frameAsked;
   idles = idleAsked;

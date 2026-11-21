@@ -1,6 +1,7 @@
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
 // Test harness: the page's size observers, told by the test when it waits on a size rather than
 // on the browser's next frame. The browser still tells them; a size is told once either way.
+import { starved } from "./callbacks.harness.ts";
 
 /** The browser lays out in 64ths of a pixel. */
 const laid = (px: number) => Math.round(px * 64);
@@ -65,6 +66,8 @@ class Observer extends ResizeObserver {
     const last = new Map<Element, string>();
 
     super((entries, observer) => {
+      if (starved) return;
+
       const news = entries.filter((entry) => {
         const size = sizeOf(entry, boxes.get(entry.target) ?? "content-box");
         const was = last.get(entry.target);
