@@ -173,21 +173,27 @@ test("data in place of a placeholder glides, and a placeholder in place of data"
   expect(card.offsetHeight).toBe(height);
 });
 
-test("a change mid-glide that leaves the height where it is going carries the glide on", async () => {
+test("a change mid-glide that leaves the height where it is going leaves the glide running", async () => {
   const { screen, card } = await shown({ height: 40, label: "1 kW" });
 
   await screen.rerender({ height: 120, label: "1 kW" });
   await settle(() => glides(card).length > 0);
   halfway(glides(card)[0]);
 
-  const at = glides(card)[0]?.currentTime;
+  // A glide begun anew waits a frame to start: one begun on every frame of a swipe never moves.
+  const [glide] = glides(card);
+  const at = glide?.currentTime;
 
-  await screen.rerender({ height: 120, label: "2 kW" });
-  await tick();
-  playFrame();
+  for (const label of ["2 kW", "3 kW", "4 kW"]) {
+    // oxlint-disable-next-line no-await-in-loop -- one change a frame, as a swipe's slide makes.
+    await screen.rerender({ height: 120, label });
+    // oxlint-disable-next-line no-await-in-loop -- as above.
+    await tick();
+    playFrame();
+  }
 
-  expect(glides(card)).toHaveLength(1);
-  expect(glides(card)[0]?.currentTime).toBe(at);
+  expect(glides(card)).toEqual([glide]);
+  expect(glide?.currentTime).toBe(at);
 });
 
 test("content that changes mid-glide glides on from the height drawn", async () => {
