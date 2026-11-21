@@ -4,7 +4,6 @@
   import ChevronDown from "@lucide/svelte/icons/chevron-down";
   import * as Collapsible from "#lib/components/ui/collapsible/index.js";
   import { Pressable } from "#lib/components/ui/pressable/index.js";
-  import { haptics } from "../haptics.ts";
   import type { PickerGroup, PickerSeries } from "./picker.ts";
   import type { SeriesRef } from "./view.ts";
 
@@ -42,7 +41,6 @@
             on && "bg-foreground/[0.05]",
           ]}
           onclick={() => {
-            haptics.selection();
             onpick(each.ref);
           }}
         >

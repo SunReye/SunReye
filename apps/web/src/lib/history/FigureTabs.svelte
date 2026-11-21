@@ -4,7 +4,6 @@
   import CircleCheck from "@lucide/svelte/icons/circle-check";
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
   import FigureNumber from "./FigureNumber.svelte";
-  import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
   import { indicator } from "../range/indicator.ts";
   import type { Figure, PlantState } from "./answer.ts";
@@ -30,10 +29,7 @@
   } = $props();
 
   function pick(id: Metric): void {
-    if (id === metric) return;
-
-    haptics.selection();
-    onpick(id);
+    if (id !== metric) onpick(id);
   }
 
   const unitClass =

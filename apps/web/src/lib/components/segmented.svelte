@@ -1,10 +1,9 @@
 <!--
   The segmented control (ADR 21 "One behaviour, one component"): one of a few words, the hero's
-  3D/2D look, its pressed box sliding to the next choice. It owns the look and the haptic.
+  3D/2D look, its pressed box sliding to the next choice. It owns the look; the kit's group, the haptic.
 -->
 <script lang="ts" generics="T extends string">
   import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
-  import { haptics } from "../haptics.ts";
 
   let {
     options,
@@ -34,7 +33,6 @@
 
     if (chosen === undefined || chosen === value) return;
 
-    haptics.selection();
     onchange(chosen);
   }
 </script>
