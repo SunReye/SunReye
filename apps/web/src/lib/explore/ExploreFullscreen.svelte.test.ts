@@ -4,6 +4,7 @@ import { page, userEvent } from "vitest/browser";
 import "../../app.css";
 import { reset, show, showIn } from "./explore.harness.ts";
 import { finish } from "../motion/animations.harness.ts";
+import { settle } from "../motion/clock.harness.ts";
 
 afterEach(reset);
 
@@ -82,14 +83,14 @@ test("the lanes redraw at the window's size in fullscreen and at their own again
 
   const { screen } = await show();
 
-  await expect.poll(() => canvas().height).toBeGreaterThan(0);
+  // The canvas is sized to what its size observer is told.
+  await settle(() => (document.querySelector("canvas")?.height ?? 0) > 0);
 
   const before = drawn();
 
   await screen.getByRole("button", { name: "Vollbild", exact: true }).click();
 
-  await expect.poll(() => drawn().width).toBeGreaterThan(before.width);
-  await expect.poll(() => drawn().height).toBeGreaterThan(before.height);
+  await settle(() => drawn().width > before.width && drawn().height > before.height);
   // The chart ends at the window's edge: nothing scrolls.
   expect(main().bottom).toBe(800);
   expect(
@@ -98,7 +99,7 @@ test("the lanes redraw at the window's size in fullscreen and at their own again
 
   await screen.getByRole("button", { name: "Vollbild beenden" }).click();
 
-  await expect.poll(drawn).toEqual(before);
+  await settle(() => drawn().width === before.width && drawn().height === before.height);
 });
 
 /** A browser that grants fullscreen: what is fullscreen, and its own way out. */
