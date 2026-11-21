@@ -28,14 +28,15 @@ export function watchFrames(): void {
 /**
  * Does what the browser does on its next frame and in the idle time after it, now: tells its size
  * and on-screen observers what changed, runs the frame callbacks asked for so far, then the idle
- * ones. On the fake clock (`requestAnimationFrame` faked), its next frame instead.
+ * ones. On the fake clock (`requestAnimationFrame` faked), its next frame instead; frames a test
+ * stands in for itself, off the fake clock, are left to it.
  */
 export function playFrame(): void {
   resized();
   scrolled();
 
-  if (framesFaked()) vi.advanceTimersToNextFrame();
-  else runFrameCallbacks();
+  if (!framesFaked()) runFrameCallbacks();
+  else if (vi.isFakeTimers()) vi.advanceTimersToNextFrame();
 
   runIdleCallbacks();
 }
