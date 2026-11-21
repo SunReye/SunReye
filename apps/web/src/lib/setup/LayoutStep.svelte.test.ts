@@ -68,19 +68,24 @@ test("setup shows no shell to follow the live stream, so the step follows it for
   expect(stream.values).toBeUndefined();
 });
 
-test.each([390, 320])("at %i px the step's title shows in full", async (width) => {
-  await page.viewport(width, 844);
-  await step();
+test.each([390, 320])(
+  "at %i px the step's title shows in full, in the drill-in's header",
+  async (width) => {
+    await page.viewport(width, 844);
+    await step();
 
-  const title = page.getByRole("heading", { name: "PV-Anlage" });
+    const title = page.getByRole("heading", { name: "PV-Anlage" });
 
-  await expect.element(title).toBeVisible();
+    await expect.element(title).toBeVisible();
 
-  const shown = title.element();
+    const shown = title.element();
 
-  expect(shown.scrollWidth).toBeLessThanOrEqual(shown.clientWidth);
-  expect(shown.getBoundingClientRect().right).toBeLessThanOrEqual(width);
-});
+    expect(shown.scrollWidth).toBeLessThanOrEqual(shown.clientWidth);
+    expect(shown.getBoundingClientRect().right).toBeLessThanOrEqual(width);
+    expect(shown.closest("[data-drill=header]")).not.toBeNull();
+    await expect.element(page.getByRole("button", { name: "Fertig, zur Übersicht" })).toBeVisible();
+  },
+);
 
 test("the canvas's status line keeps apart from the tools and the inspector", async () => {
   await step();
