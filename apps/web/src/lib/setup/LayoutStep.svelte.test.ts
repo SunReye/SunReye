@@ -1,10 +1,12 @@
 import "../../app.css";
-import { afterEach, beforeEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, onTestFinished, test } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect } from "../api/core.ts";
 import { DEVICES, MODULE, phone, tap, undesk } from "../builder/builder.harness.ts";
 import { stream } from "../live/stream.svelte.ts";
+import { m } from "../paraglide/messages.js";
+import { locales, setLocale } from "../paraglide/runtime.js";
 import LayoutStep from "./LayoutStep.svelte";
 
 // Setup's layout step on a phone (ADR 20, 21): its title whole, the canvas's notices apart.
@@ -68,13 +70,17 @@ test("setup shows no shell to follow the live stream, so the step follows it for
   expect(stream.values).toBeUndefined();
 });
 
-test.each([390, 320])(
-  "at %i px the step's title shows in full, in the drill-in's header",
-  async (width) => {
+const SIZES = locales.flatMap((locale) => [390, 320].map((width) => [width, locale] as const));
+
+test.each(SIZES)(
+  "at %i px in %s the step's title shows in full, in the drill-in's header",
+  async (width, locale) => {
+    onTestFinished(() => setLocale("de", { reload: false }));
+    await setLocale(locale, { reload: false });
     await page.viewport(width, 844);
     await step();
 
-    const title = page.getByRole("heading", { name: "PV-Anlage" });
+    const title = page.getByRole("heading", { name: m.layout_title() });
 
     await expect.element(title).toBeVisible();
 
@@ -83,7 +89,11 @@ test.each([390, 320])(
     expect(shown.scrollWidth).toBeLessThanOrEqual(shown.clientWidth);
     expect(shown.getBoundingClientRect().right).toBeLessThanOrEqual(width);
     expect(shown.closest("[data-drill=header]")).not.toBeNull();
-    await expect.element(page.getByRole("button", { name: "Fertig, zur Übersicht" })).toBeVisible();
+
+    const done = page.getByRole("button", { name: m.setup_finish() });
+
+    await expect.element(done).toBeVisible();
+    expect(done.element().getBoundingClientRect().right).toBeLessThanOrEqual(width);
   },
 );
 
