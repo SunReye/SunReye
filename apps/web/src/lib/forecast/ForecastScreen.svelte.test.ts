@@ -1,9 +1,11 @@
-import { expect, onTestFinished, test } from "vitest";
+import { expect, onTestFinished, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 // The chart is laid out by the SPA's utilities.
 import "../../app.css";
+import { settled } from "../api/settled.harness.ts";
 import { connect } from "../api/core.ts";
+import { aside as asideOf, dragBy, letGo } from "../range/drag.harness.ts";
 import { locales, setLocale } from "../paraglide/runtime.js";
 import ForecastScreen from "./ForecastScreen.svelte";
 
@@ -162,36 +164,33 @@ test("lines are picked inverter first, then MPPT input, then string, with estima
 
   await render(ForecastScreen, { core: connect(transport), ...PAST_WEEK });
 
-  await card(1)
-    .getByRole("button", { name: /Gesamt/u })
-    .click();
+  const line = card(1).getByRole("combobox", { name: "Linie" });
 
-  const menu = page.getByRole("menu");
+  await expect.element(line).toHaveTextContent("Gesamt");
+  await line.click();
+
+  const menu = page.getByRole("listbox");
 
   await expect.element(menu).toBeVisible();
 
   await expect.element(menu.getByRole("group", { name: "MPPT 1" })).toBeVisible();
   await expect.element(menu.getByRole("group", { name: "MPPT 2" })).toBeVisible();
   await expect
-    .element(
-      menu.getByRole("group", { name: "MPPT 1" }).getByRole("menuitemradio", { name: /south/u }),
-    )
+    .element(menu.getByRole("group", { name: "MPPT 1" }).getByRole("option", { name: /south/u }))
     .toBeVisible();
   await expect
-    .element(
-      menu.getByRole("group", { name: "MPPT 2" }).getByRole("menuitemradio", { name: /east/u }),
-    )
+    .element(menu.getByRole("group", { name: "MPPT 2" }).getByRole("option", { name: /east/u }))
     .toBeVisible();
   // One explanation for the mark, none repeated on each line.
   await expect.element(menu.getByText(/werden zusammen gemessen/u)).toBeVisible();
   expect(document.body.textContent).not.toContain("geschätzt)");
 
-  await menu.getByRole("menuitemradio", { name: /south/u }).click();
+  await menu.getByRole("option", { name: /south/u }).click();
 
   await expect
     .poll(() => transport.asked)
     .toContain("/api/v1/devices/1/forecasts pv.string.power[4]");
-  await expect.element(card(1).getByRole("button", { name: /MPPT 1 · south/u })).toBeVisible();
+  await expect.element(line).toHaveTextContent("MPPT 1 · south ≈");
   // The chart now shows an estimate, and says so.
   await expect.element(card(1).getByText(/werden zusammen gemessen/u)).toBeVisible();
 });
@@ -221,7 +220,7 @@ test.each(SIZES)(
 
     // The inverter's name and its line picker share one row.
     const title = region.getByRole("heading", { level: 2 }).element().getBoundingClientRect();
-    const picker = region.getByRole("button").first().element().getBoundingClientRect();
+    const picker = region.getByRole("combobox").first().element().getBoundingClientRect();
 
     expect(picker.top).toBeLessThan(title.bottom);
     expect(picker.bottom).toBeGreaterThan(title.top);
@@ -244,3 +243,51 @@ test.each(SIZES)(
       expect(dd.scrollWidth, dd.textContent).toBeLessThanOrEqual(dd.clientWidth);
   },
 );
+
+const aside = (device: number) => asideOf(card(device).element());
+
+test("a finger drags an inverter's card to the earlier week, reading nothing more than an arrow", async () => {
+  // The screen's timers, and the clock a finger's speed is read on, run on the test's clock.
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+  onTestFinished(() => {
+    vi.useRealTimers();
+  });
+  const transport = testCore(WEEK);
+  const went: string[] = [];
+
+  const screen = await render(ForecastScreen, {
+    core: connect(transport),
+    params: PAST_WEEK.params,
+    go: (patch: Readonly<Record<string, string | null>>) => {
+      went.push(String(patch.at));
+    },
+  });
+
+  await expect.poll(() => legendValue(2, "gemessen")).toBe("30,0 kWh");
+  await settled(() => transport.asked.length);
+
+  const before = transport.asked.length;
+  const title = card(1).getByRole("heading", { name: "Wechselrichter 1" }).element();
+
+  await dragBy(title, 240, { hold: true, share: 1 / 3 });
+
+  // The earlier week stands beside the card, drawn loading: nothing is read for it.
+  expect(aside(1)).toBeGreaterThan(0);
+  expect(transport.asked.length).toBe(before);
+
+  letGo(title);
+  await expect.poll(() => went.at(-1)).toBe("2026-10-26");
+  // The other inverter's card changes in place.
+  expect(aside(2)).toBe(0);
+  await settled(() => transport.asked.length);
+
+  const dragged = transport.asked.length - before;
+
+  expect(dragged).toBeGreaterThan(0);
+
+  await screen.getByRole("button", { name: "Früher" }).click();
+  await expect.poll(() => went.at(-1)).toBe("2026-10-19");
+  await settled(() => transport.asked.length);
+
+  expect(transport.asked.length - before - dragged).toBe(dragged);
+});

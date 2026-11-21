@@ -1,6 +1,7 @@
 // The figures a chart shows for the route's range, and the range they belong to. A chart keeps its
 // last figures while the next load runs, then tweens to the new ones instead of redrawing (ADR 21).
 // A load that fails keeps them too, flagged until a retry or the next load succeeds.
+import { settleRead, type Problem } from "../api/client.ts";
 import { m } from "../paraglide/messages.js";
 import { brushRange, edges, type Edge } from "./edges.ts";
 import {
@@ -14,6 +15,7 @@ import {
   type Via,
 } from "./range.ts";
 import type { RangeRoute } from "./route.svelte.ts";
+import { RangeTravel } from "./travel.svelte.ts";
 
 /** One load: its range and how the chart got there, its bands and their instants, and the figures. */
 export interface Loaded<T> {
@@ -33,12 +35,21 @@ export interface Place {
   readonly cal: Calendar;
 }
 
+/** A load's legend title while no band is read. */
+export const sumTitle = (got: Readonly<Pick<Loaded<unknown>, "cal" | "range">>): string =>
+  m.range_sum({ range: rangeLabel(got.cal, got.range) });
+
 export class RangeData<T> {
   current = $state.raw<Loaded<T> | undefined>();
   failed = $state(false);
+  /** Why the core refused the last read; none while it answers, or when it was lost. */
+  refused = $state.raw<Problem | undefined>();
   #attempt = $state(0);
 
   readonly #route: () => RangeRoute;
+
+  /** How the chart's card travels: a range not yet read is drawn loading, so it reads only the range it shows. */
+  readonly travel: RangeTravel<Loaded<T>, null>;
 
   /**
    * @param load reads the figures from `from` to before `to`; what it reads before its first
@@ -51,6 +62,12 @@ export class RangeData<T> {
     finest: Grain = "hour",
   ) {
     this.#route = route;
+    this.travel = new RangeTravel(() => ({
+      route: route(),
+      got: this.current,
+      loading: false,
+      pending: () => null,
+    }));
 
     $effect(() => {
       const r: RangeRoute = route();
@@ -67,17 +84,21 @@ export class RangeData<T> {
       const loading = load(hourInstant(zone, t0Of(range)), hourInstant(zone, t1Of(range)), now);
       let live = true;
 
-      void loading.then(
-        (data) => {
-          if (live)
-            [this.current, this.failed] = [{ range, via, cal, list, spans, now, data }, false];
+      const read = async () => {
+        const got = await settleRead(loading);
 
-          return data;
-        },
-        () => {
-          if (live) this.failed = true;
-        },
-      );
+        if (!live) return;
+
+        if (got.failed) [this.failed, this.refused] = [true, got.refused];
+        else
+          [this.current, this.failed, this.refused] = [
+            { range, via, cal, list, spans, now, data: got.data },
+            false,
+            undefined,
+          ];
+      };
+
+      void read();
 
       return () => {
         live = false;
@@ -87,7 +108,7 @@ export class RangeData<T> {
 
   /** Reads the range again after a failed load. */
   retry = (): void => {
-    this.failed = false;
+    [this.failed, this.refused] = [false, undefined];
     this.#attempt += 1;
   };
 
@@ -95,7 +116,7 @@ export class RangeData<T> {
   get title(): string {
     const got = this.current;
 
-    return got ? m.range_sum({ range: rangeLabel(got.cal, got.range) }) : "";
+    return got ? sumTitle(got) : "";
   }
 
   /** Opens the range band `i` stands for, if any. */

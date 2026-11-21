@@ -1,8 +1,9 @@
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
-import { createRawSnippet } from "svelte";
-import { afterEach, expect, test, vi } from "vitest";
+import { createRawSnippet, tick } from "svelte";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { cdp, page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
+import { finish, hold } from "../motion/animations.harness.ts";
 import { motion } from "../motion/tier.svelte.ts";
 import Shell from "./Shell.svelte";
 import "../../app.css";
@@ -12,7 +13,10 @@ const goto = vi.fn((_url: string) => Promise.resolve());
 
 const children = createRawSnippet(() => ({ render: () => "<p>page</p>" }));
 
+beforeEach(hold);
+
 afterEach(() => {
+  vi.restoreAllMocks();
   motion.lowPower = false;
 });
 
@@ -45,18 +49,18 @@ function held(screen: HTMLElement, part: number): number {
 
 /** Holds every screen halfway through its travel and gives their offsets, in document order. */
 async function midway(): Promise<number[]> {
-  await expect
-    .poll(() => screens().length === 2 && screens().every((each) => travels(each).length > 0))
-    .toBe(true);
+  // No frame passes: the travels start as the screens are drawn.
+  await tick();
+
+  expect(screens()).toHaveLength(2);
+  expect(screens().every((each) => travels(each).length > 0)).toBe(true);
 
   return screens().map((each) => held(each, 0.5));
 }
 
 /** Ends every travel: the arriving screen is alone and at rest. */
 async function landed(): Promise<void> {
-  for (const animation of document.getAnimations()) animation.finish();
-
-  await expect.poll(() => screens()).toHaveLength(1);
+  await finish(() => screens().length === 1);
 }
 
 function shell(current: string | null) {
@@ -140,14 +144,16 @@ test("a second change mid-slide goes on from where the screens are", async () =>
   // History, half in from the right, turns to leave on the left: a second travel, over its first.
   const history = screens()[1]!;
 
-  await expect.poll(() => travels(history)).toHaveLength(2);
+  await tick();
+
+  expect(travels(history)).toHaveLength(2);
 
   expect(caught).toBeGreaterThan(0);
   expect(held(history, 0)).toBeCloseTo(caught!, 0);
   expect(held(history, 0.5)).toBeLessThan(caught!);
   expect(held(history, 1)).toBeLessThan(0);
 
-  await expect.poll(() => travels(screens()[2]!)).toHaveLength(1);
+  expect(travels(screens()[2]!)).toHaveLength(1);
   expect(held(screens()[2]!, 0.5)).toBeGreaterThan(0);
 });
 
@@ -172,13 +178,10 @@ test("the leaving screen keeps its place while the page scrolls to the next one'
 
   await screen.rerender({ current: "/history" });
 
-  // The router, putting the next screen at its top.
-  const scrolled = new Promise((resolve) => {
-    addEventListener("scroll", resolve, { once: true });
-  });
-
+  // The router, putting the next screen at its top. The browser tells of a scroll on its next
+  // frame: told at once.
   scrollTo(0, 0);
-  await scrolled;
+  dispatchEvent(new Event("scroll"));
 
   expect(before).toBe(-600);
   expect(screens()[0]!.getBoundingClientRect().top).toBeCloseTo(before, 0);

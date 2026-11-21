@@ -2,6 +2,7 @@
   row of a detail's day: no axes, no rule and no padding, so a quarter hour stands where the
   rows around it have it. -->
 <script lang="ts">
+  import ChartEntrance from "../chart-entrance/ChartEntrance.svelte";
   import { flowColour } from "../energy-colours.ts";
   import { curveMonotoneX } from "d3-shape";
   import { Area, Axis, Chart, Layer, Rule, Spline } from "layerchart";
@@ -12,12 +13,15 @@
     rows,
     now,
     hours,
+    live,
     bare = false,
   }: {
     rows: readonly DayRow[];
     now: Date;
     /** Writes an instant's plant-local hour. */
     hours: Intl.DateTimeFormat;
+    /** The day is under way and grows live: it only fades in, so a tick never redraws it. */
+    live: boolean;
     bare?: boolean;
   } = $props();
 
@@ -39,7 +43,7 @@
   });
 </script>
 
-<div class="h-full w-full">
+<ChartEntrance build={live ? "fade" : "draw"} ready={rows.length > 0} class="h-full w-full">
   <Chart
     data={[...rows]}
     x="time"
@@ -103,4 +107,4 @@
       {/if}
     </Layer>
   </Chart>
-</div>
+</ChartEntrance>

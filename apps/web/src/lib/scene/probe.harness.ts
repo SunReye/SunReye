@@ -12,16 +12,32 @@ let studio: Studio | undefined;
 /** A phone's screen: 390 by 600 CSS pixels of canvas at a pixel ratio of 3. */
 export const PHONE = { width: 390, height: 600, ratio: 3 } as const;
 
-/** Emulates a screen of `ratio` device pixels per CSS pixel; none puts the browser's back. */
+/** The browser's own screen while one is emulated, put back by `screen()`. */
+let own: { width: number; height: number; deviceScaleFactor: number } | undefined;
+
+/**
+ * Emulates a screen of `ratio` device pixels per CSS pixel; none puts the browser's back. Back by
+ * setting it, not by clearing the override: the runner's viewport is one too, and the files after
+ * this one would draw in a tab of the browser's default size.
+ */
 export async function screen(ratio?: number): Promise<void> {
-  await (ratio === undefined
-    ? cdp().send("Emulation.clearDeviceMetricsOverride")
-    : cdp().send("Emulation.setDeviceMetricsOverride", {
-        width: 800,
-        height: 900,
-        deviceScaleFactor: ratio,
-        mobile: false,
-      }));
+  if (ratio !== undefined) {
+    own ??= {
+      width: parent.innerWidth,
+      height: parent.innerHeight,
+      deviceScaleFactor: devicePixelRatio,
+    };
+
+    await cdp().send("Emulation.setDeviceMetricsOverride", {
+      width: 800,
+      height: 900,
+      deviceScaleFactor: ratio,
+      mobile: false,
+    });
+  } else if (own !== undefined) {
+    await cdp().send("Emulation.setDeviceMetricsOverride", { ...own, mobile: false });
+    own = undefined;
+  }
 }
 
 /** What a level draws on the full tier, on any device. */

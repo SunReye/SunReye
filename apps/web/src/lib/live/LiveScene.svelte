@@ -307,17 +307,12 @@
     overflow: hidden;
     /* Opacity only (ADR 21): an entrance, eased out. */
     opacity: 0;
-    transition: opacity 350ms var(--motion-ease, ease-out);
+    transition: opacity var(--motion-enter) var(--motion-ease);
   }
   figure.shown {
     opacity: 1;
   }
   figure.instant {
     transition: none;
-  }
-  @media (prefers-reduced-motion: reduce) {
-    figure {
-      transition: none;
-    }
   }
 </style>

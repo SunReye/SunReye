@@ -5,8 +5,8 @@
   import type { Found } from "../api/core.ts";
   import type { Endpoint } from "./choices.ts";
   import { Button } from "#lib/components/ui/button/index.js";
-  import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
   import ValueRow from "../builder/ValueRow.svelte";
+  import Segmented from "../components/segmented.svelte";
   import { m } from "../paraglide/messages.js";
   import { TRANSPORTS } from "./choices.ts";
   import { FIELD } from "./fields.ts";
@@ -31,12 +31,6 @@
   let port = $state(502);
 
   let transport = $state<Found["transport"]>("modbus-tcp");
-
-  function pick(next: string): void {
-    const chosen = TRANSPORTS.find((t) => t === next);
-
-    if (chosen !== undefined) transport = chosen;
-  }
 
   function add(): void {
     onadd({ host: host.trim(), port, transport, devices: [] });
@@ -63,17 +57,15 @@
     </div>
     <div class={FIELD}>
       <span id="{uid}-transport">{m.devices_endpoint_transport()}</span>
-      <ToggleGroup.Root
-        type="single"
-        spacing={1}
-        bind:value={() => transport, pick}
-        aria-labelledby="{uid}-transport"
-        class="grid w-full grid-cols-3 rounded-md p-0.5 ring-1 ring-border/60"
-      >
-        {#each TRANSPORTS as option (option)}
-          <ToggleGroup.Item value={option} class="px-1 text-xs">{option}</ToggleGroup.Item>
-        {/each}
-      </ToggleGroup.Root>
+      <Segmented
+        options={TRANSPORTS.map((option) => [option, option] as const)}
+        value={transport}
+        labelledby="{uid}-transport"
+        fill
+        onchange={(next) => {
+          transport = next;
+        }}
+      />
     </div>
     <div class="flex flex-wrap gap-2">
       <Button variant="outline" disabled={host.trim() === ""} onclick={add}>

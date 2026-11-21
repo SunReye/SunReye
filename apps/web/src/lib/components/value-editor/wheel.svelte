@@ -6,6 +6,7 @@
   import { spring, VelocityTracker } from "../../animate.ts";
   import { haptics } from "../../haptics.ts";
   import { motion } from "../../motion/tier.svelte.ts";
+  import { SPRINGS } from "../../motion/values.ts";
   import { m } from "../../paraglide/messages.js";
   import type { Rows } from "./editable.ts";
 
@@ -77,7 +78,7 @@
       pos,
       target,
       (x) => setPos(x),
-      { stiffness: 320, damping: 30, velocity, precision: 0.002 },
+      { ...SPRINGS.wheel, velocity, precision: 0.002 },
       () => {
         target = undefined;
         cancel = undefined;

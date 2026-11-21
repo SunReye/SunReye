@@ -11,6 +11,8 @@
 				line: "gap-1 bg-transparent before:bg-foreground group-data-horizontal/tabs:before:top-[calc(var(--tabs-indicator-top)+var(--tabs-indicator-height)+3px)] group-data-horizontal/tabs:before:h-0.5 group-data-vertical/tabs:before:left-[calc(var(--tabs-indicator-left)+var(--tabs-indicator-width)+2px)] group-data-vertical/tabs:before:w-0.5",
 				// Local: `nav` variant: full-height link tabs for a top bar (with tabs-link.svelte and tabs-nav.svelte); its indicator is the underline (#8).
 				nav: "h-full! gap-0 rounded-none bg-transparent p-0 before:top-[calc(var(--tabs-indicator-top)+var(--tabs-indicator-height)-2px)] before:h-0.5 before:bg-primary",
+				// Local: `segmented` variant: tabs that switch content in the segmented control's look, a hairline ring and its sliding pressed box (ADR 21 "One behaviour, one component"; segmented.svelte).
+				segmented: "gap-1 rounded-md bg-transparent text-inherit p-0.5 ring-1 ring-border/60 group-data-horizontal/tabs:h-auto before:rounded-md before:bg-muted",
 			},
 		},
 		defaultVariants: {

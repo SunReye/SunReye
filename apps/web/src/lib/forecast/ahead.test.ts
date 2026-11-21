@@ -1,5 +1,6 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
+import { settleRead } from "../api/client.ts";
 import { perSeries } from "../api/core.harness.ts";
 import type { Rolled } from "../history/history.ts";
 import { daySpans } from "../weather/hourly.ts";
@@ -154,7 +155,7 @@ test("a forecast's power holds from its target to the next", () => {
   expect(powerAt(PLANT, START + 3 * DAY)).toBeNull();
 });
 
-test("a read refused in any of its pieces holds no forecast, not one with a hole", async () => {
+test("a read refused in any of its pieces fails with the core's reason, never one with a hole", async () => {
   const asked: number[] = [];
 
   const core = {
@@ -167,14 +168,10 @@ test("a read refused in any of its pieces holds no forecast, not one with a hole
     }),
   };
 
-  const read = await forecastTargets(
-    core,
-    1,
-    "pv.power",
-    new Date(START),
-    new Date(START + 33 * DAY),
+  const read = await settleRead(
+    forecastTargets(core, 1, "pv.power", new Date(START), new Date(START + 33 * DAY)),
   );
 
   expect(asked).toHaveLength(3);
-  expect(read).toEqual([]);
+  expect(read).toEqual({ failed: true, refused: { problem: "forecast.range" } });
 });

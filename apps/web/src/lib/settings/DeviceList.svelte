@@ -4,11 +4,11 @@
   aside under a level that slides over it, in the caller's one grid cell.
 -->
 <script lang="ts">
+  import DrillCard from "../components/drill-in/drill-card.svelte";
   import type { Connection, Core, Device, Listing } from "../api/core";
   import { Button } from "#lib/components/ui/button/index.js";
   import * as Item from "#lib/components/ui/item/index.js";
   import DrillRow from "../components/drill-in/drill-row.svelte";
-  import { shiftAside } from "../motion/slide.ts";
   import { m } from "../paraglide/messages.js";
   import { readAs } from "../setup/catalogue.ts";
   import AddRow from "./AddRow.svelte";
@@ -46,8 +46,8 @@
   }
 </script>
 
-<div class="col-start-1 row-start-1 min-w-0" in:shiftAside out:shiftAside>
-  <div class="drill-card">
+<div class="min-w-0">
+  <DrillCard>
     <Item.Group class="gap-0 divide-y divide-border/60">
       {#each devices as device (device.id)}
         <DrillRow
@@ -73,6 +73,6 @@
     <div class="border-t border-border/60">
       <AddRow label={m.settings_device_add()} onclick={onadd} />
     </div>
-  </div>
+  </DrillCard>
   <ProfileUpdates {core} onapplied={() => undefined} />
 </div>

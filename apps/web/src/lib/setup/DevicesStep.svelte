@@ -11,7 +11,7 @@
   import FoundRow from "./FoundRow.svelte";
   import ManualRow from "./ManualRow.svelte";
   import OtherHosts from "./OtherHosts.svelte";
-  import Refusal from "./Refusal.svelte";
+  import Refusal, { answered } from "./Refusal.svelte";
   import ScanPanel from "./ScanPanel.svelte";
 
   let {
@@ -131,7 +131,7 @@
     const endpoints = [...new Set(picked.map((choice) => choice.found))];
     const outcomes = (await Promise.all(endpoints.map((e) => addEndpoint(e, picked)))).flat();
 
-    refused = outcomes.find((outcome) => "problem" in outcome);
+    refused = answered(outcomes.find((outcome) => "problem" in outcome));
 
     if (refused === undefined)
       ondone(outcomes.flatMap((outcome) => ("problem" in outcome ? [] : [outcome])));

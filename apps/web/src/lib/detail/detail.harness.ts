@@ -4,6 +4,7 @@ import { vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import { connect, type Transport } from "../api/core.ts";
 import { eachAnswer } from "../api/core.harness.ts";
+import { turn } from "../api/settled.harness.ts";
 import { merge } from "../api/frames.ts";
 import Dashboard from "../dashboard/Dashboard.svelte";
 import { feed } from "../live/stream.harness.ts";
@@ -80,6 +81,8 @@ export interface Served {
   publishes: readonly string[];
   /** Answers the inverter's forecasts in place of its plan; null for the plan. */
   forecasts: (() => Response | Promise<Response>) | null;
+  /** Answers the module types in place of the one served; null for it. */
+  types: (() => Response) | null;
 }
 
 export const served: Served = {
@@ -95,6 +98,7 @@ export const served: Served = {
   payback: null,
   publishes: [],
   forecasts: null,
+  types: null,
 };
 
 /** The series catalog: each stored series a measurement since the month began. */
@@ -129,6 +133,12 @@ export const fetched: string[] = [];
 /** Each request's path, once a request. */
 export const requested: string[] = [];
 
+/** Runs `then` once the page has taken its turn: after what it was sent before. */
+async function later(then: () => void): Promise<void> {
+  await turn();
+  then();
+}
+
 /** Feeds the stream the served frame, folded as the core's stream folds it (ADR 9). */
 function streamed(): void {
   const send = feed();
@@ -145,21 +155,21 @@ function streamed(): void {
   send(first);
 
   // The stream breaks; the reconnect finds no core.
-  if (served.breaks) {
-    setTimeout(() => {
+  if (served.breaks)
+    void later(() => {
       send({ ...first, lost: Date.now() });
-    }, 50);
-  }
+    });
 
-  if (served.tick) {
-    setTimeout(() => {
+  if (served.tick)
+    void later(() => {
       vi.setSystemTime(Date.now() + 1000);
       send(merge(first, { devices: IMPORTING }, Date.now()));
-    }, 50);
-  }
+    });
 }
 
 const plan = () => Response.json(INVERTER_PLAN);
+
+const MODULE_TYPES = { moduleTypes: [{ id: 1, name: "M", pmax: 300 }] };
 
 /** Each path but statistics', and what the fake core answers there to query `q`. */
 const ROUTES = new Map<string, (q: Readonly<URLSearchParams>) => Response | Promise<Response>>([
@@ -177,7 +187,7 @@ const ROUTES = new Map<string, (q: Readonly<URLSearchParams>) => Response | Prom
     "/api/v1/devices",
     () => Response.json({ status: 403, code: "auth.forbidden" }, { status: 403 }),
   ],
-  ["/api/v1/module-types", () => Response.json({ moduleTypes: [{ id: 1, name: "M", pmax: 300 }] })],
+  ["/api/v1/module-types", () => served.types?.() ?? Response.json(MODULE_TYPES)],
   ["/api/v1/corrections", () => Response.json(CORRECTIONS)],
   [
     "/api/v1/costs",
@@ -252,6 +262,7 @@ export async function prepare(): Promise<void> {
   served.payback = null;
   served.publishes = [];
   served.forecasts = null;
+  served.types = null;
   served.last = "2026-11-12T12:00:00Z";
   vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-12T12:20:00Z") });
   await cdp().send("Emulation.setEmulatedMedia", {

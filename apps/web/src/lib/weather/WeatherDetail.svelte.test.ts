@@ -1,7 +1,17 @@
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
-import { expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test } from "vitest";
 import { page } from "vitest/browser";
 import { DRY, each, show, WEATHER } from "./weather-detail.harness.ts";
+import { motion } from "../motion/tier.svelte.ts";
+
+// Still: a figure stands at its value at once, where it would roll up to it frame by frame.
+beforeEach(() => {
+  motion.lowPower = true;
+});
+
+afterEach(() => {
+  motion.lowPower = false;
+});
 
 const bars = (attribute: string) =>
   [...document.querySelectorAll("[data-mm]")].map((b) =>
@@ -103,6 +113,30 @@ test("without stored weather it says so", async () => {
   expect(screen.getByRole("img", { name: "Temperatur", exact: true }).query()).toBeNull();
 });
 
+test("weather the core refuses fails with its reason, never as no weather", async () => {
+  let refused: string | undefined = "forecast.range";
+
+  const stored = {
+    forecasts: DRY,
+    get refused() {
+      return refused;
+    },
+  };
+
+  const { screen } = await show(stored);
+  const failed = screen.getByRole("alert").filter({ hasText: "Wetter nicht geladen" });
+
+  await expect
+    .element(failed.getByText("Dieser Prognosezeitraum ist leer oder zu lang."))
+    .toBeVisible();
+  expect(screen.getByText("Keine Wetterdaten").query()).toBeNull();
+
+  refused = undefined;
+  await failed.getByRole("button", { name: "Erneut laden" }).click();
+
+  await expect.element(screen.getByRole("img", { name: "Temperatur", exact: true })).toBeVisible();
+});
+
 /** The facts row's cells: each term, its value and where it stands. */
 const facts = () =>
   [...document.querySelectorAll<HTMLElement>("dl > div")].map((cell) => ({
@@ -129,7 +163,7 @@ test("today's facts are one row on a narrow phone: the sky now, then the day's",
   await expect.element(screen.getByText("Heiter")).toBeVisible();
 
   expect(document.querySelectorAll("dl")).toHaveLength(1);
-  // Polled: the figures roll up to their values.
+  // Polled: the figures follow the read.
   await expect
     .poll(() => facts().map(({ term, value }) => [term, value]))
     .toEqual([

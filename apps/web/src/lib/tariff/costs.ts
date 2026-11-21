@@ -5,7 +5,8 @@ import { flowColour } from "../energy-colours.ts";
 import { m } from "../paraglide/messages.js";
 import type { SeriesMeta } from "../range/bands.ts";
 import type { Edge } from "../range/edges.ts";
-import { spread, type Fill } from "../range/fill.ts";
+import { bandsOf, spread, type Fill } from "../range/fill.ts";
+import type { Loaded } from "../range/range-data.svelte.ts";
 
 type Money = Readonly<CostDays["total"]>;
 
@@ -26,7 +27,7 @@ function savingsSplit(money?: Readonly<CostDays["total"]>) {
 }
 
 /** How a chart lays the days out: its sides, what is below the baseline and its name. */
-interface CostChart {
+export interface CostChart {
   readonly sides: typeof split;
   readonly up: SeriesMeta[];
   readonly down: SeriesMeta[];
@@ -63,6 +64,15 @@ export const COST_CHARTS = {
     hourly: true,
   }),
 };
+
+/** One read of costs as the chart draws it: its bands and totals. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- a load is never written.
+export function costsView(got: Readonly<Loaded<CostDays>>, laid: Readonly<CostChart>) {
+  return {
+    bands: bandsOf(got.list, costBands(got.data.days, got.spans, got.now, laid.sides)),
+    total: laid.sides(got.data.total),
+  };
+}
 
 /** Each band's share of the days it overlaps, its sides as `sides` splits them. */
 export function costBands(

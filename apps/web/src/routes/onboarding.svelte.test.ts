@@ -1,3 +1,4 @@
+import { tick } from "svelte";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
@@ -87,7 +88,7 @@ test("a viewer signs in by name to the dashboard", async () => {
   await expect.element(screen.getByRole("group", { name: "Heute" })).toBeVisible();
 });
 
-/** Setup on a phone, its password step open; back to the list, then one frame. */
+/** Setup on a phone, its password step open; back to the list, its updates drawn. */
 async function backOnAPhone(): Promise<Element | null> {
   served.session = "auth.setup";
   served.devices = [];
@@ -97,11 +98,7 @@ async function backOnAPhone(): Promise<Element | null> {
 
   await expect.element(screen.getByLabelText("Passwort wiederholen")).toBeVisible();
   await screen.getByRole("button", { name: "Einrichtung" }).click();
-  await new Promise<void>((painted) => {
-    requestAnimationFrame(() => {
-      painted();
-    });
-  });
+  await tick();
 
   return document.querySelector('[data-drill="page"]');
 }

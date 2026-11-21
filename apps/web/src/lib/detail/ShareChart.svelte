@@ -11,6 +11,7 @@
   import { num } from "../range/format.ts";
   import type { Grain } from "../range/range.ts";
   import ChartReading from "./ChartReading.svelte";
+  import ChartEntrance from "../chart-entrance/ChartEntrance.svelte";
 
   let {
     bands,
@@ -57,40 +58,44 @@
       <span class="text-muted-foreground">{BY[grain]()}</span>
     {/if}
   </p>
-  <ChartReading slots={bands.length} bind:read class="flex flex-col gap-3" data-plot>
-    {#each ROWS as row (row.side)}
-      <div class="flex flex-col gap-1">
-        <div class="flex items-baseline justify-between gap-3 text-xs">
-          <span class="flex items-center gap-1.5 font-medium">
-            <span class="size-2 rounded-[1px]" style:background={row.colour}></span>
-            {row.label}
-          </span>
-          {#if shown}
-            <span class="font-medium tabular-nums">{pct(valueOf(shown, row.side))}</span>
-          {:else if row.rest !== null}
-            <span class="text-muted-foreground tabular-nums">{pct(row.rest)}</span>
-          {/if}
-        </div>
-        <div class="flex h-14 gap-px border-b border-border/60" aria-hidden="true">
-          {#each bands as b (b.key)}
-            {@const v = valueOf(b, row.side)}
-            <span class={["relative flex-1", b.state === "gap" && "gap"]}>
-              {#if v !== null}
-                <span
-                  class={[
-                    "absolute inset-x-0 bottom-0 min-h-px rounded-t-[1px]",
-                    (b.partial || b.state === "live") && "opacity-60",
-                  ]}
-                  style:height="{v}%"
-                  style:background={row.colour}
-                ></span>
-              {/if}
+  <ChartEntrance build="grow" ready={bands.length > 0}>
+    <ChartReading slots={bands.length} bind:read class="flex flex-col gap-3" data-plot>
+      {#each ROWS as row (row.side)}
+        <div class="flex flex-col gap-1">
+          <div class="flex items-baseline justify-between gap-3 text-xs">
+            <span class="flex items-center gap-1.5 font-medium">
+              <span class="size-2 rounded-[1px]" style:background={row.colour}></span>
+              {row.label}
             </span>
-          {/each}
+            {#if shown}
+              <span class="font-medium tabular-nums">{pct(valueOf(shown, row.side))}</span>
+            {:else if row.rest !== null}
+              <span class="text-muted-foreground tabular-nums">{pct(row.rest)}</span>
+            {/if}
+          </div>
+          <div class="flex h-14 gap-px border-b border-border/60" aria-hidden="true">
+            {#each bands as b, i (b.key)}
+              {@const v = valueOf(b, row.side)}
+              <span class={["relative flex-1", b.state === "gap" && "gap"]}>
+                {#if v !== null}
+                  <span
+                    class={[
+                      "absolute inset-x-0 bottom-0 min-h-px origin-bottom rounded-t-[1px]",
+                      (b.partial || b.state === "live") && "opacity-60",
+                    ]}
+                    style:height="{v}%"
+                    style:background={row.colour}
+                    style:--i={i / bands.length}
+                    data-grow
+                  ></span>
+                {/if}
+              </span>
+            {/each}
+          </div>
         </div>
-      </div>
-    {/each}
-  </ChartReading>
+      {/each}
+    </ChartReading>
+  </ChartEntrance>
   <div class="relative h-4 text-[11px] text-muted-foreground tabular-nums" aria-hidden="true">
     {#each bands as b, i (b.key)}
       {#if b.tick}

@@ -6,21 +6,17 @@ import { connect, type Transport } from "../api/core.ts";
 import { MODULE, press } from "../builder/builder.harness.ts";
 import { layout, scene } from "../live/live-scene.harness.ts";
 import Hero from "./Hero.svelte";
-
-// Software GL builds the scene slowly while other suites run.
-const SLOW = { timeout: 20_000 };
-
-vi.setConfig({ testTimeout: 60_000 });
+import { settle } from "../motion/clock.harness.ts";
 
 /** How the core answers the scene's module types: at once, never, or not at all. */
 let types: "answer" | "hold" | "fail" = "answer";
 let held = Promise.withResolvers<void>();
 
-/** Settles once the scene asks for its module types: its load has started. */
-let loading = Promise.withResolvers<void>();
+/** Whether the scene has asked for its module types: its load, begun in idle time, has started. */
+let loading = false;
 
 async function moduleTypes(): Promise<Response> {
-  loading.resolve();
+  loading = true;
 
   if (types === "fail") throw new TypeError("offline");
 
@@ -50,7 +46,7 @@ beforeEach(async () => {
   localStorage.clear();
   types = "answer";
   held = Promise.withResolvers();
-  loading = Promise.withResolvers();
+  loading = false;
   await page.viewport(1000, 800);
 });
 
@@ -84,17 +80,25 @@ const flowShown = () =>
 
 test("the scene's studio holds the hero while it loads; after a second it says so", async () => {
   types = "hold";
+  // The load's own clock: its one-second notice is due when the test says so.
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
 
   await hero();
+  await settle(() => loading);
 
   expect(page.getByText("3D-Ansicht lädt …").elements()).toHaveLength(0);
   expect(flowShown()).toBe(false);
-  await expect.element(page.getByText("3D-Ansicht lädt …"), SLOW).toBeVisible();
+
+  vi.advanceTimersByTime(1500);
+  vi.useRealTimers();
+
+  await expect.element(page.getByText("3D-Ansicht lädt …")).toBeVisible();
 
   held.resolve();
 
-  await expect.element(sceneFigure(), SLOW).toBeVisible();
-  await expect.poll(() => page.getByText("3D-Ansicht lädt …").elements(), SLOW).toHaveLength(0);
+  await settle(() => sceneFigure().query() !== null);
+  await expect.element(sceneFigure()).toBeVisible();
+  await settle(() => page.getByText("3D-Ansicht lädt …").query() === null);
 });
 
 test("a failed load leaves the 2D flow with a retry that loads the scene", async () => {
@@ -102,14 +106,16 @@ test("a failed load leaves the 2D flow with a retry that loads the scene", async
 
   await hero();
 
-  await expect.element(page.getByText(/^3D-Ansicht nicht geladen/u), SLOW).toBeVisible();
+  await settle(() => page.getByText(/^3D-Ansicht nicht geladen/u).query() !== null);
+  await expect.element(page.getByText(/^3D-Ansicht nicht geladen/u)).toBeVisible();
   expect(flowShown()).toBe(true);
 
   types = "answer";
-  await page.getByRole("button", { name: "Erneut versuchen" }).click();
+  await page.getByRole("button", { name: "Erneut laden" }).click();
 
-  await expect.element(sceneFigure(), SLOW).toBeVisible();
-  await expect.poll(flowShown, SLOW).toBe(false);
+  await settle(() => sceneFigure().query() !== null);
+  await expect.element(sceneFigure()).toBeVisible();
+  await settle(() => !flowShown());
 });
 
 test("the first switch from 2D keeps the flow until the scene fades in over it", async () => {
@@ -120,7 +126,7 @@ test("the first switch from 2D keeps the flow until the scene fades in over it",
   // The load's own clock: its one-second notice is due when the test says so.
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   await page.getByRole("radio", { name: "3D" }).click();
-  await loading.promise;
+  await settle(() => loading);
   vi.advanceTimersByTime(1500);
   await Promise.resolve();
 
@@ -130,8 +136,9 @@ test("the first switch from 2D keeps the flow until the scene fades in over it",
   vi.useRealTimers();
   held.resolve();
 
-  await expect.element(sceneFigure(), SLOW).toBeVisible();
-  await expect.poll(flowShown, SLOW).toBe(false);
+  await settle(() => sceneFigure().query() !== null);
+  await expect.element(sceneFigure()).toBeVisible();
+  await settle(() => !flowShown());
 });
 
 /** Where each browser keeps the view it orbited to. */
@@ -153,48 +160,23 @@ async function swipe(): Promise<void> {
   );
 }
 
-test("the camera is locked: one finger scrolls the page, until the lock is opened", async () => {
-  const tall = document.createElement("div");
+test("the camera is locked: one finger is the page's, until the lock is opened", async () => {
+  await hero();
+  await settle(() => sceneFigure().query() !== null);
+  await expect.element(sceneFigure()).toBeVisible();
+  await settle(() => getComputedStyle(sceneFigure().element()).opacity === "1");
 
-  tall.style.height = "2000px";
+  const canvas = page.getByLabelText("3D-Szene des Hauses").element();
 
-  try {
-    await hero();
-    // Below the hero: a page to scroll.
-    document.body.append(tall);
-    await expect.element(sceneFigure(), SLOW).toBeVisible();
-    await expect.poll(() => getComputedStyle(sceneFigure().element()).opacity, SLOW).toBe("1");
+  // Locked, the browser scrolls the page by a vertical finger, and the camera does not follow it.
+  expect(getComputedStyle(canvas).touchAction).toBe("pan-y");
+  await swipe();
+  expect(localStorage.getItem(KEPT)).toBeNull();
 
-    await swipe();
+  await page.getByRole("button", { name: "Kamera bewegen" }).click();
+  await settle(() => getComputedStyle(canvas).touchAction === "none");
+  await swipe();
 
-    await expect.poll(() => scrollY).toBeGreaterThan(0);
-    expect(localStorage.getItem(KEPT)).toBeNull();
-
-    // The swipe's fling coasts on; it must be over before the page goes back up.
-    let was = -1;
-
-    await expect
-      .poll(async () => {
-        await new Promise<void>((done) => {
-          requestAnimationFrame(() => {
-            done();
-          });
-        });
-        const still = scrollY === was;
-
-        was = scrollY;
-
-        return still;
-      }, SLOW)
-      .toBe(true);
-    scrollTo(0, 0);
-    await page.getByRole("button", { name: "Kamera bewegen" }).click();
-    await swipe();
-
-    await expect.poll(() => localStorage.getItem(KEPT)).not.toBeNull();
-    expect(scrollY).toBe(0);
-  } finally {
-    tall.remove();
-    scrollTo(0, 0);
-  }
+  // The orbit ends with the finger and keeps the view it reached.
+  await settle(() => localStorage.getItem(KEPT) !== null);
 });

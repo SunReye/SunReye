@@ -9,24 +9,23 @@ import {
   desk,
   DEVICES,
   drill,
+  filledFace,
   house,
   inspector,
   MODULE,
   onCanvas,
+  type Pointer,
   press,
   pv,
+  settle,
+  SIZES,
   testCore,
   undesk,
-  type Pointer,
-  filledFace,
-  SIZES,
 } from "./builder.harness.ts";
 import { saveFrom } from "./moment.harness.ts";
 import { connect, type Transport } from "../api/core.ts";
 import { addGrid, panels, type Draft } from "./modules.ts";
 import { toThree } from "./scene.ts";
-
-const SLOW = { timeout: 15_000 };
 
 const OTHER = { ...MODULE, id: 8, name: "Other 300" };
 
@@ -91,7 +90,7 @@ async function opened(draft: Draft, transport: Readonly<Transport> = testCore())
   });
 
   await drill("Strings", draft.strings[0]?.name ?? "");
-  await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
+  await settle(() => draws.mock.calls.length > 0);
 }
 
 /** Three neighbouring modules of the face nearest the isometric camera. */
@@ -198,7 +197,7 @@ test("from the Strings group a selection is wired into a string of the menu, or 
     devices: DEVICES,
   });
   await drill("Strings");
-  await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
+  await settle(() => draws.mock.calls.length > 0);
 
   await press("mouse", three(draft));
   await act("Verdrahten").click();

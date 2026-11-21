@@ -4,20 +4,40 @@ import { render } from "vitest-browser-svelte";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { MODULE, pv } from "../builder/builder.harness.ts";
 import type { Scene } from "../builder/pv.ts";
-import { chip, frame, layout, scene, show } from "./live-scene.harness.ts";
+import { chip, finish, frame, layout, scene, show } from "./live-scene.harness.ts";
+import { frames, framesUntil, realTimers, settle, stepUntil } from "../motion/clock.harness.ts";
 import { feed } from "./stream.harness.ts";
 import LiveScene from "./LiveScene.svelte";
 
-/** Lets the browser paint `count` frames; a loop would draw in each of them. */
-async function frames(count: number): Promise<void> {
-  if (count === 0) return;
+/**
+ * The scene once its first frame is drawn, its frames and clock on the test's clock throughout,
+ * so a tween runs out on frames, not on time.
+ */
+async function drawn() {
+  vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] });
 
-  await new Promise<void>((painted) => {
-    requestAnimationFrame(() => {
-      painted();
-    });
-  });
-  await frames(count - 1);
+  let ready = false;
+
+  const screen = await show(
+    [],
+    () => {},
+    () => {
+      ready = true;
+    },
+  );
+
+  await settle(() => ready);
+
+  return screen;
+}
+
+/** A chip showing `value`, the frames played until it does. */
+async function shown(name: string, value: string) {
+  const button = page.getByRole("button", { name: `${name}: Details` });
+
+  await framesUntil(() => button.getByText(value, { exact: true }).query() !== null);
+
+  return chip(name, value);
 }
 
 beforeEach(async () => {
@@ -26,43 +46,47 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  realTimers();
   vi.restoreAllMocks();
   await cdp().send("Emulation.setEmulatedMedia", { features: [] });
 });
 
 /** Draws counted once ten frames pass without one: a tween has run out. */
 async function settled(draws: () => number): Promise<number> {
-  await expect
-    .poll(
-      async () => {
-        const before = draws();
+  let still = false;
 
-        await frames(10);
+  await stepUntil(
+    () => still,
+    async () => {
+      const before = draws();
 
-        return draws() - before;
-      },
-      { timeout: 10_000 },
-    )
-    .toBe(0);
+      await frames(10);
+      still = draws() === before;
+    },
+  );
 
   return draws();
 }
 
 test("a live tick and a camera move draw a short tween, then drawing stops (ADR 20)", async () => {
+  // Each frame of the tween is drawn in software: a small canvas keeps them few milliseconds.
+  await page.viewport(480, 360);
+
   // Each draw runs the studio's passes once.
   const draws = vi.spyOn(EffectComposer.prototype, "render");
-  const tick = feed();
-  const screen = await show();
+  const send = feed();
 
-  tick(frame(600, -1200));
-  await chip("Süd", "600");
+  const screen = await drawn();
+
+  send(frame(600, -1200));
+  await shown("Süd", "600");
 
   const first = await settled(() => draws.mock.calls.length);
 
   expect(first).toBeGreaterThan(0);
 
-  tick(frame(700, -1100));
-  await chip("Süd", "700");
+  send(frame(700, -1100));
+  await shown("Süd", "700");
 
   const ticked = await settled(() => draws.mock.calls.length);
 
@@ -74,6 +98,7 @@ test("a live tick and a camera move draw a short tween, then drawing stops (ADR 
     sourcePosition: { x: 100, y: 100 },
     targetPosition: { x: 250, y: 100 },
   });
+  await frames(10);
 
   expect(draws.mock.calls.length).toBeGreaterThan(ticked);
 });
@@ -107,21 +132,34 @@ test("a car appears at its place while connected, with its charge power and SOC"
     },
   });
 
-  await expect.element((await chip("E-Auto", "7,4")).getByText("63")).toBeVisible();
+  const soc = (await chip("E-Auto", "7,4")).getByText("63");
+
+  await finish(() => soc.query() !== null);
+  await expect.element(soc).toBeVisible();
 });
 
 /** The figure's fade, once it reports ready. */
 async function fadeOnReady(): Promise<string> {
-  const ready = vi.fn<() => void>();
-  const screen = await show([], () => {}, ready);
+  let ready = false;
+
+  const screen = await show(
+    [],
+    () => {},
+    () => {
+      ready = true;
+    },
+  );
+
   const figure = screen.getByRole("figure", { name: "Live-Ansicht des Hauses" });
 
   // Hidden and inert until its first frame is drawn, chips included.
   expect(figure.element().closest("[inert]")).not.toBeNull();
 
-  await expect.poll(() => ready.mock.calls.length, { timeout: 15_000 }).toBe(1);
+  await settle(() => ready);
   await expect.element(figure).not.toHaveAttribute("inert");
-  await expect.poll(() => getComputedStyle(figure.element()).opacity).toBe("1");
+  // The fade runs to its end.
+  await finish();
+  expect(getComputedStyle(figure.element()).opacity).toBe("1");
 
   return getComputedStyle(figure.element()).transitionDuration;
 }
@@ -154,16 +192,18 @@ function boxes(names: readonly string[]): Record<string, DOMRect> {
 /** The chips' boxes once they rest: each is measured, then placed once more by its own size. */
 async function atRest(names: readonly string[]): Promise<Record<string, DOMRect>> {
   let last = "";
+  let still = false;
 
-  await expect
-    .poll(() => {
+  await stepUntil(
+    () => still,
+    async () => {
       const before = last;
 
+      await frames(1);
       last = JSON.stringify(boxes(names));
-
-      return last === before;
-    })
-    .toBe(true);
+      still = last === before;
+    },
+  );
 
   return boxes(names);
 }
@@ -171,11 +211,12 @@ async function atRest(names: readonly string[]): Promise<Record<string, DOMRect>
 test("on a phone the chips sit in rows around the house and keep their place", async () => {
   await page.viewport(390, 600);
 
-  const tick = feed();
-  const screen = await show();
+  const send = feed();
 
-  tick(frame(600, -1200));
-  await chip("Süd", "600");
+  const screen = await drawn();
+
+  send(frame(600, -1200));
+  await shown("Süd", "600");
 
   const names = ["Süd", "Wechselrichter", "Netz", "Haus"];
   const figure = screen.getByRole("figure", { name: "Live-Ansicht des Hauses" }).element();
@@ -196,8 +237,8 @@ test("on a phone the chips sit in rows around the house and keep their place", a
   }
 
   // A tick redraws the scene with the camera still: no chip moves.
-  tick(frame(700, -1100));
-  await chip("Süd", "700");
+  send(frame(700, -1100));
+  await shown("Süd", "700");
   await frames(5);
 
   const second = boxes(names);

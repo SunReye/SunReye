@@ -7,23 +7,23 @@ import { connect } from "../api/core.ts";
 import Builder from "./Builder.svelte";
 import {
   choose,
-  DEVICES,
   desk,
+  DEVICES,
   drill,
   house,
   inspector,
   MODULE,
   onCanvas,
   pv,
+  settle,
   starts,
+  stepUntil,
   testCore,
   undesk,
 } from "./builder.harness.ts";
 import { handles } from "./handles/grips.ts";
 import type { Scene } from "./pv.ts";
 import { fresh } from "./wall-openings.ts";
-
-const SLOW = { timeout: 15_000 };
 
 beforeEach(async () => {
   localStorage.removeItem("sunreye.builder.view");
@@ -75,7 +75,7 @@ test("a window is added on a wall and its width arrow drags it wider, in one und
   });
 
   await drill("Gebäude");
-  await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
+  await settle(() => draws.mock.calls.length > 0);
 
   await inspector().getByRole("button", { name: "Fenster hinzufügen" }).click();
 
@@ -94,15 +94,10 @@ test("a window is added on a wall and its width arrow drags it wider, in one und
   const wider = width.getByText(/^1,[345]$/u);
 
   // A press before the handles' first draw grabs nothing: it is made again until one lands.
-  await expect
-    .poll(async () => {
-      if (wider.query() === null) {
-        await widen({ ...start.scene, openings: [...before, made] }, before.length);
-      }
-
-      return wider.query() !== null;
-    }, SLOW)
-    .toBe(true);
+  await stepUntil(
+    () => wider.query() !== null,
+    () => widen({ ...start.scene, openings: [...before, made] }, before.length),
+  );
 
   await undo.click();
 

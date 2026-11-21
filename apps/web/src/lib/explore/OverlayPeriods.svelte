@@ -3,12 +3,9 @@
   picks not drawn yet and any other day. A chart of five periods offers no more, and says so.
 -->
 <script lang="ts">
-  import Plus from "@lucide/svelte/icons/plus";
-  import X from "@lucide/svelte/icons/x";
+  import AddButton from "../components/add-button.svelte";
   import DateField from "../components/date-field.svelte";
-  import { Button } from "#lib/components/ui/button/index.js";
-  import { Pressable } from "#lib/components/ui/pressable/index.js";
-  import { haptics } from "../haptics.ts";
+  import RemovableChip from "../components/removable-chip.svelte";
   import { m } from "../paraglide/messages.js";
   import type { OverlayPeriod } from "./overlay.ts";
   import type { Shown } from "./overlay-chart.ts";
@@ -45,39 +42,27 @@
     {#if picked.length > 0}
       <ul class="contents" aria-labelledby={id}>
         {#each picked as period (period.key)}
-          <li
-            class="flex h-8 max-w-full items-center rounded-md border border-border/60 bg-foreground/[0.04] pl-2.5 touch:h-11"
+          <RemovableChip
+            remove={m.explore_remove({ name: period.name })}
+            onremove={() => {
+              onremove(period);
+            }}
           >
             <span class="mr-1.5 size-2 shrink-0 rounded-[1px]" style:background={period.colour}
             ></span>
             <span class="min-w-0 truncate font-medium">{period.name}</span>
-            <Pressable
-              feedback
-              class="ml-1 grid h-full w-8 shrink-0 place-items-center rounded-r-md text-muted-foreground hover:text-foreground touch:w-11"
-              aria-label={m.explore_remove({ name: period.name })}
-              onclick={() => {
-                haptics.light();
-                onremove(period);
-              }}
-            >
-              <X class="size-3.5" />
-            </Pressable>
-          </li>
+          </RemovableChip>
         {/each}
       </ul>
     {/if}
     {#if !full}
       {#each picks as pick (pick.id)}
-        <Button
-          variant="outline"
-          size="sm"
-          onclick={() => {
-            haptics.light();
+        <AddButton
+          text={pick.text}
+          onadd={() => {
             onadd(pick.entry);
           }}
-        >
-          <Plus data-icon="inline-start" />{pick.text}
-        </Button>
+        />
       {/each}
       <DateField
         variant="compact"

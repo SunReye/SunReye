@@ -1,17 +1,19 @@
 // Shared by the builder's component tests: the crate, a module type, the plant's devices, a core
 // that answers layout changes, and the inspector's moves.
-import { PerspectiveCamera, Vector3 } from "three";
 import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import wasm from "../../../../../target/wasm32-unknown-unknown/release/sunreye_pv_wasm.wasm?url";
 import { connect, type ModuleType, type Transport } from "../api/core.ts";
+import { finish } from "../motion/animations.harness.ts";
 import Builder from "./Builder.svelte";
 import { emptyDraft, fillGrid } from "./modules.ts";
-import { faceView, presetView, type View } from "./camera.ts";
+import { faceView, onView, presetView, type View } from "./projection.harness.ts";
 import { loadPv, type Scene } from "./pv.ts";
 import { fill } from "./templates.ts";
 
 export { press, tap, type Pointer } from "./pointer.harness.ts";
+
+export { settle, stepUntil } from "../motion/clock.harness.ts";
 
 export const pv = await loadPv(new Uint8Array(await (await fetch(wasm)).arrayBuffer()));
 
@@ -110,8 +112,15 @@ export async function enter(row: string, value: string): Promise<void> {
   await page.getByRole("button", { name: /tippen zum Eingeben/u }).click();
   await userEvent.fill(page.getByRole("textbox", { name: `${row} eingeben` }), value);
   await userEvent.keyboard("{Enter}");
-  await page.getByRole("button", { name: /^Übernehmen/u }).click();
-  await closed();
+  await apply();
+}
+
+/** Applies the open value editor; it has left once its fade has ended. */
+async function apply(): Promise<void> {
+  const button = page.getByRole("button", { name: /^Übernehmen/u });
+
+  await button.click();
+  await finish(() => button.query() === null);
 }
 
 /** Picks `option` in a choice row's value editor and applies it. */
@@ -120,27 +129,22 @@ export async function choose(row: string, option: string): Promise<void> {
     .getByRole("button", { name: starts(`${row} `) })
     .click();
   await page.getByRole("radiogroup", { name: row }).getByRole("radio", { name: option }).click();
-  await page.getByRole("button", { name: /^Übernehmen/u }).click();
-  await closed();
+  await apply();
 }
 
-const scrim = () => document.querySelector('[data-slot="drawer-overlay"]');
+/** Whether a frame played since the last look drew nothing: the scene is at rest. */
+export function atRest(draws: {
+  readonly mock: { readonly calls: readonly unknown[] };
+}): () => boolean {
+  let last = -1;
 
-/** Until the value editor's scrim has faded out: while it fades, it takes a tap meant for the scene. */
-function closed(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const started = performance.now();
+  return () => {
+    const was = last;
 
-    const poll = setInterval(() => {
-      if (!scrim()) {
-        clearInterval(poll);
-        resolve();
-      } else if (performance.now() - started > 10_000) {
-        clearInterval(poll);
-        reject(new Error("the value editor's scrim stayed"));
-      }
-    }, 20);
-  });
+    last = draws.mock.calls.length;
+
+    return last === was;
+  };
 }
 
 export async function gridOnTheSouthFace(transport: Transport) {
@@ -178,20 +182,8 @@ export function onCanvas(
 ): (at: readonly [number, number, number]) => [number, number] {
   const canvas = page.getByLabelText("3D-Szene des Hauses").element().getBoundingClientRect();
   const view = kept ?? presetView("isometric", pv.geometry(start), canvas.width / canvas.height);
-  const camera = new PerspectiveCamera(40, canvas.width / canvas.height, 0.1, 5000);
 
-  camera.position.set(...view.position);
-  camera.lookAt(...view.target);
-  camera.updateMatrixWorld();
-
-  return ([x, y, z]) => {
-    const at = new Vector3(x, y, z).project(camera);
-
-    return [
-      canvas.left + ((at.x + 1) / 2) * canvas.width,
-      canvas.top + ((1 - at.y) / 2) * canvas.height,
-    ];
-  };
+  return onView(view, canvas);
 }
 
 /** A phone held upright, its inspector levels landing at once. */

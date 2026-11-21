@@ -14,6 +14,7 @@ import {
   phone,
   press,
   pv,
+  settle,
   SOUTH,
   starts,
   tap,
@@ -24,8 +25,6 @@ import { addGrid, type Draft } from "./modules.ts";
 
 // Modules laid on the roof with a finger (ADR 20 Touch): a gesture that starts on the selected face
 // lays, a second finger hands both to the camera.
-
-const SLOW = { timeout: 15_000 };
 
 /** The template house with an empty grid on its south face. */
 function gridded(): Draft {
@@ -102,7 +101,7 @@ test("on a phone a finger lays a row on the selected face and a tap selects one;
   await row("Module");
   await row(SOUTH);
   await tap(handle());
-  await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
+  await settle(() => draws.mock.calls.length > 0);
 
   // The camera flew onto the face when it was opened.
   const at = faceOnPage(draft.scene, 0, ontoFace(draft.scene, 0));
@@ -119,4 +118,4 @@ test("on a phone a finger lays a row on the selected face and a tap selects one;
   await tap(handle());
   await row("Baukörper 1, Fläche 2");
   await expect.element(sheet().getByText("3 Module gesetzt", { exact: true })).toBeVisible();
-}, 60_000);
+});

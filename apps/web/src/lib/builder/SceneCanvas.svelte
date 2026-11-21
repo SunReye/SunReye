@@ -339,14 +339,9 @@
     opacity: 1;
   }
   .ghost.fade {
-    transition: opacity 350ms var(--motion-ease, ease-out);
+    transition: opacity var(--motion-enter) var(--motion-ease);
   }
   .ghost.instant {
     transition: none;
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .ghost.fade {
-      transition: none;
-    }
   }
 </style>

@@ -1,8 +1,8 @@
 <script lang="ts">
   import Section from "../components/section.svelte";
+  import Segmented from "../components/segmented.svelte";
   import type { Core } from "../api/core";
   import { Badge, type BadgeVariant } from "#lib/components/ui/badge/index.js";
-  import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
   import LoadingRows from "../components/loading-rows.svelte";
   import { m } from "../paraglide/messages.js";
   import { getLocale } from "../paraglide/runtime.js";
@@ -30,17 +30,14 @@
 
 <Section card title={m.status_logs()}>
   {#snippet actions()}
-    <ToggleGroup.Root
-      type="single"
-      variant="outline"
-      size="sm"
-      aria-label={m.status_level()}
-      bind:value={() => filter, (next) => (filter = FILTERS.find(([id]) => id === next)?.[0] ?? filter)}
-    >
-      {#each FILTERS as [id, label] (id)}
-        <ToggleGroup.Item value={id} class="px-2.5 text-xs">{label()}</ToggleGroup.Item>
-      {/each}
-    </ToggleGroup.Root>
+    <Segmented
+      options={FILTERS.map(([id, label]) => [id, label()] as const)}
+      value={filter}
+      label={m.status_level()}
+      onchange={(next) => {
+        filter = next;
+      }}
+    />
   {/snippet}
   {#await answer}
     <LoadingRows rows={3} />

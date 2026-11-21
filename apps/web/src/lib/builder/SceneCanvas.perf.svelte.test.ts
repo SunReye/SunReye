@@ -7,12 +7,10 @@ import { quality } from "../scene/quality.svelte.ts";
 import { presetView } from "./camera.ts";
 import type { Geometry } from "./pv.ts";
 import SceneCanvas from "./SceneCanvas.svelte";
+import { settle } from "../motion/clock.harness.ts";
 
 // The scene's readout (ADR 21 "Measuring"): asked for with `?perf` on the URL. Asked for once,
 // it stays for the page's life, so the scene that shows none is the first here.
-
-// Software GL prepares the scene slowly while other suites run.
-const SLOW = { timeout: 12_000 };
 
 const house: Geometry = {
   faces: [
@@ -58,7 +56,7 @@ test("`?perf` lays a readout over the scene: what a frame draws, and what this b
   const readout = screen.getByRole("status", { name: "Leistungsanzeige" });
   const told = () => readout.query()?.textContent ?? "";
 
-  await expect.poll(told, SLOW).toMatch(/\d+ draws · \d+ tris · \d+ programs/u);
+  await settle(() => /\d+ draws · \d+ tris · \d+ programs/u.test(told()));
   expect(told()).toMatch(/\d+ fps · JS [\d.]+ ms · GPU (?:–|[\d.]+) ms/u);
   expect(told()).toMatch(/DPR 2 ·/u);
   expect(told()).toMatch(/shadow map 4096 · AO on · contact shadows on/u);
@@ -77,19 +75,19 @@ test("the readout's switches try a lighter drawing on this page, and keep nothin
   const readout = screen.getByRole("status", { name: "Leistungsanzeige" });
   const told = () => readout.query()?.textContent ?? "";
 
-  await expect.poll(told, SLOW).toMatch(/AO on · contact shadows on/u);
+  await settle(() => /AO on · contact shadows on/u.test(told()));
 
   await screen.getByRole("button", { name: "Umgebungsverdeckung" }).click();
   await screen.getByRole("button", { name: "Kontaktschatten" }).click();
-  await expect.poll(told, SLOW).toMatch(/AO off · contact shadows off/u);
+  await settle(() => /AO off · contact shadows off/u.test(told()));
   // The scene, and the picture onto the canvas: no pass of the occlusion's is left.
-  await expect.poll(told, SLOW).toMatch(/canvas \d+×\d+ · [23] passes/u);
+  await settle(() => /canvas \d+×\d+ · [23] passes/u.test(told()));
 
   await screen.getByRole("group", { name: "Pixelverhältnis" }).getByText("1.5").click();
-  await expect.poll(told, SLOW).toMatch(/DPR 1\.5 ·/u);
+  await settle(() => /DPR 1\.5 ·/u.test(told()));
 
   await screen.getByRole("group", { name: "Schattenkarte" }).getByText("1024").click();
-  await expect.poll(told, SLOW).toMatch(/shadow map 1024 ·/u);
+  await settle(() => /shadow map 1024 ·/u.test(told()));
 
   expect(quality.choice).toBe("high");
   expect(localStorage.getItem("sunreye.3d-quality")).toBe("high");

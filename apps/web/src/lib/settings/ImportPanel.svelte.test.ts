@@ -3,6 +3,7 @@ import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect, type ImportStatus, type Transport } from "../api/core.ts";
 import ImportPanel from "./ImportPanel.svelte";
+import { closed } from "../motion/animations.harness.ts";
 
 const SLUG = "inverter-v3";
 
@@ -86,12 +87,13 @@ test("an archive under /share imports into the chosen device once confirmed, its
   const screen = await render(ImportPanel, { core: connect(transport) });
 
   await screen.getByRole("radio", { name: "v3/export.tar.gz" }).click();
-  await screen.getByRole("button", { name: `${SLUG} Nicht importieren` }).click();
-  await screen.getByRole("menuitemradio", { name: "Wechselrichter (3)" }).click();
-  await userEvent.keyboard("{Escape}");
-  await expect
-    .element(screen.getByRole("button", { name: `${SLUG} Wechselrichter (3)` }))
-    .toBeVisible();
+  const pick = screen.getByRole("combobox", { name: SLUG });
+
+  await expect.element(pick).toHaveTextContent("Nicht importieren");
+  await pick.click();
+  await page.getByRole("option", { name: "Wechselrichter (3)" }).click();
+  await closed(page.getByRole("listbox"));
+  await expect.element(pick).toHaveTextContent("Wechselrichter (3)");
   expect(screen.container.querySelectorAll(BROWSER_DEFAULTS)).toHaveLength(0);
   await screen.getByRole("button", { name: "Importieren", exact: true }).click();
   await screen.getByRole("button", { name: "Jetzt importieren" }).click();
@@ -121,7 +123,7 @@ test("the import asks first, and cancelling sends nothing", async () => {
     .element(confirm.getByText("Importierter Verlauf lässt sich nicht wieder entfernen."))
     .toBeVisible();
   await confirm.getByRole("button", { name: "Abbrechen" }).click();
-  await expect.element(confirm).not.toBeInTheDocument();
+  await closed(confirm);
   expect(transport.sent).toEqual([]);
 });
 
@@ -138,8 +140,8 @@ test("an uploaded archive offers its devices, and one left unmapped is not sent"
     new File([new Uint8Array([0x1f, 0x8b])], "export.tar.gz"),
   );
   await expect
-    .element(screen.getByRole("button", { name: `${SLUG} Nicht importieren` }))
-    .toBeVisible();
+    .element(screen.getByRole("combobox", { name: SLUG }))
+    .toHaveTextContent("Nicht importieren");
   await screen.getByRole("button", { name: "Importieren", exact: true }).click();
   await screen.getByRole("button", { name: "Jetzt importieren" }).click();
 

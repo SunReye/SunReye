@@ -1,8 +1,9 @@
 <!-- Settings › Plant: the plant timezone and location, as set up on the first run. -->
 <script lang="ts">
-  import { toast } from "svelte-sonner";
+  import DrillCard from "../components/drill-in/drill-card.svelte";
   import type { Core } from "../api/core";
   import LoadingRows from "../components/loading-rows.svelte";
+  import { confirmed } from "../feedback.ts";
   import { m } from "../paraglide/messages.js";
   import PlantStep from "../setup/PlantStep.svelte";
 
@@ -20,7 +21,7 @@
   const current = $derived.by(() => load());
 </script>
 
-<div class="drill-card flex flex-col">
+<DrillCard class="flex flex-col">
   {#await current}
     <LoadingRows rows={3} />
   {:then plant}
@@ -29,8 +30,8 @@
       current={plant}
       action={m.settings_save()}
       ondone={() => {
-        toast.success(m.settings_saved());
+        confirmed(m.settings_saved());
       }}
     />
   {/await}
-</div>
+</DrillCard>

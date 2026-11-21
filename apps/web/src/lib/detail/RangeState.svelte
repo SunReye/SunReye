@@ -5,15 +5,15 @@
 -->
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
-  import { Button } from "#lib/components/ui/button/index.js";
-  import { haptics } from "../haptics.ts";
+  import LoadFailed from "../components/load-failed.svelte";
   import { m } from "../paraglide/messages.js";
+  import type { Problem } from "../api/client.ts";
   import type { HeadView } from "./head.svelte.ts";
 
   let {
     head = null,
     failed = false,
+    refused,
     onretry,
     children,
   }: {
@@ -21,26 +21,15 @@
     head?: HeadView | null;
     /** The panel's own read of the range failed, though the head's did not. */
     failed?: boolean;
+    /** Why the core refused the panel's own read. */
+    refused?: Problem | undefined;
     onretry: () => void;
     children: Snippet;
   } = $props();
 </script>
 
 {#if failed || head?.state === "error"}
-  <div class="flex flex-col items-start gap-3 py-6" role="alert">
-    <p class="flex items-center gap-2 text-sm">
-      <TriangleAlert class="size-4 shrink-0 text-warning" />
-      {m.detail_error()}
-    </p>
-    <Button
-      variant="outline"
-      size="sm"
-      onclick={() => {
-        haptics.light();
-        onretry();
-      }}>{m.stats_retry()}</Button
-    >
-  </div>
+  <LoadFailed text={m.detail_error()} refused={head?.refused ?? refused} {onretry} />
 {:else if head?.state === "before"}
   <p class="py-6 text-sm text-muted-foreground">{head.notes[0]}</p>
 {:else}

@@ -211,10 +211,16 @@ async function weakest(
   };
 }
 
-test(
-  "text and a toast's status icon on ambient glass keep AA contrast over the brightest light",
-  { timeout: 60_000 },
-  async () => {
+/** A test a screen, a theme and a tint: each fits vitest's budget beside the other files. */
+const CASES = SCREENS.flatMap((size) =>
+  (["light", "dark"] as const).flatMap((theme) =>
+    [undefined, ...TINTS].map((tint) => ({ size, theme, tint: tint ?? "none" })),
+  ),
+);
+
+test.for(CASES)(
+  "text and a toast's status icon on ambient glass keep AA contrast over the brightest light: $size.width px, $theme, $tint",
+  async (shown) => {
     const produce = plantStream();
     const hand = handBeat();
     const status = await statusInks();
@@ -242,7 +248,9 @@ test(
       return weakest(status[theme]);
     };
 
-    for (const picture of PICTURES) {
+    for (const picture of PICTURES.filter(
+      (p) => p.size === shown.size && p.theme === shown.theme && (p.tint ?? "none") === shown.tint,
+    )) {
       // oxlint-disable-next-line no-await-in-loop -- one picture at a time: each is set, then measured.
       const ratios = await measure(picture);
 

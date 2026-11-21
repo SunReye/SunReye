@@ -6,6 +6,7 @@ import "../../app.css";
 import { unfaded } from "../scroll-fade.harness.ts";
 import { tap } from "../builder/pointer.harness.ts";
 import ProfilePicker from "./ProfilePicker.svelte";
+import { closed } from "../motion/animations.harness.ts";
 
 /** A phone; the sheet lands at once. */
 beforeEach(async () => {
@@ -69,7 +70,7 @@ test("the admin finds their model by the family on its label and sees its rated 
   await tap(sheet.getByRole("button", { name: "SUN-15K-SG05LP3-EU-SM2 15 kW" }));
 
   expect(pick).toHaveBeenCalledWith("deye-sg05lp3", "15k");
-  await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+  await closed(page.getByRole("dialog"));
 });
 
 test("a device that is none of its family's variants is added as the family", async () => {

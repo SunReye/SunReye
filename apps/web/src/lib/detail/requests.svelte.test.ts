@@ -1,10 +1,17 @@
 // How many requests a detail sheet makes as it opens on the dashboard: a redundant read shows here.
-import { afterEach, beforeEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import "../../app.css";
-import { settled, tally } from "../api/core.harness.ts";
+import { settled, tally } from "../api/settled.harness.ts";
 import { asked, PLANT, prepare, requested, restore, show } from "./detail.harness.ts";
 
-beforeEach(prepare);
+beforeEach(async () => {
+  await prepare();
+  // The harness's clock, with the screen's timers on it as well, which `settled` runs on.
+  vi.useFakeTimers({
+    toFake: ["Date", "setTimeout", "clearTimeout"],
+    now: new Date("2026-11-12T12:20:00Z"),
+  });
+});
 
 afterEach(restore);
 

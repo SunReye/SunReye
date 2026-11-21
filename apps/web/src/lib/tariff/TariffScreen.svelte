@@ -5,7 +5,7 @@
 <script lang="ts">
   import Section from "../components/section.svelte";
   import PageTitle from "../components/page-title.svelte";
-  import ArrowRight from "@lucide/svelte/icons/arrow-right";
+  import TextLink from "../components/text-link.svelte";
   import type { Core } from "../api/core";
   import { m } from "../paraglide/messages.js";
   import RangeCard from "../range/RangeCard.svelte";
@@ -24,17 +24,13 @@
 >
   <PageTitle wide title={m.tariff_title()} />
   <PricesNow />
-  <RangeCard model={route}>
+  <RangeCard>
     <RangeControl model={route} />
     <Section title={m.tariff_costs()}>
       <Costs {core} {route} />
     </Section>
   </RangeCard>
-  <a
-    href="#/history?metric=money"
-    class="group flex items-center gap-2 self-start text-sm font-medium text-brand outline-none hover:underline focus-visible:underline"
-  >
+  <TextLink href="#/history?metric=money" onward class="self-start text-sm">
     {m.stats_open_history()}
-    <ArrowRight class="size-4 transition-transform group-hover:translate-x-0.5" />
-  </a>
+  </TextLink>
 </main>

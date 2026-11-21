@@ -1,10 +1,16 @@
-import { expect, test } from "vitest";
+import { tick } from "svelte";
+import { beforeEach, expect, test } from "vitest";
 import { userEvent, type Locator } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 // The chart is laid out and moved by the SPA's utilities and motion tokens.
 import "../../app.css";
 import type { Band, Via } from "./bands.ts";
+import { built } from "../chart-entrance/built.harness.ts";
 import BandChart from "./BandChart.svelte";
+import { finish, holdEntrances } from "../motion/animations.harness.ts";
+
+// Entrances held at their start: a test reads one before it has played out.
+beforeEach(holdEntrances);
 
 const band = (key: string, up: number): Band => ({
   key,
@@ -48,6 +54,38 @@ test("a new range moves the bars it has to their new values instead of redrawing
     .poll(() => before[0]!.querySelector<HTMLElement>(".seg")!.style.transform)
     .not.toBe(heights[0]);
   expect(bars(screen.container)).toEqual(before);
+});
+
+/** Each bar's entrance, if it builds. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the DOM's own type.
+const builds = (root: Element) => bars(root).map((bar) => built().find((b) => b.target === bar));
+
+test("the chart builds up as it first shows: bars grow from the baseline, one after another", async () => {
+  const screen = await render(BandChart, props([band("b0", 2), band("b1", 4), band("b2", 6)]));
+
+  await expect.poll(() => builds(screen.container).filter(Boolean)).toHaveLength(3);
+
+  const grows = builds(screen.container);
+
+  for (const g of grows) expect(g!.from).toMatchObject({ scale: "1 0", opacity: "0" });
+  expect(grows[1]!.delay).toBeGreaterThan(grows[0]!.delay);
+  expect(grows[2]!.delay).toBeGreaterThan(grows[1]!.delay);
+});
+
+test("a chart already shown does not build again: a new range's bars tween", async () => {
+  const screen = await render(BandChart, props([band("b0", 2), band("b1", 4)]));
+
+  await expect.poll(() => builds(screen.container).filter(Boolean)).toHaveLength(2);
+
+  await finish();
+
+  await expect.poll(() => builds(screen.container).filter(Boolean)).toHaveLength(0);
+
+  await screen.rerender(props([band("b0", 6), band("b1", 4), band("b2", 2)], 2));
+  await tick();
+
+  expect(bars(screen.container)).toHaveLength(3);
+  expect(builds(screen.container).filter(Boolean)).toEqual([]);
 });
 
 test("a change of range eases in and out", async () => {

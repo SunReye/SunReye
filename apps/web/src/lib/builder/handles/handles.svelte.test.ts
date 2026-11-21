@@ -3,14 +3,11 @@ import { afterEach, expect, test } from "vitest";
 import { cdp, page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { presetView, type View } from "../camera.ts";
-import { house, press, pv, type Pointer } from "../builder.harness.ts";
+import { house, type Pointer, press, pv, settle } from "../builder.harness.ts";
 import type { Point, Scene } from "../pv.ts";
 import type { Projector } from "../drawing.svelte.ts";
 import SceneCanvas from "../SceneCanvas.svelte";
 import { handles, type Target, type Triple } from "./grips.ts";
-
-// Software GL renders the sky and shadows slowly while other suites run.
-const SLOW = { timeout: 15_000 };
 
 const BLOCK: Target = { kind: "block", index: 0 };
 
@@ -53,7 +50,7 @@ async function stage(scene: Scene, target = BLOCK) {
     },
   });
 
-  await expect.poll(() => ready, SLOW).toBe(true);
+  await settle(() => ready);
 
   const canvas = screen.getByLabelText("3D-Szene des Hauses").element().getBoundingClientRect();
 
@@ -147,7 +144,7 @@ test("a drag on open ground orbits and drags nothing", async () => {
     [x + 120, y],
   ]);
 
-  await expect.poll(() => views.length, SLOW).toBeGreaterThan(0);
+  await settle(() => views.length > 0);
   expect(dragged).toEqual([]);
 });
 
@@ -173,6 +170,8 @@ test("the live value shows beside the handle while it drags", async () => {
 
   const value = page.getByRole("status").getByText(/^1[12],\d m$/u);
 
+  // A drag's move lands on the frame after it: the test's.
+  await settle(() => value.query() !== null);
   await expect.element(value).toBeVisible();
 
   await cdp().send("Input.dispatchMouseEvent", {
@@ -217,7 +216,7 @@ async function twoFingers(
   await cdp().send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
 }
 
-test("two fingers spreading zoom in and drag nothing", SLOW, async () => {
+test("two fingers spreading zoom in and drag nothing", async () => {
   const scene = house().scene;
   const { dragged, views, corner } = await stage(scene);
   const start = presetView("isometric", pv.geometry(scene));
@@ -234,34 +233,30 @@ test("two fingers spreading zoom in and drag nothing", SLOW, async () => {
     ],
   );
 
-  await expect.poll(() => views.length, SLOW).toBeGreaterThan(0);
+  await settle(() => views.length > 0);
   expect(distance(views.at(-1) ?? start)).toBeLessThan(distance(start));
   expect(dragged).toEqual([]);
 });
 
-test(
-  "two fingers on the selected house zoom too: the first finger's drag is let go",
-  SLOW,
-  async () => {
-    const scene = house().scene;
-    const { dragged, views, onPage } = await stage(scene);
-    const start = presetView("isometric", pv.geometry(scene));
-    const [x, y] = onPage([5, 0, 4]);
+test("two fingers on the selected house zoom too: the first finger's drag is let go", async () => {
+  const scene = house().scene;
+  const { dragged, views, onPage } = await stage(scene);
+  const start = presetView("isometric", pv.geometry(scene));
+  const [x, y] = onPage([5, 0, 4]);
 
-    await twoFingers(
-      [
-        [x - 20, y],
-        [x + 20, y],
-      ],
-      [
-        [x - 100, y],
-        [x + 100, y],
-      ],
-    );
+  await twoFingers(
+    [
+      [x - 20, y],
+      [x + 20, y],
+    ],
+    [
+      [x - 100, y],
+      [x + 100, y],
+    ],
+  );
 
-    await expect.poll(() => views.length, SLOW).toBeGreaterThan(0);
-    expect(distance(views.at(-1) ?? start)).toBeLessThan(distance(start));
-    // Whatever the first finger moved is put back, and nothing is recorded.
-    expect(dragged.at(-1) ?? scene).toEqual(scene);
-  },
-);
+  await settle(() => views.length > 0);
+  expect(distance(views.at(-1) ?? start)).toBeLessThan(distance(start));
+  // Whatever the first finger moved is put back, and nothing is recorded.
+  expect(dragged.at(-1) ?? scene).toEqual(scene);
+});

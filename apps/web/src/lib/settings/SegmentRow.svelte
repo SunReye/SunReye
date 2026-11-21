@@ -1,8 +1,8 @@
 <!-- A settings row that picks one of a few: its name, a line of status, and a segmented control. -->
-<script lang="ts">
+<script lang="ts" generics="T extends string">
   import type { Snippet } from "svelte";
   import * as Item from "#lib/components/ui/item/index.js";
-  import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
+  import Segmented from "../components/segmented.svelte";
 
   let {
     label,
@@ -13,13 +13,13 @@
     children,
   }: {
     label: string;
-    value: string;
+    value: T;
     /** Each option's value and its text. */
-    options: readonly (readonly [string, string])[];
+    options: readonly (readonly [T, string])[];
     /** Under the label: what the choice does here and now. */
     hint?: string | undefined;
-    /** The segment pressed; empty when it is the chosen one again. */
-    onchange: (next: string) => void;
+    /** A segment the user chose, other than the current one. */
+    onchange: (next: T) => void;
     /** Under the hint: an action the status calls for. */
     children?: Snippet;
   } = $props();
@@ -33,17 +33,6 @@
     {@render children?.()}
   </Item.Content>
   <Item.Actions>
-    <ToggleGroup.Root
-      type="single"
-      size="sm"
-      spacing={1}
-      bind:value={() => value, onchange}
-      class="rounded-md p-0.5 ring-1 ring-border/60"
-      aria-label={label}
-    >
-      {#each options as [option, text] (option)}
-        <ToggleGroup.Item value={option} class="px-3 text-xs">{text}</ToggleGroup.Item>
-      {/each}
-    </ToggleGroup.Root>
+    <Segmented {options} {value} {label} {onchange} />
   </Item.Actions>
 </Item.Root>

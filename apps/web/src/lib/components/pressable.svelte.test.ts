@@ -2,6 +2,7 @@ import { createRawSnippet } from "svelte";
 import { expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
+import { haptics } from "../haptics.ts";
 import { Pressable } from "./ui/pressable/index.js";
 
 const children = createRawSnippet(() => ({ render: () => `<span>Batterie</span>` }));
@@ -40,4 +41,31 @@ test("a disabled pressable takes no press", async () => {
 
   await expect.element(screen.getByRole("button")).toBeDisabled();
   expect(getComputedStyle(screen.getByRole("button").element()).pointerEvents).toBe("none");
+});
+
+test("a pressable that toggles ticks on each press; one that picks, only when it picks anew", async () => {
+  const selection = vi.spyOn(haptics, "selection");
+  const screen = await render(Pressable, { children, "aria-pressed": true });
+
+  await screen.getByRole("button").click();
+  expect(selection).toHaveBeenCalledOnce();
+
+  await screen.rerender({ "aria-pressed": undefined, "aria-selected": true });
+  await screen.getByRole("button").click();
+  expect(selection).toHaveBeenCalledOnce();
+
+  await screen.rerender({ "aria-selected": false });
+  await screen.getByRole("button").click();
+  expect(selection).toHaveBeenCalledTimes(2);
+  selection.mockRestore();
+});
+
+test("a plain pressable is silent", async () => {
+  const selection = vi.spyOn(haptics, "selection");
+  const screen = await render(Pressable, { children });
+
+  await screen.getByRole("button").click();
+
+  expect(selection).not.toHaveBeenCalled();
+  selection.mockRestore();
 });

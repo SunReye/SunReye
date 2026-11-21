@@ -1,11 +1,13 @@
-import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, onTestFinished, test, vi } from "vitest";
 import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../../app.css";
 import { HAPTICS } from "../../haptics.ts";
+import { framesUntil, realTimers } from "../../motion/clock.harness.ts";
 import { motion } from "../../motion/tier.svelte.ts";
 import { editable, type Outcome } from "./editable.ts";
 import ValueEditor from "./value-editor.svelte";
+import { closed } from "../../motion/animations.harness.ts";
 
 const CHARGE = editable({
   key: "battery.max_charge_current",
@@ -141,7 +143,7 @@ test("apply reads old → new and writes the new value", async () => {
   await userEvent.click(change);
 
   expect(onapply).toHaveBeenCalledExactlyOnceWith(80);
-  await expect.element(page.getByRole("spinbutton")).not.toBeInTheDocument();
+  await closed(page.getByRole("spinbutton"));
 });
 
 test("the editor shows pending until its caller reports the outcome", async () => {
@@ -157,8 +159,7 @@ test("the editor shows pending until its caller reports the outcome", async () =
   await expect.element(pending).toBeDisabled();
 
   write.resolve({ kind: "confirmed" });
-
-  await expect.element(page.getByRole("spinbutton")).not.toBeInTheDocument();
+  await closed(page.getByRole("spinbutton"));
 });
 
 test("a refusal stays open with its reason until the value changes", async () => {
@@ -244,6 +245,9 @@ test("arrows move a time's hours and minutes and apply writes minutes since midn
 });
 
 test("a finger dragging the hour wheel up moves to a later hour", async () => {
+  // The finger's speed and the wheel's landing on the test's clock.
+  vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] });
+  onTestFinished(realTimers);
   await editor(undefined, START, 6 * 60);
 
   const hour = page.getByRole("spinbutton", { name: "Stunde" });
@@ -275,12 +279,10 @@ test("a finger dragging the hour wheel up moves to a later hour", async () => {
   for (const dy of [10, 30, 50, 70, 88]) touch("pointermove", y - dy);
 
   // The finger rests before it lifts, so the wheel lands where it was let go, without a fling.
-  await new Promise((resolve) => {
-    setTimeout(resolve, 100);
-  });
+  vi.advanceTimersByTime(100);
   touch("pointerup", y - 88);
 
-  await expect.element(hour).toHaveAttribute("aria-valuetext", "08");
+  await framesUntil(() => wheel.getAttribute("aria-valuetext") === "08");
 });
 
 test("with low power on the wheel lands without a frame", async () => {

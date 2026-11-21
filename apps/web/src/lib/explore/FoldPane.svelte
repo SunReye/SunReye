@@ -4,9 +4,9 @@
 -->
 <script lang="ts">
   import ChartColumn from "@lucide/svelte/icons/chart-column";
-  import { Button } from "#lib/components/ui/button/index.js";
   import * as Empty from "#lib/components/ui/empty/index.js";
   import { Skeleton } from "#lib/components/ui/skeleton/index.js";
+  import LoadFailed from "../components/load-failed.svelte";
   import { m } from "../paraglide/messages.js";
   import FoldChart from "./FoldChart.svelte";
   import FoldPeriods from "./FoldPeriods.svelte";
@@ -60,17 +60,8 @@
     {#if got === null}
       <Skeleton class="w-full rounded-md" style="height: {rest}px" />
     {:else if got.failed}
-      <div
-        class="flex flex-col items-start justify-center gap-3"
-        style:min-height="{rest}px"
-        role="alert"
-      >
-        <p class="text-sm text-muted-foreground">{m.explore_fold_error()}</p>
-        <Button
-          variant="outline"
-          size="sm"
-          onclick={fold.retry}>{m.explore_fold_retry()}</Button
-        >
+      <div class="flex flex-col justify-center" style:min-height="{rest}px">
+        <LoadFailed text={m.explore_fold_error()} refused={got.refused} onretry={fold.retry} />
       </div>
     {:else if got.rows.length === 0}
       {@render said(chosen.label, m.explore_fold_empty({ name: chosen.label }))}

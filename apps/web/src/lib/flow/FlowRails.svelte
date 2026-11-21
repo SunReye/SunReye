@@ -5,7 +5,7 @@
   Tiers: full = comet chains, lite = one travelling dashed cable, still = a plain lit rail.
 -->
 <script lang="ts">
-  import { fade } from "svelte/transition";
+  import { fade, MOTION_MS } from "../motion.ts";
   import type { MotionTier } from "../motion/tier.ts";
   import type { RailPulse } from "./flow-pulse.ts";
   import type { Direction, RailLine } from "./schematic.ts";
@@ -29,7 +29,7 @@
 
   // A rail that reverses is a different group (the key carries the flow), so the old charge fades
   // out while the new one fades in instead of teleporting to the mirrored point.
-  const fadeMs = $derived(still ? 0 : 300);
+  const fadeMs = $derived(still ? 0 : MOTION_MS.slow);
 
   const overlayClass = (flow: Direction): string => {
     if (still) return "";
@@ -98,7 +98,7 @@
   .lite-flow {
     stroke-dasharray: 10 14;
     /* Stepped: 12 repaints a crossing instead of 60 a second, and it still reads as travel. */
-    animation: flow-dash var(--flow-dur, 2s) steps(12, end) infinite;
+    animation: flow-dash var(--flow-dur) steps(12, end) infinite;
   }
   .lite-flow-out {
     animation-direction: reverse;

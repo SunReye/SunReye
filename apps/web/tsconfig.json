@@ -6,5 +6,5 @@
     "exactOptionalPropertyTypes": true,
     "verbatimModuleSyntax": true
   },
-  "include": ["src", "e2e", "vite.config.ts"]
+  "include": ["src", "e2e", "vite.config.ts", "scene-tests.ts"]
 }

@@ -1,11 +1,13 @@
 <!--
-  The gliding marks of the live graph. Ported from v3 (dev 780b4e2: the `clippedMarks` snippet of
-  live-area.svelte with power-area.svelte and diverging-area.svelte). One `transform` on the group
-  scrolls the marks between samples; the data and scales change only when a sample lands.
+  The live graph's layer: its kW axis, a diverging series' zero line, and the gliding marks. The
+  marks are ported from v3 (dev 780b4e2: the `clippedMarks` snippet of live-area.svelte with
+  power-area.svelte and diverging-area.svelte). One `transform` on the group scrolls the marks
+  between samples; the data and scales change only when a sample lands.
 -->
 <script lang="ts">
-  import { Area, ChartClipPath, getChartContext } from "layerchart";
+  import { Area, Axis, ChartClipPath, getChartContext, Rule } from "layerchart";
   import { curveMonotoneX } from "d3-shape";
+  import { KW_AXIS } from "../chart-axis.ts";
   import { glideTransform } from "./live-window.ts";
 
   let {
@@ -49,6 +51,9 @@
 
   const zero = $derived(Math.min(1, Math.max(0, zeroY() / Math.max(1, ctx.height))));
 </script>
+
+<Axis {...KW_AXIS} />
+{#if diverging}<Rule y={0} class="stroke-foreground/30" />{/if}
 
 <defs>
   {#if diverging}

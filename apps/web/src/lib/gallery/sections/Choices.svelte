@@ -6,6 +6,7 @@
   import * as Select from "../../components/ui/select/index.js";
   import { Slider } from "../../components/ui/slider/index.js";
   import { Switch } from "../../components/ui/switch/index.js";
+  import Segmented from "../../components/segmented.svelte";
   import Demo from "../Demo.svelte";
 
   const ZONES = [
@@ -16,6 +17,14 @@
 
   let zone = $state("berlin");
   let level = $state(40);
+  let kind = $state("day");
+  let view = $state("3d");
+
+  const KINDS = [
+    ["day", "Day"],
+    ["week", "Week"],
+    ["month", "Month"],
+  ] as const;
 </script>
 
 <Demo name="checkbox">
@@ -23,6 +32,42 @@
   <Checkbox checked aria-label="Checked" />
   <Checkbox indeterminate aria-label="Indeterminate" />
   <Checkbox disabled aria-label="Disabled" />
+</Demo>
+
+<Demo name="segmented">
+  <Segmented
+    options={KINDS}
+    value={kind}
+    label="Range"
+    onchange={(next) => {
+      kind = next;
+    }}
+  />
+  <div class="w-64">
+    <Segmented
+      options={KINDS}
+      value={kind}
+      label="Range, full width"
+      fill
+      onchange={(next) => {
+        kind = next;
+      }}
+    />
+  </div>
+  <div class="rounded-md bg-muted p-4">
+    <Segmented
+      options={[
+        ["3d", "3D"],
+        ["2d", "2D"],
+      ]}
+      value={view}
+      label="View, over the canvas"
+      canvas
+      onchange={(next) => {
+        view = next;
+      }}
+    />
+  </div>
 </Demo>
 
 <Demo name="radio-group">

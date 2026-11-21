@@ -5,14 +5,14 @@
 <script lang="ts">
   import TextField from "../components/text-field.svelte";
   import PageTitle from "../components/page-title.svelte";
-  import GlassCard from "../components/glass-card.svelte";
+  import * as Card from "#lib/components/ui/card/index.js";
   import type { Core, Problem } from "../api/core.ts";
   import { Button } from "#lib/components/ui/button/index.js";
   import { haptics } from "../haptics.ts";
   import LocaleSwitch from "../LocaleSwitch.svelte";
   import { m } from "../paraglide/messages.js";
   import AccountSwitch from "./AccountSwitch.svelte";
-  import Refusal from "./Refusal.svelte";
+  import Refusal, { answered } from "./Refusal.svelte";
 
   let { core, onsignedin }: { core: Core; onsignedin: () => void } = $props();
 
@@ -27,7 +27,7 @@
   async function submit(event: SubmitEvent): Promise<void> {
     event.preventDefault();
     haptics.light();
-    refused = await core.signIn(password, account === "viewer" ? name.trim() : undefined);
+    refused = answered(await core.signIn(password, account === "viewer" ? name.trim() : undefined));
 
     if (refused === undefined) onsignedin();
   }
@@ -36,7 +36,7 @@
 <main class="grid min-h-dvh place-items-center px-4 py-10">
   <div class="flex w-full max-w-sm flex-col gap-5">
     <PageTitle brand class="px-1" title={m.signin_title()} />
-    <GlassCard element="form" raised onsubmit={submit} class="flex flex-col gap-4 p-4">
+    <Card.Root element="form" onsubmit={submit} class="gap-4 p-4">
       <AccountSwitch bind:account />
       {#if account === "viewer"}
         <TextField label={m.signin_name()} autocomplete="username" required bind:value={name} />
@@ -49,7 +49,7 @@
       <Button type="submit" class="w-full">
         {m.signin_submit()}
       </Button>
-    </GlassCard>
+    </Card.Root>
     <div class="flex justify-center"><LocaleSwitch /></div>
   </div>
 </main>

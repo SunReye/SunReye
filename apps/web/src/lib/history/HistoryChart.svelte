@@ -2,19 +2,20 @@
   One series over the route's range, a band per hour, day or month: a power series as its energy,
   any other as its mean. Today, a series with a forecast draws it as History's forecast chart does:
   a tick at each hour's forecast so far, and a faint bar of the whole forecast of each hour not yet
-  over. A new range tweens the bars from the figures they showed (ADR 21).
+  over. A new range tweens the bars from the figures they showed (ADR 21); a failed read stands in
+  their place with its retry.
 -->
 <script lang="ts">
   import type { Core } from "../api/core.ts";
+  import LoadFailed from "../components/load-failed.svelte";
   import { forecastIn, planned } from "../forecast/forecast.ts";
   import { m } from "../paraglide/messages.js";
   import BandChart from "../range/BandChart.svelte";
   import { describe, isSignedFlow, keyOf, sidesOf } from "../roles.ts";
   import { bandsOf } from "../range/fill.ts";
-  import { kwh, num } from "../range/format.ts";
   import { RangeData } from "../range/range-data.svelte.ts";
   import type { RangeRoute } from "../range/route.svelte.ts";
-  import { bandFigure, isPower, periodOf, rollups } from "./history.ts";
+  import { bandFigure, isPower, periodOf, readsOf, rollups } from "./history.ts";
 
   let {
     core,
@@ -54,16 +55,6 @@
       return { series: s, points, plans: plans.length > 0 ? plans.flat() : null };
     },
   );
-
-  /** How a series' figures are written, and what one of its units is worth in them. */
-  function readsOf(s: string) {
-    if (isPower(s)) return { fmt: kwh, unit: "kWh", per: 1 };
-
-    if (s.startsWith("price."))
-      return { fmt: (v: number) => `${num(v, 2)} ct/kWh`, unit: "ct/kWh", per: 100 };
-
-    return { fmt: (v: number) => num(v, 1), unit: "", per: 1 };
-  }
 
   const LOADING = {
     loading: true,
@@ -169,6 +160,9 @@
   const reads = $derived(readsOf(series));
 </script>
 
+{#if data.failed}
+  <LoadFailed text={m.detail_error()} refused={data.refused} onretry={data.retry} />
+{:else}
 <BandChart
   bands={view.bands}
   up={view.up ?? meta}
@@ -191,3 +185,4 @@
   onbrush={data.brush}
   {onread}
 />
+{/if}

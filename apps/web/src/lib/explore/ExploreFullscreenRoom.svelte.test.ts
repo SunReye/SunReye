@@ -3,6 +3,7 @@ import { page } from "vitest/browser";
 // The screen is laid out by the SPA's utilities.
 import "../../app.css";
 import { reset, show } from "./explore.harness.ts";
+import { settle } from "../motion/clock.harness.ts";
 
 afterEach(reset);
 
@@ -38,6 +39,11 @@ function undrawn(): number {
 
 const bottom = (of: Element | null) => of?.getBoundingClientRect().bottom ?? Number.NaN;
 
+/** Until `off` is under a pixel: the chart lays itself out to the sizes it is told. */
+async function fits(off: () => number): Promise<void> {
+  await settle(() => off() < 1);
+}
+
 test.for([
   { mode: "series", query: "s=1:pv.power", end: lanes },
   {
@@ -56,14 +62,14 @@ test.for([
     await screen.getByRole("button", { name: "Vollbild", exact: true }).click();
     await expect.element(screen.getByRole("button", { name: "Vollbild beenden" })).toBeVisible();
 
-    await expect.poll(() => Math.abs(bottom(end()) - floor())).toBeLessThan(1);
-    await expect.poll(undrawn).toBeLessThan(1);
+    await fits(() => Math.abs(bottom(end()) - floor()));
+    await fits(undrawn);
 
     // The same screen turned, as a phone is: the chart has to shrink to the shorter window.
     await page.viewport(870, 400);
 
-    await expect.poll(() => Math.abs(bottom(end()) - floor())).toBeLessThan(1);
-    await expect.poll(undrawn).toBeLessThan(1);
+    await fits(() => Math.abs(bottom(end()) - floor()));
+    await fits(undrawn);
     expect(floor()).toBeGreaterThan(380);
     expect(floor()).toBeLessThanOrEqual(400);
 

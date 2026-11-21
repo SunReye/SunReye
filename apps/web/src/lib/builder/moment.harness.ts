@@ -2,6 +2,7 @@
 import { toast } from "svelte-sonner";
 import { expect, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
+import { finish } from "../motion/animations.harness.ts";
 import { starts } from "./builder.harness.ts";
 
 /** Picks `day` (`YYYY-MM-DD`) in the calendar of the day button labelled `label`. */
@@ -25,7 +26,8 @@ export async function pickDay(label: string, day: string): Promise<void> {
   if (cell === null) throw new Error(`no day ${day}`);
 
   await userEvent.click(cell);
-  await expect.poll(() => calendar.query()).toBeNull();
+  // The popover leaves after a frame and its fade: both on the test's step.
+  await finish(() => calendar.query() === null);
 }
 
 /** Scrubs the time slider to `minutes` since midnight, a quarter hour per arrow key. */

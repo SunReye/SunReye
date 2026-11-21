@@ -33,12 +33,8 @@
       }}
       aria-haspopup={control.writable ? "dialog" : undefined}
       aria-disabled={!control.writable}
-      class={[
-        props.class,
-        "text-left",
-        control.writable ? " " : "cursor-default",
-        active && "bg-muted",
-      ]}
+      selected={active}
+      class={[props.class, "text-left", !control.writable && "cursor-default"]}
     >
       <Item.Content>
         <Item.Title class="text-[15px] leading-snug font-normal text-wrap"

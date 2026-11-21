@@ -5,7 +5,6 @@ import { PLANT } from "../api/core.ts";
 import { rollups, type Rolled } from "../history/history.ts";
 import { t0Of, t1Of } from "../range/range.ts";
 import { pvShareOf, sessionsOf, type PlantHours, type Session } from "./ev.ts";
-import { strict } from "./measure.ts";
 import type { RangeInput, RangeReader } from "./sheet-range.svelte.ts";
 
 export interface EvInput extends RangeInput {
@@ -32,10 +31,9 @@ export const EV_RANGE: RangeReader<EvInput, EvRead, EvView | null> = {
   load: async (input, from, to, now) => {
     const { core, device } = input();
     const until = new Date(Math.min(to.getTime(), now));
-    const sure = strict(core);
 
     const read = (id: number, series: string) =>
-      from < until ? rollups(sure, id, series, "hour", from, until) : Promise.resolve([]);
+      from < until ? rollups(core, id, series, "hour", from, until) : Promise.resolve([]);
 
     const [charge, load, imported, discharge] = await Promise.all([
       read(device, "ev.charge.power"),

@@ -1,9 +1,14 @@
-// A finger on a bottom drawer (vaul), for component tests.
+// A finger on a bottom drawer (vaul), for component tests. vaul reads a drag's time off `Date`,
+// which the test fakes (`vi.useFakeTimers({ toFake: ["Date"] })`) and this harness moves on.
 import { expect, vi } from "vitest";
+import { finish } from "../motion/animations.harness.ts";
+
+/** How long vaul ignores drags on a drawer just opened, in ms. */
+const OPENING_MS = 500;
 
 /**
  * Puts a finger on `drawer` and moves it `dy` px down; the returned function lifts it at `dy`.
- * A drawer ignores drags while it opens, so the press repeats until the drawer follows.
+ * A drawer ignores drags while it opens, so its entrance is ended and the clock moved past it.
  */
 export async function press(drawer: Element, dy: number): Promise<() => void> {
   if (!(drawer instanceof HTMLElement)) throw new TypeError("no drawer");
@@ -24,7 +29,8 @@ export async function press(drawer: Element, dy: number): Promise<() => void> {
     );
 
   // A press while the entrance plays would read its keyframes as a drag.
-  await expect.poll(() => drawer.getAnimations().length).toBe(0);
+  await finish(() => drawer.getAnimations().length === 0);
+  vi.setSystemTime(Date.now() + OPENING_MS);
 
   // The drag writes its offset inline.
   const dragged = () => drawer.style.transform.includes(`${dy}px`);
@@ -48,16 +54,11 @@ export async function press(drawer: Element, dy: number): Promise<() => void> {
 
 /**
  * Lifts a finger that held still: the drawer tells a fling by the drag's speed on the clock, so
- * the clock reads later while the finger lifts and no test waits the hold out.
+ * the clock moves on before the finger lifts.
  */
 export function held(release: () => void): void {
-  vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + 400 });
-
-  try {
-    release();
-  } finally {
-    vi.useRealTimers();
-  }
+  vi.setSystemTime(Date.now() + 400);
+  release();
 }
 
 /** Pulls `drawer` `dy` px down and lets go there. */

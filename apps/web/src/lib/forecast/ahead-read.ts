@@ -1,7 +1,7 @@
 // The PV forecast sheet's read (ADR 21 "Details by drilling down"): the plant's forecast from the
 // judged days before today to the end of the day after tomorrow, each string's or MPPT input's
 // over the three days, its inverters' measured days and the sky (ADR 17 "Storage", ADR 23).
-import type { Core, PvString } from "../api/core.ts";
+import { settleRead, type Core, type PvString, type Settled } from "../api/core.ts";
 import type { Target } from "../dashboard/today.ts";
 import { readForecast } from "../history/forecast.ts";
 import { rollups, type Rolled } from "../history/history.ts";
@@ -54,9 +54,18 @@ function lines(
 
 /**
  * The sheet's read for the day that starts at `start`, a plant midnight in `zone`, as of `now`;
- * null for a plant without a layout.
+ * null for a plant without a layout. Settled: a failure keeps the core's reason.
  */
-export async function readAhead(
+export function readAhead(
+  core: AheadReader,
+  zone: string,
+  start: Readonly<Date>,
+  now: Readonly<Date>,
+): Promise<Settled<Ahead | null>> {
+  return settleRead(read(core, zone, start, now));
+}
+
+async function read(
   core: AheadReader,
   zone: string,
   start: Readonly<Date>,

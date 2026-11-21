@@ -3,11 +3,11 @@
   costs, Cancel and the action. A refusal stays beside the action; success closes it with a toast.
 -->
 <script lang="ts">
-  import { toast } from "svelte-sonner";
   import type { Problem } from "../api/core";
   import { Button } from "#lib/components/ui/button/index.js";
+  import { confirmed } from "../feedback.ts";
   import { m } from "../paraglide/messages.js";
-  import Refusal from "../setup/Refusal.svelte";
+  import Refusal, { answered } from "../setup/Refusal.svelte";
   import ResponsiveSheet from "./responsive-sheet.svelte";
 
   let {
@@ -35,14 +35,14 @@
 
   async function confirm(): Promise<void> {
     busy = true;
-    refused = await onconfirm();
+    refused = answered(await onconfirm());
     busy = false;
 
     if (refused !== undefined) return;
 
     open = false;
 
-    if (done !== undefined) toast.success(done);
+    if (done !== undefined) confirmed(done);
   }
 </script>
 

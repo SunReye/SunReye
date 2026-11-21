@@ -10,17 +10,18 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import { Skeleton } from "#lib/components/ui/skeleton/index.js";
+  import LoadFailed from "../components/load-failed.svelte";
   import type { Day } from "../dashboard/day.ts";
   import DayTabs from "../detail/DayTabs.svelte";
   import { m } from "../paraglide/messages.js";
-  import { readAhead, type Ahead, type AheadReader } from "./ahead-read.ts";
+  import { readAhead, type AheadReader } from "./ahead-read.ts";
   import { shown } from "./ahead-shown.ts";
   import DayBelow from "./DayBelow.svelte";
   import ForecastDay from "./ForecastDay.svelte";
 
   let {
     core,
-    day: read,
+    day,
   }: {
     core: AheadReader;
     /** Today as the dashboard read it; undefined until it has. */
@@ -32,34 +33,42 @@
   /** A sheet section, as the other details' (ADR 21). */
   const FRAME = "flex flex-col gap-3 border-t border-border/60 px-5 pt-4 pb-4 sm:px-6";
 
-  const zone = $derived(read?.zone);
-  const start = $derived(read?.start.getTime());
-  const now = $derived(read?.now.getTime() ?? 0);
+  /** A day's tabs, chart and facts at a phone's width, in px: the placeholder's, loading or empty. */
+  const DAYS_HEIGHT = 436;
+
+  const zone = $derived(day?.zone);
+  const start = $derived(day?.start.getTime());
+  const now = $derived(day?.now.getTime() ?? 0);
 
   // The hour in progress: the forecast is issued anew as the weather's lands, so each new hour
   // reads again.
-  const hour = $derived(read === undefined ? undefined : Math.floor(read.now.getTime() / HOUR));
+  const hour = $derived(day === undefined ? undefined : Math.floor(day.now.getTime() / HOUR));
 
   /** What was read; null for a plant without a layout, undefined until it is read. */
-  let ahead = $state.raw<Ahead | null>();
+  let read = $state.raw<Awaited<ReturnType<typeof readAhead>>>();
+
+  const ahead = $derived(read === undefined || read.failed ? undefined : read.data);
+
+  /** Raised to read again after a failure. */
+  let again = $state(0);
 
   $effect(() => {
     if (zone === undefined || start === undefined || hour === undefined) return;
+
+    void again;
 
     let current = true;
 
     // Read as of the dashboard's last read, which the figures of what was measured stand for.
     // Neither it nor the core reads again inside the hour: the sheet hands the same core over
     // anew as its own reads land.
-    const [reader, asOf] = untrack(() => [core, read?.now.getTime() ?? hour * HOUR]);
+    const [reader, asOf] = untrack(() => [core, day?.now.getTime() ?? hour * HOUR]);
 
-    void readAhead(reader, zone, new Date(start), new Date(asOf))
-      .catch(() => null)
-      .then((got) => {
-        if (current) ahead = got;
+    void readAhead(reader, zone, new Date(start), new Date(asOf)).then((got) => {
+      if (current) read = got;
 
-        return got;
-      });
+      return got;
+    });
 
     return () => {
       current = false;
@@ -67,9 +76,7 @@
   });
 
   const view = $derived(
-    !ahead || read === undefined || zone === undefined
-      ? null
-      : shown(ahead, read.rows, zone, now),
+    !ahead || day === undefined || zone === undefined ? null : shown(ahead, day.rows, zone, now),
   );
 
   /** Whether any day expects anything; undefined until read. */
@@ -80,12 +87,26 @@
 
 {#if zone === undefined || view === null || !forecast}
   <section class={FRAME} aria-label={m.ahead_days()}>
-    {#if forecast === false}
-      <p class="flex h-[190px] items-center justify-center text-xs text-muted-foreground">
+    {#if read?.failed}
+      <div class="flex flex-col justify-center" style:height="{DAYS_HEIGHT}px">
+        <LoadFailed
+          text={m.ahead_unread()}
+          refused={read.refused}
+          onretry={() => {
+            read = undefined;
+            again++;
+          }}
+        />
+      </div>
+    {:else if forecast === false}
+      <p
+        class="flex items-center justify-center text-xs text-muted-foreground"
+        style:height="{DAYS_HEIGHT}px"
+      >
         {m.ahead_none()}
       </p>
     {:else}
-      <Skeleton class="h-[440px]" role="status" aria-label={m.loading()} />
+      <Skeleton style="height: {DAYS_HEIGHT}px" role="status" aria-label={m.loading()} />
     {/if}
   </section>
 {:else}

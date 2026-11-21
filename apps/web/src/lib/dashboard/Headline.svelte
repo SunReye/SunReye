@@ -4,8 +4,8 @@
   grid.
 -->
 <script lang="ts">
-  import SceneFailed from "./SceneFailed.svelte";
   import type { Live } from "../api/core.ts";
+  import LoadFailed from "../components/load-failed.svelte";
   import PowerNumber from "../components/power-number.svelte";
   import { m } from "../paraglide/messages.js";
   import HeadlineFigures from "./HeadlineFigures.svelte";
@@ -68,5 +68,13 @@
   {#if figures && plant !== undefined}
     <HeadlineFigures {plant} {producing} {onselect} />
   {/if}
-  {#if onretry}<SceneFailed {onretry} />{/if}
+  {#if onretry}
+    <!-- Quiet, beside the figure it does not change: the flow below serves without the 3D scene. -->
+    <LoadFailed
+      size="quiet"
+      class="pointer-events-auto mt-1.5"
+      text={m.dash_scene_failed()}
+      {onretry}
+    />
+  {/if}
 </div>

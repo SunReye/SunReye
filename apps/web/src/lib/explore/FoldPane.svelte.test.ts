@@ -1,7 +1,8 @@
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 // The pane is laid out by the SPA's utilities.
 import "../../app.css";
+import { haptics } from "../haptics.ts";
 import { fold, plant, reset } from "./fold.harness.ts";
 
 afterEach(reset);
@@ -43,6 +44,8 @@ test("a month folds by day: a row per day with statistics, its energy the core's
 });
 
 test("the table sorts by a column, and the other way on a second press", async () => {
+  const selection = vi.spyOn(haptics, "selection");
+
   await desk();
 
   const { screen } = await fold("pv.power");
@@ -62,6 +65,9 @@ test("the table sorts by a column, and the other way on a second press", async (
 
   await expect.element(mean).toHaveAttribute("aria-sort", "ascending");
   expect(periods(table)).toEqual(["Sa., 3. Oktober", "So., 4. Oktober", "Do., 1. Oktober"]);
+  // Each press ticks once.
+  expect(selection).toHaveBeenCalledTimes(2);
+  selection.mockRestore();
 
   await table.getByRole("button", { name: "Nach Max sortieren" }).click();
 
@@ -150,6 +156,8 @@ test("refused statistics are said, not drawn as an empty range", async () => {
   await expect
     .element(screen.getByText("Die Statistik konnte nicht geladen werden."))
     .toBeVisible();
+  // The core's reason, from its refusal.
+  await expect.element(screen.getByText("Dieser Zeitraum ist leer oder zu lang.")).toBeVisible();
   expect(screen.getByRole("table").query()).toBeNull();
 });
 
@@ -159,4 +167,45 @@ test("a series the catalog does not list has nothing stored, and the pane says s
   const { screen } = await fold("pv.voltage");
 
   await expect.element(screen.getByText(/nichts aufgezeichnet/u)).toBeVisible();
+});
+
+test("the legend reads the day under the pointer, the month between days, and a finger's day stays", async () => {
+  await desk();
+
+  const { screen } = await fold("pv.power");
+  const chart = screen.getByRole("img", { name: "PV · Leistung je Zeitraum" });
+
+  await expect.element(chart).toBeVisible();
+
+  const box = chart.element().getBoundingClientRect();
+  // October has 31 days; a day's middle stands at (day − ½) / 31 of the axis.
+  const x = (day: number) => box.left + (box.width * (day - 0.5)) / 31;
+  const y = box.top + box.height / 2;
+
+  const point = (type: string, day: number, pointerType = "mouse") => {
+    chart
+      .element()
+      .dispatchEvent(
+        new PointerEvent(type, { clientX: x(day), clientY: y, pointerType, bubbles: true }),
+      );
+  };
+
+  /** The legend's title. */
+  const title = () =>
+    chart.element().closest("figure")!.querySelector("figcaption span")!.textContent;
+
+  const month = title();
+
+  point("pointermove", 1);
+  await expect.poll(title).toContain("1. Oktober");
+
+  // No statistics on the 2nd: the month is read.
+  point("pointermove", 2);
+  await expect.poll(title).toBe(month);
+
+  point("pointerleave", 2);
+  point("pointerdown", 4, "touch");
+  point("pointerup", 4, "touch");
+  point("pointerleave", 4, "touch");
+  await expect.poll(title).toContain("4. Oktober");
 });

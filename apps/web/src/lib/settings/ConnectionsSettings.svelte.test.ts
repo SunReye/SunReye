@@ -8,6 +8,7 @@ import { feed } from "../live/stream.harness.ts";
 import type { Connection } from "../api/core.ts";
 import { FakeCore } from "./devices.harness.ts";
 import Routed from "./routed.harness.svelte";
+import { closed } from "../motion/animations.harness.ts";
 
 /** A phone; levels land at once. */
 beforeEach(async () => {
@@ -39,7 +40,7 @@ const BROKER: Connection = {
   secrets: ["password", "username"],
 };
 
-test("an admin adds an MQTT connection and an EVCC device; its loadpoint shows on the dashboard", async () => {
+test("an admin adds an MQTT connection with its credentials", async () => {
   const core = new FakeCore();
   const settings = await opened(core, "connections");
 
@@ -47,6 +48,7 @@ test("an admin adds an MQTT connection and an EVCC device; its loadpoint shows o
   await userEvent.fill(settings.getByRole("textbox", { name: "Name" }), "EVCC");
   await userEvent.click(settings.getByRole("combobox", { name: "Übertragung" }));
   await userEvent.click(page.getByRole("option", { name: "mqtt", exact: true }));
+  await closed(page.getByRole("listbox"));
   await userEvent.fill(settings.getByRole("textbox", { name: "Host" }), "evcc.lan");
   await userEvent.fill(settings.getByRole("textbox", { name: "Topic-Wurzel" }), "evcc");
   await userEvent.fill(settings.getByRole("textbox", { name: "Benutzername" }), "sunreye");
@@ -54,7 +56,15 @@ test("an admin adds an MQTT connection and an EVCC device; its loadpoint shows o
   await settings.getByRole("button", { name: "Verbindung hinzufügen" }).click();
 
   await expect.element(settings.getByRole("button", { name: /^EVCC/u })).toBeVisible();
-  await settings.unmount();
+  expect(core.calls).toEqual([
+    'POST /api/v1/connections {"name":"EVCC","transport":"mqtt","host":"evcc.lan","port":1883,"topicRoot":"evcc","secrets":{"username":"sunreye","password":"hunter2"}}',
+  ]);
+});
+
+test("on an MQTT connection the admin adds an EVCC device by its loadpoint", async () => {
+  const core = new FakeCore();
+
+  core.connections.push(BROKER);
 
   const devices = await opened(core, "devices");
 
@@ -62,24 +72,31 @@ test("an admin adds an MQTT connection and an EVCC device; its loadpoint shows o
   await devices.getByRole("button", { name: "Auf einer Verbindung hinzufügen" }).click();
   await userEvent.click(devices.getByRole("combobox", { name: "Verbindung" }));
   await userEvent.click(page.getByRole("option", { name: "EVCC · mqtt", exact: true }));
+  await closed(page.getByRole("listbox"));
   await devices.getByRole("button", { name: "Profil", exact: true }).click();
   await userEvent.fill(page.getByRole("searchbox", { name: "Profil suchen" }), "evcc");
   await page.getByRole("button", { name: /^Loadpoint/u }).click();
+  await closed(page.getByRole("dialog"));
   await expect.element(devices.getByRole("button", { name: /^Ladepunkt 1/u })).toBeVisible();
   await userEvent.fill(devices.getByRole("textbox", { name: "Name" }), "Wallbox");
   await devices.getByRole("button", { name: "Gerät hinzufügen" }).click();
 
   await expect.element(devices.getByRole("button", { name: /^Wallbox/u })).toBeVisible();
   expect(core.calls).toEqual([
-    'POST /api/v1/connections {"name":"EVCC","transport":"mqtt","host":"evcc.lan","port":1883,"topicRoot":"evcc","secrets":{"username":"sunreye","password":"hunter2"}}',
-    'POST /api/v1/devices {"connection":11,"name":"Wallbox","profile":"evcc","unit":1,"writes":false}',
+    'POST /api/v1/devices {"connection":2,"name":"Wallbox","profile":"evcc","unit":1,"writes":false}',
   ]);
-  await devices.unmount();
+});
 
+test("an EVCC device's loadpoint shows on the dashboard", async () => {
+  const core = new FakeCore();
+
+  core.connections.push(BROKER);
+  core.devices.push({ id: 12, connection: 2, name: "Wallbox", profile: "evcc", unit: 1 });
   // The core reads the loadpoint it was given.
   feed()({
     devices: { "12": { "ev.charge.power": 3700, "ev.vehicle.soc": 64, "ev.limit.soc": 80 } },
   });
+
   const dashboard = await render(Dashboard, { core: connect(core), layout: null, admin: true });
 
   await expect.element(dashboard.getByText("Wallbox")).toBeVisible();
@@ -131,7 +148,7 @@ test("a connection a device uses is kept with the reason; an unused one is remov
     .element(kept.getByRole("alert"))
     .toHaveTextContent("Ein Gerät nutzt diese Verbindung noch.");
   await kept.getByRole("button", { name: "Abbrechen" }).click();
-  await expect.element(kept).not.toBeInTheDocument();
+  await closed(kept);
 
   await screen.getByRole("button", { name: "Verbindungen" }).click();
   await screen.getByRole("button", { name: /^EVCC/u }).click();

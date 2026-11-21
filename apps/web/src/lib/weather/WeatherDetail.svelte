@@ -6,12 +6,13 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import { Skeleton } from "#lib/components/ui/skeleton/index.js";
+  import LoadFailed from "../components/load-failed.svelte";
   import type { Day } from "../dashboard/day.ts";
   import { m } from "../paraglide/messages.js";
   import { DAYS, daySpans, hourly } from "./hourly.ts";
   import { skyOf } from "./sky.ts";
   import { SKY_WORDS } from "./sky-words.ts";
-  import { readWeatherSources, type WeatherReader, type WeatherSources } from "./weather.ts";
+  import { readWeatherSettled, type WeatherReader } from "./weather.ts";
   import WeatherDays from "./WeatherDays.svelte";
 
   let {
@@ -28,13 +29,21 @@
   /** A sheet section, as the other details' (ADR 21). */
   const FRAME = "flex flex-col gap-3 border-t border-border/60 px-5 pt-4 pb-4 sm:px-6";
 
+  /** A day's tabs, rows and facts at a phone's width, in px: the placeholder's, loading or empty. */
+  const HOURS_HEIGHT = 572;
+
   const zone = $derived(day?.zone);
   const start = $derived(day?.start.getTime());
 
   // The hour in progress: its measurements land as it passes, so each new hour reads again.
   const hour = $derived(day === undefined ? undefined : Math.floor(day.now.getTime() / HOUR));
 
-  let sources = $state.raw<WeatherSources>();
+  let read = $state.raw<Awaited<ReturnType<typeof readWeatherSettled>>>();
+
+  const sources = $derived(read?.failed === false ? read.data : undefined);
+
+  /** Raised to read again after a failure. */
+  let again = $state(0);
 
   /** The sky's word now, as the strip says it; null where nothing tells. */
   const sky = $derived.by(() => {
@@ -46,6 +55,8 @@
   $effect(() => {
     if (zone === undefined || start === undefined || hour === undefined) return;
 
+    void again;
+
     const end = daySpans(zone, new Date(start), DAYS).at(-1)?.[1] ?? start;
     let current = true;
     // Read once an hour: the sheet hands the same core over anew as its own reads land.
@@ -54,9 +65,10 @@
     void (async () => {
       // History to the close of the hour in progress: today's alone, so it is read raw.
       const measuredTo = new Date((hour + 1) * HOUR);
-      const read = await readWeatherSources(reader, new Date(start), new Date(end), measuredTo);
 
-      if (current) sources = read;
+      const got = await readWeatherSettled(reader, new Date(start), new Date(end), measuredTo);
+
+      if (current) read = got;
     })();
 
     return () => {
@@ -79,12 +91,26 @@
 
 {#if days === null || zone === undefined || !stored}
   <section class={FRAME} aria-label={m.weather_hourly()}>
-    {#if stored === false}
-      <p class="flex h-[190px] items-center justify-center text-xs text-muted-foreground">
+    {#if read?.failed}
+      <div class="flex flex-col justify-center" style:height="{HOURS_HEIGHT}px">
+        <LoadFailed
+          text={m.weather_error()}
+          refused={read.refused}
+          onretry={() => {
+            read = undefined;
+            again++;
+          }}
+        />
+      </div>
+    {:else if stored === false}
+      <p
+        class="flex items-center justify-center text-xs text-muted-foreground"
+        style:height="{HOURS_HEIGHT}px"
+      >
         {m.weather_none()}
       </p>
     {:else}
-      <Skeleton class="h-[440px]" role="status" aria-label={m.loading()} />
+      <Skeleton style="height: {HOURS_HEIGHT}px" role="status" aria-label={m.loading()} />
     {/if}
   </section>
 {:else}

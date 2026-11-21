@@ -4,7 +4,6 @@
   import ChevronDown from "@lucide/svelte/icons/chevron-down";
   import * as Collapsible from "#lib/components/ui/collapsible/index.js";
   import { Pressable } from "#lib/components/ui/pressable/index.js";
-  import { haptics } from "../haptics.ts";
   import type { PickerGroup, PickerSeries } from "./picker.ts";
   import type { SeriesRef } from "./view.ts";
 
@@ -36,13 +35,10 @@
         <Pressable
           feedback
           aria-pressed={on}
+          selected={on}
           disabled={off}
-          class={[
-            "flex min-h-10 w-full items-center gap-2 px-4 py-1.5 text-left touch:min-h-12",
-            on && "bg-foreground/[0.05]",
-          ]}
+          class="flex min-h-10 w-full items-center gap-2 px-4 py-1.5 text-left touch:min-h-12"
           onclick={() => {
-            haptics.selection();
             onpick(each.ref);
           }}
         >

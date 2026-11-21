@@ -5,6 +5,7 @@ import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { perSeries as eachSeries } from "../api/core.harness.ts";
 import type { WeatherReader } from "./weather.ts";
+import { sheetContext } from "../detail/in-sheet.ts";
 import WeatherDetail from "./WeatherDetail.svelte";
 
 export const WEATHER = 4_294_967_295;
@@ -21,6 +22,8 @@ export const each = (of: (hour: number) => number | null): readonly (number | nu
 interface Stored {
   readonly history?: Readonly<Record<string, Series>>;
   readonly forecasts?: Readonly<Record<string, Series>>;
+  /** The code the core refuses the forecasts with, as asked; none while it answers. */
+  readonly refused?: string | undefined;
 }
 
 /** A core holding `stored`, and each device it was asked for. */
@@ -28,7 +31,7 @@ function fake(stored: Stored) {
   const devices: number[] = [];
 
   const hours = (
-    source: keyof Stored,
+    source: "history" | "forecasts",
     series: string,
   ): readonly Readonly<{ at: number; value: number }>[] =>
     (stored[source]?.[series] ?? []).flatMap((value, i) =>
@@ -50,6 +53,8 @@ function fake(stored: Stored) {
     }),
     forecasts: eachSeries((device, series: string) => {
       devices.push(device);
+
+      if (stored.refused !== undefined) return { problem: stored.refused };
 
       return {
         points: hours("forecasts", series).map(({ at, value }) => ({
@@ -108,7 +113,12 @@ export const DRY = {
 export async function show(stored: Parameters<typeof fake>[0]) {
   await page.viewport(390, 800);
   const { core, devices } = fake(stored);
-  const screen = await render(WeatherDetail, { core, day: DAY });
+
+  // The sheet the weather opens in, whose charts read a held finger.
+  const screen = await render(WeatherDetail, {
+    props: { core, day: DAY },
+    context: sheetContext(),
+  });
 
   return { screen, devices };
 }

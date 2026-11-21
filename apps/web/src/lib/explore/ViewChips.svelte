@@ -4,7 +4,6 @@
 -->
 <script lang="ts">
   import { Pressable } from "#lib/components/ui/pressable/index.js";
-    import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
   import type { View } from "./saved.ts";
 
@@ -37,7 +36,6 @@
               : "border-border/60 text-muted-foreground hover:text-foreground",
           ]}
           onclick={() => {
-            haptics.selection();
             onopen(view);
           }}
         >

@@ -67,9 +67,7 @@
     haptics.soft();
   }
 
-  function navigate(route: string): void {
-    if (route !== current) haptics.selection();
-
+  function navigate(): void {
     touchCollapsed = true;
   }
 </script>
@@ -142,9 +140,7 @@
             {item}
             active={current === item.route}
             {expanded}
-            onnavigate={() => {
-              navigate(item.route);
-            }}
+            onnavigate={navigate}
           />
         </li>
       {/each}
@@ -156,9 +152,7 @@
           item={SETTINGS}
           active={current === SETTINGS.route}
           {expanded}
-          onnavigate={() => {
-            navigate(SETTINGS.route);
-          }}
+          onnavigate={navigate}
         />
       </li>
       <li class="flex h-8 items-center gap-2">
@@ -175,16 +169,17 @@
     transform: translateX(-6px);
     pointer-events: none;
     transition:
-      opacity 150ms var(--motion-ease),
-      transform 150ms var(--motion-ease);
+      opacity var(--motion-exit) var(--motion-ease-exit),
+      transform var(--motion-exit) var(--motion-ease-exit);
   }
 
   .rail[data-expanded="true"] :global(.label) {
     opacity: 1;
     transform: none;
     pointer-events: auto;
+    /* After a third of a base step, so the rail has started to open. */
     transition:
-      opacity 220ms var(--motion-ease) 60ms,
-      transform 220ms var(--motion-ease) 60ms;
+      opacity var(--motion-slow) var(--motion-ease) calc(var(--motion-base) / 3),
+      transform var(--motion-slow) var(--motion-ease) calc(var(--motion-base) / 3);
   }
 </style>

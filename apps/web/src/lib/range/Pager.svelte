@@ -8,23 +8,18 @@
   A pane that is asked for again while it leaves is taken back, so a reversed switch continues from
   where it is. Only `transform` and `opacity` move.
 -->
-<script lang="ts" module>
-  export interface Travel {
-    kind: "slide" | "shift" | "keep";
-    dir: -1 | 0 | 1;
-  }
-</script>
-
 <script lang="ts" generics="T">
   import { untrack, type Snippet } from "svelte";
   import { spring, tween } from "../animate.ts";
+  import { slideTiming } from "../motion/slide.ts";
   import { motion } from "../motion/tier.svelte.ts";
+  import { EXIT_MS, SPRINGS } from "../motion/values.ts";
   import Pane from "./Pane.svelte";
+  import type { Travel } from "./travel.svelte.ts";
   import { drag } from "./pager-drag.ts";
 
   const GAP = 24;
   const SHIFT = 12;
-  const EXIT = 150;
 
   let {
     id,
@@ -165,7 +160,7 @@
       setTimeout(() => {
         timers.delete(gone);
         panes = panes.filter((p) => !(p.uid === gone && p.out));
-      }, EXIT + 20),
+      }, EXIT_MS + 20),
     );
   }
 
@@ -188,10 +183,12 @@
 
     const to = -slot * width();
 
+    const { duration, easing } = slideTiming();
+
     stop =
       releaseV === null
-        ? tween(x, to, 300, setX, settle)
-        : spring(x, to, setX, { velocity: releaseV, stiffness: 320, damping: 36 }, settle);
+        ? tween(x, to, duration, setX, settle, easing)
+        : spring(x, to, setX, { ...SPRINGS.pager, velocity: releaseV }, settle);
     releaseV = null;
   }
 
@@ -278,7 +275,7 @@
   }
 </script>
 
-<div class="pager" bind:this={root} style:--after="{after}ms">
+<div class="pager" bind:this={root} style:--after="{motion.still ? 0 : after}ms">
   <div class="track" bind:this={track}>
     {#each panes as p (p.uid)}
       <div
@@ -308,8 +305,8 @@
   }
   .inner {
     transition:
-      opacity 220ms var(--motion-ease) var(--after),
-      transform 220ms var(--motion-ease) var(--after);
+      opacity var(--motion-slow) var(--motion-ease) var(--after),
+      transform var(--motion-slow) var(--motion-ease) var(--after);
   }
   @starting-style {
     .inner.fade {
@@ -322,7 +319,7 @@
     opacity: 0;
     transform: translateX(var(--from));
     transition:
-      opacity 150ms ease-in,
-      transform 150ms ease-in;
+      opacity var(--motion-exit) var(--motion-ease-exit),
+      transform var(--motion-exit) var(--motion-ease-exit);
   }
 </style>

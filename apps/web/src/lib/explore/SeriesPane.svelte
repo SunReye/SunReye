@@ -8,7 +8,7 @@
   import { m } from "../paraglide/messages.js";
   import LanePlot from "./LanePlot.svelte";
   import type { PaneProps } from "./mode.ts";
-  import { Pointer } from "./pointer.svelte.ts";
+  import { timeReading } from "./pointer.ts";
   import { figuresOf } from "./series-chart.ts";
   import SeriesLegend from "./SeriesLegend.svelte";
   import { SeriesView } from "./series-view.svelte.ts";
@@ -25,24 +25,14 @@
   /** In fullscreen the pane is as tall as the window leaves, and the lanes take its rest. */
   const least = $derived(props.full === true ? `${props.height}px` : null);
 
-  let plot = $state<HTMLElement | null>(null);
-
-  const pointer = new Pointer(() => ({
-    plot,
+  const pointer = timeReading(() => ({
     from: chart?.from ?? 0,
     to: chart?.to ?? 0,
     onbrush: view.narrow,
   }));
 </script>
 
-{#if props.catalog === "failed"}
-  <p
-    class="grid place-items-center rounded-md border border-dashed border-border/60 px-4 text-center text-sm text-muted-foreground"
-    style:height="{props.height}px"
-  >
-    {m.explore_chart_unread()}
-  </p>
-{:else if !chart}
+{#if !chart}
   <Skeleton style="height: {props.height}px" role="status" aria-label={m.loading()} />
 {:else}
   <div
@@ -65,7 +55,6 @@
       {pointer}
       fill={props.full}
       bind:room={view.room}
-      bind:plot
     />
   </div>
 {/if}

@@ -54,7 +54,7 @@ const POINTS: ReadonlyMap<string, Statistics["points"]> = new Map([
   ],
 ]);
 
-/** `refused`: the core refuses statistics. `asked`: every statistics read, as its query. */
+/** `refused`: the core refuses statistics, as a range too long. `asked`: every statistics read, as its query. */
 export const plant = { refused: false, asked: new Array<URLSearchParams>() };
 
 export function reset(): void {
@@ -83,6 +83,11 @@ function transport(): Transport {
           })),
         );
       }
+
+      if (read === "statistics")
+        return Promise.resolve(
+          Response.json({ status: 422, code: "history.range" }, { status: 422 }),
+        );
 
       return Promise.resolve(Response.json({ status: 404, code: "not.found" }, { status: 404 }));
     },

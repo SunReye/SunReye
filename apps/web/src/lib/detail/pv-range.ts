@@ -15,7 +15,7 @@ import { m } from "../paraglide/messages.js";
 import { grainOf } from "../range/range.ts";
 import { peakFact, type RangeAt } from "./facts.ts";
 import type { Fact } from "./figures.ts";
-import { strict, type MeasureCore } from "./measure.ts";
+import type { MeasureCore } from "./measure.ts";
 import type { RangeInput, RangeReader } from "./sheet-range.svelte.ts";
 
 /** What the range read: its highest rollup, and its energy measured and forecast in kWh. */
@@ -79,7 +79,7 @@ async function hottestOf(
   const [from, until] = [new Date(span.from), new Date(span.until)];
 
   const rolled = await Promise.all(
-    devices.map((d) => rollups(strict(core), d, TEMPERATURE, span.period, from, until)),
+    devices.map((d) => rollups(core, d, TEMPERATURE, span.period, from, until)),
   );
 
   return highest(rolled.flat());
@@ -109,7 +109,7 @@ async function readPv(core: PvCore, a: PvSource, span: Readonly<PvSpan>): Promis
   const supported = supportOf(core);
 
   const [rolled, forecast, support, hottest] = await Promise.all([
-    ran ? rollups(strict(core), a.device, a.series, span.period, from, until) : [],
+    ran ? rollups(core, a.device, a.series, span.period, from, until) : [],
     forecastOf(core, a, span),
     supported,
     // A failed temperature read states none, and leaves the peak and forecast standing.

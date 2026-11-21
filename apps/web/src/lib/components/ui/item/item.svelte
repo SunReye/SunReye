@@ -2,8 +2,8 @@
 	import { tv, type VariantProps } from "tailwind-variants";
 
 	export const itemVariants = tv({
-		// Local: duration from the motion item, not upstream's duration-100 (ADR 0003).
-		base: "[a]:hover:bg-muted rounded-md border text-sm group/item flex w-full flex-wrap items-center transition-colors duration-(--motion-base) outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 [a]:transition-colors",
+		// Local: duration from the motion item, not upstream's duration-100 (ADR 0003); a link row takes the app's one tint (pressable/tint.ts) under the pointer, the keyboard and a press, not bg-muted (#836).
+		base: "[a]:hover:bg-foreground/[0.04] [a]:focus-visible:bg-foreground/[0.06] [a]:active:bg-foreground/[0.08] rounded-md border text-sm group/item flex w-full flex-wrap items-center transition-colors duration-(--motion-base) outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 [a]:transition-colors",
 		variants: {
 			variant: {
 				default: "border-transparent",

@@ -1,9 +1,8 @@
 <!-- "Verschieben nach …": every point the open one may hang under, indented as in the tree. -->
 <script lang="ts">
-  import Eyebrow from "../components/eyebrow.svelte";
   import type { PointDraft } from "../api/core.ts";
-  import * as RadioGroup from "../components/ui/radio-group/index.js";
-  import { haptics } from "../haptics.ts";
+  import SelectField from "../components/select-field.svelte";
+  import type { Choice } from "../components/select/choices.ts";
   import { m } from "../paraglide/messages.js";
   import { roleOf } from "./point-look.ts";
   import PointTile from "./PointTile.svelte";
@@ -21,31 +20,30 @@
     targets(points, index).flatMap((at) => {
       const point = points[at];
 
-      return point === undefined ? [] : [{ at, name: point.name, role: roleOf(point) }];
+      return point === undefined ? [] : [{ value: String(at), label: point.name }];
     }),
   );
 </script>
 
-<fieldset class="flex flex-col gap-1">
-  <Eyebrow element="legend" class="pb-2">{m.topology_move()}</Eyebrow>
-  <RadioGroup.Root
-    class="gap-1"
-    aria-label={m.topology_move()}
-    value={String(points[index]?.parent ?? "")}
-    onValueChange={(at) => {
-      haptics.selection();
-      onmove(Number(at));
-    }}
+{#snippet item({ value, label }: Choice)}
+  {@const at = Number(value)}
+  {@const point = points[at]}
+  <span
+    class="flex min-w-0 items-center gap-3"
+    style:padding-left="{Math.min(depth[at] ?? 0, 4) * 16}px"
   >
-    {#each options as { at, name, role } (at)}
-      <label
-        class="flex min-h-12 cursor-pointer items-center gap-3 rounded-md px-2 hover:bg-foreground/[0.04] has-data-[state=checked]:bg-foreground/[0.06]"
-        style:padding-left="{8 + Math.min(depth[at] ?? 0, 4) * 16}px"
-      >
-        <RadioGroup.Item value={String(at)} />
-        <PointTile {role} active={false} />
-        <span class="truncate text-[15px]">{name}</span>
-      </label>
-    {/each}
-  </RadioGroup.Root>
-</fieldset>
+    {#if point}<PointTile role={roleOf(point)} active={false} />{/if}
+    <span class="truncate">{label}</span>
+  </span>
+{/snippet}
+
+<SelectField
+  field
+  label={m.topology_move()}
+  value={String(points[index]?.parent ?? "")}
+  {options}
+  {item}
+  onchange={(at) => {
+    onmove(Number(at));
+  }}
+/>

@@ -32,12 +32,16 @@ export interface Plant {
   strings: number;
   /** Every read fails until `heal`. */
   broken: boolean;
+  /** The code the core refuses every statistics read with; null while it answers. */
+  refused: string | null;
   /** History waits for this. */
   gate: Promise<void> | null;
   /** The core has measured the battery's capacity. */
   measured: boolean;
   /** Three months of savings set a pace. */
   paced: boolean;
+  /** The code the core refuses payback with; null while it answers. */
+  paybackRefused: string | null;
 }
 
 const PLANT_DEFAULTS: Plant = {
@@ -45,9 +49,11 @@ const PLANT_DEFAULTS: Plant = {
   age: 400,
   strings: 2,
   broken: false,
+  refused: null,
   gate: null,
   measured: true,
   paced: true,
+  paybackRefused: null,
 };
 
 export const plant: Plant = { ...PLANT_DEFAULTS };
@@ -113,6 +119,9 @@ function costs(q: Query): Response {
 
 /** 3000 € of 12 000 € saved at 1200 € a year: paid back in November 2033. */
 function payback(): Response {
+  if (plant.paybackRefused !== null)
+    return Response.json({ status: 500, code: plant.paybackRefused }, { status: 500 });
+
   return Response.json({
     investment: 12_000,
     remaining: 9000,
@@ -243,6 +252,9 @@ function transport(urls: string[]): Transport {
       const plantRead = /\/(history|statistics)$/u.test(url.pathname);
 
       if (plant.broken && plantRead) throw new TypeError("network");
+
+      if (plant.refused !== null && url.pathname.endsWith("/statistics"))
+        return Response.json({ status: 422, code: plant.refused }, { status: 422 });
 
       if (plant.gate && plantRead) await plant.gate;
 

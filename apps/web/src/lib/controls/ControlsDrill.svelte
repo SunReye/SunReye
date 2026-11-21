@@ -1,5 +1,6 @@
 <!-- Controls' groups on the drill-in (ADR 21), or a note when no device declares a setting. -->
 <script lang="ts">
+  import DrillCard from "../components/drill-in/drill-card.svelte";
   import DrillIn from "../components/drill-in/drill-in.svelte";
   import { m } from "../paraglide/messages.js";
   import { getLocale } from "../paraglide/runtime.js";
@@ -58,7 +59,7 @@
       {#snippet page(group)}
         {@const shown = groups.find((g) => g.id === group.id)}
         {#if shown?.id === "schedule"}
-          <div class="drill-card">
+          <DrillCard>
             <ScheduleRows
               group={shown}
               {value}
@@ -68,9 +69,9 @@
               {onedit}
               {onset}
             />
-          </div>
+          </DrillCard>
         {:else if shown}
-          <div class="drill-card">
+          <DrillCard>
             <ControlRows
               group={shown}
               {text}
@@ -78,7 +79,7 @@
               {editing}
               {onedit}
             />
-          </div>
+          </DrillCard>
         {/if}
       {/snippet}
     </DrillIn>

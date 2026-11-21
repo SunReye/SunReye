@@ -1,12 +1,17 @@
-<!-- The range's label between its arrows; a swipe on it steps too, and the label rolls the way it went. -->
+<!--
+  The range's label between its arrows; a swipe on it steps too (in a range card, the card's), and
+  the label rolls the way it went.
+-->
 <script lang="ts">
   import ChevronLeft from "@lucide/svelte/icons/chevron-left";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import { Button } from "#lib/components/ui/button/index.js";
   import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
-  import Pager, { type Travel } from "./Pager.svelte";
-  import { swipe } from "./swipe.ts";
+  import { cardOf } from "./card-surface.ts";
+  import Pager from "./Pager.svelte";
+  import type { Travel } from "./travel.svelte.ts";
+  import { swipe } from "./pager-drag.ts";
 
   let {
     label,
@@ -24,6 +29,9 @@
 
   let went: -1 | 0 | 1 = 0;
 
+  // In a range card the card's drag takes the swipe, so one gesture steps once.
+  const own = cardOf() === null;
+
   function stepBy(to: -1 | 1): void {
     if (to < 0 ? !canPrev : !canNext) return;
     haptics.selection();
@@ -39,7 +47,7 @@
   }
 </script>
 
-<div class="flex items-center justify-between gap-1" {@attach swipe(stepBy)}>
+<div class="flex items-center justify-between gap-1" {@attach own && swipe(stepBy)}>
   <Button
     variant="ghost"
     size="icon-sm"

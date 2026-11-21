@@ -13,7 +13,7 @@
   import type { PaneProps } from "./mode.ts";
   import { OverlayView } from "./overlay-view.svelte.ts";
   import OverlayPeriods from "./OverlayPeriods.svelte";
-  import { Pointer } from "./pointer.svelte.ts";
+  import { timeReading } from "./pointer.ts";
   import SeriesLegend from "./SeriesLegend.svelte";
 
   let { plotted = $bindable(), ...props }: PaneProps = $props();
@@ -32,24 +32,14 @@
   /** In fullscreen the pane is as tall as the window leaves, and the lanes take its rest. */
   const least = $derived(props.full === true ? `${props.height}px` : null);
 
-  let plot = $state<HTMLElement | null>(null);
-
-  const pointer = new Pointer(() => ({
-    plot,
+  const pointer = timeReading(() => ({
     from: chart?.from ?? 0,
     to: chart?.to ?? 0,
     onbrush: null,
   }));
 </script>
 
-{#if props.catalog === "failed"}
-  <p
-    class="grid place-items-center rounded-md border border-dashed border-border/60 px-4 text-center text-sm text-muted-foreground"
-    style:height="{props.height}px"
-  >
-    {m.explore_chart_unread()}
-  </p>
-{:else if view.state === "unstored"}
+{#if view.state === "unstored"}
   <Empty.Root style="min-height: {props.height}px">
     <Empty.Header>
       <Empty.Media variant="icon"><ChartSpline /></Empty.Media>
@@ -97,7 +87,6 @@
           {pointer}
           fill={props.full}
           bind:room={view.room}
-          bind:plot
         />
       </div>
     {/if}

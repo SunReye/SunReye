@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, expect, test } from "vitest";
-import { userEvent, type Locator } from "vitest/browser";
+import { cdp, userEvent, type Locator } from "vitest/browser";
 import "../../app.css";
 import { asked, PLANT, prepare, restore, rollup, served, show } from "./detail.harness.ts";
+import { settle } from "../motion/clock.harness.ts";
+import { built } from "../chart-entrance/built.harness.ts";
+import { holdEntrances } from "../motion/animations.harness.ts";
 
 beforeEach(prepare);
 
@@ -18,6 +21,18 @@ test("a sheet's range steps, and History opens at it", async () => {
     .toHaveAttribute("href", "#/history?range=day&at=2026-11-11");
 });
 
+test("a sheet's way onward is the text link: underlined under the pointer", async () => {
+  const { screen } = await show("production");
+
+  const onward = screen.getByRole("dialog", { name: "Produktion" }).getByRole("link", {
+    name: /Im Verlauf öffnen/u,
+  });
+
+  await userEvent.hover(onward);
+
+  await expect.poll(() => getComputedStyle(onward.element()).textDecorationLine).toBe("underline");
+});
+
 /** The figure the legend states beside `term`. */
 const valueOf = (root: Readonly<Locator>, term: string) =>
   root.getByRole("term").filter({ hasText: term }).element().nextElementSibling?.textContent;
@@ -29,6 +44,8 @@ test("today's production states the forecast so far and what is still expected, 
   const forecast = overview.getByRole("term").filter({ hasText: "Prognose" });
   const drawn = () => overview.element().querySelectorAll(".mark.on, .seg.opacity-30").length;
 
+  // The day is read and drawn, as long as it takes.
+  await settle(() => forecast.query() !== null);
   // 2 kWh an hour from 10:00 to 14:00, and it is 12:20.
   await expect.poll(() => valueOf(overview, "Prognose")).toBe("4,7 kWh");
   await expect.poll(() => valueOf(overview, "noch erwartet")).toBe("3,3 kWh");
@@ -125,6 +142,10 @@ test("the heat tab reads the range's hours and draws them on one canvas", async 
   );
 });
 
+/** How many columns the heat grid has read: a pointer or a key reads its column off them. */
+const columns = (grid: Readonly<Locator>) =>
+  grid.element().nextElementSibling?.nextElementSibling?.children.length;
+
 /** A mouse press, move and release on `el` from column `a` to column `b` of `n`. */
 function drag(el: Element, n: number, a: number, b: number): void {
   const box = el.getBoundingClientRect();
@@ -153,6 +174,7 @@ test("dragging across the heat grid's days narrows the range to them", async () 
   const grid = sheet.getByRole("group", { name: /Produktion nach Tageszeit/u });
 
   await expect.element(grid).toBeVisible();
+  await expect.poll(() => columns(grid)).toBe(7);
   drag(grid.element(), 7, 1, 2);
 
   await expect
@@ -169,6 +191,7 @@ test("keys select a span of the heat grid's days, which narrows the range", asyn
   const grid = sheet.getByRole("group", { name: /Produktion nach Tageszeit/u });
 
   await expect.element(grid).toBeVisible();
+  await expect.poll(() => columns(grid)).toBe(7);
   const el = grid.element();
 
   if (el instanceof HTMLElement) el.focus();
@@ -199,4 +222,51 @@ test("the compare tab ranks strings by yield per kWp and flags a weak one", asyn
   expect(asked.filter((a) => a.series.startsWith("pv.string.power")).map((a) => a.from)).toContain(
     "2026-11-09T00:00:00.000Z",
   );
+});
+
+test("a compare tab whose module types the core refuses says why, never a blank yield", async () => {
+  served.types = () => Response.json({ status: 500, code: "internal" }, { status: 500 });
+
+  const { screen } = await show("string-2", "range=week");
+  const sheet = screen.getByRole("dialog", { name: "Nord" });
+
+  await sheet.getByRole("tab", { name: "Vergleich" }).click();
+
+  const failed = sheet.getByRole("alert").filter({ hasText: "Strings nicht geladen" });
+
+  await expect.element(failed.getByText("Interner Fehler im SunReye-Kern.")).toBeVisible();
+  expect(sheet.getByRole("table", { name: "Strings im Vergleich" }).query()).toBeNull();
+
+  served.types = null;
+  await failed.getByRole("button", { name: "Erneut laden" }).click();
+
+  await expect
+    .element(
+      sheet
+        .getByRole("table", { name: "Strings im Vergleich" })
+        .getByRole("row", { name: /Süd.*4,0/u }),
+    )
+    .toBeVisible();
+});
+
+test("the compare tab's yield bars grow from their start as they first show", async () => {
+  // Full motion, which the other tests reduce; the entrances held at their start.
+  await cdp().send("Emulation.setEmulatedMedia", { features: [] });
+  const release = holdEntrances();
+
+  try {
+    const { screen } = await show("string-2", "range=week");
+    const sheet = screen.getByRole("dialog", { name: "Nord" });
+
+    await sheet.getByRole("tab", { name: "Vergleich" }).click();
+
+    const table = sheet.getByRole("table", { name: "Strings im Vergleich" });
+
+    await expect.element(table.getByRole("row", { name: /Süd.*4,0/u })).toBeVisible();
+    await expect
+      .poll(() => built().filter((b) => b.build === "grow" && table.element().contains(b.target)))
+      .toHaveLength(2);
+  } finally {
+    release();
+  }
 });

@@ -41,7 +41,7 @@
     {#if chart === "price"}
       <PriceChart {day} />
     {:else if day !== undefined}
-      <div class="h-[190px]"><DayChart rows={day.rows} now={day.now} hours={clock} /></div>
+      <div class="h-[190px]"><DayChart rows={day.rows} now={day.now} hours={clock} live /></div>
     {:else}
       <Skeleton class="h-[190px]" role="status" aria-label={m.loading()} />
     {/if}

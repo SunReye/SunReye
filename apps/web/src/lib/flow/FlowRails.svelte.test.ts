@@ -1,6 +1,7 @@
 // Ported from v3 (dev 780b4e2, _shared/power-flow-rails.svelte.test.ts); the tier is a prop here.
 import { expect, test } from "vitest";
 import { render } from "vitest-browser-svelte";
+import { finish } from "../motion/animations.harness.ts";
 import type { MotionTier } from "../motion/tier.ts";
 import { BEAD_COUNT, railPulse } from "./flow-pulse.ts";
 import FlowRails from "./FlowRails.svelte";
@@ -98,7 +99,7 @@ test("a rail that reverses is replaced, not mirrored in place", async () => {
   await rerender({ flowing: [reversed], lines: [reversed, GRID, IDLE] });
 
   // The old chain fades out beside the new one, then leaves.
-  await expect.poll(() => before!.isConnected, { timeout: 2000 }).toBe(false);
+  await finish(() => !before!.isConnected);
   const after = charge(container, PV.d).movers;
   expect(after).toHaveLength(BEAD_COUNT);
 

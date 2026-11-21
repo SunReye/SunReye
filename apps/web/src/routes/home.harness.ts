@@ -7,6 +7,7 @@ import { problem } from "../lib/api/core.harness.ts";
 import { motion } from "../lib/motion/tier.svelte.ts";
 import { setLocale } from "../lib/paraglide/runtime.js";
 import { coreContext } from "../lib/shell/core.ts";
+import { turn } from "../lib/api/settled.harness.ts";
 
 const DASHBOARD = "sunreye.dashboard";
 
@@ -110,18 +111,15 @@ function answer(pathname: string): Response | undefined {
   }
 }
 
-/** Waits until the page asked the core for `path` and a frame passed for its answer to show. */
+/** Waits until the page asked the core for `path` and took its turns to read the answer and show it. */
 export async function asked(path: string): Promise<void> {
   await expect
     .poll(() => {
       return paths.includes(path);
     })
     .toBe(true);
-  await new Promise<void>((painted) => {
-    requestAnimationFrame(() => {
-      painted();
-    });
-  });
+  await turn();
+  await turn();
 }
 
 /** Serves the fake core at a laptop's size, every switch reset. */

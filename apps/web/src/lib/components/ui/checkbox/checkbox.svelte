@@ -3,14 +3,23 @@
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import MinusIcon from '@lucide/svelte/icons/minus';
 	import { cn, type WithoutChildrenOrChild } from "#lib/utils.js";
+	import { haptics } from "#lib/haptics.ts";
 
 	let {
 		ref = $bindable(null),
 		checked = $bindable(false),
 		indeterminate = $bindable(false),
 		class: className,
+		onCheckedChange,
 		...restProps
 	}: WithoutChildrenOrChild<CheckboxPrimitive.RootProps> = $props();
+
+	// Local: the toggle's `selection` lives here, so no caller plays it (ADR 21). bits-ui calls
+	// this on a user's change only; after the caller, so a change it writes is felt as written.
+	function changed(next: boolean): void {
+		onCheckedChange?.(next);
+		haptics.selection();
+	}
 </script>
 
 <CheckboxPrimitive.Root
@@ -24,6 +33,7 @@
 		className
 	)}
 	bind:checked
+	onCheckedChange={changed}
 	bind:indeterminate
 	{...restProps}
 >

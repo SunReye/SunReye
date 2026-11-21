@@ -6,7 +6,7 @@ import { readFlows } from "../history/plant-read.ts";
 import { bandsOf } from "../range/fill.ts";
 import { grainOf, hourInstant } from "../range/range.ts";
 import { barsOf, extremes, sharesOf } from "./autarky.ts";
-import { AUTARKY, measureOf, strict, type MeasureCore } from "./measure.ts";
+import { AUTARKY, measureOf, type MeasureCore } from "./measure.ts";
 import type { RangeInput, RangeReader } from "./sheet-range.svelte.ts";
 
 /** The plant-local midnight starting `day`, in ms since the epoch. */
@@ -19,7 +19,7 @@ export const AUTARKY_RANGE = {
     const period = periodOf(route.range);
     const [a, b] = [from.getTime(), Math.min(to.getTime(), now)];
 
-    return a < b ? readFlows(strict(core), period, a, b) : Promise.resolve(NO_PLANT.days);
+    return a < b ? readFlows(core, period, a, b) : Promise.resolve(NO_PLANT.days);
   },
   view: (got) => {
     if (got === null) return null;

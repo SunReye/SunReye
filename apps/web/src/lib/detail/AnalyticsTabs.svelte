@@ -3,7 +3,6 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import * as Tabs from "#lib/components/ui/tabs/index.js";
-    import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
   import type { AnalyticsInput } from "./Analytics.svelte";
   import AnalyticsPane from "./AnalyticsPane.svelte";
@@ -46,10 +45,7 @@
   function choose(v: string): void {
     const next = tabs.find(([t]) => t === v)?.[0];
 
-    if (next === undefined || next === tab) return;
-
-    haptics.selection();
-    chosen = next;
+    if (next !== undefined) chosen = next;
   }
 </script>
 
@@ -63,7 +59,7 @@
 
 <Tabs.Root bind:value={() => tab, choose}>
   {#if tabs.length > 1}
-    <Tabs.List variant="line">
+    <Tabs.List variant="segmented">
       {#each tabs as [t, text] (t)}
         <Tabs.Trigger value={t}>{text()}</Tabs.Trigger>
       {/each}

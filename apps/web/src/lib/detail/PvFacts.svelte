@@ -4,7 +4,7 @@
   import { Skeleton } from "#lib/components/ui/skeleton/index.js";
   import { m } from "../paraglide/messages.js";
   import type { AnalyticsInput } from "./Analytics.svelte";
-  import DetailStats from "./DetailStats.svelte";
+  import StatStrip from "../components/stat-strip.svelte";
   import { PV_RANGE } from "./pv-range.ts";
   import RangeState from "./RangeState.svelte";
   import { SheetRange } from "./sheet-range.svelte.ts";
@@ -32,9 +32,9 @@
   );
 </script>
 
-<RangeState failed={range.failed} onretry={range.retry}>
+<RangeState failed={range.failed} refused={range.refused} onretry={range.retry}>
   {#if range.view}
-    <DetailStats panel stats={range.view} />
+    <StatStrip closes="panel" stats={range.view} />
   {:else}
     <!-- A facts row's height: its label, value and note. -->
     <Skeleton class="mt-2 h-[4.5rem]" role="status" aria-label={m.loading()} />

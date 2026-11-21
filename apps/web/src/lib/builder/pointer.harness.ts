@@ -1,7 +1,36 @@
 // A real pointer through the browser's input pipeline, for the builder's component tests.
 import { cdp, type Locator } from "vitest/browser";
+import { finish } from "../motion/animations.harness.ts";
+import { playFrame } from "../motion/clock.harness.ts";
 
 export type Pointer = "mouse" | "pen" | "touch";
+
+/** Until no closing drawer's scrim is left: it covers the page until its fade has ended. */
+export async function uncovered(): Promise<void> {
+  await finish(
+    () => document.querySelector('[data-slot="drawer-overlay"][data-state="closed"]') === null,
+  );
+}
+
+/** One finger down at `first`, along `rest`, then up. */
+async function touch(
+  first: readonly [number, number],
+  rest: readonly (readonly [number, number])[],
+): Promise<void> {
+  await cdp().send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [{ x: first[0], y: first[1] }],
+  });
+
+  for (const [x, y] of rest) {
+    // oxlint-disable-next-line no-await-in-loop -- a pointer moves one step at a time.
+    await cdp().send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y }] });
+    // The page takes a move on its next frame: the test's, so no move is folded into the next.
+    playFrame();
+  }
+
+  await cdp().send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+}
 
 /** A real pointer, through the browser's input pipeline, from `from` to `to` in page pixels. */
 export async function press(
@@ -12,18 +41,10 @@ export async function press(
 
   if (first === undefined) return;
 
+  await uncovered();
+
   if (kind === "touch") {
-    await cdp().send("Input.dispatchTouchEvent", {
-      type: "touchStart",
-      touchPoints: [{ x: first[0], y: first[1] }],
-    });
-
-    for (const [x, y] of rest) {
-      // oxlint-disable-next-line no-await-in-loop -- a pointer moves one step at a time.
-      await cdp().send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y }] });
-    }
-
-    await cdp().send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await touch(first, rest);
 
     return;
   }
@@ -46,42 +67,12 @@ export async function press(
       x,
       y,
     });
+    playFrame();
   }
 
   const [x, y] = rest.at(-1) ?? first;
 
   await cdp().send("Input.dispatchMouseEvent", { ...mouse, type: "mouseReleased", x, y });
-}
-
-/** Resolves once `element`'s box holds still for a frame, or after a second of frames. */
-async function settled(element: Element): Promise<void> {
-  let box = "";
-
-  for (let i = 0; i < 60; i++) {
-    const was = box;
-
-    // oxlint-disable-next-line no-await-in-loop -- one frame at a time.
-    await new Promise<void>((done) => {
-      requestAnimationFrame(() => {
-        done();
-      });
-    });
-    box = JSON.stringify(element.getBoundingClientRect());
-
-    if (box === was) return;
-  }
-}
-
-/** Resolves once `element` is what the page hits at `x`, `y`, or after two seconds of frames. */
-async function uncovered(element: Element, x: number, y: number): Promise<void> {
-  for (let i = 0; i < 120 && !element.contains(document.elementFromPoint(x, y)); i++) {
-    // oxlint-disable-next-line no-await-in-loop -- one frame at a time.
-    await new Promise<void>((done) => {
-      requestAnimationFrame(() => {
-        done();
-      });
-    });
-  }
 }
 
 /** One finger taps the middle of what `locator` finds, through the browser's touch input. */
@@ -93,12 +84,29 @@ export async function tap(locator: Locator): Promise<void> {
   element.scrollIntoView({ block: "nearest" });
 
   // A finger aims at where the target rests: a sheet still sliding would take the tap elsewhere.
-  await settled(element);
+  const middle = (): [number, number] => {
+    const { left, top, width, height } = element.getBoundingClientRect();
 
-  const { left, top, width, height } = element.getBoundingClientRect();
-  const [x, y] = [left + width / 2, top + height / 2];
+    return [left + width / 2, top + height / 2];
+  };
 
-  // A closing drawer's scrim still covers the page as it fades: the finger would land on it.
-  await uncovered(element, x, y);
-  await press("touch", [[x, y]]);
+  // Aimed once nothing covers the target and a further step (frame callbacks run, animations
+  // ended) moved it no more: a drawer leaving or focus coming back moves it without an animation.
+  let last = "";
+
+  await finish(() => {
+    const was = last;
+
+    last = JSON.stringify(element.getBoundingClientRect());
+
+    return last === was && element.contains(document.elementFromPoint(...middle()));
+  });
+
+  // The browser makes a click of the touch after it ends: the tap is over once it has landed.
+  const clicked = new Promise((landed) => {
+    element.addEventListener("click", landed, { once: true });
+  });
+
+  await press("touch", [middle()]);
+  await clicked;
 }

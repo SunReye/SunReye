@@ -1,8 +1,9 @@
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { cdp, page, userEvent } from "vitest/browser";
 // The screen is laid out by the SPA's utilities.
 import "../../app.css";
 import { plant, reset, show } from "./explore.harness.ts";
+import { closed } from "../motion/animations.harness.ts";
 
 afterEach(reset);
 
@@ -94,10 +95,18 @@ test("the mode switch changes the view and the route", async () => {
 
   const { screen, went } = await show();
 
-  await screen.getByRole("radio", { name: "Überlagern" }).click();
+  // The route follows once the switch has settled, on the test's clock.
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
 
-  await expect.element(screen.getByRole("region", { name: "Überlagern" })).toBeVisible();
-  await expect.poll(() => went.at(-1)).toMatchObject({ push: true, patch: { mode: "overlay" } });
+  try {
+    await screen.getByRole("radio", { name: "Überlagern" }).click();
+
+    await expect.element(screen.getByRole("region", { name: "Überlagern" })).toBeVisible();
+    await vi.runOnlyPendingTimersAsync();
+    expect(went.at(-1)).toMatchObject({ push: true, patch: { mode: "overlay" } });
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test("a chip removes its series; with none left the screen says what to do", async () => {
@@ -143,9 +152,49 @@ test("without the catalog the chosen series keep their names and the picker offe
   await expect.element(screen.getByText("Die Reihen konnten nicht geladen werden.")).toBeVisible();
 
   plant.broken = false;
-  await screen.getByRole("button", { name: "Erneut laden" }).click();
+  await screen
+    .getByRole("alert")
+    .filter({ hasText: "Die Reihen konnten nicht geladen werden." })
+    .getByRole("button", { name: "Erneut laden" })
+    .click();
 
   await expect.element(screen.getByRole("heading", { name: "Deye" })).toBeVisible();
+});
+
+test("a chart that cannot be drawn without the catalog reads it again from its own retry", async () => {
+  await desk();
+  plant.broken = true;
+
+  const { screen } = await show();
+
+  const failed = screen
+    .getByRole("alert")
+    .filter({ hasText: "Ohne die Liste der Reihen lässt sich das Diagramm nicht zeichnen." });
+
+  await expect.element(failed).toBeVisible();
+
+  plant.broken = false;
+  await failed.getByRole("button", { name: "Erneut laden" }).click();
+
+  await expect.element(screen.getByRole("heading", { name: "Deye" })).toBeVisible();
+  expect(failed.query()).toBeNull();
+});
+
+test("a catalog the core refuses says the core's reason in the picker and the chart", async () => {
+  await desk();
+  plant.broken = true;
+
+  const { screen } = await show();
+
+  const said = (text: string) =>
+    expect
+      .element(
+        screen.getByRole("alert").filter({ hasText: text }).getByText("Bitte melde dich an."),
+      )
+      .toBeVisible();
+
+  await said("Die Reihen konnten nicht geladen werden.");
+  await said("Ohne die Liste der Reihen lässt sich das Diagramm nicht zeichnen.");
 });
 
 test("an unreachable core leaves the picker with the same way out", async () => {
@@ -194,7 +243,7 @@ test("a drawer closed without a pick goes back over its own step", async () => {
 
   await userEvent.keyboard("{Escape}");
 
-  await expect.element(drawer).not.toBeInTheDocument();
+  await closed(drawer);
   // One more back leaves Explore: no entry of the closed drawer is left behind.
   await expect.poll(() => entries.map(String)).toEqual(["s=5%3Abattery.soc"]);
 });
@@ -219,7 +268,7 @@ test("under the bar the picker is a drawer: Add series opens it, a pick closes i
 
     await drawer.getByRole("button", { name: /^Eingang 2 · Leistung/u }).click();
 
-    await expect.element(drawer).not.toBeInTheDocument();
+    await closed(drawer);
     await expect
       .element(
         screen

@@ -6,7 +6,10 @@ import { PLANT, type Layout, type Values } from "../api/core.ts";
 import { MODULE, pv } from "../builder/builder.harness.ts";
 import type { Scene } from "../builder/pv.ts";
 import "../../app.css";
+import { finish } from "../motion/animations.harness.ts";
 import LiveScene from "./LiveScene.svelte";
+
+export { finish };
 
 /** A 10 m × 8 m gable house: two modules of string 0 on the south face, an inverter marker. */
 export const scene = {
@@ -85,8 +88,11 @@ export function show(
 /** The chip named `name`, once its value has glided to `value`. */
 export async function chip(name: string, value: string) {
   const button = page.getByRole("button", { name: `${name}: Details` });
+  const shown = button.getByText(value, { exact: true });
 
-  await expect.element(button.getByText(value, { exact: true })).toBeVisible();
+  // The glide runs on frames: on the test's step, not the browser's.
+  await finish(() => shown.query() !== null);
+  await expect.element(shown).toBeVisible();
 
   return button;
 }

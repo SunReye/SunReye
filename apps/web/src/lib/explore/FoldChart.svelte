@@ -4,6 +4,8 @@
   readout (ADR 21): the range's figures, or those of the period under the pointer.
 -->
 <script lang="ts">
+  import ChartEntrance from "../chart-entrance/ChartEntrance.svelte";
+  import { ChartReader } from "../chart-reading/reader.svelte.ts";
   import type { Period } from "../api/core.ts";
   import { m } from "../paraglide/messages.js";
   import { ticksOf } from "../range/bands.ts";
@@ -37,8 +39,6 @@
     height: number;
   } = $props();
 
-  let active = $state<number | null>(null);
-
   const scale = $derived(foldScale(rows, counter));
   const ticks = $derived(ticksOf(scale));
   const share = (t: number) => Math.min(1, Math.max(0, (t - from) / (to - from)));
@@ -70,8 +70,18 @@
       }));
   });
 
+  // The period under the pointer; -1 between periods, which reads the range.
+  const reading = new ChartReader<number>(() => ({
+    over: (x) => {
+      const t = from + x * (to - from);
+
+      return rows.findIndex((row) => t >= row.start && t < row.end);
+    },
+    band: (i) => i,
+  }));
+
   // A new fold has other periods: the one read is gone.
-  const read = $derived(active === null ? null : (rows[active] ?? null));
+  const read = $derived(reading.at === null ? null : (rows[reading.at] ?? null));
   const shown = $derived(read ?? totalOf(rows));
   const title = $derived(read ? labelOf(read, period, zone) : whole);
 
@@ -84,14 +94,6 @@
           { name: m.explore_fold_max(), value: shown.max },
         ],
   );
-
-  function point(event: PointerEvent & { currentTarget: HTMLElement }): void {
-    const box = event.currentTarget.getBoundingClientRect();
-    const t = from + ((event.clientX - box.left) / box.width) * (to - from);
-    const found = rows.findIndex((row) => t >= row.start && t < row.end);
-
-    active = found === -1 ? null : found;
-  }
 </script>
 
 <figure class="flex flex-col gap-2" style:height="{height}px">
@@ -122,11 +124,7 @@
       class="relative min-w-0 flex-1 touch-pan-y"
       role="img"
       aria-label={label}
-      onpointermove={point}
-      onpointerdown={point}
-      onpointerleave={() => {
-        active = null;
-      }}
+      {...reading.on}
     >
       {#if read}
         <div
@@ -135,8 +133,12 @@
           style:width="{(share(read.end) - share(read.start)) * 100}%"
         ></div>
       {/if}
-      <canvas class="absolute inset-0 size-full" {@attach (canvas) => paintFold(canvas, painting)}
-      ></canvas>
+      <ChartEntrance build="draw" ready={bars.length > 0} class="absolute inset-0">
+        <canvas
+          class="absolute inset-0 size-full"
+          {@attach (canvas) => paintFold(canvas, painting)}
+        ></canvas>
+      </ChartEntrance>
     </div>
   </div>
 

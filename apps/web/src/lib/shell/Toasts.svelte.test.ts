@@ -3,6 +3,7 @@ import { toast } from "svelte-sonner";
 import { afterEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
+import { finish } from "../motion/animations.harness.ts";
 import { motion } from "../motion/tier.svelte.ts";
 import Shell from "./Shell.svelte";
 import "../../app.css";
@@ -26,7 +27,7 @@ async function toastBox(text: string): Promise<DOMRect> {
   const shown = page.getByText(text).element().closest("[data-sonner-toast]");
 
   // Its entrance has ended.
-  await expect.poll(() => shown?.getAnimations().length).toBe(0);
+  await finish(() => shown?.getAnimations().length === 0);
 
   return shown!.getBoundingClientRect();
 }
@@ -53,4 +54,15 @@ test("on the phone a toast sits above the bottom bar", async () => {
 
   expect(box.bottom).toBeLessThanOrEqual(bar.getBoundingClientRect().top);
   expect(box.top).toBeGreaterThan(422);
+});
+
+test("around setup, with no bar or rail, a toast still shows on the phone", async () => {
+  await page.viewport(390, 844);
+  motion.lowPower = true;
+  await render(Shell, { shell: "bare", current: "/", admin: false, goto, children });
+
+  const box = await toastBox("Gespeichert.");
+
+  expect(box.top).toBeGreaterThan(422);
+  expect(box.bottom).toBeLessThanOrEqual(844);
 });

@@ -1,6 +1,7 @@
 // What a sheet's panel reads of its range (ADR 21 "Sheet content"), and what it shows of the read.
 // A sheet keeps its panel while another figure of its kind opens, so a read is shown only to the
 // figure it was read for.
+import type { Problem } from "../api/client.ts";
 import { RangeData, type Loaded } from "../range/range-data.svelte.ts";
 import type { RangeRoute } from "../range/route.svelte.ts";
 import type { MeasureCore } from "./measure.ts";
@@ -51,6 +52,11 @@ export class SheetRange<I extends RangeInput, T, V> {
 
   get failed(): boolean {
     return this.#data.failed;
+  }
+
+  /** Why the core refused the range's read. */
+  get refused(): Problem | undefined {
+    return this.#data.refused;
   }
 
   retry = (): void => {

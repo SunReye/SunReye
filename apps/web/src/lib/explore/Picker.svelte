@@ -5,8 +5,8 @@
 -->
 <script lang="ts">
   import Search from "@lucide/svelte/icons/search";
-  import { Button } from "#lib/components/ui/button/index.js";
   import { Input } from "#lib/components/ui/input/index.js";
+  import LoadFailed from "../components/load-failed.svelte";
   import LoadingRows from "../components/loading-rows.svelte";
   import { m } from "../paraglide/messages.js";
   import type { Explore } from "./explore.svelte.ts";
@@ -71,10 +71,11 @@
   {#if x.catalog === "loading"}
     <LoadingRows rows={5} />
   {:else if x.catalog === "failed"}
-    <div class="flex flex-col items-start gap-3 px-4 py-6" role="alert">
-      <p class="text-sm text-muted-foreground">{m.explore_catalog_error()}</p>
-      <Button variant="outline" size="sm" onclick={() => void x.load()}>{m.stats_retry()}</Button>
-    </div>
+    <LoadFailed
+      class="px-4"
+      text={m.explore_catalog_error()}
+      refused={x.refused}
+      onretry={() => void x.load()} />
   {:else if found.length === 0}
     <p class="px-4 py-6 text-center text-sm text-muted-foreground">
       {query.trim() === "" ? m.explore_catalog_empty() : m.explore_no_match({ query: query.trim() })}

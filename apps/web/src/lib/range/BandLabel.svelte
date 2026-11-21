@@ -45,21 +45,18 @@
     inset: 0 auto 0 0;
     transition:
       transform var(--move),
-      opacity 200ms var(--motion-ease);
+      opacity var(--motion-base) var(--motion-ease);
   }
   .label.out {
     opacity: 0;
     transition:
       transform var(--move),
-      opacity 150ms ease-in;
+      opacity var(--motion-exit) var(--motion-ease-exit);
   }
   @starting-style {
     .label.fresh {
       transform: translateX(var(--x0));
       opacity: 0;
     }
-  }
-  :global(.still) .label {
-    transition: none;
   }
 </style>

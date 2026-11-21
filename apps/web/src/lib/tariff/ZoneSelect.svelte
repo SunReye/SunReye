@@ -1,7 +1,7 @@
 <script lang="ts">
-  import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
   import type { BiddingZone, Core, Problem, SpotPriceZone } from "../api/core";
   import ProblemAlert from "../components/problem-alert.svelte";
+  import Segmented from "../components/segmented.svelte";
   import { m } from "../paraglide/messages.js";
 
   /** The zone in force, or why it was refused. */
@@ -21,10 +21,7 @@
 
   const zone = $derived(picked ?? ("zone" in answer ? (answer.zone ?? "none") : "none"));
 
-  /** Pressing the zone in force again deselects nothing: it stays. */
   async function choose(next: string): Promise<void> {
-    if (next === "" || next === zone) return;
-
     picked = next;
     refused = await core.setSpotZone(ZONES.find((option) => option === next) ?? null);
 
@@ -35,18 +32,14 @@
 
 <div class="flex items-center justify-between gap-3 border-y border-border/60 px-4 py-3 text-[15px]">
   <span id="{id}-zone">{m.tariff_zone()}</span>
-  <ToggleGroup.Root
-    type="single"
-    variant="outline"
-    bind:value={() => zone, (next) => void choose(next)}
-    aria-labelledby="{id}-zone"
-    class="shrink-0"
-  >
-    <ToggleGroup.Item value="none" class="px-4">{m.tariff_zone_none()}</ToggleGroup.Item>
-    {#each ZONES as option (option)}
-      <ToggleGroup.Item value={option} class="px-4">{option}</ToggleGroup.Item>
-    {/each}
-  </ToggleGroup.Root>
+  <div class="shrink-0">
+    <Segmented
+      options={[["none", m.tariff_zone_none()], ...ZONES.map((option) => [option, option] as const)]}
+      value={zone}
+      labelledby="{id}-zone"
+      onchange={(next) => void choose(next)}
+    />
+  </div>
 </div>
 {#if problem}
   <div class="px-4 pt-2"><ProblemAlert problem={problem.problem} /></div>

@@ -131,6 +131,20 @@
   --motion-enter: 350ms;
   --motion-exit: 150ms;
   --motion-ease-exit: cubic-bezier(0.55, 0.055, 0.675, 0.19);
+  /* How long the last of a row of arrivals waits after the first (a chart's bars). */
+  --motion-stagger: 120ms;
+  /* The 2D flow's glides between live samples, on the full tier alone: a tile's glow and gauge,
+     a charge's glow, the hub's wash; and the hub ring's beat. */
+  --motion-flow-tile: 500ms;
+  --motion-flow-glow: 700ms;
+  --motion-flow-wash: 900ms;
+  --motion-flow-pulse: 2.6s;
+  /* The error mark: its sun arrives, its cloud floats, its rays turn. */
+  --motion-mark-arrive: 700ms;
+  --motion-mark-float: 5s;
+  --motion-mark-turn: 24s;
+  /* The backdrop's lights follow a change in production over seconds, in their own beat. */
+  --motion-light-drift: 4s;
 }
 
 .dark {
@@ -194,6 +208,15 @@
     --motion-move: 0ms;
     --motion-enter: 0ms;
     --motion-exit: 0ms;
+    --motion-stagger: 0ms;
+    --motion-flow-tile: 0ms;
+    --motion-flow-glow: 0ms;
+    --motion-flow-wash: 0ms;
+    --motion-flow-pulse: 0ms;
+    --motion-mark-arrive: 0ms;
+    --motion-mark-float: 0ms;
+    --motion-mark-turn: 0ms;
+    --motion-light-drift: 0ms;
   }
 }
 
@@ -206,6 +229,15 @@
   --motion-move: 0ms;
   --motion-enter: 0ms;
   --motion-exit: 0ms;
+  --motion-stagger: 0ms;
+  --motion-flow-tile: 0ms;
+  --motion-flow-glow: 0ms;
+  --motion-flow-wash: 0ms;
+  --motion-flow-pulse: 0ms;
+  --motion-mark-arrive: 0ms;
+  --motion-mark-float: 0ms;
+  --motion-mark-turn: 0ms;
+  --motion-light-drift: 0ms;
 }
 
 /* A drawer enters like a sheet and leaves faster, easing in (ADR 21). Unlayered, as vaul's own 0.5 s. */
@@ -218,6 +250,9 @@
 [data-slot="drawer-overlay"][data-state="closed"] {
   animation-duration: var(--motion-exit);
   animation-timing-function: var(--motion-ease-exit);
+  /* vaul's 0.5 s settle after a drag (a tap's finger slop) outlasts this exit: still running, it
+     held the drawer open after the exit until it ended. */
+  transition: none !important;
 }
 
 /* An overlay on the still tier: no keyframes, and no transition left inline by a drag (vaul). */
@@ -379,19 +414,6 @@
   }
 }
 
-/* One section's rows on a drill-in page (ADR 21): on the phone's level screens an inset glass card
-   of its own, its label above it; in two panes plain, inside the pane's card. Clipped, not hidden,
-   so a bar inside still sticks to the screen; a section with nothing to show draws no card. */
-@utility drill-card {
-  :where([data-drill="level"]) & {
-    @apply glass-ambient overflow-clip rounded-lg border border-border/60 elevation-1;
-
-    &:empty {
-      display: none;
-    }
-  }
-}
-
 /* 44 px targets on touch (ADR 21) without resizing the control: the hit area grows, the look stays.
    `:where` keeps the position below any utility, so an absolute or fixed control stays where it is. */
 @utility touch-hit {
@@ -467,11 +489,9 @@
 }
 
 /* On ambient glass and a canvas chip the registry's muted pressed box disappears; lift it a step. */
-:is(
-    .glass-ambient,
-    .glass-ambient *,
-    .canvas-chip,
-    .canvas-chip *
-  )[data-slot="toggle-group"]::before {
+:is(.glass-ambient, .glass-ambient *, .canvas-chip, .canvas-chip *):is(
+    [data-slot="toggle-group"],
+    [data-slot="tabs-list"][data-variant="segmented"]
+  )::before {
   background-color: color-mix(in oklab, var(--foreground) 13%, transparent);
 }

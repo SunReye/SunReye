@@ -30,13 +30,14 @@
   .rays {
     transform-box: view-box;
     transform-origin: 42px 16px;
-    animation: turn 24s linear infinite;
+    animation: turn var(--motion-mark-turn) linear infinite;
   }
   .arrive {
-    animation: arrive 700ms var(--motion-ease) both;
+    animation: arrive var(--motion-mark-arrive) var(--motion-ease) both;
   }
   .cloud {
-    animation: float 5s var(--motion-ease-in-out) 700ms infinite alternate;
+    animation: float var(--motion-mark-float) var(--motion-ease-in-out) var(--motion-mark-arrive)
+      infinite alternate;
   }
 
   @keyframes turn {

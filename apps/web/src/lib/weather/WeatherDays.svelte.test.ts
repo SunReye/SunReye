@@ -1,10 +1,15 @@
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
-import { afterEach, expect, test } from "vitest";
+import { tick } from "svelte";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { cdp } from "vitest/browser";
+import { finish, hold } from "../motion/animations.harness.ts";
 import { motion } from "../motion/tier.svelte.ts";
 import { DRY, show } from "./weather-detail.harness.ts";
 
+beforeEach(hold);
+
 afterEach(() => {
+  vi.restoreAllMocks();
   motion.lowPower = false;
 });
 
@@ -27,18 +32,18 @@ function held(day: HTMLElement, part: number): number {
 
 /** Holds every day halfway through its travel and gives their offsets, in document order. */
 async function midway(): Promise<number[]> {
-  await expect
-    .poll(() => shownDays().length === 2 && shownDays().every((day) => travels(day).length > 0))
-    .toBe(true);
+  // No frame passes: the travels start as the days are drawn.
+  await tick();
+
+  expect(shownDays()).toHaveLength(2);
+  expect(shownDays().every((day) => travels(day).length > 0)).toBe(true);
 
   return shownDays().map((day) => held(day, 0.5));
 }
 
 /** Ends every travel: the arriving day is alone and at rest. */
 async function landed(): Promise<void> {
-  for (const animation of document.getAnimations()) animation.finish();
-
-  await expect.poll(() => shownDays()).toHaveLength(1);
+  await finish(() => shownDays().length === 1);
 }
 
 test("a later day slides in from the right, an earlier one from the left", async () => {
@@ -79,7 +84,9 @@ test("a second switch mid-slide goes on from where the days are", async () => {
   // Sunday, half in from the right, turns to leave on the left: a second travel, over its first.
   const sunday = shownDays()[1]!;
 
-  await expect.poll(() => travels(sunday)).toHaveLength(2);
+  await tick();
+
+  expect(travels(sunday)).toHaveLength(2);
 
   expect(caught).toBeGreaterThan(0);
   expect(held(sunday, 0)).toBeCloseTo(caught!, 0);

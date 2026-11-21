@@ -1,7 +1,19 @@
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
-import { expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test } from "vitest";
 import { page, userEvent } from "vitest/browser";
-import { INPUTS, show, STRINGS } from "./forecast-detail.harness.ts";
+import { built } from "../chart-entrance/built.harness.ts";
+import { INPUTS, refusing, show, STRINGS } from "./forecast-detail.harness.ts";
+import { holdEntrances } from "../motion/animations.harness.ts";
+import { motion } from "../motion/tier.svelte.ts";
+
+// Still: a figure stands at its value at once, where it would roll up to it frame by frame.
+beforeEach(() => {
+  motion.lowPower = true;
+});
+
+afterEach(() => {
+  motion.lowPower = false;
+});
 
 /** Each line's name and expected energy, as its bar's row reads. */
 const lines = () =>
@@ -79,7 +91,7 @@ test("today's facts are one row on a narrow phone: the sky's sunshine, the best 
     .poll(() => row().map((cell) => cell.querySelector("dt")?.textContent.trim()))
     .toEqual(["Sonnenschein", "Beste 3 h", "Heute bisher", "Ø Abweichung"]);
   expect(document.querySelectorAll("[data-facts] dl")).toHaveLength(1);
-  // Polled: the figures roll up to their values.
+  // Polled: the figures follow the read.
   await expect.poll(() => figure("facts", "Sonnenschein")).toBe("3,0 h");
   // One line inside the screen, nothing cut short.
   expect(new Set(row().map((cell) => Math.round(cell.getBoundingClientRect().top))).size).toBe(1);
@@ -214,4 +226,49 @@ test("a plant without a forecast says so", async () => {
 
   await expect.element(screen.getByText("Keine Prognose")).toBeVisible();
   expect(screen.getByRole("tab", { name: "Heute" }).query()).toBeNull();
+});
+
+/** How the day chart named `name` builds as it first shows. */
+async function builds(name: string): Promise<string[]> {
+  await expect.element(page.getByRole("img", { name })).toBeVisible();
+
+  const chart = page.getByRole("img", { name }).element();
+  const own = () => built().filter((b) => chart.contains(b.target));
+
+  await expect.poll(() => own().length).toBeGreaterThan(0);
+
+  return own().map((b) => b.build);
+}
+
+test("today's day chart, which grows live, only fades in; a later day's draws in", async () => {
+  motion.lowPower = false;
+
+  const release = holdEntrances();
+
+  try {
+    const { screen } = await show();
+
+    expect(new Set(await builds("Leistung"))).toEqual(new Set(["fade"]));
+
+    await screen.getByRole("tab", { name: "Sonntag" }).click();
+
+    expect(await builds("Prognose")).toContain("draw");
+  } finally {
+    release();
+  }
+});
+
+test("a forecast the core refuses fails with its reason, never as no forecast", async () => {
+  const { screen } = await show(STRINGS, "forecast.range");
+  const failed = screen.getByRole("alert").filter({ hasText: "PV-Prognose nicht geladen" });
+
+  await expect
+    .element(failed.getByText("Dieser Prognosezeitraum ist leer oder zu lang."))
+    .toBeVisible();
+  expect(screen.getByText("Keine Prognose").query()).toBeNull();
+
+  refusing.code = undefined;
+  await failed.getByRole("button", { name: "Erneut laden" }).click();
+
+  await expect.element(screen.getByRole("tab", { name: "Heute" })).toBeVisible();
 });

@@ -4,7 +4,7 @@
   its value.
 -->
 <script lang="ts">
-  import { Pressable } from "../components/ui/pressable/index.js";
+  import { FEEDBACK_WITHIN, Pressable } from "../components/ui/pressable/index.js";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import { m } from "../paraglide/messages.js";
   import ReadingValue from "./ReadingValue.svelte";
@@ -26,8 +26,10 @@
   const COVER =
     "outline-none after:absolute after:inset-0 after:rounded-sm focus-visible:after:ring-2 focus-visible:after:ring-ring focus-visible:after:ring-inset";
 
-  const PRESSED =
-    "group relative -mx-2 flex items-baseline gap-2 rounded-sm px-2 py-2 transition-colors hover:bg-foreground/[0.04] active:bg-foreground/[0.08]";
+  const PRESSED = [
+    "group relative -mx-2 flex items-baseline gap-2 rounded-sm px-2 py-2 transition-colors",
+    FEEDBACK_WITHIN,
+  ];
 </script>
 
 {#snippet label()}

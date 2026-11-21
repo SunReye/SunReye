@@ -1,5 +1,6 @@
 // What the solar forecast screen shows (ADR 17): each inverter's total, each MPPT input and its
 // strings, with estimated strings marked.
+import { answerOf } from "../api/client.ts";
 import { only, type Core, type PvString } from "../api/core.ts";
 import { flowColour, mpptColour } from "../energy-colours.ts";
 import { m } from "../paraglide/messages.js";
@@ -156,15 +157,17 @@ export async function inverterLines(
 ): Promise<InverterLines[]> {
   const [layout, capabilities] = await Promise.all([core.layout(), core.capabilities()]);
 
-  if (!("strings" in layout && "devices" in capabilities)) return [];
+  // No layout saved yet is no string yet; any other refusal fails the read.
+  if ("problem" in layout && layout.problem === "layout.none") return [];
 
-  const strings: readonly Readonly<PvString>[] = layout.strings;
+  const strings: readonly Readonly<PvString>[] = answerOf(layout).strings;
+  const { devices } = answerOf(capabilities);
 
   return sorted(strings.map((s) => s.device)).map((device) =>
     linesOf(
       device,
       strings.filter((s) => s.device === device),
-      capabilities.devices[String(device)]?.estimated ?? [],
+      devices[String(device)]?.estimated ?? [],
     ),
   );
 }
@@ -187,8 +190,8 @@ export function held(points: readonly Readonly<{ target: string; value: number }
 const PIECE = 1400 * 900_000;
 
 /**
- * A series' latest forecast targets from `from` to before `to`, read in pieces the core serves;
- * none when any piece is refused.
+ * A series' latest forecast targets from `from` to before `to`, read in pieces the core serves; a
+ * refused piece fails the read with the core's reason.
  */
 export async function forecastTargets(
   core: Readonly<Pick<Core, "forecasts">>,
@@ -211,12 +214,7 @@ export async function forecastTargets(
 
   const points: { target: string; value: number }[] = [];
 
-  // A held target would bridge a refused piece's hole with one stale value.
-  for (const read of reads) {
-    if (!("points" in read)) return [];
-
-    points.push(...read.points);
-  }
+  for (const read of reads) points.push(...answerOf(read).points);
 
   return points;
 }

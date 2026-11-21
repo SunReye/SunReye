@@ -1,7 +1,7 @@
 import { flushSync } from "svelte";
 import { afterEach, expect, test } from "vitest";
 import { weatherEffects } from "./weather-effects.svelte.ts";
-import { DROPS, open, RAIN, shut } from "./stage.harness.svelte.ts";
+import { DROPS, open, playedUntil, RAIN, shut } from "./stage.harness.svelte.ts";
 import { DRY } from "./weather.ts";
 
 // The Wettereffekte switch on a lit studio (ADR 23 "Off switch").
@@ -27,11 +27,11 @@ test("the Wettereffekte switch, off, leaves the weather's light alone, at once; 
   // Thunder darkens the day as before.
   expect(lighted.mock.lastCall?.[0]).toEqual(day);
   // What was on the lens fades out, and the loop stops.
-  await expect.poll(looping, { timeout: 30_000 }).toBe(false);
+  await playedUntil(async () => !(await looping()));
 
   weatherEffects.on = true;
   flushSync();
   expect(fell.mock.lastCall).toEqual([RAIN, false]);
   expect(lighted.mock.lastCall?.[3]).toMatchObject(storm);
   expect(await looping()).toBe(true);
-}, 60_000);
+});

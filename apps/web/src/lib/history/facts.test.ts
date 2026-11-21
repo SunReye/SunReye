@@ -42,8 +42,11 @@ function statistics(href: string, answer: (key: string) => object): Response {
   return eachSeries(href, () => answer(q("period")));
 }
 
-/** The core answering by the path's last part, statistics by period; a viewer is refused payback. */
-function core(viewer = false, rolledUp = true) {
+/**
+ * The core answering by the path's last part, statistics by period; a viewer is refused payback,
+ * and `payback` stands in for its answer.
+ */
+function core(viewer = false, rolledUp = true, payback?: () => Response) {
   const answers = new Map<string, object>(Object.entries(ANSWERS));
 
   if (!rolledUp) answers.set("records", { years: [] });
@@ -53,6 +56,7 @@ function core(viewer = false, rolledUp = true) {
   const reads = new Map<string, (href: string) => Response>([
     ["statistics", (href) => statistics(href, answer)],
     ...(viewer ? [["payback", () => refusal(403, "auth.forbidden")] as const] : []),
+    ...(payback ? [["payback", payback] as const] : []),
   ]);
 
   return connect({
@@ -74,7 +78,7 @@ test("the plant's strings, its battery and EV, its first recorded day and paybac
     ev: false,
     since: dayOf(2025, 10, 5),
     begun: Date.parse("2025-11-05T07:00:00Z"),
-    payback: { investment: 12_000, remaining: 9000, savings: 3000 },
+    payback: { failed: false, data: { investment: 12_000, remaining: 9000, savings: 3000 } },
     corrections: [],
     peaks: new Map([[1, 400]]),
   });
@@ -86,4 +90,20 @@ test("a viewer reads no payback, and a plant without rollups has no first day ye
   const facts = await readFacts(core(true, false));
 
   expect(facts).toMatchObject({ payback: null, since: null, begun: null });
+});
+
+test("payback the core refuses an admin, or cannot answer, fails with the core's reason", async () => {
+  const refused = await readFacts(core(false, true, () => refusal(500, "internal")));
+
+  const lost = await readFacts(
+    core(false, true, () => {
+      throw new TypeError("network");
+    }),
+  );
+
+  expect(refused.payback).toEqual({ failed: true, refused: { problem: "internal" } });
+  expect(lost.payback).toEqual({ failed: true, refused: undefined });
+
+  // The rest still stands.
+  expect(lost.battery).toBe(true);
 });

@@ -8,7 +8,7 @@
   import { Skeleton } from "#lib/components/ui/skeleton/index.js";
   import { m } from "../paraglide/messages.js";
   import type { AnalyticsInput } from "./Analytics.svelte";
-  import DetailStats from "./DetailStats.svelte";
+  import StatStrip from "../components/stat-strip.svelte";
   import { sessionTimes } from "./ev.ts";
   import { EV_RANGE } from "./ev-range.ts";
   import { pvCoveredFact } from "./facts.ts";
@@ -35,7 +35,7 @@
   ]);
 </script>
 
-<RangeState failed={range.failed} onretry={range.retry}>
+<RangeState failed={range.failed} refused={range.refused} onretry={range.retry}>
   {#if view && view.sessions.length === 0}
     <p class="py-2 text-sm text-muted-foreground">{m.detail_no_sessions()}</p>
   {:else if view}
@@ -61,5 +61,5 @@
   {:else}
     <Skeleton class="h-20" role="status" aria-label={m.loading()} />
   {/if}
-  <DetailStats panel stats={facts} />
+  <StatStrip closes="panel" stats={facts} />
 </RangeState>

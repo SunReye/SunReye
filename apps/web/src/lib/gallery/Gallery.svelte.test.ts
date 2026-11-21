@@ -53,7 +53,6 @@ test("the gallery shows every primitive built on the kit", async () => {
   for (const name of [
     "page-title",
     "section",
-    "glass-card",
     "eyebrow",
     "stat-strip",
     "problem-alert",
@@ -64,6 +63,8 @@ test("the gallery shows every primitive built on the kit", async () => {
     "date-field",
     "combobox-field",
     "confirm-sheet",
+    "load-failed",
+    "segmented",
   ]) {
     expect(document.querySelector(`[data-gallery="${name}"]`), name).not.toBeNull();
   }

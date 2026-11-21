@@ -5,19 +5,38 @@
 -->
 <script lang="ts">
 	import { cn, type WithElementRef } from "#lib/utils.js";
+	import { haptics } from "#lib/haptics.ts";
 	import type { HTMLButtonAttributes } from "svelte/elements";
+	import { FEEDBACK, SELECTED } from "./tint.ts";
 
 	let {
 		ref = $bindable(null),
 		class: className,
 		type = "button",
 		feedback = false,
+		selected = false,
+		onclick,
 		children,
 		...restProps
 	}: WithElementRef<HTMLButtonAttributes> & {
 		/** The app's tint under the pointer, the keyboard and a press, for a surface with none of its own. */
 		feedback?: boolean;
+		/** The app's tint of a chosen row: open, current or picked. */
+		selected?: boolean;
 	} = $props();
+
+	// Local: a surface that holds a state ticks when a press changes it (ADR 21 "One behaviour, one
+	// component"): a toggle (`aria-pressed`) on every press, a pick (`aria-selected`) when it is not
+	// picked yet. After the caller, as the kit's switch.
+	function press(event: Parameters<NonNullable<typeof onclick>>[0]): void {
+		const pressed = restProps["aria-pressed"];
+		const picked = restProps["aria-selected"];
+		const changes = (pressed !== undefined && pressed !== null) || picked === false || picked === "false";
+
+		onclick?.(event);
+
+		if (changes) haptics.selection();
+	}
 </script>
 
 <button
@@ -25,12 +44,13 @@
 	data-slot="pressable"
 	class={cn(
 		"outline-none transition-[color,background-color,border-color,box-shadow] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset disabled:pointer-events-none disabled:opacity-50",
-		feedback &&
-			"hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.06] active:bg-foreground/[0.08]",
+		feedback && FEEDBACK,
+		selected && SELECTED,
 		className
 	)}
 	{type}
 	{...restProps}
+	onclick={press}
 >
 	{@render children?.()}
 </button>

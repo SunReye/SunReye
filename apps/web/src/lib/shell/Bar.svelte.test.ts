@@ -3,6 +3,8 @@ import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { haptics } from "../haptics.ts";
+import { closed, finish } from "../motion/animations.harness.ts";
+import { settle } from "../motion/clock.harness.ts";
 import { motion } from "../motion/tier.svelte.ts";
 import { locales, setLocale } from "../paraglide/runtime.js";
 import Shell from "./Shell.svelte";
@@ -128,13 +130,13 @@ test("a screen inside More marks More, and More opens again from it", async () =
   await openMore();
 });
 
-test("More lists the other screens and opens with a soft tap", async () => {
-  const soft = vi.spyOn(haptics, "soft");
+test("More lists the other screens and opens with a bar item's tick", async () => {
+  const selection = vi.spyOn(haptics, "selection");
 
   await phone("/");
   await openMore();
 
-  expect(soft).toHaveBeenCalledOnce();
+  expect(selection).toHaveBeenCalledOnce();
   const links = sheet().getByRole("link");
 
   expect(links.elements()).toHaveLength(5);
@@ -165,8 +167,16 @@ test("a screen picked in More closes the sheet", async () => {
   await sheet().getByRole("link", { name: "Status" }).click();
 
   expect(location.hash).toBe("#/status");
-  await expect.element(sheet()).not.toBeInTheDocument();
+  await closed(sheet());
 });
+
+/** What `mark` glides on now: its transitions' properties, read off its style as it is. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the DOM's own element.
+const glides = (mark: Element) =>
+  mark
+    .getAnimations()
+    // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the DOM's own animation.
+    .flatMap((glide) => (glide instanceof CSSTransition ? [glide.transitionProperty] : []));
 
 /** The sliding selection, and how far its left edge is from the named item's. */
 function slidingMark() {
@@ -188,23 +198,19 @@ test("the selection slides to the shown screen on a transform alone", async () =
   const shown = await render(Shell, { shell: "bar", current: "/", admin: false, goto, children });
   const { mark, off } = slidingMark();
 
-  await expect.poll(() => off("Dashboard")).toBeLessThan(1);
+  // Placed once its size observer is told the item's size.
+  await settle(() => off("Dashboard") < 1);
 
   const group = bar().element().querySelector("[data-slot=toggle-group]")!;
 
   // The registry's own pressed box moves on `left` and `width`, which are layout.
   expect(getComputedStyle(group, "::before").display).toBe("none");
 
-  const moved: string[] = [];
-
-  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the DOM's own event.
-  mark.addEventListener("transitionrun", ({ propertyName }) => {
-    moved.push(propertyName);
-  });
   await shown.rerender({ current: "/forecast" });
 
-  await expect.poll(() => moved).toEqual(["transform"]);
-  await expect.poll(() => off("Prognose")).toBeLessThan(1);
+  expect(glides(mark)).toEqual(["transform"]);
+  // The glide ends where the screen's item is.
+  await finish(() => off("Prognose") < 1);
   expect(mark.style.left).toBe("0px");
 });
 
@@ -215,15 +221,9 @@ test("on the still tier the selection is on the shown screen at once", async () 
   const shown = await render(Shell, { shell: "bar", current: "/", admin: false, goto, children });
   const { mark, off } = slidingMark();
 
-  await expect.poll(() => off("Dashboard")).toBeLessThan(1);
-
-  let runs = 0;
-
-  mark.addEventListener("transitionrun", () => {
-    runs += 1;
-  });
+  await settle(() => off("Dashboard") < 1);
   await shown.rerender({ current: "/forecast" });
 
-  await expect.poll(() => off("Prognose")).toBeLessThan(1);
-  expect(runs).toBe(0);
+  await settle(() => off("Prognose") < 1);
+  expect(glides(mark)).toEqual([]);
 });
