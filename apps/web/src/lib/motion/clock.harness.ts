@@ -68,7 +68,7 @@ export async function stepUntil(
 
 /** Plays `count` frames on the fake clock (`requestAnimationFrame` faked), their updates drawn. */
 export async function frames(count: number): Promise<void> {
-  for (let i = 0; i < count; i++) vi.advanceTimersToNextFrame();
+  for (let i = 0; i < count; i++) playFrame();
 
   await tick();
 }
@@ -78,9 +78,7 @@ export async function frames(count: number): Promise<void> {
  * an event the frames wait on (a route's `popstate`) lands as it would.
  */
 export async function framesUntil(done: () => boolean): Promise<void> {
-  await stepUntil(done, () => {
-    vi.advanceTimersToNextFrame();
-  });
+  await settle(done);
 }
 
 /**
