@@ -13,7 +13,7 @@
     depth,
     up,
     onback,
-    level,
+    children,
     class: className,
   }: {
     /** The level shown, by key. */
@@ -24,7 +24,8 @@
     up: string | null;
     /** Go back to `up`, as a swipe let go past halfway asks. */
     onback: () => void;
-    level: Snippet<[string]>;
+    /** A level's content by its key, its `DrillHeader` included. */
+    children: Snippet<[string]>;
     class?: string;
   } = $props();
 
@@ -94,7 +95,7 @@
       style:opacity={above ? 1 - 0.6 * push.p : 1}
       inert={above}
     >
-      {@render level(key)}
+      {@render children(key)}
     </section>
   {/each}
 </div>

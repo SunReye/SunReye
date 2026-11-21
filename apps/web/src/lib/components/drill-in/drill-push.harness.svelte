@@ -24,7 +24,7 @@
       at = UP.get(at) ?? at;
     }}
   >
-    {#snippet level(key)}
+    {#snippet children(key)}
       <div data-level={key} class="h-40">
         <p>Ebene {key}</p>
         {#if nested && key === "b"}
@@ -36,7 +36,7 @@
               inner = "x";
             }}
           >
-            {#snippet level(sub)}<p data-level={sub}>Innen {sub}</p>{/snippet}
+            {#snippet children(sub)}<p data-level={sub}>Innen {sub}</p>{/snippet}
           </DrillPush>
         {/if}
       </div>

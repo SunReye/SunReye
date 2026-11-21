@@ -1,31 +1,68 @@
+// A settings level is the drill-in's push (ADR 21 "One behaviour, one component"): it slides in
+// over the list, which shifts aside, and back slides it out again.
+import { tick } from "svelte";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { connect } from "../api/core.ts";
-import { finish, hold } from "../motion/animations.harness.ts";
+import { HAPTICS } from "../haptics.ts";
+import { framesUntil, realTimers } from "../motion/clock.harness.ts";
 import { FakeCore } from "./devices.harness.ts";
 import Routed from "./routed.harness.svelte";
 
+let vibrate: ReturnType<typeof vi.fn<() => boolean>>;
+
 beforeEach(async () => {
-  hold();
   await page.viewport(390, 800);
+  vibrate = vi.fn(() => true);
+  Object.defineProperty(navigator, "vibrate", { value: vibrate, configurable: true });
+  localStorage.setItem(HAPTICS, "on");
 });
 
 afterEach(() => {
-  vi.restoreAllMocks();
+  realTimers();
+  localStorage.removeItem(HAPTICS);
   // The levels move the hash.
   history.replaceState(null, "", location.pathname + location.search);
 });
 
-/** The travels under way on `node`. */
-const travels = (node: Element) =>
-  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the DOM's own type.
-  node.getAnimations().filter((each) => Number(each.effect?.getTiming().duration) > 0);
+/** The pushed layer holding `node`. */
+const layerOf = (node: Element) => node.closest<HTMLElement>("[data-push]");
 
-/** How far right of its place `node` is drawn, in its own widths. */
-const right = (node: Element) =>
-  new DOMMatrix(getComputedStyle(node).transform).m41 / node.getBoundingClientRect().width;
+/** How far right of its place a layer is drawn, in % of its width. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the DOM's own type.
+const right = (layer: HTMLElement | null) =>
+  Number(/translateX\(([-\d.]+)%\)/u.exec(layer?.style.transform ?? "")?.[1] ?? Number.NaN);
+
+/** The device list and its Wechselrichter row, the frames on the fake clock. */
+async function devices() {
+  const screen = await render(Routed, { core: connect(new FakeCore()), group: "devices" });
+  const row = screen.getByRole("button", { name: /^Wechselrichter/u });
+
+  await expect.element(row).toBeVisible();
+  vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] });
+
+  return { screen, list: layerOf(row.element()) };
+}
+
+test("a device's level slides in over the list, which shifts aside; landing plays soft", async () => {
+  const { screen, list } = await devices();
+
+  await screen.getByRole("button", { name: /^Wechselrichter/u }).click();
+
+  const level = screen.getByRole("region", { name: "Wechselrichter" });
+
+  await framesUntil(() => level.query() !== null && right(layerOf(level.element())) < 70);
+
+  expect(right(list)).toBeLessThan(0);
+  expect(vibrate).not.toHaveBeenCalled();
+
+  await framesUntil(() => list?.isConnected !== true);
+
+  expect(right(layerOf(level.element()))).toBe(0);
+  expect(vibrate).toHaveBeenCalledOnce();
+});
 
 test.for([
   ["the level's back button", () => page.getByRole("button", { name: "Geräte" }).click()],
@@ -39,37 +76,25 @@ test.for([
 ] as const)(
   "%s slides a device's level out to the right over the list it came from",
   async ([, back]) => {
-    const screen = await render(Routed, { core: connect(new FakeCore()), group: "devices" });
+    const { screen } = await devices();
 
     await screen.getByRole("button", { name: /^Wechselrichter/u }).click();
 
     const level = screen.getByRole("region", { name: "Wechselrichter" });
 
-    await expect.element(level).toBeVisible();
+    await framesUntil(() => level.query() !== null && right(layerOf(level.element())) === 0);
 
-    const node = level.element();
+    const node = layerOf(level.element());
 
-    // The slide in has landed: back starts from rest.
-    await finish(() => node.getAnimations().length === 0);
     await back();
+    await tick();
+    await framesUntil(() => right(node) > 30);
 
     // The list is back under the level, which is on its way out.
     await expect.element(screen.getByRole("button", { name: "Gerät hinzufügen" })).toBeVisible();
-    await expect.poll(() => travels(node).length).toBe(1);
 
-    const slide = travels(node)[0]!;
+    await framesUntil(() => node?.isConnected !== true);
 
-    expect(node.isConnected).toBe(true);
-    expect(slide.effect?.getTiming().duration).toBe(300);
-
-    slide.pause();
-    slide.currentTime = 75;
-
-    // ADR 21's ease-in-out is 0.0708 of the way after a quarter of the time.
-    expect(right(node)).toBeCloseTo(0.0708, 2);
-
-    slide.finish();
-
-    await expect.element(level).not.toBeInTheDocument();
+    await expect.element(screen.getByRole("button", { name: "Gerät hinzufügen" })).toBeVisible();
   },
 );

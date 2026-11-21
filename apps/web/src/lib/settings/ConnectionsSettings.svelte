@@ -5,13 +5,9 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type { Connection, Core, Problem } from "../api/core";
+  import DrillPush from "../components/drill-in/drill-push.svelte";
   import LoadingRows from "../components/loading-rows.svelte";
-  import { m } from "../paraglide/messages.js";
-  import ConnectionForm from "./ConnectionForm.svelte";
-  import ConnectionList from "./ConnectionList.svelte";
-  import Level from "./Level.svelte";
-  import { shiftAside } from "../motion/slide.ts";
-  import RemoveConfirm from "./RemoveConfirm.svelte";
+  import ConnectionsLevel from "./ConnectionsLevel.svelte";
 
   let {
     core,
@@ -26,12 +22,23 @@
 
   let listed = $state.raw<readonly Connection[] | Problem>();
 
-  /** The connection the level names; none on another level, or once it is removed. */
-  const open = $derived.by(() => {
-    const list = listed === undefined || "problem" in listed ? [] : listed;
+  /** Each connection as last listed, so a removed one's level still shows while it slides away. */
+  const seen = new Map<string, Connection>();
 
-    return list.find((c) => String(c.id) === level);
-  });
+  /** The connection a level's key names; none on another level, or once it is removed. */
+  function named(key: string | null): Connection | undefined {
+    const list = listed === undefined || "problem" in listed ? [] : listed;
+    const found = list.find((c) => String(c.id) === key);
+
+    if (found !== undefined) seen.set(String(found.id), found);
+
+    return found;
+  }
+
+  /** The list's key; a level the route names but nothing holds shows the list. */
+  const LIST = "list";
+
+  const at = $derived(level === "add" || named(level) !== undefined ? (level ?? LIST) : LIST);
 
   async function load(): Promise<void> {
     listed = await core.connections();
@@ -62,34 +69,19 @@
 {#if listed === undefined}
   <div class="drill-card"><LoadingRows /></div>
 {:else}
-  <!-- One grid cell, so nothing reflows: a level slides over the list, which shifts aside. -->
-  <div class="grid overflow-x-clip">
-    {#if level === "add"}
-      <Level back={m.settings_connections()} title={m.settings_connection_add()} onback={back}>
-        <ConnectionForm {core} onsaved={after} />
-      </Level>
-    {:else if open === undefined}
-      <div class="drill-card col-start-1 row-start-1 min-w-0 self-start" in:shiftAside out:shiftAside>
-        <ConnectionList
-          answer={listed}
-          onopen={(id) => {
-            onlevel(String(id));
-          }}
-          onadd={() => {
-            onlevel("add");
-          }}
-        />
-      </div>
-    {:else}
-      <Level back={m.settings_connections()} title={open.name} onback={back}>
-        <ConnectionForm {core} connection={open} onsaved={after} />
-        <RemoveConfirm
-          ask={m.settings_connection_remove()}
-          name={open.name}
-          note={m.settings_connection_remove_note()}
-          onremove={() => remove(open.id)}
-        />
-      </Level>
-    {/if}
-  </div>
+  {@const known = listed}
+  <!-- A level slides over the list, which shifts aside. -->
+  <DrillPush {at} depth={at === LIST ? 0 : 1} up={at === LIST ? null : LIST} onback={back}>
+    {#snippet children(key)}
+      <ConnectionsLevel
+        {core}
+        {key}
+        listed={known}
+        connection={named(key) ?? seen.get(key)}
+        {onlevel}
+        onsaved={after}
+        onremove={remove}
+      />
+    {/snippet}
+  </DrillPush>
 {/if}

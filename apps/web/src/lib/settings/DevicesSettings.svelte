@@ -6,14 +6,10 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type { Connection, Core, Device, Listing, Problem } from "../api/core";
+  import DrillPush from "../components/drill-in/drill-push.svelte";
   import LoadingRows from "../components/loading-rows.svelte";
-  import { m } from "../paraglide/messages.js";
   import Refusal from "../setup/Refusal.svelte";
-  import TopologyStep from "../setup/TopologyStep.svelte";
-  import AddDevice from "./AddDevice.svelte";
-  import DeviceLevel from "./DeviceLevel.svelte";
-  import DeviceList from "./DeviceList.svelte";
-  import Level from "./Level.svelte";
+  import DevicesLevel from "./DevicesLevel.svelte";
 
   let {
     core,
@@ -37,8 +33,24 @@
 
   let changed = $state(false);
 
-  /** The device the level names; none on another level, or once it is removed. */
-  const open = $derived(listed?.devices.find((d) => String(d.id) === level));
+  /** Each device as last listed, so a removed one's level still shows while it slides away. */
+  const seen = new Map<string, Device>();
+
+  /** The device a level's key names; none on another level, or once it is removed. */
+  function named(key: string | null): Device | undefined {
+    const found = listed?.devices.find((d) => String(d.id) === key);
+
+    if (found !== undefined) seen.set(String(found.id), found);
+
+    return found;
+  }
+
+  /** The list's key; a level the route names but nothing holds shows the list. */
+  const LIST = "list";
+
+  const at = $derived(
+    level === "add" || level === "topology" || named(level) !== undefined ? (level ?? LIST) : LIST,
+  );
 
   async function load(): Promise<void> {
     const [devices, connections, profiles] = await Promise.all([
@@ -81,49 +93,23 @@
     {#if refused}<div class="p-4"><Refusal {refused} /></div>{:else}<LoadingRows />{/if}
   </div>
 {:else}
-  <!-- One grid cell, so nothing reflows: a level slides over the list, which shifts aside. -->
-  <div class="grid overflow-x-clip">
-    {#if level === "add"}
-      <Level back={m.settings_devices()} title={m.settings_device_add()} onback={back}>
-        <AddDevice {core} known={listed} onadded={after} />
-      </Level>
-    {:else if level === "topology"}
-      <Level back={m.settings_devices()} title={m.topology_title()} onback={back}>
-        <TopologyStep
-          {core}
-          devices={listed.devices}
-          ondone={() => {
-            changed = false;
-            back();
-          }}
-        />
-      </Level>
-    {:else if open === undefined}
-      <DeviceList
+  {@const known = listed}
+  <!-- A level slides over the list, which shifts aside. -->
+  <DrillPush {at} depth={at === LIST ? 0 : 1} up={at === LIST ? null : LIST} onback={back}>
+    {#snippet children(key)}
+      <DevicesLevel
         {core}
-        devices={listed.devices}
-        connections={listed.connections}
-        profiles={listed.profiles}
+        {key}
+        {known}
+        device={named(key) ?? seen.get(key)}
         {changed}
-        onopen={(id) => {
-          onlevel(String(id));
-        }}
-        onadd={() => {
-          onlevel("add");
-        }}
-        onreview={() => {
-          onlevel("topology");
-        }}
-      />
-    {:else}
-      <DeviceLevel
-        {core}
-        device={open}
-        connections={listed.connections}
-        profiles={listed.profiles}
-        onback={back}
+        {onlevel}
         onchanged={after}
+        onreviewed={() => {
+          changed = false;
+          back();
+        }}
       />
-    {/if}
-  </div>
+    {/snippet}
+  </DrillPush>
 {/if}
