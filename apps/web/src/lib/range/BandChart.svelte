@@ -321,7 +321,7 @@
         <BandTicks list={ticks.list} axis />
       </div>
 
-      <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
       <div
         bind:clientHeight={plotHeight}
         bind:clientWidth={plotW}

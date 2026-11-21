@@ -129,7 +129,7 @@
         <span class="absolute right-0 leading-none" style:top="{(hr / 24) * 100}%">{hr} h</span>
       {/each}
     </div>
-    <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <div
       class={[
         "relative h-[216px] touch-pan-y outline-none select-none focus-visible:ring-2 focus-visible:ring-ring",
