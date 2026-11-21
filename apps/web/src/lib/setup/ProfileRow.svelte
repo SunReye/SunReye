@@ -38,6 +38,7 @@
     feedback
     aria-label={spoken}
     aria-current={chosen ? "true" : undefined}
+    selected={chosen}
     class="flex min-h-12 w-full items-center gap-3 px-3 py-2 text-left"
     onclick={() => {
       onpick(offer.profile, offer.variant);

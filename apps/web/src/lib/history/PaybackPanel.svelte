@@ -3,6 +3,7 @@
   import { flowColour } from "../energy-colours.ts";
   import { Progress } from "#lib/components/ui/progress/index.js";
   import type { Payback } from "../api/tariff.ts";
+  import TextLink from "../components/text-link.svelte";
   import { m } from "../paraglide/messages.js";
   import { money, num } from "../range/format.ts";
   import { paybackRows, paybackText } from "./payback.ts";
@@ -66,11 +67,9 @@
     <div class="flex flex-col justify-center gap-2 py-8">
       <h3 class="text-base font-semibold">{m.stats_payback()}</h3>
       <p class="max-w-[52ch] text-sm text-muted-foreground">{m.stats_payback_none()}</p>
-      <a
-        href="#/settings?group=tariff"
-        class="self-start text-sm font-medium text-brand underline-offset-2 outline-none hover:underline focus-visible:underline"
-        >{m.stats_tariff_edit()}</a
-      >
+      <TextLink href="#/settings?group=tariff" class="self-start text-sm">
+        {m.stats_tariff_edit()}
+      </TextLink>
     </div>
   {/if}
 </div>

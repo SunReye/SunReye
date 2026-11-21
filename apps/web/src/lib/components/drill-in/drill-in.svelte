@@ -25,7 +25,7 @@
 <script lang="ts">
   import { tick, untrack, type Snippet } from "svelte";
   import { MediaQuery } from "svelte/reactivity";
-  import GlassCard from "../glass-card.svelte";
+  import * as Card from "#lib/components/ui/card/index.js";
   import * as Item from "../ui/item/index.js";
   import { spring, tween, VelocityTracker } from "../../animate.ts";
   import { haptics } from "../../haptics.ts";
@@ -283,13 +283,13 @@
     >
       <!-- Once only while the page covers the root: the page draws it too. -->
       {#if !covered}{@render heading?.("root")}{/if}
-      <GlassCard>
+      <Card.Root class="glass-ambient gap-0 py-0">
         <Item.Group class="gap-0 divide-y divide-border/60">
           {#each groups as g (g.id)}
             <DrillRow group={g} onclick={() => onnavigate(g.id)} />
           {/each}
         </Item.Group>
-      </GlassCard>
+      </Card.Root>
     </section>
 
     {#if group}

@@ -7,7 +7,7 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import Eyebrow from "./eyebrow.svelte";
-  import GlassCard from "./glass-card.svelte";
+  import * as Card from "#lib/components/ui/card/index.js";
 
   let {
     title,
@@ -32,12 +32,12 @@
 {/snippet}
 
 {#if card}
-  <GlassCard element="section" aria-labelledby={id}>
+  <Card.Root element="section" aria-labelledby={id} class="glass-ambient gap-0 py-0">
     <header class="flex min-h-12 items-center gap-3 border-b border-border/60 px-4 py-2">
       {@render heading()}
     </header>
     {@render children()}
-  </GlassCard>
+  </Card.Root>
 {:else if eyebrow}
   <section aria-labelledby={id} class="flex flex-col">
     <Eyebrow element="h2" {id} class="px-4 pt-5 pb-2">{title}</Eyebrow>

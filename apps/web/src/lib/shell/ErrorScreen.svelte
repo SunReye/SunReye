@@ -5,7 +5,7 @@
 -->
 <script lang="ts">
   import RotateCw from "@lucide/svelte/icons/rotate-cw";
-  import GlassCard from "../components/glass-card.svelte";
+  import * as Card from "#lib/components/ui/card/index.js";
   import { Button } from "../components/ui/button/index.js";
   import * as Empty from "../components/ui/empty/index.js";
   import { m } from "../paraglide/messages.js";
@@ -28,7 +28,7 @@
 </script>
 
 <main class="mx-auto grid min-h-[70dvh] w-full max-w-2xl place-items-center px-4 py-6">
-  <GlassCard class="w-full max-w-md">
+  <Card.Root class="glass-ambient w-full max-w-md gap-0 py-0">
     <Empty.Root class="border-0 px-6 py-10" role="alert">
       <Empty.Header>
         <Empty.Media><ErrorMark /></Empty.Media>
@@ -48,5 +48,5 @@
         <p class="line-clamp-3 text-xs break-words text-muted-foreground tabular-nums">{detail}</p>
       </Empty.Content>
     </Empty.Root>
-  </GlassCard>
+  </Card.Root>
 </main>

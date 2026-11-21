@@ -2,6 +2,7 @@
 <script lang="ts">
   import { Checkbox } from "#lib/components/ui/checkbox/index.js";
   import * as Item from "#lib/components/ui/item/index.js";
+  import { FEEDBACK } from "#lib/components/ui/pressable/index.js";
 
   let {
     label,
@@ -23,7 +24,7 @@
   {#snippet child({ props })}
     <label
       {...props}
-      class={[props.class, disabled ? "cursor-default" : "cursor-pointer hover:bg-muted/60"]}
+      class={[props.class, disabled ? "cursor-default" : ["cursor-pointer", FEEDBACK]]}
     >
       <Item.Content>
         <Item.Title class="text-[15px] font-normal">{label}</Item.Title>

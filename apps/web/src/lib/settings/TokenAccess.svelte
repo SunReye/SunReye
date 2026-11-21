@@ -2,6 +2,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type { Core, CreatedToken, Problem, Token } from "../api/core";
+  import TextLink from "../components/text-link.svelte";
   import { m } from "../paraglide/messages.js";
   import { href } from "../shell/nav.ts";
   import AccessRow from "./AccessRow.svelte";
@@ -42,9 +43,7 @@
   action={m.access_add_token()}
 >
   {#snippet more()}
-    <a class="self-start text-sm font-medium text-brand hover:underline" href={href("/api")}>
-      {m.api_reference()}
-    </a>
+    <TextLink href={href("/api")} class="self-start text-sm">{m.api_reference()}</TextLink>
   {/snippet}
   {#snippet row(token)}
     <AccessRow

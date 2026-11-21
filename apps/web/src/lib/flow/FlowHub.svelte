@@ -67,7 +67,7 @@
     </dl>
   {/if}
   <Pressable
-    class="relative flex size-14 items-center justify-center rounded-md border-2 border-foreground/70 bg-card active:scale-[0.97] sm:size-16"
+    class="relative flex size-14 items-center justify-center rounded-md border-2 border-foreground/70 bg-card motion-safe:active:scale-(--press-scale-calm) sm:size-16"
     aria-label={m.flow_details({ name: m.detail_inverter() })}
     onclick={() => {
       onselect("inverter");

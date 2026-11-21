@@ -11,6 +11,9 @@
 
   let { core, params, go }: { core: Core; params: URLSearchParams; go: Go } = $props();
 
+  /** An inverter's card body at a phone's width, in px: the placeholder's, loading or empty. */
+  const CARD_HEIGHT = 685;
+
   // The range may step as far as the forecast reaches.
   const route = new RangeRoute(() => ({ params, go, core }), AHEAD);
 
@@ -28,9 +31,11 @@
   {#await inverters}
     <!-- One inverter's card at its size: the title, the headline, then its chart and figures. -->
     <RangeCard>
-      <Skeleton class="h-9 w-48" />
-      <Skeleton class="h-12" />
-      <Skeleton class="h-[480px]" role="status" aria-label={m.loading()} />
+      <div class="flex flex-col gap-4" style:height="{CARD_HEIGHT}px">
+        <Skeleton class="h-9 w-48" />
+        <Skeleton class="h-12" />
+        <Skeleton class="min-h-0 flex-1" role="status" aria-label={m.loading()} />
+      </div>
     </RangeCard>
   {:then shown}
     {#each shown as inverter (inverter.device)}
@@ -38,7 +43,14 @@
         <ForecastChart {core} device={inverter.device} lines={inverter.lines} {route} />
       </RangeCard>
     {:else}
-      <p>{m.forecast_none()}</p>
+      <RangeCard>
+        <p
+          class="flex items-center justify-center text-sm text-muted-foreground"
+          style:height="{CARD_HEIGHT}px"
+        >
+          {m.forecast_none()}
+        </p>
+      </RangeCard>
     {/each}
   {:catch}
     <RangeCard>

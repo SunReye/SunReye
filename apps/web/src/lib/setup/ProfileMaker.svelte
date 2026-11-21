@@ -1,7 +1,7 @@
 <!-- One manufacturer in the picker: its name, then each family as a group of rows. -->
 <script lang="ts">
   import Eyebrow from "../components/eyebrow.svelte";
-  import GlassCard from "../components/glass-card.svelte";
+  import * as Card from "#lib/components/ui/card/index.js";
   import type { Manufacturer } from "./catalogue.ts";
   import ProfileRow from "./ProfileRow.svelte";
 
@@ -22,7 +22,7 @@
   <Eyebrow class="px-1 pt-2 pb-2">{maker.name}</Eyebrow>
   <div class="flex flex-col gap-2">
     {#each maker.families as family (family[0]?.profile)}
-      <GlassCard element="ul" class="divide-y divide-border/60">
+      <Card.Root element="ul" class="glass-ambient gap-0 divide-y divide-border/60 py-0">
         {#each family as offer (offer.variant ?? "")}
           <ProfileRow
             {offer}
@@ -30,7 +30,7 @@
             {onpick}
           />
         {/each}
-      </GlassCard>
+      </Card.Root>
     {/each}
   </div>
 </section>

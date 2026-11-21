@@ -13,6 +13,7 @@
   import { Button, buttonVariants } from "./ui/button/index.js";
   import { Calendar } from "./ui/calendar/index.js";
   import * as Item from "./ui/item/index.js";
+  import { FEEDBACK, SELECTED } from "./ui/pressable/index.js";
   import * as Popover from "./ui/popover/index.js";
 
   let {
@@ -158,7 +159,7 @@
       {#snippet child({ props })}
         <Popover.Trigger
           {...props}
-          class={[props.class, "flex-nowrap text-left hover:bg-muted/60 active:bg-muted", className]}
+          class={[props.class, "flex-nowrap text-left", FEEDBACK, open && SELECTED, className]}
         >
           <Item.Content class="min-w-0">
             <Item.Title class="text-[15px] font-normal">{label}</Item.Title>

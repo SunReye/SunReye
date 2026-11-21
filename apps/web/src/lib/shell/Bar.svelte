@@ -3,15 +3,12 @@
   with the rest. Sticky: it never hides on scroll.
 -->
 <script lang="ts">
-  import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import Ellipsis from "@lucide/svelte/icons/ellipsis";
-  import { Badge } from "#lib/components/ui/badge/index.js";
-  import * as Item from "#lib/components/ui/item/index.js";
   import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
   import DrawerSheet from "#lib/components/drawer-sheet.svelte";
-  import NavLink from "#lib/components/nav-link.svelte";
   import { m } from "../paraglide/messages.js";
   import { indicator } from "../range/indicator.ts";
+  import MoreList from "./MoreList.svelte";
   import { BAR, MORE, href, type NavItem } from "./nav.ts";
 
   let {
@@ -87,33 +84,12 @@
 <DrawerSheet bind:open={moreOpen} label={m.nav_more()}>
   <div class="flex flex-col gap-3 px-4 pt-1 pb-2">
     <h2 class="px-1 text-lg font-semibold">{m.nav_more()}</h2>
-    <Item.Group
-      class="glass-ambient gap-0 divide-y divide-border/60 overflow-hidden rounded-lg border border-border/60"
-    >
-      {#each more as item (item.route)}
-        <Item.Root class="rounded-none border-0">
-          {#snippet child({ props })}
-            <NavLink
-              {...props}
-              href={href(item.route)}
-              current={current === item.route}
-              onclick={() => {
-                moreOpen = false;
-              }}
-              class={[props["class"], "text-left active:bg-muted"]}
-            >
-              <Item.Media variant="icon"><item.icon /></Item.Media>
-              <Item.Content
-                ><Item.Title class="text-[15px]">{item.label()}</Item.Title></Item.Content
-              >
-              <Item.Actions>
-                {#if item.admin}<Badge variant="secondary">{m.nav_admin()}</Badge>{/if}
-                <ChevronRight class="size-4 text-muted-foreground" />
-              </Item.Actions>
-            </NavLink>
-          {/snippet}
-        </Item.Root>
-      {/each}
-    </Item.Group>
+    <MoreList
+      items={more}
+      {current}
+      onpick={() => {
+        moreOpen = false;
+      }}
+    />
   </div>
 </DrawerSheet>

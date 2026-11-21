@@ -2,6 +2,7 @@
 <script lang="ts">
   import CircleAlert from "@lucide/svelte/icons/circle-alert";
   import { m } from "../../paraglide/messages.js";
+  import TextLink from "../text-link.svelte";
   import type { Outcome } from "./editable.ts";
 
   let { problem }: { problem: Exclude<Outcome, { kind: "confirmed" }> } = $props();
@@ -17,9 +18,6 @@
       >{problem.kind === "refused" ? m.editor_refused() : m.editor_mismatch()}</span
     >
     {problem.reason}
-    <a
-      href="#/settings?group=logs"
-      class="whitespace-nowrap text-brand underline-offset-2 hover:underline">{m.writes_log()}</a
-    >
+    <TextLink href="#/settings?group=logs" class="whitespace-nowrap">{m.writes_log()}</TextLink>
   </p>
 </div>

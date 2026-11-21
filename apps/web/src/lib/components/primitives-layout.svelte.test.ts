@@ -1,12 +1,12 @@
 import { createRawSnippet } from "svelte";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import Eyebrow from "./eyebrow.svelte";
-import GlassCard from "./glass-card.svelte";
 import PageTitle from "./page-title.svelte";
 import Section from "./section.svelte";
 import StatStrip from "./stat-strip.svelte";
+import * as Card from "./ui/card/index.js";
 
 const body = createRawSnippet(() => ({ render: () => `<p>Inhalt</p>` }));
 const action = createRawSnippet(() => ({ render: () => `<a href="#/x">Mehr</a>` }));
@@ -45,12 +45,19 @@ test("a section as a card sits on ambient glass", async () => {
   expect(getComputedStyle(region).backdropFilter).not.toBe("none");
 });
 
-test("a glass card is ambient glass with the app's corner, opaque under the low-power switch", async () => {
-  const screen = await render(GlassCard, { children: body, "aria-label": "Karte", role: "group" });
-  const card = screen.getByRole("group", { name: "Karte" }).element();
+test("a card in ambient glass is translucent with the card's corner, opaque under the low-power switch", async () => {
+  const screen = await render(Card.Root, {
+    children: body,
+    element: "section",
+    "aria-label": "Karte",
+    class: "glass-ambient",
+  });
+
+  const card = screen.getByRole("region", { name: "Karte" }).element();
   const style = getComputedStyle(card);
 
-  expect(style.borderTopLeftRadius).toBe("2px");
+  // The radius token's 0.125 rem at the card's 1.4.
+  expect(style.borderTopLeftRadius).toBe("2.8px");
   expect(alpha(style.backgroundColor)).toBeLessThan(1);
 
   document.documentElement.dataset["lowPower"] = "";
@@ -60,6 +67,22 @@ test("a glass card is ambient glass with the app's corner, opaque under the low-
   } finally {
     delete document.documentElement.dataset["lowPower"];
   }
+});
+
+test("an interactive card is a button that runs its press and never submits a form", async () => {
+  const onclick = vi.fn<() => void>();
+  const screen = await render(Card.Root, { children: body, interactive: true, onclick });
+  const button = screen.getByRole("button", { name: "Inhalt" });
+
+  await expect.element(button).toHaveAttribute("type", "button");
+  await expect.element(button).toHaveAttribute("data-slot", "card");
+
+  const press = button.element();
+
+  // A DOM click: the hover's lift would keep the pointer's target moving under load.
+  if (press instanceof HTMLElement) press.click();
+
+  expect(onclick).toHaveBeenCalledOnce();
 });
 
 test("a stat strip lists each figure under its label, in tabular figures", async () => {

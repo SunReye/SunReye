@@ -23,12 +23,12 @@
       feedback
       {...props}
       aria-current={current === true ? "page" : undefined}
+      selected={current === true}
       disabled={group.disabled}
       {onclick}
       class={[
         props.class,
         "group relative flex-nowrap text-left disabled:pointer-events-none disabled:opacity-70",
-        current === true && "bg-muted",
       ]}
     >
       {#if current === true}<span class="absolute inset-y-0 left-0 w-0.5 bg-brand"></span>{/if}

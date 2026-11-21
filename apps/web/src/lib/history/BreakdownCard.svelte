@@ -1,6 +1,6 @@
 <!-- What the range's flows were, for the chosen question. -->
 <script lang="ts">
-  import GlassCard from "../components/glass-card.svelte";
+  import * as Card from "#lib/components/ui/card/index.js";
   import LoadingRows from "../components/loading-rows.svelte";
   import { m } from "../paraglide/messages.js";
   import type { Row } from "./breakdown.ts";
@@ -21,7 +21,7 @@
   } = $props();
 </script>
 
-<GlassCard element="section" aria-label={m.stats_breakdown()}>
+<Card.Root element="section" aria-label={m.stats_breakdown()} class="glass-ambient gap-0 py-0">
   <h2 class="px-4 pt-3 pb-2 text-sm font-semibold">
     {m.stats_breakdown()} <span class="font-normal text-muted-foreground">· {label}</span>
   </h2>
@@ -39,4 +39,4 @@
       </p>
     {/if}
   {/if}
-</GlassCard>
+</Card.Root>

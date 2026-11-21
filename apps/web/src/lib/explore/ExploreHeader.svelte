@@ -1,4 +1,6 @@
-<!-- The range sits on the page's centre line, as in History: the title left of it, the mode right. -->
+<!-- The range sits on the page's centre line, as in History: the title left of it, the mode right.
+  Below 415 px a phone stands it in rows on purpose: the title, then its controls across the width,
+  then the range; the words stay (ADR 21). -->
 <script lang="ts">
   import PageTitle from "../components/page-title.svelte";
   import { m } from "../paraglide/messages.js";
@@ -32,7 +34,7 @@
   class="flex flex-wrap items-center gap-x-3 gap-y-3 sm:gap-x-6 lg:grid lg:grid-cols-[1fr_540px_1fr] lg:items-start"
 >
   {#if !full}
-    <PageTitle wide class="order-1" title={m.explore_title()} />
+    <PageTitle wide class="order-1 max-[415px]:w-full" title={m.explore_title()} />
   {/if}
   <!-- Without the title the range has room beside the mode from 640 px: a phone lying down. -->
   <div
@@ -44,7 +46,7 @@
     <RangeControl model={x.route} kinds={x.view.mode === "overlay" ? OVERLAY_KINDS : undefined} />
   </div>
   <div
-    class="order-2 ml-auto flex items-center gap-1.5 sm:gap-2 lg:order-3 lg:col-start-3 lg:justify-self-end"
+    class="order-2 ml-auto flex items-center gap-1.5 max-[415px]:ml-0 max-[415px]:w-full max-[415px]:justify-between sm:gap-2 lg:order-3 lg:col-start-3 lg:justify-self-end"
   >
     {#if !full}
       <ExploreActions

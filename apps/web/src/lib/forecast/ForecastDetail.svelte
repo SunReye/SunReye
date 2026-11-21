@@ -32,6 +32,9 @@
   /** A sheet section, as the other details' (ADR 21). */
   const FRAME = "flex flex-col gap-3 border-t border-border/60 px-5 pt-4 pb-4 sm:px-6";
 
+  /** A day's tabs, chart and facts at a phone's width, in px: the placeholder's, loading or empty. */
+  const DAYS_HEIGHT = 436;
+
   const zone = $derived(read?.zone);
   const start = $derived(read?.start.getTime());
   const now = $derived(read?.now.getTime() ?? 0);
@@ -81,11 +84,14 @@
 {#if zone === undefined || view === null || !forecast}
   <section class={FRAME} aria-label={m.ahead_days()}>
     {#if forecast === false}
-      <p class="flex h-[190px] items-center justify-center text-xs text-muted-foreground">
+      <p
+        class="flex items-center justify-center text-xs text-muted-foreground"
+        style:height="{DAYS_HEIGHT}px"
+      >
         {m.ahead_none()}
       </p>
     {:else}
-      <Skeleton class="h-[440px]" role="status" aria-label={m.loading()} />
+      <Skeleton style="height: {DAYS_HEIGHT}px" role="status" aria-label={m.loading()} />
     {/if}
   </section>
 {:else}

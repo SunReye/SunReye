@@ -48,7 +48,7 @@
   const REST = {
     main: "mx-auto max-w-[1320px] gap-4 px-3 pt-4 pb-6 sm:px-4 lg:gap-5 lg:px-6 lg:pt-6",
     panes: "lg:grid-cols-[320px_minmax(0,1fr)]",
-    card: "glass-ambient self-start px-3 py-4 sm:px-5",
+    card: "self-start px-3 py-4 sm:px-5",
     chart: "",
   };
 
@@ -83,7 +83,7 @@
       <PickerShell {x} paned={paned.current} bind:search />
     {/if}
 
-    <Card.Root class={["min-w-0 gap-4", look.card]}>
+    <Card.Root class={["min-w-0 gap-4", !full.on && "glass-ambient", look.card]}>
       <!-- Opened with nothing chosen, the first saved view decides what is read (ADR 22). -->
       {#if !x.saved.opening}
         {#if !full.on}
