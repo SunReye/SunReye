@@ -8,6 +8,7 @@
     interactive = false,
     words = 0,
     fill = false,
+    frame = "",
   }: {
     /** The content's height, in px. */
     height: number;
@@ -17,11 +18,13 @@
     words?: number;
     /** A part that fills what the card leaves over. */
     fill?: boolean;
+    /** The card's own classes: its frame, as a screen's mode sets it. */
+    frame?: string;
   } = $props();
 </script>
 
 <div style:width="{width}px">
-  <Card.Root {interactive} data-testid="card">
+  <Card.Root {interactive} class={frame} data-testid="card">
     {#if words > 0}
       <p>{Array.from({ length: words }, () => "Ertrag").join(" ")}</p>
     {/if}

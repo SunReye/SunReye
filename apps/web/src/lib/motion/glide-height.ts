@@ -45,14 +45,22 @@ class Height {
 
   /** The card alone resized, a row it stands in grew or shrank around it: nothing to glide. */
   resized(): void {
-    if (this.#glide !== undefined) return;
+    if (this.#glide === undefined) this.#measure();
+  }
 
-    this.#size = { width: this.#card.offsetWidth, height: this.#card.offsetHeight };
+  /** The card's own frame changed: it takes its height at once. */
+  reframed(): void {
+    this.stop();
+    this.#measure();
   }
 
   stop(): void {
     this.#glide?.animation.cancel();
     this.#glide = undefined;
+  }
+
+  #measure(): void {
+    this.#size = { width: this.#card.offsetWidth, height: this.#card.offsetHeight };
   }
 
   // `min-height` and `max-height`, not `height`: a child's percentage height stays `auto`, so a
@@ -82,8 +90,8 @@ class Height {
 /**
  * Glides `card`'s height from the one drawn to its content's whenever its content changes it, on
  * the move token, so what stands below moves with it. A change of width (the window's), the still
- * tier and a card that mounts take the new height at once. It hears the card's children, not the
- * card, whose size the glide itself changes.
+ * tier, a change to the card's own class or style and a card that mounts take the new height at
+ * once. It hears the card's children, not the card, whose size the glide itself changes.
  */
 export const glideHeight: Attachment<HTMLElement> = (card) => {
   const height = new Height(card);
@@ -97,20 +105,26 @@ export const glideHeight: Attachment<HTMLElement> = (card) => {
 
   for (const child of card.children) sizes.observe(child);
 
-  const children = new MutationObserver((records) => {
+  const mutations = new MutationObserver((records) => {
     for (const record of records) {
       for (const node of record.removedNodes) if (node instanceof Element) sizes.unobserve(node);
 
       for (const node of record.addedNodes) if (node instanceof Element) sizes.observe(node);
     }
 
-    height.changed();
+    // The card's own class or style: its frame changed (a screen's fullscreen), not its content.
+    if (records.some((record) => record.type === "attributes")) height.reframed();
+    else height.changed();
   });
 
-  children.observe(card, { childList: true });
+  mutations.observe(card, {
+    childList: true,
+    attributes: true,
+    attributeFilter: ["class", "style"],
+  });
 
   return () => {
-    children.disconnect();
+    mutations.disconnect();
     sizes.disconnect();
     height.stop();
   };

@@ -26,6 +26,7 @@ async function shown(props: {
   width?: number;
   words?: number;
   fill?: boolean;
+  frame?: string;
 }) {
   const screen = await render(Harness, props);
   const card = screen.getByTestId("card").element();
@@ -101,6 +102,18 @@ test("a width the window sets takes its height at once", async () => {
   const height = card.offsetHeight;
 
   await screen.rerender({ height: 40, width: 200, words: 40 });
+  await tick();
+  playFrame();
+
+  expect(card.offsetHeight).toBeGreaterThan(height);
+  expect(glides(card)).toEqual([]);
+});
+
+test("a card whose own frame changes, as a screen's mode sets it, takes its height at once", async () => {
+  const { screen, card } = await shown({ height: 40, words: 40 });
+  const height = card.offsetHeight;
+
+  await screen.rerender({ height: 40, words: 40, frame: "p-12" });
   await tick();
   playFrame();
 
