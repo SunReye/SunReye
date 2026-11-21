@@ -3,7 +3,7 @@
 import { flushSync } from "svelte";
 import { vi } from "vitest";
 import { PerspectiveCamera } from "three";
-import { frames, framesUntil } from "../motion/clock.harness.ts";
+import { frames, framesUntil, stepUntil } from "../motion/clock.harness.ts";
 import { motion } from "../motion/tier.svelte.ts";
 import { weatherEffects } from "./weather-effects.svelte.ts";
 import { quality } from "./quality.svelte.ts";
@@ -139,3 +139,20 @@ export const onLens = (
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- a spy, only read.
   glazed: Awaited<ReturnType<typeof open>>["glazed"],
 ): Glass | null | undefined => glazed.mock.lastCall?.[0];
+
+/** Until `check` holds, as many frames as it plays, however long they take to draw: what fades
+ * runs out on the frames played. */
+export async function playedUntil(check: () => Promise<boolean>): Promise<void> {
+  let held = await check();
+
+  await stepUntil(
+    () => held,
+    async () => {
+      held = await check();
+    },
+  );
+}
+
+/** Whether the lens holds `glass` at full strength. */
+export const holds = (on: Glass | null | undefined, glass: Glass): boolean =>
+  on?.rain === glass.rain && on.snow === glass.snow && on.frost === glass.frost;

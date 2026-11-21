@@ -4,8 +4,7 @@ import { render } from "vitest-browser-svelte";
 import type { Fitted, Geometry, Point } from "../builder/pv.ts";
 import type { Projector } from "../builder/drawing.svelte.ts";
 import SceneCanvas from "../builder/SceneCanvas.svelte";
-
-const SLOW = { timeout: 30_000 };
+import { settle } from "../motion/clock.harness.ts";
 
 /** Eight windows along a 20 m wall that faces south, each 1.2 m wide from 0.9 m to 2.3 m up. */
 const windows: Fitted[] = Array.from({ length: 8 }, (_, i) => {
@@ -96,7 +95,7 @@ async function wall(sun: Point): Promise<() => boolean[] | undefined> {
 test("at night some windows glow warm, the same ones every time; by day none do", async () => {
   const first = await wall(MIDNIGHT);
 
-  await expect.poll(() => first()?.some(Boolean), SLOW).toBe(true);
+  await settle(() => first()?.some(Boolean) === true);
 
   const lit = first() ?? [];
 
@@ -106,13 +105,13 @@ test("at night some windows glow warm, the same ones every time; by day none do"
 
   const again = await wall(MIDNIGHT);
 
-  await expect.poll(() => again()?.some(Boolean), SLOW).toBe(true);
+  await settle(() => again()?.some(Boolean) === true);
   expect(again()).toEqual(lit);
 
   document.body.replaceChildren();
 
   const day = await wall(NOON);
 
-  await expect.poll(() => day()?.length, SLOW).toBe(windows.length);
+  await settle(() => day()?.length === windows.length);
   expect(day()).toEqual(windows.map(() => false));
 });

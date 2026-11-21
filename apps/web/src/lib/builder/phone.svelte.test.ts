@@ -8,6 +8,7 @@ import Builder from "./Builder.svelte";
 import {
   cellsOnPage,
   DEVICES,
+  filledFace,
   house,
   MODULE,
   onCanvas,
@@ -15,20 +16,18 @@ import {
   phone,
   press,
   pv,
+  settle,
   SOUTH,
   starts,
   tap,
   testCore,
   undesk,
-  filledFace,
 } from "./builder.harness.ts";
 import { addGrid, emptyDraft } from "./modules.ts";
 import { handles } from "./handles/grips.ts";
 
 // The builder on a phone (ADR 20): the canvas fills the screen, the inspector is a bottom sheet,
 // "+" adds, and every step is a finger.
-
-const SLOW = { timeout: 15_000 };
 
 /** The inspector's bottom sheet and the handle that pulls it up. */
 const sheet = () => page.getByRole("region", { name: "Szene bearbeiten" });
@@ -102,7 +101,7 @@ test("a tap on the house drills the inspector to it, still peeking: the handles 
     moduleTypes: [MODULE],
     devices: DEVICES,
   });
-  await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
+  await settle(() => draws.mock.calls.length > 0);
 
   await press("touch", [onCanvas(house().scene)([5, 3, 4])]);
 
@@ -138,7 +137,7 @@ test("by touch alone an admin builds a house from a template, lays modules on a 
   await tap(handle());
   await expect.element(handle()).toHaveAttribute("aria-expanded", "false");
 
-  await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
+  await settle(() => draws.mock.calls.length > 0);
   await wireThree();
 
   await tap(handle());
@@ -164,7 +163,7 @@ test("opening a face for its modules flies the camera onto it: a tap lands in th
     moduleTypes: [MODULE],
     devices: DEVICES,
   });
-  await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
+  await settle(() => draws.mock.calls.length > 0);
 
   await tap(handle());
   await row("Module");
@@ -201,7 +200,7 @@ test("a finger picks a chimney and slides it along its roof, still peeking", asy
     moduleTypes: [MODULE],
     devices: DEVICES,
   });
-  await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
+  await settle(() => draws.mock.calls.length > 0);
 
   const onPage = onCanvas(scene);
   const [x, y, z] = top.at;
@@ -233,7 +232,7 @@ test("a finger drags a car place on the lawn", async () => {
     moduleTypes: [MODULE],
     devices: DEVICES,
   });
-  await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
+  await settle(() => draws.mock.calls.length > 0);
 
   const onPage = onCanvas(scene, above);
 

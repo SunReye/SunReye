@@ -7,8 +7,8 @@ import { connect } from "../../api/core.ts";
 import Builder from "../Builder.svelte";
 import type { View } from "../camera.ts";
 import {
-  DEVICES,
   desk,
+  DEVICES,
   drill,
   house,
   inspector,
@@ -16,6 +16,7 @@ import {
   onCanvas,
   press,
   pv,
+  settle,
   starts,
   testCore,
   undesk,
@@ -23,8 +24,6 @@ import {
 import { handles, type Target, type Triple } from "./grips.ts";
 
 type Scene = ReturnType<typeof house>["scene"];
-
-const SLOW = { timeout: 15_000 };
 
 beforeEach(async () => {
   localStorage.removeItem("sunreye.builder.view");
@@ -72,7 +71,7 @@ test("dragging a block's width arrow is one undo step; the inspector shows the n
   });
 
   await drill("Gebäude", "Baukörper 1");
-  await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
+  await settle(() => draws.mock.calls.length > 0);
   await widen(start.scene);
 
   const width = inspector().getByRole("button", { name: starts("Breite (m)") });
@@ -144,12 +143,12 @@ async function placePicked() {
   });
 
   await drill("Geräte", "Stellplatz 1");
-  await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
+  await settle(() => draws.mock.calls.length > 0);
 
   return { scene: start.scene, undo: inspector().getByRole("button", { name: "Rückgängig" }) };
 }
 
-test("dragging a car place moves it in one undo step", SLOW, async () => {
+test("dragging a car place moves it in one undo step", async () => {
   const { scene, undo } = await placePicked();
 
   await mouseDrag(scene, [-3.75, 0, 3.5], [-3.75, 0, 5.5]);
@@ -164,7 +163,7 @@ test("dragging a car place moves it in one undo step", SLOW, async () => {
   await expect.element(undo).toBeDisabled();
 });
 
-test("a car place's ring shows after Drehen and turns it", SLOW, async () => {
+test("a car place's ring shows after Drehen and turns it", async () => {
   const { scene, undo } = await placePicked();
   const place: Target = { kind: "place", index: 0 };
   const ring = handles(scene, place).find(({ grip }) => grip === "turn");
@@ -198,50 +197,46 @@ function chimneyed() {
   return { ...start, scene: { ...start.scene, chimneys: [chimney] } };
 }
 
-test(
-  "a tap picks a chimney in 3D; a drag slides it along its face, never off it",
-  SLOW,
-  async () => {
-    const draws = vi.spyOn(EffectComposer.prototype, "render");
-    const start = chimneyed();
-    const laid = pv.modules(start.scene, {});
-    const [top] = handles(start.scene, { kind: "chimney", index: 0 }, laid);
+test("a tap picks a chimney in 3D; a drag slides it along its face, never off it", async () => {
+  const draws = vi.spyOn(EffectComposer.prototype, "render");
+  const start = chimneyed();
+  const laid = pv.modules(start.scene, {});
+  const [top] = handles(start.scene, { kind: "chimney", index: 0 }, laid);
 
-    if (top === undefined) throw new Error("no chimney handle");
+  if (top === undefined) throw new Error("no chimney handle");
 
-    await render(Builder, {
-      pv,
-      core: connect(testCore()),
-      start,
-      moduleTypes: [MODULE],
-      devices: DEVICES,
-    });
+  await render(Builder, {
+    pv,
+    core: connect(testCore()),
+    start,
+    moduleTypes: [MODULE],
+    devices: DEVICES,
+  });
 
-    await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
+  await settle(() => draws.mock.calls.length > 0);
 
-    const onPage = onCanvas(start.scene);
-    const [x, y] = top.at;
+  const onPage = onCanvas(start.scene);
+  const [x, y] = top.at;
 
-    await press("mouse", [onPage(top.at)]);
-    await expect.element(inspector().getByRole("heading", { name: "Schornstein 1" })).toBeVisible();
+  await press("mouse", [onPage(top.at)]);
+  await expect.element(inspector().getByRole("heading", { name: "Schornstein 1" })).toBeVisible();
 
-    const across = inspector().getByRole("button", { name: starts("Mitte von links (m)") });
+  const across = inspector().getByRole("button", { name: starts("Mitte von links (m)") });
 
-    await press("mouse", [
-      onPage(top.at),
-      onPage([x + 1, y, top.at[2]]),
-      onPage([x + 2, y, top.at[2]]),
-    ]);
-    await expect.element(across.getByText(/^5$/u)).toBeVisible();
+  await press("mouse", [
+    onPage(top.at),
+    onPage([x + 1, y, top.at[2]]),
+    onPage([x + 2, y, top.at[2]]),
+  ]);
+  await expect.element(across.getByText(/^5$/u)).toBeVisible();
 
-    // Far past the face's east end: it stops with its side on the verge, 10 m across.
-    const moved = [x + 2, y, top.at[2]] as const;
+  // Far past the face's east end: it stops with its side on the verge, 10 m across.
+  const moved = [x + 2, y, top.at[2]] as const;
 
-    await press("mouse", [
-      onPage(moved),
-      onPage([x + 5, y, top.at[2]]),
-      onPage([x + 9, y, top.at[2]]),
-    ]);
-    await expect.element(across.getByText(/^9,7$/u)).toBeVisible();
-  },
-);
+  await press("mouse", [
+    onPage(moved),
+    onPage([x + 5, y, top.at[2]]),
+    onPage([x + 9, y, top.at[2]]),
+  ]);
+  await expect.element(across.getByText(/^9,7$/u)).toBeVisible();
+});

@@ -16,15 +16,14 @@ import {
   MODULE,
   onCanvas,
   phone,
+  type Pointer,
   press,
   pv,
+  settle,
   starts,
   testCore,
   undesk,
-  type Pointer,
 } from "./builder.harness.ts";
-
-const SLOW = { timeout: 15_000 };
 
 const bar = () => page.getByRole("toolbar", { name: "Aktionen" });
 const add = () => bar().getByRole("button", { name: "Hinzufügen" });
@@ -55,7 +54,7 @@ async function bare() {
     moduleTypes: [MODULE],
     devices: DEVICES,
   });
-  await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
+  await settle(() => draws.mock.calls.length > 0);
 
   return (pointer: Pointer, along: number, up: number) =>
     press(pointer, [onCanvas(start.scene)([along, up, 8])]);
@@ -203,7 +202,7 @@ test("on a turned house under a turned north the window still goes in under the 
     moduleTypes: [MODULE],
     devices: DEVICES,
   });
-  await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
+  await settle(() => draws.mock.calls.length > 0);
 
   // Three metres along the front wall and 1.6 m up, as the crate lays the wall out.
   const front = pv.modules(turnedScene, {}).walls[0]?.front;
@@ -239,7 +238,7 @@ test("on a phone a house of two blocks carries all four tools inside the canvas"
     moduleTypes: [MODULE],
     devices: DEVICES,
   });
-  await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
+  await settle(() => draws.mock.calls.length > 0);
 
   // The wing's wall that faces the camera in the south-east, a metre and a half along it.
   const [facing] = Object.values(pv.modules(walled.scene, {}).walls[1] ?? {}).toSorted(

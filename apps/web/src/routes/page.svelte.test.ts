@@ -7,6 +7,7 @@ import "../app.css";
 import Page from "./+page.svelte";
 import { asked, homeCore, restoreCore, serveCore, served } from "./home.harness.ts";
 import { keepOffline } from "./route.harness.ts";
+import { settle } from "../lib/motion/clock.harness.ts";
 
 keepOffline();
 
@@ -108,7 +109,7 @@ test("without WebGL2 a scene still leaves the 2D flow", async () => {
 
   const screen = await render(Page, { context: homeCore() });
 
-  await expect.poll(() => localStorage.getItem("sunreye.webgl2"), { timeout: 20_000 }).toBe("no");
+  await settle(() => localStorage.getItem("sunreye.webgl2") === "no");
   await expect.element(screen.getByRole("radio", { name: "2D" })).not.toBeInTheDocument();
   expect(screen.getByLabelText("3D-Szene des Hauses").query()).toBeNull();
 });

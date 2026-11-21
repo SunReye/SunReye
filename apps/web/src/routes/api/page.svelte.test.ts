@@ -4,6 +4,7 @@ import { connect } from "../../lib/api/core.ts";
 import { API_DOCUMENT, BASE } from "../../lib/api/core.harness.ts";
 import { coreContext } from "../../lib/shell/core.ts";
 import Page from "./+page.svelte";
+import { settle } from "../../lib/motion/clock.harness.ts";
 
 test("the API route shows the core's document under its title", async () => {
   const screen = await render(Page, {
@@ -15,7 +16,9 @@ test("the API route shows the core's document under its title", async () => {
   await expect
     .element(screen.getByRole("heading", { level: 1, name: "API-Referenz" }))
     .toBeVisible();
-  await expect
-    .element(screen.getByRole("heading", { name: "Every saved view" }), { timeout: 15_000 })
-    .toBeVisible();
+  // Scalar is loaded and draws the document, as long as that takes.
+  const operation = screen.getByRole("heading", { name: "Every saved view" });
+
+  await settle(() => operation.query() !== null);
+  await expect.element(operation).toBeVisible();
 });

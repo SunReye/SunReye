@@ -6,9 +6,7 @@ import { connect, type Transport } from "../api/core.ts";
 import { MODULE, press } from "../builder/builder.harness.ts";
 import { layout, scene } from "../live/live-scene.harness.ts";
 import Hero from "./Hero.svelte";
-
-// Software GL builds the scene slowly while other suites run.
-const SLOW = { timeout: 20_000 };
+import { settle } from "../motion/clock.harness.ts";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -84,17 +82,25 @@ const flowShown = () =>
 
 test("the scene's studio holds the hero while it loads; after a second it says so", async () => {
   types = "hold";
+  // The load's own clock: its one-second notice is due when the test says so.
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
 
   await hero();
+  await loading.promise;
 
   expect(page.getByText("3D-Ansicht lädt …").elements()).toHaveLength(0);
   expect(flowShown()).toBe(false);
-  await expect.element(page.getByText("3D-Ansicht lädt …"), SLOW).toBeVisible();
+
+  vi.advanceTimersByTime(1500);
+  vi.useRealTimers();
+
+  await expect.element(page.getByText("3D-Ansicht lädt …")).toBeVisible();
 
   held.resolve();
 
-  await expect.element(sceneFigure(), SLOW).toBeVisible();
-  await expect.poll(() => page.getByText("3D-Ansicht lädt …").elements(), SLOW).toHaveLength(0);
+  await settle(() => sceneFigure().query() !== null);
+  await expect.element(sceneFigure()).toBeVisible();
+  await settle(() => page.getByText("3D-Ansicht lädt …").query() === null);
 });
 
 test("a failed load leaves the 2D flow with a retry that loads the scene", async () => {
@@ -102,14 +108,16 @@ test("a failed load leaves the 2D flow with a retry that loads the scene", async
 
   await hero();
 
-  await expect.element(page.getByText(/^3D-Ansicht nicht geladen/u), SLOW).toBeVisible();
+  await settle(() => page.getByText(/^3D-Ansicht nicht geladen/u).query() !== null);
+  await expect.element(page.getByText(/^3D-Ansicht nicht geladen/u)).toBeVisible();
   expect(flowShown()).toBe(true);
 
   types = "answer";
   await page.getByRole("button", { name: "Erneut laden" }).click();
 
-  await expect.element(sceneFigure(), SLOW).toBeVisible();
-  await expect.poll(flowShown, SLOW).toBe(false);
+  await settle(() => sceneFigure().query() !== null);
+  await expect.element(sceneFigure()).toBeVisible();
+  await settle(() => !flowShown());
 });
 
 test("the first switch from 2D keeps the flow until the scene fades in over it", async () => {
@@ -130,8 +138,9 @@ test("the first switch from 2D keeps the flow until the scene fades in over it",
   vi.useRealTimers();
   held.resolve();
 
-  await expect.element(sceneFigure(), SLOW).toBeVisible();
-  await expect.poll(flowShown, SLOW).toBe(false);
+  await settle(() => sceneFigure().query() !== null);
+  await expect.element(sceneFigure()).toBeVisible();
+  await settle(() => !flowShown());
 });
 
 /** Where each browser keeps the view it orbited to. */
@@ -162,8 +171,9 @@ test("the camera is locked: one finger scrolls the page, until the lock is opene
     await hero();
     // Below the hero: a page to scroll.
     document.body.append(tall);
-    await expect.element(sceneFigure(), SLOW).toBeVisible();
-    await expect.poll(() => getComputedStyle(sceneFigure().element()).opacity, SLOW).toBe("1");
+    await settle(() => sceneFigure().query() !== null);
+    await expect.element(sceneFigure()).toBeVisible();
+    await settle(() => getComputedStyle(sceneFigure().element()).opacity === "1");
 
     // The swipe's fling coasts on; it must be over before the page goes back up.
     const coasted = new Promise((done) => {

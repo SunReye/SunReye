@@ -7,9 +7,7 @@ import { presetView } from "./camera.ts";
 import type { Geometry } from "./pv.ts";
 import SceneCanvas from "./SceneCanvas.svelte";
 import { turn } from "../api/settled.harness.ts";
-
-// Software GL prepares the scene slowly while other suites run.
-const SLOW = { timeout: 15_000 };
+import { settle } from "../motion/clock.harness.ts";
 
 const house: Geometry = {
   faces: [
@@ -56,7 +54,7 @@ function running(settledResults: Settled): boolean {
 
 /** Each arrival so far has finished, and a later one, chained on its promise, had its turn. */
 async function settled(settledResults: Settled): Promise<void> {
-  await expect.poll(() => running(settledResults), SLOW).toBe(false);
+  await settle(() => !running(settledResults));
   await turn();
 }
 
@@ -72,13 +70,13 @@ test("a live tick that changes only a car's power or SOC brings no car anew", as
     cars: [car],
   });
 
-  await expect.poll(() => arrive.mock.calls.length, SLOW).toBe(1);
+  await settle(() => arrive.mock.calls.length === 1);
   await settled(results);
 
   await screen.rerender({ cars: [{ ...car, watts: 0, soc: 64 }] });
   await screen.rerender({ cars: [] });
 
-  await expect.poll(() => arrive.mock.calls.length, SLOW).toBeGreaterThanOrEqual(2);
+  await settle(() => arrive.mock.calls.length >= 2);
   await settled(results);
   expect(arrive).toHaveBeenCalledTimes(2);
 });
