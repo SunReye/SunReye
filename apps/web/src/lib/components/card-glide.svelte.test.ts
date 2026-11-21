@@ -28,6 +28,7 @@ async function shown(props: {
   label?: string;
   loading?: boolean;
   frame?: string;
+  column?: number;
 }) {
   const screen = await render(Harness, props);
   const card = screen.getByTestId("card").element();
@@ -134,6 +135,22 @@ test("a card whose own frame changes, as a screen's mode sets it, takes its heig
 
   expect(card.offsetHeight).toBeGreaterThan(height);
   expect(glides(card)).toEqual([]);
+});
+
+test("a card whose column sets its height takes no glide: the column, not its content, sizes it", async () => {
+  const { screen, card } = await shown({ height: 40, column: 600 });
+  // The column less what stands below the card.
+  const filled = card.offsetHeight;
+
+  expect(filled).toBeGreaterThan(400);
+
+  // The column grows as its content changes, as the dashboard's beside a hero that loads.
+  await screen.rerender({ height: 120, column: 800 });
+  await tick();
+  playFrame();
+
+  expect(glides(card)).toEqual([]);
+  expect(card.offsetHeight).toBe(filled + 200);
 });
 
 test("on the still tier a card takes its height at once", async () => {

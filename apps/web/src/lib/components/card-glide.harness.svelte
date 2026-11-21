@@ -12,6 +12,7 @@
     frame = "",
     travels = false,
     builds = false,
+    column = 0,
   }: {
     /** The content's height, in px. */
     height: number;
@@ -29,11 +30,16 @@
     travels?: boolean;
     /** The content builds up as it first shows, as a chart's entrance. */
     builds?: boolean;
+    /** A column of this height in px the card fills (`flex-1`), as the dashboard's side column. */
+    column?: number;
   } = $props();
 </script>
 
-<div style:width="{width}px">
-  <Card.Root {interactive} class={frame} data-testid="card">
+<div
+  style:width="{width}px"
+  style:height={column > 0 ? `${column}px` : undefined}
+  class={{ "flex flex-col": column > 0 }}>
+  <Card.Root {interactive} class={[frame, column > 0 && "flex-1"]} data-testid="card">
     {#if words > 0}
       <p>{Array.from({ length: words }, () => "Ertrag").join(" ")}</p>
     {/if}
