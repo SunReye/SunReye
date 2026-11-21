@@ -73,11 +73,15 @@ function finger(type: string, ago: number): void {
 const rule = () => plot().querySelector("[data-read]");
 
 test("the pointer on the live graph reads the sample under it in the header; leaving restores it", async () => {
-  vi.useFakeTimers({ toFake: ["Date"], now: T0 });
+  vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"], now: T0 });
 
   const { live } = await mount();
 
   await userEvent.hover(plot(), { position: before(30) });
+  // Every look of a wait moves the fake clock on, the hover's own too: the reading's next tick
+  // reads it at the newest sample's time again.
+  vi.setSystemTime(T0 - 1000);
+  vi.advanceTimersByTime(1000);
 
   // 30 s before the newest sample: the 29th, 2,9 kW.
   await expect.element(live.getByText("vor 30 s")).toBeVisible();
