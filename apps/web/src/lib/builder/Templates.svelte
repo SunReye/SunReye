@@ -68,7 +68,7 @@
           <li>
             <Card.Root
               interactive
-              class="w-full gap-0 py-0"
+              class="canvas-chip w-full gap-0 py-0"
               onclick={() => {
                 onpick(template === "empty" ? undefined : fill(draft, template));
               }}

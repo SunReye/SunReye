@@ -10,7 +10,7 @@
   let { notes, onnote }: { notes: readonly Note[]; onnote: (note: Note) => void } = $props();
 </script>
 
-<Card.Root element="section" aria-label={m.stats_notes()} class="glass-ambient gap-0 py-0">
+<Card.Root element="section" aria-label={m.stats_notes()} class="gap-0 py-0">
   <h2 class="px-4 pt-3 pb-2 text-sm font-semibold">{m.stats_notes()}</h2>
   <ul class="divide-y divide-border/60 border-t border-border/60">
     {#each notes as n (n.text)}

@@ -22,7 +22,7 @@
   <Eyebrow class="px-1 pt-2 pb-2">{maker.name}</Eyebrow>
   <div class="flex flex-col gap-2">
     {#each maker.families as family (family[0]?.profile)}
-      <Card.Root element="ul" class="glass-ambient gap-0 divide-y divide-border/60 py-0">
+      <Card.Root element="ul" class="gap-0 divide-y divide-border/60 py-0">
         {#each family as offer (offer.variant ?? "")}
           <ProfileRow
             {offer}

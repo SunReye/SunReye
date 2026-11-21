@@ -71,7 +71,7 @@
       {/await}
     {:else}
       <div class="grid h-full place-items-center p-4">
-        <Card.Root class="glass-ambient max-w-sm gap-2 p-4">
+        <Card.Root class="max-w-sm gap-2 p-4">
           <p class="font-medium">{m.builder_no_webgl()}</p>
           <p class="text-muted-foreground">{m.layout_later()}</p>
         </Card.Root>

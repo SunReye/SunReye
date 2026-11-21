@@ -410,20 +410,6 @@
   }
 }
 
-/* One section's rows on a drill-in page (ADR 21): on the phone's level screens an inset card of its
-   own in the kit card's look, its label above it; in two panes plain, inside the pane's card.
-   Clipped, not hidden, so a bar inside still sticks to the screen; a section with nothing to show
-   draws no card. */
-@utility drill-card {
-  :where([data-drill="level"]) & {
-    @apply glass-ambient overflow-clip rounded-xl ring-1 ring-foreground/10 elevation-1;
-
-    &:empty {
-      display: none;
-    }
-  }
-}
-
 /* 44 px targets on touch (ADR 21) without resizing the control: the hit area grows, the look stays.
    `:where` keeps the position below any utility, so an absolute or fixed control stays where it is. */
 @utility touch-hit {

@@ -69,6 +69,26 @@ test("a card in ambient glass is translucent with the card's corner, opaque unde
   }
 });
 
+test("every card is the kit's card in ambient glass; one may opt out by name", async () => {
+  await render(Card.Root, { children: body });
+  await render(Card.Root, { children: body, interactive: true, onclick: () => {} });
+
+  expect(document.querySelectorAll("[data-slot=card]")).toHaveLength(2);
+
+  for (const el of document.querySelectorAll("[data-slot=card]")) {
+    const card = getComputedStyle(el);
+
+    expect(alpha(card.backgroundColor)).toBeLessThan(1);
+    expect(card.backdropFilter).not.toBe("none");
+  }
+
+  const plain = await render(Card.Root, { children: body, glass: false });
+  const look = getComputedStyle(plain.container.querySelector("[data-slot=card]")!);
+
+  expect(look.backdropFilter).toBe("none");
+  expect(alpha(look.backgroundColor)).toBe(1);
+});
+
 test("an interactive card is a button that runs its press and never submits a form", async () => {
   const onclick = vi.fn<() => void>();
   const screen = await render(Card.Root, { children: body, interactive: true, onclick });

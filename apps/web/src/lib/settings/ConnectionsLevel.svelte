@@ -1,5 +1,6 @@
 <!-- One level of Settings › Connections by its key: the list, adding a connection, or one connection. -->
 <script lang="ts">
+  import DrillCard from "../components/drill-in/drill-card.svelte";
   import type { Connection, Core, Problem } from "../api/core";
   import { m } from "../paraglide/messages.js";
   import ConnectionForm from "./ConnectionForm.svelte";
@@ -48,7 +49,7 @@
     />
   </Level>
 {:else}
-  <div class="drill-card min-w-0">
+  <DrillCard class="min-w-0">
     <ConnectionList
       answer={listed}
       onopen={(id) => {
@@ -58,5 +59,5 @@
         onlevel("add");
       }}
     />
-  </div>
+  </DrillCard>
 {/if}

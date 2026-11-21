@@ -1,5 +1,6 @@
 <!-- One setup step's page inside the drill-in. -->
 <script lang="ts">
+  import DrillCard from "../components/drill-in/drill-card.svelte";
   import type { Core, Device } from "../api/core.ts";
   import DevicesStep from "./DevicesStep.svelte";
   import PasswordStep from "./PasswordStep.svelte";
@@ -21,7 +22,7 @@
   } = $props();
 </script>
 
-<div class="drill-card">
+<DrillCard>
   {#if step === "password"}
     <PasswordStep {core} ondone={() => ondone()} />
   {:else if step === "plant"}
@@ -31,4 +32,4 @@
   {:else if step === "topology"}
     <TopologyStep {core} {devices} ondone={() => ondone()} />
   {/if}
-</div>
+</DrillCard>

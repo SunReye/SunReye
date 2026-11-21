@@ -20,7 +20,7 @@
 </script>
 
 <div class={["tuck", tucked && "tucked"]} inert={tucked}>
-  <Card.Root interactive class="glass-ambient w-full gap-2 px-4 py-3" onclick={onopen}>
+  <Card.Root interactive class="w-full gap-2 px-4 py-3" onclick={onopen}>
     <span class="flex w-full items-baseline justify-between gap-2">
       <span class="text-sm font-semibold">{m.stats_payback()}</span>
       <span class="text-sm font-semibold tabular-nums"

@@ -3,6 +3,7 @@
   add or change one. Each level is a hash route (ADR 21): `add`, or a connection's id.
 -->
 <script lang="ts">
+  import DrillCard from "../components/drill-in/drill-card.svelte";
   import { onMount } from "svelte";
   import type { Connection, Core, Problem } from "../api/core";
   import DrillPush from "../components/drill-in/drill-push.svelte";
@@ -67,7 +68,7 @@
 </script>
 
 {#if listed === undefined}
-  <div class="drill-card"><LoadingRows /></div>
+  <DrillCard><LoadingRows /></DrillCard>
 {:else}
   {@const known = listed}
   <!-- A level slides over the list, which shifts aside. -->

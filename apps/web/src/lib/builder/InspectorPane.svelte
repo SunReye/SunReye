@@ -47,7 +47,7 @@
     <Inspector {session} {check} />
   </InspectorSheet>
 {:else}
-  <Card.Root element="aside" aria-label={m.builder_edit()} class="glass-ambient min-h-0 gap-0 py-0">
+  <Card.Root element="aside" aria-label={m.builder_edit()} class="min-h-0 gap-0 py-0">
     <Inspector {session} {check} />
   </Card.Root>
 {/if}

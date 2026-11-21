@@ -21,7 +21,7 @@
   } = $props();
 </script>
 
-<Card.Root class="glass-ambient gap-0 py-0">
+<Card.Root class="gap-0 py-0">
   <Item.Group class="gap-0 divide-y divide-border/60">
     {#each items as item (item.route)}
       <Item.Root class="rounded-none border-0">

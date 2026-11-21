@@ -4,6 +4,7 @@
   or a device's id.
 -->
 <script lang="ts">
+  import DrillCard from "../components/drill-in/drill-card.svelte";
   import { onMount } from "svelte";
   import type { Connection, Core, Device, Listing, Problem } from "../api/core";
   import DrillPush from "../components/drill-in/drill-push.svelte";
@@ -89,9 +90,9 @@
 </script>
 
 {#if listed === undefined}
-  <div class="drill-card">
+  <DrillCard>
     {#if refused}<div class="p-4"><Refusal {refused} /></div>{:else}<LoadingRows />{/if}
-  </div>
+  </DrillCard>
 {:else}
   {@const known = listed}
   <!-- A level slides over the list, which shifts aside. -->

@@ -1,5 +1,6 @@
 <!-- The core's own groups' pages, by id: users & access, logs and the danger zone. -->
 <script lang="ts">
+  import DrillCard from "../components/drill-in/drill-card.svelte";
   import type { Core } from "../api/core";
   import DangerSettings from "./DangerSettings.svelte";
   import LogsSettings from "./LogsSettings.svelte";
@@ -11,7 +12,7 @@
 {#if id === "access"}
   <UsersSettings {core} />
 {:else if id === "logs"}
-  <div class="drill-card"><LogsSettings {core} /></div>
+  <DrillCard><LogsSettings {core} /></DrillCard>
 {:else if id === "danger"}
-  <div class="drill-card"><DangerSettings {core} /></div>
+  <DrillCard><DangerSettings {core} /></DrillCard>
 {/if}

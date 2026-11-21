@@ -21,7 +21,7 @@
   } = $props();
 </script>
 
-<Card.Root element="section" aria-label={m.stats_breakdown()} class="glass-ambient gap-0 py-0">
+<Card.Root element="section" aria-label={m.stats_breakdown()} class="gap-0 py-0">
   <h2 class="px-4 pt-3 pb-2 text-sm font-semibold">
     {m.stats_breakdown()} <span class="font-normal text-muted-foreground">· {label}</span>
   </h2>

@@ -106,28 +106,25 @@ test("the glass card the kit card replaced is a copy wherever it comes back", ()
   ]);
 });
 
-test("ambient glass on the kit card is the card; on anything else a copy, with its line", () => {
-  const card = `<Card.Root class="glass-ambient gap-0 py-0">`;
+test("ambient glass is the kit card's own look: named on a card or anything else, a copy", () => {
+  const rule = "glass surface outside the kit card";
 
-  expect(rules("history/Notes.svelte", card)).toEqual([]);
+  expect(rules("history/Notes.svelte", `<Card.Root class="glass-ambient gap-0 py-0">`)).toEqual([
+    rule,
+  ]);
   expect(
-    rules(
-      "history/Notes.svelte",
-      `<Card.Root\n  element="section"\n  onclick={() => open()}\n  class={cn("glass-ambient @container", className)}\n>`,
+    copies(
+      `${LIB}tariff/Form.svelte`,
+      `<Card.Root class="gap-0">\n</Card.Root>\n<div\n  class="glass-ambient p-2">`,
     ),
-  ).toEqual([]);
-  expect(
-    copies(`${LIB}tariff/Form.svelte`, `${card}</Card.Root>\n<div\n  class="glass-ambient p-2">`),
-  ).toEqual([{ rule: "glass surface outside the kit card", line: 3 }]);
-});
-
-test("ambient glass named in a script is a copy: only the card's own tag shows it is the card", () => {
+  ).toEqual([{ rule, line: 4 }]);
   expect(
     rules(
       "explore/Screen.svelte",
       `<script>\n  const look = { card: "glass-ambient" };\n</script>`,
     ),
-  ).toEqual(["glass surface outside the kit card"]);
+  ).toEqual([rule]);
+  expect(rules("components/ui/card/card.svelte", `const glassy = "glass-ambient";`)).toEqual([]);
 });
 
 test("the shell's surfaces, the sheets and the kit own their glass", () => {

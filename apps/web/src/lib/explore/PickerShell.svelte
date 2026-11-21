@@ -25,7 +25,7 @@
   <Card.Root
     element="aside"
     aria-label={m.explore_picker()}
-    class="glass-ambient sticky top-6 max-h-[calc(100dvh-3rem)] min-h-[416px] gap-0 self-start py-0"
+    class="sticky top-6 max-h-[calc(100dvh-3rem)] min-h-[416px] gap-0 self-start py-0"
   >
     <Picker {x} onpick={x.toggle} bind:search />
   </Card.Root>

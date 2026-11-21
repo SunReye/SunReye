@@ -3,6 +3,7 @@
   its back button naming the page. The caller's `DrillPush` slides it in over the page.
 -->
 <script lang="ts">
+  import DrillCard from "../components/drill-in/drill-card.svelte";
   import type { Snippet } from "svelte";
   import DrillHeader from "../components/drill-in/drill-header.svelte";
 
@@ -15,8 +16,8 @@
 </script>
 
 <section aria-label={title} class="min-w-0">
-  <div class="drill-card flex min-w-0 flex-col">
+  <DrillCard class="flex min-w-0 flex-col">
     <DrillHeader {back} {title} {onback} heading="h3" />
     {@render children()}
-  </div>
+  </DrillCard>
 </section>

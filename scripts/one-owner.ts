@@ -28,35 +28,15 @@ const first =
     (source: string): number | undefined =>
       composes?.test(source) === true ? undefined : pattern.exec(source)?.index;
 
-/**
- * Every opening tag, whole: up to its first `>` outside a quoted value and outside an expression,
- * whose braces may nest three deep (an arrow function with an object in a call).
- */
-const TAG =
-  /<([A-Za-z][\w.:-]*)(?=[\s/>])(?:"[^"]*"|'[^']*'|\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}|[^>"'{])*>/gu;
-
 /** The source with its comments blanked, every offset kept. */
 const uncommented = (source: string): string =>
   source.replaceAll(/<!--[\s\S]*?-->|\/\*[\s\S]*?\*\/|(?<![:"'`\w])\/\/.*$/gmu, (comment) =>
     comment.replaceAll(/[^\n]/gu, " "),
   );
 
-/** The first `glass-ambient` that is not on the kit card's own tag. */
-function bareGlass(commented: string): number | undefined {
-  const source = uncommented(commented);
-
-  /** Each kit card's opening tag, as its first and last offset. */
-  const cards: (readonly [number, number])[] = [];
-
-  for (const { 0: tag, 1: name, index } of source.matchAll(TAG))
-    if (name === "Card.Root") cards.push([index, index + tag.length]);
-
-  for (const { index } of source.matchAll(/glass-ambient/gu)) {
-    if (!cards.some(([from, to]) => index > from && index < to)) return index;
-  }
-
-  return undefined;
-}
+/** The first `glass-ambient` outside a comment: the kit card draws it, so no file names it. */
+const glass = (source: string): number | undefined =>
+  /glass-ambient/u.exec(uncommented(source))?.index;
 
 /** The first pulse or spin whose own class string does not stop it under reduced motion. */
 function unstopped(commented: string): number | undefined {
@@ -157,7 +137,7 @@ const RULES: readonly Rule[] = [
   },
   {
     name: "glass surface outside the kit card",
-    found: bareGlass,
+    found: glass,
     owners: [
       "components/ui/",
       "gallery/",

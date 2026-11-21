@@ -13,12 +13,15 @@
 		element = "div",
 		// Local: `interactive` makes the card a button with hover, press and pointer feedback (#37, #836).
 		interactive = false,
+		// Local: every card is ambient glass (ADR 21 "One card"); `glass={false}` names a card that is not.
+		glass = true,
 		...restProps
-		// Local: `element` and `interactive` in the props type.
+		// Local: `element`, `interactive` and `glass` in the props type.
 	}: WithElementRef<HTMLAttributes<HTMLElement>> & {
 		size?: "default" | "sm";
 		element?: "div" | "section" | "nav" | "aside" | "form" | "ul";
 		interactive?: boolean;
+		glass?: boolean;
 	} = $props();
 
 	// Local: elevation step 1 instead of upstream's shadow-xs (#58).
@@ -31,7 +34,12 @@
 </script>
 
 {#if interactive}
-	<Pressable data-slot="card" data-size={size} class={cn(base, press, className)} {...restProps}>
+	<Pressable
+		data-slot="card"
+		data-size={size}
+		class={cn(base, glass && "glass-ambient", press, className)}
+		{...restProps}
+	>
 		{@render children?.()}
 	</Pressable>
 {:else}
@@ -40,7 +48,7 @@
 		bind:this={ref}
 		data-slot="card"
 		data-size={size}
-		class={cn(base, className)}
+		class={cn(base, glass && "glass-ambient", className)}
 		{...restProps}
 	>
 		{@render children?.()}

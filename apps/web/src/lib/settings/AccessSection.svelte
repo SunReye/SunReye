@@ -3,6 +3,7 @@
   opens the form adding one, in a drawer on the phone and a dialog with the rail.
 -->
 <script lang="ts" generics="T extends { id: number }">
+  import DrillCard from "../components/drill-in/drill-card.svelte";
   import Eyebrow from "../components/eyebrow.svelte";
   import type { Snippet } from "svelte";
   import type { Problem } from "../api/core";
@@ -49,7 +50,7 @@
     <p class="text-sm text-muted-foreground">{hint}</p>
     {@render more?.()}
   </header>
-  <div class="drill-card divide-y divide-border/60 border-y border-border/60">
+  <DrillCard class="divide-y divide-border/60 border-y border-border/60">
     {#if answer === undefined}
       <LoadingRows rows={1} />
     {:else}
@@ -69,6 +70,6 @@
         }}
       />
     {/if}
-  </div>
+  </DrillCard>
   <ResponsiveSheet bind:open={adding} label={action}>{@render form(close)}</ResponsiveSheet>
 </section>
