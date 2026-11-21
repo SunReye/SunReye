@@ -219,9 +219,10 @@
   });
 
   const markOf = (): Legend["mark"] => {
-    if (loading || !markName) return null;
+    if (!markName) return null;
 
-    const on = markLabel !== "" && hasMarks;
+    // Still loading, it keeps its place unseen: its figures arriving do not grow the legend.
+    const on = !loading && markLabel !== "" && hasMarks;
 
     return { label: markName, on, value: on ? (readout.mark ?? null) : null };
   };
