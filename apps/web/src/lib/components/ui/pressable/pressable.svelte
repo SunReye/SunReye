@@ -5,6 +5,7 @@
 -->
 <script lang="ts">
 	import { cn, type WithElementRef } from "#lib/utils.js";
+	import { haptics } from "#lib/haptics.ts";
 	import type { HTMLButtonAttributes } from "svelte/elements";
 
 	let {
@@ -12,12 +13,26 @@
 		class: className,
 		type = "button",
 		feedback = false,
+		onclick,
 		children,
 		...restProps
 	}: WithElementRef<HTMLButtonAttributes> & {
 		/** The app's tint under the pointer, the keyboard and a press, for a surface with none of its own. */
 		feedback?: boolean;
 	} = $props();
+
+	// Local: a surface that holds a state ticks when a press changes it (ADR 21 "One behaviour, one
+	// component"): a toggle (`aria-pressed`) on every press, a pick (`aria-selected`) when it is not
+	// picked yet. After the caller, as the kit's switch.
+	function press(event: Parameters<NonNullable<typeof onclick>>[0]): void {
+		const pressed = restProps["aria-pressed"];
+		const selected = restProps["aria-selected"];
+		const changes = (pressed !== undefined && pressed !== null) || selected === false || selected === "false";
+
+		onclick?.(event);
+
+		if (changes) haptics.selection();
+	}
 </script>
 
 <button
@@ -31,6 +46,7 @@
 	)}
 	{type}
 	{...restProps}
+	onclick={press}
 >
 	{@render children?.()}
 </button>

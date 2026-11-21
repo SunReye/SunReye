@@ -9,7 +9,7 @@
   import { Input } from "#lib/components/ui/input/index.js";
   import type { Datasheet, ModuleType, Problem } from "../api/core.ts";
   import { m } from "../paraglide/messages.js";
-  import Refusal from "../setup/Refusal.svelte";
+  import Refusal, { answered } from "../setup/Refusal.svelte";
   import { BLANK, datasheet, missing, REQUIRED, rows, type Entered } from "./datasheet.ts";
   import { valueRefusal } from "./checks.ts";
   import ValueRow from "./ValueRow.svelte";
@@ -48,7 +48,7 @@
 
     adding = false;
 
-    if ("problem" in answer) refused = answer;
+    if ("problem" in answer) refused = answered(answer);
     else onadded(answer);
   }
 </script>

@@ -10,7 +10,7 @@
   import { Input } from "#lib/components/ui/input/index.js";
   import type { CatalogueSheet, Datasheet, ModuleType, Problem } from "../api/core.ts";
   import { m } from "../paraglide/messages.js";
-  import Refusal from "../setup/Refusal.svelte";
+  import Refusal, { answered } from "../setup/Refusal.svelte";
   import type { TypeSource } from "./modules.ts";
   import CatalogueList from "./CatalogueList.svelte";
 
@@ -45,7 +45,7 @@
 
     adding = false;
 
-    if ("problem" in answer) refused = answer;
+    if ("problem" in answer) refused = answered(answer);
     else onadded(answer);
   }
 </script>

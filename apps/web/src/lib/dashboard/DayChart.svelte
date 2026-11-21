@@ -13,12 +13,15 @@
     rows,
     now,
     hours,
+    live,
     bare = false,
   }: {
     rows: readonly DayRow[];
     now: Date;
     /** Writes an instant's plant-local hour. */
     hours: Intl.DateTimeFormat;
+    /** The day is under way and grows live: it only fades in, so a tick never redraws it. */
+    live: boolean;
     bare?: boolean;
   } = $props();
 
@@ -40,8 +43,7 @@
   });
 </script>
 
-<!-- It grows live through the day: it only fades in, so a tick never redraws it. -->
-<ChartEntrance build="fade" ready={rows.length > 0} class="h-full w-full">
+<ChartEntrance build={live ? "fade" : "draw"} ready={rows.length > 0} class="h-full w-full">
   <Chart
     data={[...rows]}
     x="time"

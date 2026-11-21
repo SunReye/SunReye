@@ -3,6 +3,7 @@ import { cdp, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { connect, type Transport } from "../api/core.ts";
+import { haptics } from "../haptics.ts";
 import { feed } from "../live/stream.harness.ts";
 import TopologyStep from "./TopologyStep.svelte";
 
@@ -63,11 +64,14 @@ afterEach(async () => {
 const grid = { device: 1, role: "grid.power" };
 
 test("a correct proposal is accepted with one tap", async () => {
+  const success = vi.spyOn(haptics, "success");
   const { screen, transport, done } = await step();
 
   await screen.getByRole("button", { name: "Passt so" }).click();
 
   await expect.poll(() => done.mock.calls.length).toBe(1);
+  expect(success).toHaveBeenCalledOnce();
+  success.mockRestore();
   expect(transport.changes).toMatchObject([
     {
       points: [

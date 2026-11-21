@@ -5,9 +5,8 @@
 <script lang="ts">
   import * as Table from "#lib/components/ui/table/index.js";
   import type { Period } from "../api/core.ts";
-  import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
-  import FoldHead from "./FoldHead.svelte";
+  import SortHead from "../components/sort-head.svelte";
   import {
     columnsOf,
     energyOf,
@@ -110,8 +109,6 @@
   }
 
   function press(column: Column): void {
-    haptics.selection();
-
     if (sort.column === column) chosen = { column, dir: sort.dir === "asc" ? "desc" : "asc" };
     // Figures open on their largest, time on its earliest.
     else chosen = { column, dir: column === "period" ? "asc" : "desc" };
@@ -122,7 +119,7 @@
   <Table.Header>
     <Table.Row class="hover:bg-transparent">
       {#each columns as column (column.id)}
-        <FoldHead
+        <SortHead
           name={column.name}
           unit={column.unit ?? null}
           figure={column.id !== "period"}

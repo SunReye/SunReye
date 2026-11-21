@@ -7,7 +7,6 @@
   import ChevronDown from "@lucide/svelte/icons/chevron-down";
   import { buttonVariants } from "#lib/components/ui/button/index.js";
   import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
-  import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
   import { lineName, type Line } from "./forecast.ts";
 
@@ -58,7 +57,6 @@
         () => value,
         (v: string) => {
           if (!v || v === value) return;
-          haptics.selection();
           onpick(v);
         }
       }

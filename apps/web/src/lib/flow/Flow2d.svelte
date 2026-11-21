@@ -149,7 +149,7 @@
   }
   .wash {
     opacity: calc(0.4 + 0.6 * var(--plant-level));
-    transition: opacity 900ms linear;
+    transition: opacity var(--motion-flow-wash) linear;
   }
   .wash-still {
     transition: none;

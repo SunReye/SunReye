@@ -20,6 +20,8 @@ import {
   undesk,
 } from "./builder.harness.ts";
 import { addGrid, emptyDraft } from "./modules.ts";
+import { frame } from "../motion/animations.harness.ts";
+import { stepUntil } from "../motion/clock.harness.ts";
 
 // Module types in the builder (ADR 17, 20): a face's modules start from a type the admin picks or
 // enters from its datasheet; the core keeps it.
@@ -138,8 +140,7 @@ async function datasheet(): Promise<void> {
 const placed = (count: string) =>
   inspector().getByText(new RegExp(`^${count} Module gesetzt$`, "u"));
 
-test("from an empty core an admin creates a module type, fills a roof face and wires a string", async () => {
-  const draws = vi.spyOn(EffectComposer.prototype, "render");
+test("from an empty core an admin creates a module type and fills a roof face with it", async () => {
   const core = emptyCore();
 
   await opened(core);
@@ -154,11 +155,30 @@ test("from an empty core an admin creates a module type, fills a roof face and w
   // The new type lays the face's grid at once.
   await inspector().getByRole("button", { name: "Fläche füllen" }).click();
   await expect.element(placed("16")).toBeVisible();
+});
+
+test("a face filled with a module type the core just added wires into a string", async () => {
+  const draws = vi.spyOn(EffectComposer.prototype, "render");
+  const added = { ...MODULE, id: 9 };
+
+  await render(Builder, {
+    pv,
+    core: connect(emptyCore()),
+    start: emptyDraft(),
+    moduleTypes: [added],
+    devices: DEVICES,
+  });
+  await page.getByRole("button", { name: "Einfamilienhaus mit Satteldach" }).click();
+
+  await drill("Module", SOUTH, added.name);
+  await inspector().getByRole("button", { name: "Fläche füllen" }).click();
+  await expect.element(placed("16")).toBeVisible();
 
   await drill("Module", "Szene", "Strings", "String hinzufügen");
-  await expect.poll(() => draws.mock.calls.length).toBeGreaterThan(0);
+  // The scene is built and drawn: on the page's own frames, as long as it takes.
+  await stepUntil(() => draws.mock.calls.length > 0, frame);
 
-  const cells = cellsOnPage(addGrid(house().scene, 0, 1, MODULE.id), 0);
+  const cells = cellsOnPage(addGrid(house().scene, 0, 1, added.id), 0);
 
   await press("mouse", [cells("0.0")]);
   await page.getByRole("button", { name: "In String 1 verdrahten" }).click();

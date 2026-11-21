@@ -34,6 +34,7 @@
 <script lang="ts">
 	import { Toggle as TogglePrimitive } from "bits-ui";
 	import { cn } from "#lib/utils.js";
+	import { haptics } from "#lib/haptics.ts";
 
 	let {
 		ref = $bindable(null),
@@ -46,11 +47,18 @@
 		variant?: ToggleVariant;
 		size?: ToggleSize;
 	} = $props();
+
+	// Local: a press ticks (ADR 21 "One behaviour, one component"). bits-ui writes `pressed` on a
+	// user's press only; after the caller, so a change it writes is felt as written.
+	function press(next: boolean): void {
+		pressed = next;
+		haptics.selection();
+	}
 </script>
 
 <TogglePrimitive.Root
 	bind:ref
-	bind:pressed
+	bind:pressed={() => pressed, press}
 	data-slot="toggle"
 	class={cn(toggleVariants({ variant, size }), className)}
 	{...restProps}

@@ -133,6 +133,16 @@
   --motion-ease-exit: cubic-bezier(0.55, 0.055, 0.675, 0.19);
   /* How long the last of a row of arrivals waits after the first (a chart's bars). */
   --motion-stagger: 120ms;
+  /* The 2D flow's glides between live samples, on the full tier alone: a tile's glow and gauge,
+     a charge's glow, the hub's wash; and the hub ring's beat. */
+  --motion-flow-tile: 500ms;
+  --motion-flow-glow: 700ms;
+  --motion-flow-wash: 900ms;
+  --motion-flow-pulse: 2.6s;
+  /* The error mark: its sun arrives, its cloud floats, its rays turn. */
+  --motion-mark-arrive: 700ms;
+  --motion-mark-float: 5s;
+  --motion-mark-turn: 24s;
 }
 
 .dark {
@@ -197,6 +207,13 @@
     --motion-enter: 0ms;
     --motion-exit: 0ms;
     --motion-stagger: 0ms;
+    --motion-flow-tile: 0ms;
+    --motion-flow-glow: 0ms;
+    --motion-flow-wash: 0ms;
+    --motion-flow-pulse: 0ms;
+    --motion-mark-arrive: 0ms;
+    --motion-mark-float: 0ms;
+    --motion-mark-turn: 0ms;
   }
 }
 
@@ -210,6 +227,13 @@
   --motion-enter: 0ms;
   --motion-exit: 0ms;
   --motion-stagger: 0ms;
+  --motion-flow-tile: 0ms;
+  --motion-flow-glow: 0ms;
+  --motion-flow-wash: 0ms;
+  --motion-flow-pulse: 0ms;
+  --motion-mark-arrive: 0ms;
+  --motion-mark-float: 0ms;
+  --motion-mark-turn: 0ms;
 }
 
 /* A drawer enters like a sheet and leaves faster, easing in (ADR 21). Unlayered, as vaul's own 0.5 s. */

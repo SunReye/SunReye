@@ -2,6 +2,8 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import { userEvent, type Locator } from "vitest/browser";
 import "../../app.css";
 import { asked, PLANT, prepare, restore, rollup, served, show } from "./detail.harness.ts";
+import { frame } from "../motion/animations.harness.ts";
+import { stepUntil } from "../motion/clock.harness.ts";
 
 beforeEach(prepare);
 
@@ -29,6 +31,8 @@ test("today's production states the forecast so far and what is still expected, 
   const forecast = overview.getByRole("term").filter({ hasText: "Prognose" });
   const drawn = () => overview.element().querySelectorAll(".mark.on, .seg.opacity-30").length;
 
+  // The day is read and drawn: on the page's own frames, as long as it takes.
+  await stepUntil(() => forecast.query() !== null, frame);
   // 2 kWh an hour from 10:00 to 14:00, and it is 12:20.
   await expect.poll(() => valueOf(overview, "Prognose")).toBe("4,7 kWh");
   await expect.poll(() => valueOf(overview, "noch erwartet")).toBe("3,3 kWh");

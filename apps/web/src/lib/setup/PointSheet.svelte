@@ -5,7 +5,6 @@
   import ResponsiveSheet from "../components/responsive-sheet.svelte";
   import { Button } from "#lib/components/ui/button/index.js";
   import { Input } from "#lib/components/ui/input/index.js";
-  import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
   import MoveField from "./MoveField.svelte";
   import { roleOf } from "./point-look.ts";
@@ -62,7 +61,6 @@
             variant="ghost"
             class="w-full text-destructive hover:text-destructive sm:w-auto"
             onclick={() => {
-              haptics.light();
               onremove();
               open = false;
             }}

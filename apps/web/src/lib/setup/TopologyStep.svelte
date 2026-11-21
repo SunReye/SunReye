@@ -6,7 +6,6 @@
 <script lang="ts">
   import LoaderCircle from "@lucide/svelte/icons/loader-circle";
   import type { Core, Device, PointDraft, Problem } from "../api/core.ts";
-  import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
   import AddSheet from "./AddSheet.svelte";
   import PointSheet from "./PointSheet.svelte";
@@ -14,6 +13,7 @@
   import TopologyActions from "./TopologyActions.svelte";
   import { Readings } from "./readings.svelte.ts";
   import { move, remove } from "./topology.ts";
+  import { answered, confirmed } from "../feedback.ts";
 
   let { core, devices, ondone }: { core: Core; devices: readonly Device[]; ondone: () => void } =
     $props();
@@ -44,7 +44,6 @@
   const index = $derived(points?.findIndex(({ claims }) => claims === picked) ?? -1);
 
   function adjust(): void {
-    haptics.soft();
     edited = points;
     adjusting = true;
   }
@@ -67,10 +66,10 @@
       points: [...(points ?? [])],
     });
 
-    refused = "problem" in saved ? saved : undefined;
+    refused = "problem" in saved ? answered(saved) : undefined;
 
     if (refused === undefined) {
-      haptics.success();
+      confirmed(m.settings_saved());
       ondone();
     }
   }

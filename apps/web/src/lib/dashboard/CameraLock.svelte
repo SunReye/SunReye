@@ -3,7 +3,6 @@
   import Lock from "@lucide/svelte/icons/lock";
   import LockOpen from "@lucide/svelte/icons/lock-open";
   import { Toggle } from "#lib/components/ui/toggle/index.js";
-  import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
 
   let { locked = $bindable() }: { locked: boolean } = $props();
@@ -14,7 +13,6 @@
   bind:pressed={
     () => !locked,
     (moving) => {
-      haptics.selection();
       locked = !moving;
     }
   }

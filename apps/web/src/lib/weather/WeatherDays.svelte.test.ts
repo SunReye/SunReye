@@ -1,7 +1,8 @@
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { cdp } from "vitest/browser";
-import { finish, hold } from "../motion/animations.harness.ts";
+import { finish, frame, hold } from "../motion/animations.harness.ts";
+import { stepUntil } from "../motion/clock.harness.ts";
 import { motion } from "../motion/tier.svelte.ts";
 import { DRY, show } from "./weather-detail.harness.ts";
 
@@ -31,9 +32,10 @@ function held(day: HTMLElement, part: number): number {
 
 /** Holds every day halfway through its travel and gives their offsets, in document order. */
 async function midway(): Promise<number[]> {
-  await expect
-    .poll(() => shownDays().length === 2 && shownDays().every((day) => travels(day).length > 0))
-    .toBe(true);
+  await stepUntil(
+    () => shownDays().length === 2 && shownDays().every((day) => travels(day).length > 0),
+    frame,
+  );
 
   return shownDays().map((day) => held(day, 0.5));
 }

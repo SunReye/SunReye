@@ -1,7 +1,8 @@
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
 // Test harness: motion on no clock. Component tests run side by side under load, so none may
 // wait for an animation to play out or race one to catch it: they hold it, or end it.
-import { expect, vi } from "vitest";
+import { vi } from "vitest";
+import { stepUntil } from "./clock.harness.ts";
 
 /** Whether `a` comes to an end: a live dot pulses for good. */
 const ends = (a: Animation) => a.effect?.getComputedTiming().endTime !== Infinity;
@@ -35,16 +36,49 @@ const settled = () => document.getAnimations().every((a) => a.playState === "fin
  * entrance) is ended in its turn.
  */
 export async function finish(done: () => boolean = settled): Promise<void> {
-  await expect
-    .poll(() => {
-      if (done()) return true;
+  await stepUntil(done, end);
+}
 
-      for (const a of document.getAnimations())
-        if (ends(a) && a.playState !== "finished") a.finish();
+/** Ends every running animation that ends, and waits for each to say so: what follows one, the
+ * next of a chain or an element's removal, runs on that event. */
+async function end(): Promise<void> {
+  const ending = document.getAnimations().filter((a) => ends(a) && a.playState !== "finished");
 
-      return done();
-    })
-    .toBe(true);
+  if (ending.length === 0) {
+    await frame();
+
+    return;
+  }
+
+  await Promise.all(
+    ending.map(
+      (a) =>
+        new Promise<void>((ended) => {
+          a.addEventListener(
+            "finish",
+            () => {
+              ended();
+            },
+            { once: true },
+          );
+          a.addEventListener(
+            "cancel",
+            () => {
+              ended();
+            },
+            { once: true },
+          );
+          a.addEventListener(
+            "remove",
+            () => {
+              ended();
+            },
+            { once: true },
+          );
+          a.finish();
+        }),
+    ),
+  );
 }
 
 /**
@@ -60,4 +94,23 @@ export function holdEntrances(): () => void {
   return () => {
     style.remove();
   };
+}
+
+/**
+ * The page's next frame, on which a transition starts and an ended animation's event comes: an
+ * instant animation of an element off the page ends on it. Real frames, no fake clock: one comes as
+ * soon as the page can draw it.
+ */
+export function frame(): Promise<void> {
+  const animation = document.createElement("div").animate([], 0);
+
+  return new Promise((drawn) => {
+    animation.addEventListener(
+      "finish",
+      () => {
+        drawn();
+      },
+      { once: true },
+    );
+  });
 }

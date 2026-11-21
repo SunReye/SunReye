@@ -91,7 +91,7 @@
        the glow's reach glides between samples. */
     filter: blur(var(--mv-blur)) drop-shadow(0 0 var(--mv-glow) currentColor)
       drop-shadow(0 0 calc(var(--mv-glow) * 3) currentColor);
-    transition: --mv-glow 700ms linear;
+    transition: --mv-glow var(--motion-flow-glow) linear;
   }
   .bead {
     fill: currentColor;

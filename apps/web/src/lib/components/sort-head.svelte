@@ -1,9 +1,13 @@
-<!-- A column's head in the fold's table: a press sorts by it, and it says which way it is sorted. -->
+<!--
+  A sortable column's head (ADR 21 "One behaviour, one component"): a press sorts by it, or turns
+  its sort around, with `selection`; it says which way the table is sorted by it.
+-->
 <script lang="ts">
   import ArrowDown from "@lucide/svelte/icons/arrow-down";
   import ArrowUp from "@lucide/svelte/icons/arrow-up";
   import { Button } from "#lib/components/ui/button/index.js";
   import * as Table from "#lib/components/ui/table/index.js";
+  import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
 
   let {
@@ -38,7 +42,10 @@
       dir !== null && "text-foreground",
     ]}
     aria-label={m.explore_fold_sort({ column: name })}
-    onclick={onpress}
+    onclick={() => {
+      haptics.selection();
+      onpress();
+    }}
   >
     <span>{name}</span>
     {#if unit}<span class="font-normal">({unit})</span>{/if}

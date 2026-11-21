@@ -1,22 +1,22 @@
-<!-- ADR 21's error treatment: the `error` haptic and a destructive alert beside the action, which stays for a fix. -->
+<!-- ADR 21's error treatment: a destructive alert beside the action, which stays for a fix. The
+  action plays the `error` haptic as it is refused (`feedback.ts`): a failed read shown here is silent. -->
+<script lang="ts" module>
+  // The action's side of the pair, beside the alert its callers already import.
+  export { answered, refusedInline } from "../feedback.ts";
+</script>
+
 <script lang="ts">
   import ProblemAlert from "../components/problem-alert.svelte";
   import type { Problem } from "../api/core.ts";
-  import { haptics } from "../haptics.ts";
 
   let {
     refused,
     text,
   }: {
     refused?: Problem | undefined;
-    /** A refusal the SPA itself makes, before asking the core; its caller plays the haptic. */
+    /** A refusal the SPA itself makes, before asking the core. */
     text?: string | undefined;
   } = $props();
-
-  // Each refusal answers once, a repeated one too: it is a new object.
-  $effect(() => {
-    if (refused !== undefined) haptics.error();
-  });
 </script>
 
 <ProblemAlert problem={refused?.problem} {text} />

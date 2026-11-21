@@ -17,6 +17,7 @@ test("the day chart fades in", async () => {
     rows: quarters,
     now: new Date(T0 + 12 * HOUR),
     hours: new Intl.DateTimeFormat("de", { hour: "2-digit", timeZone: "UTC" }),
+    live: true,
   });
 
   await expectBuilds("fade");
