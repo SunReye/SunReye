@@ -5,7 +5,7 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { MODULE, pv } from "../builder/builder.harness.ts";
 import type { Scene } from "../builder/pv.ts";
 import { chip, frame, layout, scene, show } from "./live-scene.harness.ts";
-import { frames, framesUntil, realTimers, until } from "../motion/clock.harness.ts";
+import { frames, framesUntil, realTimers, stepUntil } from "../motion/clock.harness.ts";
 import { feed } from "./stream.harness.ts";
 import LiveScene from "./LiveScene.svelte";
 
@@ -47,7 +47,7 @@ afterEach(async () => {
 async function settled(draws: () => number): Promise<number> {
   let still = false;
 
-  await until(
+  await stepUntil(
     () => still,
     async () => {
       const before = draws();
