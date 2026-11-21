@@ -1,7 +1,7 @@
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
 // A card's height glides when its content changes it (ADR 21 "One behaviour, one component").
 import type { Attachment } from "svelte/attachments";
-import { tokenMs } from "./token.ts";
+import { tokenMs } from "../../../motion/token.ts";
 
 interface Start {
   readonly from: number;

@@ -4,7 +4,7 @@
 	// Local: the interactive card is the app's one pressed surface (#836).
 	import { Pressable } from "../pressable/index.js";
 	// Local: a card's height glides when its content changes it (ADR 21, #837).
-	import { glideHeight } from "#lib/motion/glide-height.ts";
+	import { glideHeight } from "./glide-height.ts";
 
 	let {
 		ref = $bindable(null),
