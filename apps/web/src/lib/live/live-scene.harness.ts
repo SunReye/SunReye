@@ -8,6 +8,8 @@ import type { Scene } from "../builder/pv.ts";
 import "../../app.css";
 import LiveScene from "./LiveScene.svelte";
 
+export { finish } from "../motion/animations.harness.ts";
+
 /** A 10 m × 8 m gable house: two modules of string 0 on the south face, an inverter marker. */
 export const scene = {
   north: 0,
