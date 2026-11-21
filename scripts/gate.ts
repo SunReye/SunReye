@@ -1,7 +1,8 @@
 // The one check (ADR 13): serial, cheapest first, stops at the first failure.
 // The pre-commit hook runs it unscoped; hosted CI will run the same command.
 // A check whose inputs hash as they did on its last green run is skipped; a step that builds what
-// a later one reads always runs. `GATE_FRESH=1` runs every step.
+// a later one reads always runs; a tool installed outside the lock keys its steps with its version.
+// `GATE_FRESH=1` runs every step.
 
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -62,6 +63,10 @@ const BOTH: Reads = { paths: [...new Set([...JS.paths, ...RUST.paths])] };
 const CORE: Reads = { ...RUST, built: ["apps/web/build"] };
 const ALL: Reads = { paths: ["."] };
 
+/** cargo-deny and cargo-shear are installed outside the lock; their versions key their steps. */
+const DENY: Reads = { ...RUST, tools: [["cargo", "deny", "--version"]] };
+const SHEAR: Reads = { ...RUST, tools: [["cargo", "shear", "--version"]] };
+
 const bans = (crate: string): Command => [
   "cargo",
   "deny",
@@ -98,10 +103,10 @@ const steps: readonly Step[] = [
   { run: ["bun", "scripts/built-css.ts"], reads: JS },
   // Asks the advisory database, which changes without a file here changing.
   { run: ["cargo", "deny", "--workspace", "check"] },
-  { run: bans("profile-wasm"), reads: RUST },
-  { run: bans("pv"), reads: RUST },
-  { run: bans("pv-wasm"), reads: RUST },
-  { run: ["cargo", "shear"], reads: RUST },
+  { run: bans("profile-wasm"), reads: DENY },
+  { run: bans("pv"), reads: DENY },
+  { run: bans("pv-wasm"), reads: DENY },
+  { run: ["cargo", "shear"], reads: SHEAR },
   // Types
   { run: ["tsc", "-p", "tsconfig.json"], reads: JS },
   { run: [...web, "check"], reads: JS },
