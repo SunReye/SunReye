@@ -278,3 +278,12 @@ test("a radio pick outside the select field and the named menus is a copy", () =
   // A canvas toolbar's menu, not a form.
   expect(rules("builder/WeatherMenu.svelte", menu)).toEqual([]);
 });
+
+test("a range control outside a screen's header or a sheet's head is a copy", () => {
+  const source = `import RangeControl from "../range/RangeControl.svelte";`;
+  const rule = "range control outside a header";
+
+  expect(rules("tariff/TariffScreen.svelte", source)).toEqual([rule]);
+  expect(rules("range/RangeScreen.svelte", source)).toEqual([]);
+  expect(rules("detail/Analytics.svelte", source)).toEqual([]);
+});
