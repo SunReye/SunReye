@@ -9,6 +9,7 @@ import LayoutStep from "./LayoutStep.svelte";
 
 test("while the builder loads, its placeholder takes the room under the header", async () => {
   await page.viewport(390, 800);
+
   // Nothing is answered: the builder stays loading.
   const core = connect({
     base: "http://core.test/",

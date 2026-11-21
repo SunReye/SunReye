@@ -9,6 +9,9 @@ import type { WeatherReader } from "./weather.ts";
 
 const hours = () => page.getByRole("region", { name: "Wetter nach Stunden" });
 
+/** A read that never lands. */
+const never = () => Promise.withResolvers<never>().promise;
+
 const height = () => hours().element().getBoundingClientRect().height;
 
 test("loading and without stored weather the hours stand at the size of a day's weather", async () => {
@@ -24,7 +27,10 @@ test("loading and without stored weather the hours stand at the size of a day's 
   const none = height();
 
   await empty.screen.unmount();
-  await render(WeatherDetail, { core: {} as WeatherReader, day: undefined });
+  // Not read yet: the dashboard has not handed today over.
+  const core: WeatherReader = { history: never, forecasts: never };
+
+  await render(WeatherDetail, { core, day: undefined });
 
   await expect.element(page.getByRole("status")).toBeVisible();
 

@@ -22,9 +22,10 @@ interface Rule {
 
 /** The first match of `pattern`, unless the file holds the shared piece itself (`composes`). */
 const first =
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the patterns are only read.
   (pattern: RegExp, composes?: RegExp) =>
-  (source: string): number | undefined =>
-    composes?.test(source) === true ? undefined : pattern.exec(source)?.index;
+    (source: string): number | undefined =>
+      composes?.test(source) === true ? undefined : pattern.exec(source)?.index;
 
 /**
  * Every opening tag, whole: up to its first `>` outside a quoted value and outside an expression,
@@ -42,14 +43,15 @@ const uncommented = (source: string): string =>
 /** The first `glass-ambient` that is not on the kit card's own tag. */
 function bareGlass(commented: string): number | undefined {
   const source = uncommented(commented);
-  const cards = [...source.matchAll(TAG)].filter((tag) => tag[1] === "Card.Root");
 
-  for (const glass of source.matchAll(/glass-ambient/gu)) {
-    const on = cards.some(
-      (tag) => glass.index > tag.index && glass.index < tag.index + tag[0].length,
-    );
+  /** Each kit card's opening tag, as its first and last offset. */
+  const cards: (readonly [number, number])[] = [];
 
-    if (!on) return glass.index;
+  for (const { 0: tag, 1: name, index } of source.matchAll(TAG))
+    if (name === "Card.Root") cards.push([index, index + tag.length]);
+
+  for (const { index } of source.matchAll(/glass-ambient/gu)) {
+    if (!cards.some(([from, to]) => index > from && index < to)) return index;
   }
 
   return undefined;
@@ -59,13 +61,12 @@ function bareGlass(commented: string): number | undefined {
 function unstopped(commented: string): number | undefined {
   const source = uncommented(commented);
 
-  for (const found of source.matchAll(/(?<![\w:-])animate-(?:pulse|spin)(?![\w-])/gu)) {
-    const open = Math.max(
-      ...['"', "'", "`"].map((quote) => source.lastIndexOf(quote, found.index)),
-    );
-    const close = source.indexOf(source.charAt(open), found.index);
+  for (const { index } of source.matchAll(/(?<![\w:-])animate-(?:pulse|spin)(?![\w-])/gu)) {
+    const open = Math.max(...['"', "'", "`"].map((quote) => source.lastIndexOf(quote, index)));
 
-    if (!source.slice(open, close).includes("motion-reduce:animate-none")) return found.index;
+    const close = source.indexOf(source.charAt(open), index);
+
+    if (!source.slice(open, close).includes("motion-reduce:animate-none")) return index;
   }
 
   return undefined;

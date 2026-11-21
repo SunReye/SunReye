@@ -1,3 +1,4 @@
+/* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
 // A figure is the same component as the same figure elsewhere (ADR 21): the payback's euros roll
 // up to their value as History's payback does.
 import { afterEach, beforeEach, expect, test, vi } from "vitest";

@@ -25,12 +25,15 @@ test("a button, a switch's row and a link take one tint under the pointer", asyn
     page.getByText("Schalter").element().closest("label"),
     page.getByRole("link").element(),
   ];
+
   const tints = [];
 
   for (const row of rows) {
     if (row === null) throw new Error("no row");
+
     const rest = background(row);
 
+    // oxlint-disable-next-line no-await-in-loop -- one row under the pointer at a time.
     await userEvent.hover(row);
     expect(background(row)).not.toBe(rest);
     tints.push(background(row));

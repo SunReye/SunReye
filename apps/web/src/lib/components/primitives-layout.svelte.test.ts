@@ -52,6 +52,7 @@ test("a card in ambient glass is translucent with the card's corner, opaque unde
     "aria-label": "Karte",
     class: "glass-ambient",
   });
+
   const card = screen.getByRole("region", { name: "Karte" }).element();
   const style = getComputedStyle(card);
 
@@ -76,8 +77,10 @@ test("an interactive card is a button that runs its press and never submits a fo
   await expect.element(button).toHaveAttribute("type", "button");
   await expect.element(button).toHaveAttribute("data-slot", "card");
 
+  const press = button.element();
+
   // A DOM click: the hover's lift would keep the pointer's target moving under load.
-  (button.element() as HTMLButtonElement).click();
+  if (press instanceof HTMLElement) press.click();
 
   expect(onclick).toHaveBeenCalledOnce();
 });

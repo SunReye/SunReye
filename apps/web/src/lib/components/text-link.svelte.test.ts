@@ -1,3 +1,4 @@
+/* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
 // A link inside text is one link, with one focus ring (ADR 21 "One behaviour, one component").
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
@@ -15,7 +16,7 @@ afterEach(() => {
 });
 
 /** The ring the keyboard's focus draws on `element`. */
-async function ring(element: HTMLElement): Promise<string> {
+async function ring(element: HTMLElement | SVGElement): Promise<string> {
   let shadow = "none";
 
   await vi.waitFor(async () => {
@@ -40,7 +41,7 @@ test("a link to a screen and a link that acts read as one link and take one focu
 
   await expect.element(to).toHaveAttribute("href", "#/settings?group=logs");
   expect(getComputedStyle(acts.element()).color).toBe(getComputedStyle(to.element()).color);
-  expect(await ring(acts.element() as HTMLElement)).toBe(await ring(to.element() as HTMLElement));
+  expect(await ring(acts.element())).toBe(await ring(to.element()));
 
   await acts.click();
 

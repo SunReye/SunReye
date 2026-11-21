@@ -9,6 +9,9 @@ import ForecastDetail from "./ForecastDetail.svelte";
 
 const days = () => page.getByRole("region", { name: "PV-Prognose nach Tagen" });
 
+/** A read that never lands. */
+const never = () => Promise.withResolvers<never>().promise;
+
 const height = () => days().element().getBoundingClientRect().height;
 
 test("loading and without a forecast the days stand at the size of a day's forecast", async () => {
@@ -24,7 +27,10 @@ test("loading and without a forecast the days stand at the size of a day's forec
   const none = height();
 
   await empty.screen.unmount();
-  await render(ForecastDetail, { core: {} as AheadReader, day: undefined });
+  // Not read yet: the dashboard has not handed today over.
+  const core: AheadReader = { layout: never, forecasts: never, statistics: never, history: never };
+
+  await render(ForecastDetail, { core, day: undefined });
 
   await expect.element(page.getByRole("status")).toBeVisible();
 
