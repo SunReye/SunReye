@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { cdp, page, userEvent } from "vitest/browser";
 // The screen is laid out by the SPA's utilities.
 import "../../app.css";
@@ -94,10 +94,18 @@ test("the mode switch changes the view and the route", async () => {
 
   const { screen, went } = await show();
 
-  await screen.getByRole("radio", { name: "Überlagern" }).click();
+  // The route follows once the switch has settled, on the test's clock.
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
 
-  await expect.element(screen.getByRole("region", { name: "Überlagern" })).toBeVisible();
-  await expect.poll(() => went.at(-1)).toMatchObject({ push: true, patch: { mode: "overlay" } });
+  try {
+    await screen.getByRole("radio", { name: "Überlagern" }).click();
+
+    await expect.element(screen.getByRole("region", { name: "Überlagern" })).toBeVisible();
+    await vi.runOnlyPendingTimersAsync();
+    expect(went.at(-1)).toMatchObject({ push: true, patch: { mode: "overlay" } });
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test("a chip removes its series; with none left the screen says what to do", async () => {
