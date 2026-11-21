@@ -85,6 +85,17 @@ test("a series removed fades out with its lane as the chart builds in without it
   expect(drawings()).toBe(1);
 });
 
+test("another mode builds its chart in", async () => {
+  const screen = await shown();
+
+  // The route follows once the switch has settled, on the test's clock.
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  await screen.getByRole("radio", { name: "Falten" }).click();
+
+  await expect.poll(() => builds("Falten")).toContain("draw");
+  await vi.runOnlyPendingTimersAsync();
+});
+
 test("on the still tier a series added or removed is drawn at once", async () => {
   document.documentElement.dataset["motion"] = "still";
   const { screen } = await show(`s=${PLANT}:pv.power`);
