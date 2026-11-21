@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, expect, test } from "vitest";
-import { userEvent, type Locator } from "vitest/browser";
+import { cdp, userEvent, type Locator } from "vitest/browser";
 import "../../app.css";
 import { asked, PLANT, prepare, restore, rollup, served, show } from "./detail.harness.ts";
 import { settle } from "../motion/clock.harness.ts";
+import { built } from "../chart-entrance/built.harness.ts";
+import { holdEntrances } from "../motion/animations.harness.ts";
 
 beforeEach(prepare);
 
@@ -233,4 +235,26 @@ test("a compare tab whose module types the core refuses says why, never a blank 
         .getByRole("row", { name: /Süd.*4,0/u }),
     )
     .toBeVisible();
+});
+
+test("the compare tab's yield bars grow from their start as they first show", async () => {
+  // Full motion, which the other tests reduce; the entrances held at their start.
+  await cdp().send("Emulation.setEmulatedMedia", { features: [] });
+  const release = holdEntrances();
+
+  try {
+    const { screen } = await show("string-2", "range=week");
+    const sheet = screen.getByRole("dialog", { name: "Nord" });
+
+    await sheet.getByRole("tab", { name: "Vergleich" }).click();
+
+    const table = sheet.getByRole("table", { name: "Strings im Vergleich" });
+
+    await expect.element(table.getByRole("row", { name: /Süd.*4,0/u })).toBeVisible();
+    await expect
+      .poll(() => built().filter((b) => b.build === "grow" && table.element().contains(b.target)))
+      .toHaveLength(2);
+  } finally {
+    release();
+  }
 });

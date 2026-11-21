@@ -5,14 +5,18 @@
 -->
 <script lang="ts">
   import { Pressable } from "../components/ui/pressable/index.js";
-  import type { Core, PvString } from "../api/core.ts";
   import LoadFailed from "../components/load-failed.svelte";
+  import ChartEntrance from "../chart-entrance/ChartEntrance.svelte";
   import { m } from "../paraglide/messages.js";
   import { kwh as energy, num } from "../range/format.ts";
   import type { RangeRoute } from "../range/route.svelte.ts";
   import HeatGrid from "./HeatGrid.svelte";
   import StringFlag from "./StringFlag.svelte";
-  import { MONTHS, stringEnergy, stringFacts, type StringFacts } from "./string-energy.ts";
+  import {
+    MONTHS, stringEnergy, stringFacts, type StringFacts,
+    type PvString,
+    type StringsCore,
+  } from "./string-energy.ts";
   import { correctionGrid, stringRows, type StringRow } from "./strings.ts";
 
   let {
@@ -21,7 +25,7 @@
     strings,
     sid,
   }: {
-    core: Readonly<Pick<Core, "statistics" | "moduleTypes" | "corrections">>;
+    core: StringsCore;
     route: RangeRoute;
     strings: readonly PvString[];
     /** The string chosen first; else a weak one, else the first. */
@@ -126,13 +130,15 @@
       }}
     />
   {:else}
+  <!-- The yield bars grow as the yields first show (ADR 21 "Chart entrance"). -->
+  <ChartEntrance build="grow" ready={rows.some((r) => r.perKwp !== null)}>
   <div role="table" aria-label={m.strings_table()} class="text-sm">
     <div role="row" class={[COLS, "border-b border-border/60 pb-1.5 text-xs text-muted-foreground"]}>
       <span role="columnheader">{m.strings_string()}</span>
       <span role="columnheader" class="text-right">{m.strings_yield()}</span>
       <span role="columnheader" class="text-right">{m.strings_ratio()}</span>
     </div>
-    {#each rows as r (r.id)}
+    {#each rows as r, i (r.id)}
       <Pressable
         feedback
         role="row"
@@ -159,7 +165,11 @@
             >{r.perKwp === null ? "–" : num(r.perKwp, r.perKwp < 100 ? 1 : 0)}</span
           >
           <span class="h-1 w-full max-w-24 bg-foreground/10"
-            ><span class="block h-full bg-solar" style:width="{((r.perKwp ?? 0) / best) * 100}%"
+            ><span
+              class="block h-full origin-left bg-solar"
+              style:width="{((r.perKwp ?? 0) / best) * 100}%"
+              style:--i={i / rows.length}
+              data-grow="x"
             ></span></span
           >
         </span>
@@ -168,6 +178,7 @@
     {/each}
     <p class="pt-2 text-xs text-muted-foreground">{m.strings_foot({ range: route.label })}</p>
   </div>
+  </ChartEntrance>
 
   {#if chosen}
     <section

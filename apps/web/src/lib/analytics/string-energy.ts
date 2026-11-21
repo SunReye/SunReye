@@ -8,6 +8,11 @@ import type { Place } from "../range/range-data.svelte.ts";
 import { hourInstant, t0Of, t1Of, type Range } from "../range/range.ts";
 import type { InputCorrection } from "./strings.ts";
 
+export type { PvString };
+
+/** What the strings comparison reads. */
+export type StringsCore = Readonly<Pick<Core, "statistics" | "moduleTypes" | "corrections">>;
+
 /** Each string's energy in kWh from the range's start to its end or now, by string id. */
 export async function stringEnergy(
   core: Readonly<Pick<Core, "statistics">>,
