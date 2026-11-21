@@ -7,7 +7,7 @@ import "../app.css";
 import Page from "./+page.svelte";
 import { asked, homeCore, restoreCore, serveCore, served } from "./home.harness.ts";
 import { keepOffline } from "./route.harness.ts";
-import { settle } from "../lib/motion/clock.harness.ts";
+import { appears, settle } from "../lib/motion/clock.harness.ts";
 
 keepOffline();
 
@@ -59,7 +59,7 @@ test("with a scene the dashboard opens on it, and the toggle's 2D outlives a rel
 
   const first = await render(Page, { context: homeCore() });
 
-  await expect.element(first.getByLabelText("3D-Szene des Hauses")).toBeVisible();
+  await appears(first.getByLabelText("3D-Szene des Hauses"));
   await first.getByRole("radio", { name: "2D" }).click();
   await expect.element(first.getByRole("radio", { name: "2D" })).toBeChecked();
   expect(first.getByLabelText("3D-Szene des Hauses").query()).toBeNull();
@@ -77,7 +77,7 @@ test("the 3D scene fills the hero, leaving no empty area", async () => {
   const screen = await render(Page, { context: homeCore() });
   const scene = screen.getByLabelText("3D-Szene des Hauses");
 
-  await expect.element(scene).toBeVisible();
+  await appears(scene);
 
   const hero = screen
     .getByRole("region", { name: "Anlage live" })
@@ -95,7 +95,7 @@ test("the low-power switch shows the 2D flow", async () => {
 
   const screen = await render(Page, { context: homeCore() });
 
-  await expect.element(screen.getByLabelText("3D-Szene des Hauses")).toBeVisible();
+  await appears(screen.getByLabelText("3D-Szene des Hauses"));
   motion.lowPower = true;
 
   await expect.element(screen.getByLabelText("3D-Szene des Hauses")).not.toBeInTheDocument();

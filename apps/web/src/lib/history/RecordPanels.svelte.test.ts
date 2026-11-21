@@ -1,19 +1,24 @@
 import { afterEach, expect, test } from "vitest";
 // The screen is laid out by the SPA's utilities.
 import "../../app.css";
+import { appears, fakeFrames, realTimers } from "../motion/clock.harness.ts";
 import { iso } from "../range/calendar.ts";
 import { plant, reset, show, TODAY, YEAR, YESTERDAY } from "./statistics.harness.ts";
 
-afterEach(reset);
+afterEach(() => {
+  realTimers();
+  reset();
+});
 
 const DAY = `range=day&at=${YESTERDAY}`;
 
 test("the battery tab shows the core's capacity estimate against the nameplate, with its trend", async () => {
+  // The figures count up on frames: the test's own.
+  fakeFrames();
   plant.battery = true;
 
   const { screen } = await show(`${DAY}&metric=plant&tab=battery`);
-
-  await expect.element(screen.getByText("≈ 9,7 kWh")).toBeVisible();
+  await appears(screen.getByText("≈ 9,7 kWh"));
   await expect.element(screen.getByText("97 % von 10 kWh Nennkapazität")).toBeVisible();
   await expect.element(screen.getByText("−4 %")).toBeVisible();
   await expect.element(screen.getByText("123", { exact: true })).toBeVisible();
@@ -23,11 +28,12 @@ test("the battery tab shows the core's capacity estimate against the nameplate, 
 });
 
 test("before a full discharge the battery tab says how a measurement comes about", async () => {
+  // The figures count up on frames: the test's own.
+  fakeFrames();
   Object.assign(plant, { battery: true, measured: false });
 
   const { screen } = await show(`${DAY}&metric=plant&tab=battery`);
-
-  await expect.element(screen.getByText("Noch keine Kapazitätsmessung")).toBeVisible();
+  await appears(screen.getByText("Noch keine Kapazitätsmessung"));
   await expect.element(screen.getByText("noch keine Messung")).toBeVisible();
 });
 
