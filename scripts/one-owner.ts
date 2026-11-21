@@ -5,7 +5,7 @@
 
 import { Glob } from "bun";
 
-const LIB = "apps/web/src/lib/";
+const SRC = "apps/web/src/";
 
 export interface Copy {
   readonly rule: string;
@@ -43,7 +43,7 @@ const RULES: readonly Rule[] = [
     owners: [
       "components/",
       "gallery/",
-      // Navigation, swatches, a list of paths and a debug overlay: none is a choice of a few words.
+      // Navigation and swatches (ADR 21), and choices that may be left empty: none is segmented.
       "shell/Bar.svelte",
       "builder/ColourRow.svelte",
       "settings/ImportSources.svelte",
@@ -57,7 +57,7 @@ const RULES: readonly Rule[] = [
   },
   {
     name: "haptics outside a shared component",
-    found: /from "[./#a-z]*haptics(?:\.ts)?"/u,
+    found: /from "(?:[^"]*\/)?haptics(?:\.[jt]s)?"/u,
     owners: [
       "components/",
       "range/",
@@ -88,20 +88,22 @@ const RULES: readonly Rule[] = [
       "builder/SceneCanvas.svelte",
       "dashboard/SceneStandIn.svelte",
     ],
-    composes: /\bChartEntrance\b/u,
+    composes: /<ChartEntrance\b/u,
   },
 ];
 
 /** Whether the rules hold for this file: SPA source, not a test or a harness. */
 function covered(path: string): boolean {
-  return path.startsWith(LIB) && !/\.test\.ts$|\.harness\./u.test(path);
+  return path.startsWith(SRC) && !/\.test\.ts$|\.harness\./u.test(path);
 }
 
 /** Every copy of an owned behaviour in one file. */
 export function copies(path: string, source: string): Copy[] {
   if (!covered(path)) return [];
 
-  const inLib = path.slice(LIB.length);
+  // Owners are named from lib/; a route owns nothing.
+  const lib = `${SRC}lib/`;
+  const inLib = path.startsWith(lib) ? path.slice(lib.length) : "";
 
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- a rule's patterns are only read.
   return RULES.flatMap((rule) => {
@@ -119,7 +121,7 @@ export function copies(path: string, source: string): Copy[] {
 
 if (import.meta.main) {
   const root = new URL("..", import.meta.url).pathname;
-  const paths = [...new Glob(`${LIB}**/*.{svelte,ts}`).scanSync(root)].toSorted();
+  const paths = [...new Glob(`${SRC}**/*.{svelte,ts}`).scanSync(root)].toSorted();
 
   const sources = await Promise.all(paths.map((path) => Bun.file(`${root}${path}`).text()));
 

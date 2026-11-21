@@ -58,3 +58,27 @@ test("tests, harnesses and files outside the SPA are not held to it", () => {
   expect(rules("detail/days.harness.svelte", source)).toEqual([]);
   expect(copies("scripts/x.ts", source)).toEqual([]);
 });
+
+test("haptics are found by any way of importing them", () => {
+  for (const from of ["../haptics.js", "../haptics", "#lib/haptics.ts", "./haptics.ts"]) {
+    expect(rules("tariff/Zone.svelte", `import { haptics } from "${from}";`)).toEqual([
+      "haptics outside a shared component",
+    ]);
+  }
+});
+
+test("a chart that only names the entrance in a comment is still a copy", () => {
+  const chart = `<!-- not yet in a ChartEntrance -->\n<canvas></canvas>`;
+
+  expect(rules("analytics/Heat.svelte", chart)).toEqual(["chart without the chart entrance"]);
+});
+
+test("routes are held to it too", () => {
+  expect(copies("apps/web/src/routes/x/+page.svelte", `<Tabs.List variant="line">`)).toEqual([
+    { rule: "tabs list not segmented", line: 1 },
+  ]);
+});
+
+test("the haptics library itself is no copy", () => {
+  expect(rules("tariff/Zone.svelte", `import { WebHaptics } from "web-haptics";`)).toEqual([]);
+});
