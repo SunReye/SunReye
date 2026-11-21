@@ -128,13 +128,13 @@ test("a screen inside More marks More, and More opens again from it", async () =
   await openMore();
 });
 
-test("More lists the other screens and opens with a soft tap", async () => {
-  const soft = vi.spyOn(haptics, "soft");
+test("More lists the other screens and opens with a bar item's tick", async () => {
+  const selection = vi.spyOn(haptics, "selection");
 
   await phone("/");
   await openMore();
 
-  expect(soft).toHaveBeenCalledOnce();
+  expect(selection).toHaveBeenCalledOnce();
   const links = sheet().getByRole("link");
 
   expect(links.elements()).toHaveLength(5);

@@ -1,7 +1,8 @@
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 // The pane is laid out by the SPA's utilities.
 import "../../app.css";
+import { haptics } from "../haptics.ts";
 import { fold, plant, reset } from "./fold.harness.ts";
 
 afterEach(reset);
@@ -43,6 +44,8 @@ test("a month folds by day: a row per day with statistics, its energy the core's
 });
 
 test("the table sorts by a column, and the other way on a second press", async () => {
+  const selection = vi.spyOn(haptics, "selection");
+
   await desk();
 
   const { screen } = await fold("pv.power");
@@ -62,6 +65,9 @@ test("the table sorts by a column, and the other way on a second press", async (
 
   await expect.element(mean).toHaveAttribute("aria-sort", "ascending");
   expect(periods(table)).toEqual(["Sa., 3. Oktober", "So., 4. Oktober", "Do., 1. Oktober"]);
+  // Each press ticks once.
+  expect(selection).toHaveBeenCalledTimes(2);
+  selection.mockRestore();
 
   await table.getByRole("button", { name: "Nach Max sortieren" }).click();
 

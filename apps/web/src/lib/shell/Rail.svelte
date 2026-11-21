@@ -67,9 +67,7 @@
     haptics.soft();
   }
 
-  function navigate(route: string): void {
-    if (route !== current) haptics.selection();
-
+  function navigate(): void {
     touchCollapsed = true;
   }
 </script>
@@ -142,9 +140,7 @@
             {item}
             active={current === item.route}
             {expanded}
-            onnavigate={() => {
-              navigate(item.route);
-            }}
+            onnavigate={navigate}
           />
         </li>
       {/each}
@@ -156,9 +152,7 @@
           item={SETTINGS}
           active={current === SETTINGS.route}
           {expanded}
-          onnavigate={() => {
-            navigate(SETTINGS.route);
-          }}
+          onnavigate={navigate}
         />
       </li>
       <li class="flex h-8 items-center gap-2">

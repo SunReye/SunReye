@@ -9,7 +9,7 @@
   import * as Item from "#lib/components/ui/item/index.js";
   import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
   import DrawerSheet from "#lib/components/drawer-sheet.svelte";
-  import { haptics } from "../haptics.ts";
+  import NavLink from "#lib/components/nav-link.svelte";
   import { m } from "../paraglide/messages.js";
   import { indicator } from "../range/indicator.ts";
   import { BAR, MORE, href, type NavItem } from "./nav.ts";
@@ -42,24 +42,13 @@
     current !== null && BAR.some((item) => item.route === current) ? current : MORE_ID,
   );
 
-  function go(route: string): void {
-    if (route !== current) haptics.selection();
-
-    moreOpen = false;
-  }
-
   // A tap on the pressed item clears a single group's value; it still means that item.
   function pick(value: string): void {
     const route = value === "" ? active : value;
 
-    if (route === MORE_ID) {
-      moreOpen = true;
-      haptics.soft();
-    } else {
-      go(route);
+    moreOpen = route === MORE_ID;
 
-      if (route !== current) void goto(href(route));
-    }
+    if (route !== MORE_ID && route !== current) void goto(href(route));
   }
 </script>
 
@@ -104,12 +93,12 @@
       {#each more as item (item.route)}
         <Item.Root class="rounded-none border-0">
           {#snippet child({ props })}
-            <a
+            <NavLink
               {...props}
               href={href(item.route)}
-              aria-current={current === item.route ? "page" : undefined}
+              current={current === item.route}
               onclick={() => {
-                go(item.route);
+                moreOpen = false;
               }}
               class={[props["class"], "text-left active:bg-muted"]}
             >
@@ -121,7 +110,7 @@
                 {#if item.admin}<Badge variant="secondary">{m.nav_admin()}</Badge>{/if}
                 <ChevronRight class="size-4 text-muted-foreground" />
               </Item.Actions>
-            </a>
+            </NavLink>
           {/snippet}
         </Item.Root>
       {/each}

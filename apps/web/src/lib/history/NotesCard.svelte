@@ -1,11 +1,9 @@
 <!-- At most three things worth a look, each leading to its cause. -->
 <script lang="ts">
   import GlassCard from "../components/glass-card.svelte";
-  import { Pressable } from "../components/ui/pressable/index.js";
-  import ChevronRight from "@lucide/svelte/icons/chevron-right";
+  import OpenRow from "../components/open-row.svelte";
   import Info from "@lucide/svelte/icons/info";
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
-  import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
   import type { Note } from "./notes.ts";
 
@@ -17,11 +15,10 @@
   <ul class="divide-y divide-border/60 border-t border-border/60">
     {#each notes as n (n.text)}
       <li>
-        <Pressable
-          feedback
-          class="flex w-full items-start gap-2.5 px-4 py-2.5 text-left"
-          onclick={() => {
-            haptics.soft();
+        <OpenRow
+          class="items-start gap-2.5 px-4 py-2.5"
+          chevron="mt-0.5"
+          onopen={() => {
             onnote(n);
           }}
         >
@@ -32,8 +29,7 @@
             >{n.text}<span class="mt-0.5 block text-xs font-medium text-brand">{n.action}</span
             ></span
           >
-          <ChevronRight class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-        </Pressable>
+        </OpenRow>
       </li>
     {/each}
   </ul>
