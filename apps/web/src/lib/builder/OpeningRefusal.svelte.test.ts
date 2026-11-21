@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
+import { closed } from "../motion/animations.harness.ts";
 import { pv } from "./builder.harness.ts";
 import BuildingLevel from "./BuildingLevel.svelte";
 import type { Opening, Scene } from "./pv.ts";
@@ -43,7 +44,12 @@ async function enter(row: string, value: string): Promise<void> {
   await page.getByRole("button", { name: /tippen zum Eingeben/u }).click();
   await userEvent.fill(page.getByRole("textbox", { name: `${row} eingeben` }), value);
   await userEvent.keyboard("{Enter}");
-  await page.getByRole("button", { name: /^Übernehmen/u }).click();
+
+  const apply = page.getByRole("button", { name: /^Übernehmen/u });
+
+  await apply.click();
+  // A confirmed editor leaves a frame on, after its fade.
+  await closed(apply);
 }
 
 test("a window moved onto another is refused with the reason, until a change fits", async () => {

@@ -8,6 +8,7 @@ import { Studio } from "../scene/studio.ts";
 import type { Falling, SceneWeather } from "../scene/weather.ts";
 import Builder from "./Builder.svelte";
 import { DEVICES, house, inspector, MODULE, pv, settle } from "./builder.harness.ts";
+import { closed } from "../motion/animations.harness.ts";
 
 // The builder's weather (ADR 23 "Builder"): the dashboard's until the admin edits.
 
@@ -109,7 +110,7 @@ test("a trial weather from the weather button stands in for the stored one until
   await page.getByRole("button", { name: "Wetter" }).click();
   await page.getByRole("menuitemradio", { name: "Gewitter" }).click();
   // The pick closes the menu.
-  await expect.element(page.getByRole("menu")).not.toBeInTheDocument();
+  await closed(page.getByRole("menu"));
 
   await settle(() =>
     shows(weather(), {

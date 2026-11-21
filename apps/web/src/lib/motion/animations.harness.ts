@@ -3,6 +3,7 @@
 // wait for an animation to play out, race one to catch it, or wait for a frame to be told one
 // ended: the browser tells an end only on a frame it draws, so the harness tells it itself.
 import { vi } from "vitest";
+import type { Locator } from "vitest/browser";
 import { playFrame, stepUntil } from "./clock.harness.ts";
 
 /** Whether `a` comes to an end: a live dot pulses for good. */
@@ -169,6 +170,11 @@ export async function finish(done: () => boolean = settled): Promise<void> {
 
     playFrame();
   });
+}
+
+/** Until what `locator` finds has left the page: an overlay leaves a frame on, after its fade. */
+export async function closed(locator: Locator): Promise<void> {
+  await finish(() => locator.query() === null);
 }
 
 /**

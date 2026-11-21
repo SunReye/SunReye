@@ -3,6 +3,7 @@ import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { connect } from "../api/core.ts";
+import { closed, finish } from "../motion/animations.harness.ts";
 import { attempt, problem } from "../settings/settings.harness.ts";
 import Controls from "./Controls.svelte";
 import { MAX_CHARGE, controlsCore } from "./controls.harness.ts";
@@ -66,10 +67,15 @@ test("applying writes through the funnel, closes on confirmed and the row reads 
     .toHaveAttribute("aria-valuenow", "100");
   page.getByRole("spinbutton", { name: "Max charge current" }).element().focus();
   await userEvent.keyboard("{PageDown}{PageDown}");
-  await userEvent.click(page.getByRole("button", { name: /^Übernehmen\s*100 A\s*80 A/u }));
+
+  const apply = page.getByRole("button", { name: /^Übernehmen\s*100 A\s*80 A/u });
+
+  // The wheel takes each step on a frame: the test's.
+  await finish(() => apply.query() !== null);
+  await userEvent.click(apply);
 
   expect(transport.writes).toEqual([`PUT /api/v1/devices/3/settings/${MAX_CHARGE} {"value":80}`]);
-  await expect.element(page.getByRole("spinbutton")).not.toBeInTheDocument();
+  await closed(page.getByRole("spinbutton"));
   await expect
     .element(screen.getByRole("button", { name: "Max charge current 80 A" }))
     .toBeVisible();

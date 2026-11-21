@@ -5,7 +5,7 @@ import { cdp, page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { haptics } from "../haptics.ts";
-import { finish } from "../motion/animations.harness.ts";
+import { closed, finish } from "../motion/animations.harness.ts";
 import { motion } from "../motion/tier.svelte.ts";
 import DrawerSheet from "./drawer-sheet.svelte";
 import { held, press } from "./drawer.harness.ts";
@@ -145,5 +145,5 @@ test("under low power the drawer opens, settles and closes without a frame", asy
   vi.unstubAllGlobals();
 
   await rerender({ open: false });
-  await expect.element(sheet()).not.toBeInTheDocument();
+  await closed(sheet());
 });

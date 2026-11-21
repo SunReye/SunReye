@@ -3,7 +3,7 @@ import { page, userEvent } from "vitest/browser";
 // The screen is laid out by the SPA's utilities.
 import "../../app.css";
 import { reset, show, showIn } from "./explore.harness.ts";
-import { finish } from "../motion/animations.harness.ts";
+import { closed, finish } from "../motion/animations.harness.ts";
 import { settle } from "../motion/clock.harness.ts";
 
 afterEach(reset);
@@ -212,6 +212,7 @@ test("Esc leaves a filled window, after it closed a list open over it", async ()
   // A list on the body lies over the filled window, and takes a pick.
   await screen.getByRole("combobox", { name: "Bis Uhrzeit" }).click();
   await page.getByRole("option", { name: "12 Uhr", exact: true }).click();
+  await closed(page.getByRole("listbox"));
   await expect
     .element(screen.getByRole("combobox", { name: "Bis Uhrzeit" }))
     .toHaveTextContent("12 Uhr");
@@ -221,7 +222,7 @@ test("Esc leaves a filled window, after it closed a list open over it", async ()
 
   await userEvent.keyboard("{Escape}");
 
-  await expect.poll(() => page.getByRole("listbox").query()).toBeNull();
+  await closed(page.getByRole("listbox"));
   await expect.element(screen.getByRole("button", { name: "Vollbild beenden" })).toBeVisible();
 
   await userEvent.keyboard("{Escape}");

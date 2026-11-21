@@ -6,6 +6,7 @@ import { connect, type Transport } from "../api/core.ts";
 import { tap } from "../builder/pointer.harness.ts";
 import { FakeCore } from "./devices.harness.ts";
 import Routed from "./routed.harness.svelte";
+import { closed } from "../motion/animations.harness.ts";
 
 /** A phone; the value editor and levels land at once. */
 beforeEach(async () => {
@@ -33,6 +34,7 @@ async function enter(row: string, value: string): Promise<void> {
   await userEvent.fill(page.getByRole("textbox", { name: `${row} eingeben` }), value);
   await userEvent.keyboard("{Enter}");
   await page.getByRole("button", { name: /^Übernehmen/u }).click();
+  await closed(page.getByRole("dialog"));
 }
 
 test("the admin adds a scanned Modbus device after setup, renames it and removes it", async () => {
@@ -82,6 +84,7 @@ test("a device added on a connection is the variant of its family the admin pick
   await tap(screen.getByRole("button", { name: "Auf einer Verbindung hinzufügen" }));
   await tap(screen.getByRole("button", { name: "Profil", exact: true }));
   await tap(page.getByRole("dialog").getByRole("button", { name: "SUN-5K-SG05LP3-EU-SM2 5 kW" }));
+  await closed(page.getByRole("dialog"));
   await expect
     .element(screen.getByRole("button", { name: "Profil", exact: true }))
     .toHaveTextContent("SUN-5K-SG05LP3-EU-SM2 5 kW");

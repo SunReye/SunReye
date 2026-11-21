@@ -7,6 +7,7 @@ import { framesUntil, realTimers } from "../../motion/clock.harness.ts";
 import { motion } from "../../motion/tier.svelte.ts";
 import { editable, type Outcome } from "./editable.ts";
 import ValueEditor from "./value-editor.svelte";
+import { closed } from "../../motion/animations.harness.ts";
 
 const CHARGE = editable({
   key: "battery.max_charge_current",
@@ -142,7 +143,7 @@ test("apply reads old → new and writes the new value", async () => {
   await userEvent.click(change);
 
   expect(onapply).toHaveBeenCalledExactlyOnceWith(80);
-  await expect.element(page.getByRole("spinbutton")).not.toBeInTheDocument();
+  await closed(page.getByRole("spinbutton"));
 });
 
 test("the editor shows pending until its caller reports the outcome", async () => {
@@ -158,8 +159,7 @@ test("the editor shows pending until its caller reports the outcome", async () =
   await expect.element(pending).toBeDisabled();
 
   write.resolve({ kind: "confirmed" });
-
-  await expect.element(page.getByRole("spinbutton")).not.toBeInTheDocument();
+  await closed(page.getByRole("spinbutton"));
 });
 
 test("a refusal stays open with its reason until the value changes", async () => {

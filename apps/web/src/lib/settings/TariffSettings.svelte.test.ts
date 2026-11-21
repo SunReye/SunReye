@@ -5,6 +5,7 @@ import "../../app.css";
 import { connect } from "../api/core.ts";
 import { testCore } from "../tariff/tariff.harness.ts";
 import TariffSettings from "./TariffSettings.svelte";
+import { closed } from "../motion/animations.harness.ts";
 
 /** The value editor's wheels land at once: a spring would turn on the browser's frames. */
 beforeEach(async () => {
@@ -149,6 +150,7 @@ async function wheelTo(group: string, field: string, hours: number, shows: strin
 
   expect(apply.element().textContent).toContain(`${String(hours).padStart(2, "0")}:00`);
   await userEvent.click(apply);
+  await closed(apply);
   await expect.element(fields.getByRole("button", { name: shows })).toBeVisible();
 }
 

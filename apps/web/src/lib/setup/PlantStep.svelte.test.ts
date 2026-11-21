@@ -3,6 +3,7 @@ import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect, type Transport } from "../api/core.ts";
 import PlantStep from "./PlantStep.svelte";
+import { closed } from "../motion/animations.harness.ts";
 
 function problem(status: number, code: string): Response {
   return Response.json(
@@ -38,6 +39,7 @@ test("the plant timezone and location are set, a location off the globe is refus
   await screen.getByRole("combobox", { name: "Zeitzone der Anlage" }).click();
   await userEvent.fill(page.getByPlaceholder("Zeitzone suchen"), "berlin");
   await page.getByRole("option", { name: "Europe/Berlin", exact: true }).click();
+  await closed(page.getByPlaceholder("Zeitzone suchen"));
   await userEvent.fill(screen.getByLabelText("Breitengrad"), "152.5");
   await userEvent.fill(screen.getByLabelText("Längengrad"), "13.38");
   await screen.getByRole("button", { name: "Weiter" }).click();

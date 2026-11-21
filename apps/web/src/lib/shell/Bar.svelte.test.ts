@@ -3,7 +3,7 @@ import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { haptics } from "../haptics.ts";
-import { finish } from "../motion/animations.harness.ts";
+import { closed, finish } from "../motion/animations.harness.ts";
 import { settle } from "../motion/clock.harness.ts";
 import { motion } from "../motion/tier.svelte.ts";
 import { locales, setLocale } from "../paraglide/runtime.js";
@@ -167,7 +167,7 @@ test("a screen picked in More closes the sheet", async () => {
   await sheet().getByRole("link", { name: "Status" }).click();
 
   expect(location.hash).toBe("#/status");
-  await expect.element(sheet()).not.toBeInTheDocument();
+  await closed(sheet());
 });
 
 /** What `mark` glides on now: its transitions' properties, read off its style as it is. */

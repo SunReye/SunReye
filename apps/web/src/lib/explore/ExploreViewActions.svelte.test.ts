@@ -4,6 +4,7 @@ import { cdp, page, userEvent } from "vitest/browser";
 import "../../app.css";
 import { reset, show } from "./explore.harness.ts";
 import { chosenChips as chosen, FOLD, kept, savedChips as saved, WEEK } from "./views.harness.ts";
+import { closed } from "../motion/animations.harness.ts";
 
 afterEach(reset);
 
@@ -59,6 +60,7 @@ test("after changing an open view the menu updates it or saves the change as a n
   await expect.element(chip).toHaveAttribute("aria-pressed", "true");
   expect(await menu()).toEqual(["Als CSV exportieren", "Umbenennen", "Löschen"]);
   await userEvent.keyboard("{Escape}");
+  await closed(page.getByRole("menu"));
 
   await screen.getByRole("radio", { name: "Monat" }).click();
   await expect.element(chip).toHaveAttribute("aria-pressed", "false");
@@ -137,6 +139,7 @@ test("the marked view is renamed, and deleted once confirmed", async () => {
     .toBeVisible();
   await name.fill("Hauswoche");
   await page.getByRole("button", { name: "Speichern" }).click();
+  await closed(page.getByRole("dialog"));
 
   const chip = saved().getByRole("button", { name: "Hauswoche" });
 
@@ -147,6 +150,7 @@ test("the marked view is renamed, and deleted once confirmed", async () => {
   await expect.element(page.getByText("„Hauswoche“ löschen?")).toBeVisible();
   expect(kept.views).toHaveLength(2);
   await page.getByRole("button", { name: "Löschen" }).click();
+  await closed(page.getByRole("dialog"));
 
   await expect.element(chip).not.toBeInTheDocument();
   expect(kept.views).toEqual([FOLD]);
@@ -195,7 +199,7 @@ test("under the bar the name is asked in a drawer, and the view is saved from it
       .toHaveValue("PV · Eingang 2 · Leistung");
     await drawer.getByRole("button", { name: "Speichern" }).click();
 
-    await expect.element(drawer).not.toBeInTheDocument();
+    await closed(drawer);
     await expect
       .element(saved().getByRole("button", { name: "PV · Eingang 2 · Leistung" }))
       .toHaveAttribute("aria-pressed", "true");
