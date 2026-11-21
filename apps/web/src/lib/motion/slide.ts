@@ -1,5 +1,4 @@
-// ADR 21's movement between two resting places, shared by the route slide, the settings levels,
-// the builder's inspector and a detail's days.
+// ADR 21's movement between two resting places, shared by the route slide and a detail's days.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
 import type { TransitionConfig } from "svelte/transition";
 import { motionMs } from "../motion.ts";
@@ -61,16 +60,5 @@ export function turns<K, W>(first: K, none: W, wayTo: (from: K, to: K) => W): (t
     }
 
     return way;
-  };
-}
-
-/**
- * The level a deeper one slides over: as an `out:` it shifts left and dims, as an `in:` it comes
- * back.
- */
-export function shiftAside(_node: Element): TransitionConfig {
-  return {
-    ...slideTiming(),
-    css: (_t, u) => `transform: translate3d(${-30 * u}%, 0, 0); opacity: ${1 - 0.6 * u}`,
   };
 }

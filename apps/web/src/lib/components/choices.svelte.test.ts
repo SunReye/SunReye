@@ -6,6 +6,7 @@ import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { haptics } from "../haptics.ts";
 import Choices from "./choices.harness.svelte";
+import Probe from "./select.harness.svelte";
 import { Toggle } from "./ui/toggle/index.js";
 
 afterEach(() => {
@@ -42,6 +43,32 @@ test.each(KINDS)("a %s set from outside is silent", async (kind, role) => {
 
   await screen.rerender({ value: "c" });
   await expect.element(page.getByRole(role, { name: "c" })).toHaveAttribute("aria-checked", "true");
+
+  expect(selection).not.toHaveBeenCalled();
+});
+
+test("a select ticks once when the user picks another option, and not for the chosen one", async () => {
+  const selection = vi.spyOn(haptics, "selection");
+
+  await render(Probe);
+  await page.getByRole("option", { name: "a" }).click();
+
+  expect(selection).not.toHaveBeenCalled();
+
+  await page.getByRole("combobox", { name: "Probe" }).click();
+  await page.getByRole("option", { name: "b" }).click();
+
+  expect(selection).toHaveBeenCalledOnce();
+});
+
+test("a select set from outside is silent", async () => {
+  const selection = vi.spyOn(haptics, "selection");
+  const screen = await render(Probe);
+
+  await screen.rerender({ value: "c" });
+  await expect
+    .element(page.getByRole("option", { name: "c" }))
+    .toHaveAttribute("aria-selected", "true");
 
   expect(selection).not.toHaveBeenCalled();
 });

@@ -8,7 +8,6 @@
   import { Button } from "#lib/components/ui/button/index.js";
   import * as Item from "#lib/components/ui/item/index.js";
   import DrillRow from "../components/drill-in/drill-row.svelte";
-  import { shiftAside } from "../motion/slide.ts";
   import { m } from "../paraglide/messages.js";
   import { readAs } from "../setup/catalogue.ts";
   import AddRow from "./AddRow.svelte";
@@ -46,7 +45,7 @@
   }
 </script>
 
-<div class="col-start-1 row-start-1 min-w-0" in:shiftAside out:shiftAside>
+<div class="min-w-0">
   <div class="drill-card">
     <Item.Group class="gap-0 divide-y divide-border/60">
       {#each devices as device (device.id)}

@@ -1,11 +1,13 @@
 <!--
-  One choice from a long list, found by typing: the kit's Command in a Popover. The trigger shows
-  the chosen option; picking one closes the list.
+  One choice from a long list, found by typing: the kit's Command in a popover with a mouse and a
+  bottom drawer on touch (ADR 21). The trigger shows the chosen option; picking one closes the list.
 -->
 <script lang="ts">
   import Check from "@lucide/svelte/icons/check";
   import ChevronsUpDown from "@lucide/svelte/icons/chevrons-up-down";
+  import { input } from "../shell/input.svelte.ts";
   import { cn } from "../utils.ts";
+  import DrawerSheet from "./drawer-sheet.svelte";
   import { buttonVariants } from "./ui/button/index.js";
   import * as Command from "./ui/command/index.js";
   import * as Popover from "./ui/popover/index.js";
@@ -43,7 +45,21 @@
     <span class="truncate">{value}</span>
     <ChevronsUpDown class="text-muted-foreground" />
   </Popover.Trigger>
-  <Popover.Content class="w-(--bits-popover-anchor-width) min-w-64 p-0" align="start">
+  <!-- On touch the trigger opens the drawer below. -->
+  {#if input.overlay === "popover"}
+    <Popover.Content class="w-(--bits-popover-anchor-width) min-w-64 p-0" align="start">
+      {@render list()}
+    </Popover.Content>
+  {/if}
+</Popover.Root>
+
+{#if input.overlay === "drawer"}
+  <DrawerSheet bind:open label={search}>
+    <div class="px-2">{@render list()}</div>
+  </DrawerSheet>
+{/if}
+
+{#snippet list()}
     <Command.Root>
       <Command.Input placeholder={search} />
       <Command.List>
@@ -64,5 +80,4 @@
         </Command.Group>
       </Command.List>
     </Command.Root>
-  </Popover.Content>
-</Popover.Root>
+{/snippet}

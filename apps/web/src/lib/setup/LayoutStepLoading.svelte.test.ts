@@ -29,7 +29,7 @@ test("while the builder loads, its placeholder takes the room under the header",
 
   await expect.element(loading).toBeVisible();
 
-  const header = document.querySelector("main > header")?.getBoundingClientRect();
+  const header = document.querySelector("main")?.firstElementChild?.getBoundingClientRect();
   const box = loading.element().getBoundingClientRect();
 
   expect(box.top).toBe(header?.bottom);

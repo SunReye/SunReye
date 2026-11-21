@@ -1,6 +1,7 @@
 <!--
-  A calendar day, picked from the kit's Calendar in a popover: the trigger shows the day in the
-  app's language, and days outside `min`–`max` cannot be picked. Days are ISO dates (2026-11-13).
+  A calendar day, picked from the kit's Calendar in a popover with a mouse and a bottom drawer on
+  touch (ADR 21): the trigger shows the day in the app's language, and days outside `min`–`max`
+  cannot be picked. Days are ISO dates (2026-11-13).
 
   `field` is an outlined button; `compact` a ghost one that drops this year and steps years from
   dropdowns; `row` a settings row under its label.
@@ -9,8 +10,9 @@
   import { CalendarDate, parseDate, type DateValue } from "@internationalized/date";
   import CalendarDays from "@lucide/svelte/icons/calendar-days";
   import { getLocale } from "../paraglide/runtime.js";
-  import { cn } from "../utils.ts";
+  import { input } from "../shell/input.svelte.ts";
   import { Button, buttonVariants } from "./ui/button/index.js";
+  import DrawerSheet from "./drawer-sheet.svelte";
   import { Calendar } from "./ui/calendar/index.js";
   import * as Item from "./ui/item/index.js";
   import { FEEDBACK, SELECTED } from "./ui/pressable/index.js";
@@ -174,19 +176,35 @@
   {:else}
     <Popover.Trigger
       aria-label={named}
-      class={cn(
-        buttonVariants({ variant: look.button, size: "sm" }),
-        look.trigger,
-        "tabular-nums",
-        className,
-      )}
+      class={buttonVariants({
+        variant: look.button,
+        size: "sm",
+        class: [look.trigger, "tabular-nums", className],
+      })}
     >
       <CalendarDays data-icon="inline-start" class={look.icon} />
       {text}
     </Popover.Trigger>
   {/if}
-  <Popover.Content class={look.content} align={look.align}>
+  <!-- On touch the trigger opens the drawer below. -->
+  {#if input.overlay === "popover"}
+    <Popover.Content class={look.content} align={look.align}>
+      {@render calendar()}
+    </Popover.Content>
+  {/if}
+</Popover.Root>
+
+{#if input.overlay === "drawer"}
+  <DrawerSheet bind:open {label} titled>
+    <div class="flex flex-col">
+      {@render calendar()}
+    </div>
+  </DrawerSheet>
+{/if}
+
+{#snippet calendar()}
     <Calendar
+      class="mx-auto"
       type="single"
       calendarLabel={label}
       captionLayout={look.caption}
@@ -208,5 +226,4 @@
         >
       </div>
     {/if}
-  </Popover.Content>
-</Popover.Root>
+{/snippet}
