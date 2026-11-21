@@ -6,7 +6,7 @@
   import { m } from "../paraglide/messages.js";
   import { getLocale } from "../paraglide/runtime.js";
   import { changeOf, draftOf, instantOf } from "./draft";
-  import SaveBar from "./SaveBar.svelte";
+  import TariffSaveBar from "./TariffSaveBar.svelte";
   import ScheduleFields from "./ScheduleFields.svelte";
   import TermsFields from "./TermsFields.svelte";
 
@@ -47,5 +47,5 @@
   {#if answer !== undefined && "problem" in answer}
     <div class="px-4 pt-3"><ProblemAlert problem={answer.problem} /></div>
   {/if}
-  <SaveBar dated={draft.appliesFrom !== ""} />
+  <TariffSaveBar dated={draft.appliesFrom !== ""} />
 </form>
