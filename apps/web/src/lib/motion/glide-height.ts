@@ -15,8 +15,10 @@ const moveMs = (style: CSSStyleDeclaration) =>
 /** A card's height as its content sets it, and the glide to it. */
 class Height {
   readonly #card: HTMLElement;
-  /** The card's size as its content sets it, once first told: a card that mounts does not glide. */
-  #size: { width: number; height: number } | undefined;
+  /** The card's height as its content sets it, once first told: a card that mounts does not glide. */
+  #height: number | undefined;
+  /** Its width when its content last changed: a change of width since is the window's. */
+  #width: number | undefined;
   #glide: Glide | undefined;
 
   constructor(card: HTMLElement) {
@@ -26,26 +28,29 @@ class Height {
   /** Its content changed: from the height drawn to the content's, unless its width changed. */
   changed(): void {
     const was = this.#glide;
-    const drawn = was === undefined ? this.#size?.height : this.#card.offsetHeight;
+    const drawn = was === undefined ? this.#height : this.#card.offsetHeight;
     const at = was?.animation.currentTime ?? null;
 
     this.stop();
 
     const { offsetWidth: width, offsetHeight: height } = this.#card;
-    const widened = this.#size !== undefined && this.#size.width !== width;
+    const widened = this.#width !== undefined && this.#width !== width;
 
-    this.#size = { width, height };
+    this.#measure();
 
     if (drawn === undefined || widened || drawn === height) return;
 
-    // The glide's own clamp resized a child that fills the card: the same glide carries on.
+    // A change that leaves the height where the glide is going (a figure ticking): it carries on.
     if (was?.to === height) this.#run(was.from, height, at);
     else this.#run(drawn, height, null);
   }
 
-  /** The card alone resized, a row it stands in grew or shrank around it: nothing to glide. */
+  /** The card resized with no change to its content (a row it stands in, the window): no glide.
+   * Its width stays as its content last saw it, so a chart redrawn to a new width does not glide. */
   resized(): void {
-    if (this.#glide === undefined) this.#measure();
+    if (this.#glide === undefined) this.#height = this.#card.offsetHeight;
+
+    this.#width ??= this.#card.offsetWidth;
   }
 
   /** The card's own frame changed: it takes its height at once. */
@@ -60,7 +65,8 @@ class Height {
   }
 
   #measure(): void {
-    this.#size = { width: this.#card.offsetWidth, height: this.#card.offsetHeight };
+    this.#height = this.#card.offsetHeight;
+    this.#width = this.#card.offsetWidth;
   }
 
   // `min-height` and `max-height`, not `height`: a child's percentage height stays `auto`, so a
@@ -91,41 +97,36 @@ class Height {
  * Glides `card`'s height from the one drawn to its content's whenever its content changes it, on
  * the move token, so what stands below moves with it. A change of width (the window's), the still
  * tier, a change to the card's own class or style and a card that mounts take the new height at
- * once. It hears the card's children, not the card, whose size the glide itself changes.
+ * once.
+ *
+ * It hears the card's content change in the DOM, before the browser lays it out, so the glide
+ * starts in the same frame and no size observer is told a size the glide then takes back.
  */
 export const glideHeight: Attachment<HTMLElement> = (card) => {
   const height = new Height(card);
 
-  const sizes = new ResizeObserver((entries) => {
-    if (entries.some((entry) => entry.target !== card)) height.changed();
-    else height.resized();
+  const size = new ResizeObserver(() => {
+    height.resized();
   });
 
-  sizes.observe(card);
-
-  for (const child of card.children) sizes.observe(child);
-
-  const mutations = new MutationObserver((records) => {
-    for (const record of records) {
-      for (const node of record.removedNodes) if (node instanceof Element) sizes.unobserve(node);
-
-      for (const node of record.addedNodes) if (node instanceof Element) sizes.observe(node);
-    }
-
+  const content = new MutationObserver((records) => {
     // The card's own class or style: its frame changed (a screen's fullscreen), not its content.
-    if (records.some((record) => record.type === "attributes")) height.reframed();
+    const reframed = records.some(
+      (record) =>
+        record.target === card &&
+        (record.attributeName === "class" || record.attributeName === "style"),
+    );
+
+    if (reframed) height.reframed();
     else height.changed();
   });
 
-  mutations.observe(card, {
-    childList: true,
-    attributes: true,
-    attributeFilter: ["class", "style"],
-  });
+  size.observe(card);
+  content.observe(card, { subtree: true, childList: true, attributes: true, characterData: true });
 
   return () => {
-    mutations.disconnect();
-    sizes.disconnect();
+    content.disconnect();
+    size.disconnect();
     height.stop();
   };
 };

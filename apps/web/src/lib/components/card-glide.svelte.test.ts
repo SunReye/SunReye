@@ -25,7 +25,8 @@ async function shown(props: {
   interactive?: boolean;
   width?: number;
   words?: number;
-  fill?: boolean;
+  label?: string;
+  loading?: boolean;
   frame?: string;
 }) {
   const screen = await render(Harness, props);
@@ -89,9 +90,23 @@ test("content that shrinks glides the card's height down", async () => {
   expect(card.offsetHeight).toBe(height - 80);
 });
 
-test("a card that mounts takes its height at once", async () => {
-  const { card } = await shown({ height: 120 });
+test("a card that mounts takes its height at once, its content filled before it is drawn", async () => {
+  const screen = await render(Harness, { height: 40 });
 
+  await screen.rerender({ height: 120 });
+  await tick();
+  playFrame();
+
+  const card = screen.getByTestId("card").element();
+
+  expect(card.getAnimations()).toEqual([]);
+});
+
+test("content redrawn to a width the window sets takes its height at once", async () => {
+  const { screen, card } = await shown({ height: 40, width: 320 });
+
+  await screen.rerender({ height: 120, width: 200 });
+  await tick();
   playFrame();
 
   expect(glides(card)).toEqual([]);
@@ -135,16 +150,40 @@ test("on the still tier a card takes its height at once", async () => {
   expect(glides(card)).toEqual([]);
 });
 
-test("a part that fills the card, resized by the glide, does not restart it", async () => {
-  const { screen, card } = await shown({ height: 120, fill: true });
+test("data in place of a placeholder glides, and a placeholder in place of data", async () => {
+  const { screen, card } = await shown({ height: 120, loading: true });
+  const height = card.offsetHeight;
 
-  await screen.rerender({ height: 40, fill: true });
+  await screen.rerender({ height: 120, loading: false });
+  await settle(() => glides(card).length > 0);
+
+  expect(card.offsetHeight).toBe(height);
+
+  await finish();
+
+  expect(card.offsetHeight).toBe(height + 80);
+
+  await screen.rerender({ height: 120, loading: true });
+  await settle(() => glides(card).length > 0);
+
+  expect(card.offsetHeight).toBe(height + 80);
+
+  await finish();
+
+  expect(card.offsetHeight).toBe(height);
+});
+
+test("a change mid-glide that leaves the height where it is going carries the glide on", async () => {
+  const { screen, card } = await shown({ height: 40, label: "1 kW" });
+
+  await screen.rerender({ height: 120, label: "1 kW" });
   await settle(() => glides(card).length > 0);
   halfway(glides(card)[0]);
 
   const at = glides(card)[0]?.currentTime;
 
-  playFrame();
+  await screen.rerender({ height: 120, label: "2 kW" });
+  await tick();
   playFrame();
 
   expect(glides(card)).toHaveLength(1);
