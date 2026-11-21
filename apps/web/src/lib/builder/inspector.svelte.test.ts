@@ -4,6 +4,7 @@ import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect } from "../api/core.ts";
 import Builder from "./Builder.svelte";
+import { uncovered } from "./pointer.harness.ts";
 import {
   desk,
   DEVICES,
@@ -61,6 +62,7 @@ test("on a portrait tablet the inspector is a sheet that a tap or a pick pulls u
   await expect.element(handle).toHaveAttribute("aria-expanded", "true");
   await handle.click();
   await expect.element(handle).toHaveAttribute("aria-expanded", "false");
+  await uncovered();
 
   await page.getByLabelText("3D-Szene des Hauses").click();
 

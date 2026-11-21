@@ -6,7 +6,7 @@ import { finish } from "../motion/animations.harness.ts";
 export type Pointer = "mouse" | "pen" | "touch";
 
 /** Until no closing drawer's scrim is left: it covers the page until its fade has ended. */
-async function uncovered(): Promise<void> {
+export async function uncovered(): Promise<void> {
   await finish(
     () => document.querySelector('[data-slot="drawer-overlay"][data-state="closed"]') === null,
   );
