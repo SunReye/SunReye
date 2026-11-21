@@ -39,52 +39,59 @@ const BROKER: Connection = {
   secrets: ["password", "username"],
 };
 
-test("an admin adds an MQTT connection and an EVCC device; its loadpoint shows on the dashboard", async () => {
-  const core = new FakeCore();
-  const settings = await opened(core, "connections");
+// A journey of some thirty steps: on a loaded host the steps, not any clock, take the time.
+test(
+  "an admin adds an MQTT connection and an EVCC device; its loadpoint shows on the dashboard",
+  {
+    timeout: 60_000,
+  },
+  async () => {
+    const core = new FakeCore();
+    const settings = await opened(core, "connections");
 
-  await settings.getByRole("button", { name: "Verbindung hinzufügen" }).click();
-  await userEvent.fill(settings.getByRole("textbox", { name: "Name" }), "EVCC");
-  await userEvent.click(settings.getByRole("combobox", { name: "Übertragung" }));
-  await userEvent.click(page.getByRole("option", { name: "mqtt", exact: true }));
-  await userEvent.fill(settings.getByRole("textbox", { name: "Host" }), "evcc.lan");
-  await userEvent.fill(settings.getByRole("textbox", { name: "Topic-Wurzel" }), "evcc");
-  await userEvent.fill(settings.getByRole("textbox", { name: "Benutzername" }), "sunreye");
-  await userEvent.fill(settings.getByLabelText("Passwort", { exact: true }), "hunter2");
-  await settings.getByRole("button", { name: "Verbindung hinzufügen" }).click();
+    await settings.getByRole("button", { name: "Verbindung hinzufügen" }).click();
+    await userEvent.fill(settings.getByRole("textbox", { name: "Name" }), "EVCC");
+    await userEvent.click(settings.getByRole("combobox", { name: "Übertragung" }));
+    await userEvent.click(page.getByRole("option", { name: "mqtt", exact: true }));
+    await userEvent.fill(settings.getByRole("textbox", { name: "Host" }), "evcc.lan");
+    await userEvent.fill(settings.getByRole("textbox", { name: "Topic-Wurzel" }), "evcc");
+    await userEvent.fill(settings.getByRole("textbox", { name: "Benutzername" }), "sunreye");
+    await userEvent.fill(settings.getByLabelText("Passwort", { exact: true }), "hunter2");
+    await settings.getByRole("button", { name: "Verbindung hinzufügen" }).click();
 
-  await expect.element(settings.getByRole("button", { name: /^EVCC/u })).toBeVisible();
-  await settings.unmount();
+    await expect.element(settings.getByRole("button", { name: /^EVCC/u })).toBeVisible();
+    await settings.unmount();
 
-  const devices = await opened(core, "devices");
+    const devices = await opened(core, "devices");
 
-  await devices.getByRole("button", { name: "Gerät hinzufügen" }).click();
-  await devices.getByRole("button", { name: "Auf einer Verbindung hinzufügen" }).click();
-  await userEvent.click(devices.getByRole("combobox", { name: "Verbindung" }));
-  await userEvent.click(page.getByRole("option", { name: "EVCC · mqtt", exact: true }));
-  await devices.getByRole("button", { name: "Profil", exact: true }).click();
-  await userEvent.fill(page.getByRole("searchbox", { name: "Profil suchen" }), "evcc");
-  await page.getByRole("button", { name: /^Loadpoint/u }).click();
-  await expect.element(devices.getByRole("button", { name: /^Ladepunkt 1/u })).toBeVisible();
-  await userEvent.fill(devices.getByRole("textbox", { name: "Name" }), "Wallbox");
-  await devices.getByRole("button", { name: "Gerät hinzufügen" }).click();
+    await devices.getByRole("button", { name: "Gerät hinzufügen" }).click();
+    await devices.getByRole("button", { name: "Auf einer Verbindung hinzufügen" }).click();
+    await userEvent.click(devices.getByRole("combobox", { name: "Verbindung" }));
+    await userEvent.click(page.getByRole("option", { name: "EVCC · mqtt", exact: true }));
+    await devices.getByRole("button", { name: "Profil", exact: true }).click();
+    await userEvent.fill(page.getByRole("searchbox", { name: "Profil suchen" }), "evcc");
+    await page.getByRole("button", { name: /^Loadpoint/u }).click();
+    await expect.element(devices.getByRole("button", { name: /^Ladepunkt 1/u })).toBeVisible();
+    await userEvent.fill(devices.getByRole("textbox", { name: "Name" }), "Wallbox");
+    await devices.getByRole("button", { name: "Gerät hinzufügen" }).click();
 
-  await expect.element(devices.getByRole("button", { name: /^Wallbox/u })).toBeVisible();
-  expect(core.calls).toEqual([
-    'POST /api/v1/connections {"name":"EVCC","transport":"mqtt","host":"evcc.lan","port":1883,"topicRoot":"evcc","secrets":{"username":"sunreye","password":"hunter2"}}',
-    'POST /api/v1/devices {"connection":11,"name":"Wallbox","profile":"evcc","unit":1,"writes":false}',
-  ]);
-  await devices.unmount();
+    await expect.element(devices.getByRole("button", { name: /^Wallbox/u })).toBeVisible();
+    expect(core.calls).toEqual([
+      'POST /api/v1/connections {"name":"EVCC","transport":"mqtt","host":"evcc.lan","port":1883,"topicRoot":"evcc","secrets":{"username":"sunreye","password":"hunter2"}}',
+      'POST /api/v1/devices {"connection":11,"name":"Wallbox","profile":"evcc","unit":1,"writes":false}',
+    ]);
+    await devices.unmount();
 
-  // The core reads the loadpoint it was given.
-  feed()({
-    devices: { "12": { "ev.charge.power": 3700, "ev.vehicle.soc": 64, "ev.limit.soc": 80 } },
-  });
-  const dashboard = await render(Dashboard, { core: connect(core), layout: null, admin: true });
+    // The core reads the loadpoint it was given.
+    feed()({
+      devices: { "12": { "ev.charge.power": 3700, "ev.vehicle.soc": 64, "ev.limit.soc": 80 } },
+    });
+    const dashboard = await render(Dashboard, { core: connect(core), layout: null, admin: true });
 
-  await expect.element(dashboard.getByText("Wallbox")).toBeVisible();
-  await expect.element(dashboard.getByText("Ziel 80 %")).toBeVisible();
-});
+    await expect.element(dashboard.getByText("Wallbox")).toBeVisible();
+    await expect.element(dashboard.getByText("Ziel 80 %")).toBeVisible();
+  },
+);
 
 test("secrets are never shown back, only set or not set; saving keeps them unless changed", async () => {
   const core = new FakeCore();

@@ -38,6 +38,8 @@ async function mount() {
   const live = screen.getByRole("region", { name: "Live-Leistung" });
 
   await expect.element(live.getByText("Live · letzte 2 Minuten")).toBeVisible();
+  // The plot is drawn once its box is measured, a frame after the section shows.
+  await expect.poll(() => document.querySelector("[data-plot]")).not.toBeNull();
 
   return { screen, live };
 }
