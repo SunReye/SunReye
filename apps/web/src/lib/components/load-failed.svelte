@@ -7,11 +7,11 @@
 <script lang="ts">
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
   import { Button } from "#lib/components/ui/button/index.js";
-  import { Pressable } from "#lib/components/ui/pressable/index.js";
   import type { Problem } from "../api/client.ts";
   import { haptics } from "../haptics.ts";
   import { problemText } from "../i18n/problems.ts";
   import { m } from "../paraglide/messages.js";
+  import TextLink from "./text-link.svelte";
 
   let {
     text,
@@ -49,9 +49,7 @@
     role="status"
   >
     <span>{text}</span>
-    <Pressable class="rounded-sm font-medium text-brand hover:underline" onclick={retry}>
-      {m.stats_retry()}
-    </Pressable>
+    <TextLink onclick={retry}>{m.stats_retry()}</TextLink>
   </span>
 {:else if size === "block"}
   <div

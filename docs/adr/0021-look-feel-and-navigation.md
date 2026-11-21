@@ -99,7 +99,7 @@ The first integration build rendered browser defaults: plain links for navigatio
 - **Enums** use a list with kbase's sliding `active-indicator`.
 - **Free-form values** (prices, coordinates, names) keep a text field.
 - **Applying:** "Apply 100 A → 80 A" runs ADR 7's write. The editor shows pending until the read-back, then closes with the outcome: confirmed, refused with its reason, or mismatch, linked to the write log. There is no separate confirmation step.
-- **Builder time slider:** stays, because it scrubs time rather than setting a value. Its day, like the day a layout applies from, is a button that opens a calendar in a popover; picking a day closes it.
+- **Builder time slider:** stays, because it scrubs time rather than setting a value. Its day, like the day a layout applies from, is a button that opens a calendar, in a popover with a mouse and a drawer on touch as every picker; picking a day closes it.
 - **Builder controls** are the registry's components (`components/ui`): no browser-default date, time, range, colour or select control. A colour beyond the swatches is typed as `#rrggbb`, a free-form value.
 
 **Glass.**

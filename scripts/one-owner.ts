@@ -177,13 +177,7 @@ const RULES: readonly Rule[] = [
   {
     name: "link outside the text link",
     found: first(/hover:underline|variant="link"/u),
-    owners: [
-      "components/ui/",
-      "components/text-link.svelte",
-      "gallery/",
-      // Held while the refused-read work of #836 changes it; it takes the text link next.
-      "components/load-failed.svelte",
-    ],
+    owners: ["components/ui/", "components/text-link.svelte", "gallery/"],
   },
   {
     name: "animation reduced motion does not stop",
