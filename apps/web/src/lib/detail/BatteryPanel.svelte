@@ -38,6 +38,6 @@
     <BatteryOverview {range} {analytics} {input} />
   {/snippet}
 </AnalyticsTabs>
-<RangeState failed={range.failed} onretry={range.retry}>
+<RangeState failed={range.failed} refused={range.refused} onretry={range.retry}>
   <DetailStats panel stats={batteryFacts(range.view?.efficiency ?? null, range.view?.cycles ?? null)} />
 </RangeState>

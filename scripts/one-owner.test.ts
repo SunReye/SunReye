@@ -51,6 +51,20 @@ test("a chart without the chart entrance is a copy; a mark inside one is not", (
   expect(rules("history/TrendMark.svelte", `import { Area } from "layerchart";`)).toEqual([]);
 });
 
+test("a chart read by its own pointer handlers or LayerChart's tooltip is a copy", () => {
+  const rule = "pointer reading outside the one pointer reading";
+
+  expect(rules("history/Trend.svelte", `<div onpointermove={point}>`)).toEqual([rule]);
+  expect(rules("analytics/Heat.svelte", `<div\n  onpointerdown={(e) => {}}>`)).toEqual([rule]);
+  expect(rules("live/Plot.ts", `el.addEventListener("pointermove", read);`)).toEqual([rule]);
+  expect(rules("history/Trend.svelte", `tooltipContext={{ mode: "bisect-x" }}`)).toEqual([rule]);
+  expect(rules("history/Trend.svelte", `<div {...reading.on}>`)).toEqual([]);
+  expect(rules("chart-reading/reader.svelte.ts", `onpointermove: this.move,`)).toEqual([]);
+  // Drags that read no chart.
+  expect(rules("range/pager-drag.ts", `addEventListener("pointermove", move)`)).toEqual([]);
+  expect(rules("builder/View.svelte", `<div onpointerdown={down}>`)).toEqual([]);
+});
+
 test("tests, harnesses and files outside the SPA are not held to it", () => {
   const source = `<Tabs.List variant="line">`;
 

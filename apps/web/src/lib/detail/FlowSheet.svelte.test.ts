@@ -192,6 +192,25 @@ test("a range whose facts fail to read says so in their place, with a retry", as
   await expect.element(alert).not.toBeInTheDocument();
 });
 
+test("a refused price read fails the price chart with the core's reason; the facts stand", async () => {
+  priced();
+  served.rolled = (a) =>
+    a.series === "price.import"
+      ? Response.json({ status: 422, code: "history.range" }, { status: 422 })
+      : rolled(BOUGHT)(a);
+
+  const sheet = await sheetOf("purchase", "Bezug");
+  const alert = sheet.getByRole("alert");
+
+  await expect.element(alert.getByText("Dieser Zeitraum ist leer oder zu lang.")).toBeVisible();
+  expect(sheet.getByRole("group", { name: /Bezugspreis über die Zeit/u }).elements()).toHaveLength(
+    0,
+  );
+  await expect
+    .element(sheet.getByRole("definition").filter({ hasText: "€" }))
+    .toHaveTextContent("0,45 €");
+});
+
 test("the feed-in sheet's facts: the peak, and what feed-in earned", async () => {
   priced();
   served.rolled = rolled({

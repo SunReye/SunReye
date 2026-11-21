@@ -231,14 +231,16 @@ test("facts that fail to read say so in their place, with a retry", async () => 
   served.forecasts = () => Promise.reject(new Error("the core is lost"));
 
   const sheet = await sheetOf("string-1", "Süd");
-  const alert = sheet.getByRole("alert");
+  // The chart reads the forecast too, so it says its own failure beside the facts'.
+  const alerts = sheet.getByRole("alert");
 
-  await expect.element(alert).toBeVisible();
+  await expect.poll(() => alerts.elements()).toHaveLength(2);
   served.forecasts = null;
-  await alert.getByRole("button", { name: "Erneut laden" }).click();
+  await alerts.nth(1).getByRole("button", { name: "Erneut laden" }).click();
+  await alerts.first().getByRole("button", { name: "Erneut laden" }).click();
 
   await expect.element(sheet.getByRole("term").filter({ hasText: "Spitze" })).toBeVisible();
-  await expect.element(alert).not.toBeInTheDocument();
+  await expect.poll(() => alerts.elements()).toHaveLength(0);
 });
 
 test("another string's sheet never shows the last one's facts while it reads", async () => {

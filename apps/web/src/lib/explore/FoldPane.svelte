@@ -61,7 +61,7 @@
       <Skeleton class="w-full rounded-md" style="height: {rest}px" />
     {:else if got.failed}
       <div class="flex flex-col justify-center" style:min-height="{rest}px">
-        <LoadFailed text={m.explore_fold_error()} onretry={fold.retry} />
+        <LoadFailed text={m.explore_fold_error()} refused={got.refused} onretry={fold.retry} />
       </div>
     {:else if got.rows.length === 0}
       {@render said(chosen.label, m.explore_fold_empty({ name: chosen.label }))}

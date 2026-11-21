@@ -1,11 +1,13 @@
 <!--
   A quiet line chart over plant-local days for the analyses that are trends, not bars: payback and
-  battery capacity. One y axis. The legend reads the values under the pointer; there is no floating
-  tooltip (ADR 21).
+  battery capacity. One y axis. The legend reads the values of the day under the pointer, on the
+  one pointer reading (`chart-reading/`); there is no floating tooltip (ADR 21).
 -->
 <script lang="ts">
   import ChartEntrance from "../chart-entrance/ChartEntrance.svelte";
-  import { Axis, Chart, Layer, Rule, type ChartState } from "layerchart";
+  import { Axis, Chart, Layer, Rule } from "layerchart";
+  import { ChartReader } from "../chart-reading/reader.svelte.ts";
+  import ReadingRule from "../chart-reading/ReadingRule.svelte";
   import { getLocale } from "../paraglide/runtime.js";
   import { isValue, valueOf, type TrendRow, type TrendRule, type TrendSeries } from "./trend.ts";
   import TrendLegend from "./TrendLegend.svelte";
@@ -73,11 +75,30 @@
 
   let width = $state(0);
 
-  /** The chart's state once it mounts; until then nothing is under the pointer. */
-  let context = $state.raw<ChartState<TrendRow> | undefined>();
+  const PADDING = { top: 8, bottom: 20, left: 44, right: 8 };
+
+  /** The time axis, from the first row to the last, in ms. */
+  const span = $derived([rows[0]?.x.getTime() ?? 0, rows.at(-1)?.x.getTime() ?? 0] as const);
+
+  const shareOf = (row: TrendRow) => (row.x.getTime() - span[0]) / (span[1] - span[0] || 1);
+
+  /** A place is a row's index: the row nearest the pointer. */
+  const reading = new ChartReader<number>(() => ({
+    over: (x) => {
+      let near = 0;
+
+      for (const [i, row] of rows.entries())
+        if (Math.abs(shareOf(row) - x) < Math.abs(shareOf(rows[near]!) - x)) near = i;
+
+      return near;
+    },
+    band: (i) => i,
+  }));
 
   /** The row under the pointer, read in the legend. */
-  const read: TrendRow | null = $derived(context?.tooltip.data ?? null);
+  const read: TrendRow | null = $derived(
+    reading.at === null ? null : (rows[reading.at] ?? null),
+  );
 
   /** A chart too narrow or with one row has nothing to draw. */
   const drawn = $derived(width > 24 && rows.length > 1);
@@ -88,19 +109,12 @@
   const valueTick = (v: number) => (v === 0 && yDomain[0] === 0 ? "" : axisFmt(v));
 
   const y = $derived(valueOf(series[0]?.key ?? ""));
-
-  const bind = {
-    get: () => context!,
-    set: (next: ChartState<TrendRow>) => {
-      context = next;
-    },
-  };
 </script>
 
 <div class="flex flex-col gap-2">
   <TrendLegend {series} {rules} {unit} {read} {fmt} day={(d) => tf.format(d)} />
   <div
-    class="w-full"
+    class="relative w-full"
     style:height="{height}px"
     bind:clientWidth={width}
     role="img"
@@ -109,15 +123,7 @@
   >
     <ChartEntrance build="draw" ready={drawn} class="size-full">
       {#if drawn}
-        <Chart
-          bind:context={bind.get, bind.set}
-          data={[...rows]}
-          x="x"
-          {y}
-          {yDomain}
-          padding={{ top: 8, bottom: 20, left: 44, right: 8 }}
-          tooltipContext={{ mode: "bisect-x" }}
-        >
+        <Chart data={[...rows]} x="x" {y} {yDomain} padding={PADDING}>
           <Layer type="svg">
             <Axis
               placement="left"
@@ -144,6 +150,18 @@
             {/each}
           </Layer>
         </Chart>
+        <!-- Over the plot alone, never its axes, so a share of it is a share of the days. -->
+        <div
+          class="absolute touch-pan-y select-none"
+          style:inset="{PADDING.top}px {PADDING.right}px {PADDING.bottom}px {PADDING.left}px"
+          role="presentation"
+          data-plot
+          {...reading.on}
+        >
+          {#if read}
+            <ReadingRule share={shareOf(read)} />
+          {/if}
+        </div>
       {/if}
     </ChartEntrance>
   </div>

@@ -1,6 +1,7 @@
 // What the statistics screen reads for its range (ADR 11, 12): the plant's flows and the money,
 // and the same for the baseline. The last figures stay while the next range loads, so the chart
 // tweens instead of redrawing (ADR 21). A core that does not answer in 10 s is an error.
+import { settleRead, type Problem } from "../api/client.ts";
 import type { Core } from "../api/core.ts";
 import type { CostDays } from "../api/tariff.ts";
 import { edges, type Edge } from "../range/edges.ts";
@@ -73,6 +74,8 @@ async function within<T>(work: () => Promise<T>): Promise<T> {
 export class StatsData {
   current = $state.raw<Loaded | undefined>();
   failed = $state(false);
+  /** Why the core refused the last read; none while it answers, or when it was lost. */
+  refused = $state.raw<Problem | undefined>();
   #attempt = $state(0);
 
   constructor(input: () => { core: StatsCore; route: RangeRoute; cmp: Compare }) {
@@ -85,16 +88,16 @@ export class StatsData {
 
       let live = true;
 
-      void within(() => load(core, { range, via, zone, cal, cmp })).then(
-        (got) => {
-          if (live) [this.current, this.failed] = [got, false];
+      const read = async () => {
+        const got = await settleRead(within(() => load(core, { range, via, zone, cal, cmp })));
 
-          return got;
-        },
-        () => {
-          if (live) this.failed = true;
-        },
-      );
+        if (!live) return;
+
+        if (got.failed) [this.failed, this.refused] = [true, got.refused];
+        else [this.current, this.failed, this.refused] = [got.data, false, undefined];
+      };
+
+      void read();
 
       return () => {
         live = false;
@@ -108,7 +111,7 @@ export class StatsData {
 
   // fallow-ignore-next-line unused-class-member -- StatsCard calls it through `Statistics["data"]`.
   retry = (): void => {
-    this.failed = false;
+    [this.failed, this.refused] = [false, undefined];
     this.#attempt += 1;
   };
 }

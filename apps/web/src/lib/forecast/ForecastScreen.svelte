@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { settleRead } from "../api/client.ts";
   import type { Core } from "../api/core.ts";
   import { Skeleton } from "#lib/components/ui/skeleton/index.js";
   import LoadFailed from "../components/load-failed.svelte";
@@ -20,10 +21,11 @@
   /** Bumped by a retry, so the lines are read again. */
   let attempt = $state(0);
 
+  // Settled, so a refusal keeps the core's reason.
   const inverters = $derived.by(() => {
     void attempt;
 
-    return inverterLines(core);
+    return settleRead(inverterLines(core));
   });
 </script>
 
@@ -37,24 +39,31 @@
         <Skeleton class="min-h-0 flex-1" role="status" aria-label={m.loading()} />
       </div>
     </RangeCard>
-  {:then shown}
-    {#each shown as inverter (inverter.device)}
+  {:then read}
+    {#if read.failed}
       <RangeCard>
-        <ForecastChart {core} device={inverter.device} lines={inverter.lines} {route} />
+        <LoadFailed
+          size="block"
+          text={m.forecast_error()}
+          refused={read.refused}
+          onretry={() => (attempt += 1)}
+        />
       </RangeCard>
     {:else}
-      <RangeCard>
-        <p
-          class="flex items-center justify-center text-sm text-muted-foreground"
-          style:height="{CARD_HEIGHT}px"
-        >
-          {m.forecast_none()}
-        </p>
-      </RangeCard>
-    {/each}
-  {:catch}
-    <RangeCard>
-      <LoadFailed size="block" text={m.forecast_error()} onretry={() => (attempt += 1)} />
-    </RangeCard>
+      {#each read.data as inverter (inverter.device)}
+        <RangeCard>
+          <ForecastChart {core} device={inverter.device} lines={inverter.lines} {route} />
+        </RangeCard>
+      {:else}
+        <RangeCard>
+          <p
+            class="flex items-center justify-center text-sm text-muted-foreground"
+            style:height="{CARD_HEIGHT}px"
+          >
+            {m.forecast_none()}
+          </p>
+        </RangeCard>
+      {/each}
+    {/if}
   {/await}
 </RangeScreen>

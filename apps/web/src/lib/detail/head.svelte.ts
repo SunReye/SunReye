@@ -1,6 +1,7 @@
 // A measured sheet's head over its range (ADR 21): the figure against the range before it, cut to
 // as much as the range has run, and the record's edges inside it. A range before the first reading
 // reads nothing and says so once.
+import type { Problem } from "../api/client.ts";
 import { baselineOf } from "../history/compare.ts";
 import type { Stored } from "../live/plant-facts.ts";
 import { periodOf } from "../history/history.ts";
@@ -24,6 +25,8 @@ export interface HeadView {
   readonly versus: string;
   /** Where the record begins or its readings stop inside the range; before it, the one sentence. */
   readonly notes: readonly string[];
+  /** Why the core refused the read, in the error state. */
+  readonly refused?: Problem | undefined;
 }
 
 /** The sheet's figure, what it reads through and the record's edges. */
@@ -125,7 +128,7 @@ export class RangeHead {
 
     if (before !== null) return { ...none, state: "before", notes: [before] };
 
-    if (this.#data.failed) return { ...none, state: "error" };
+    if (this.#data.failed) return { ...none, state: "error", refused: this.#data.refused };
 
     const data = this.#data.current?.data;
 

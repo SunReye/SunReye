@@ -22,6 +22,38 @@ export interface Problem {
   readonly series?: string;
 }
 
+/** A read the core refused, thrown so it fails as a lost core does yet keeps the core's reason. */
+class Refused extends Error {
+  readonly problem: Problem;
+
+  constructor(problem: Problem) {
+    super(problem.problem);
+    this.name = "Refused";
+    this.problem = problem;
+  }
+}
+
+/** A read's answer; a refusal is thrown as `Refused`. */
+export function answerOf<T extends object>(read: T | Problem): T {
+  if ("problem" in read) throw new Refused(read);
+
+  return read;
+}
+
+/** A read settled: its answer, or its failure with the core's reason, none for a lost core. */
+export type Settled<T> =
+  | { readonly data: T; readonly failed: false }
+  | { readonly failed: true; readonly refused: Problem | undefined };
+
+/** Settles `read`, never rejecting. */
+export async function settleRead<T>(read: Readonly<Promise<T>>): Promise<Settled<T>> {
+  try {
+    return { data: await read, failed: false };
+  } catch (error) {
+    return { failed: true, refused: error instanceof Refused ? error.problem : undefined };
+  }
+}
+
 /** A proxy in front of the core may refuse with a body that is no JSON; its status stands in. */
 export function refusal(error: Readonly<ProblemDetails> | string, status: number): Problem {
   if (!(error instanceof Object)) return { problem: `http.${status}` };

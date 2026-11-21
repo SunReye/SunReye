@@ -30,7 +30,7 @@
   );
 </script>
 
-<RangeState failed={range.failed} onretry={range.retry}>
+<RangeState failed={range.failed} refused={range.refused} onretry={range.retry}>
   {#if flow.price && priced}
     <HistoryChart core={input.core} device={TARIFF} series="price.import" route={input.route} />
   {/if}

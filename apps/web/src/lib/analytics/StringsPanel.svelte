@@ -43,11 +43,15 @@
     const [range, place, all] = [r.range, r.place, strings];
     let live = true;
 
-    void stringEnergy(core, all, place, range).then((next) => {
-      if (live) kwh = next;
+    // A failed read keeps the last figures: the range's own read says it failed.
+    void stringEnergy(core, all, place, range).then(
+      (next) => {
+        if (live) kwh = next;
 
-      return next;
-    });
+        return next;
+      },
+      () => null,
+    );
 
     return () => {
       live = false;

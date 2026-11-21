@@ -32,6 +32,8 @@ export interface Plant {
   strings: number;
   /** Every read fails until `heal`. */
   broken: boolean;
+  /** The code the core refuses every statistics read with; null while it answers. */
+  refused: string | null;
   /** History waits for this. */
   gate: Promise<void> | null;
   /** The core has measured the battery's capacity. */
@@ -45,6 +47,7 @@ const PLANT_DEFAULTS: Plant = {
   age: 400,
   strings: 2,
   broken: false,
+  refused: null,
   gate: null,
   measured: true,
   paced: true,
@@ -243,6 +246,9 @@ function transport(urls: string[]): Transport {
       const plantRead = /\/(history|statistics)$/u.test(url.pathname);
 
       if (plant.broken && plantRead) throw new TypeError("network");
+
+      if (plant.refused !== null && url.pathname.endsWith("/statistics"))
+        return Response.json({ status: 422, code: plant.refused }, { status: 422 });
 
       if (plant.gate && plantRead) await plant.gate;
 

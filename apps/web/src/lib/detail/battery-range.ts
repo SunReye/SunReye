@@ -10,7 +10,6 @@ import {
 } from "../history/history.ts";
 import { bandsOf } from "../range/fill.ts";
 import { cyclesOf, roundTrip } from "./battery.ts";
-import { strict } from "./measure.ts";
 import type { RangeInput, RangeReader } from "./sheet-range.svelte.ts";
 
 /** The plant's battery over the range: what charged it, what it gave, its charge and capacity. */
@@ -74,8 +73,7 @@ export const BATTERY_RANGE = {
 
     if (a.getTime() >= b.getTime()) return NONE;
 
-    const sure = strict(core);
-    const any: Reader = (series, p, x, y) => rollups(sure, PLANT, series, p, x, y);
+    const any: Reader = (series, p, x, y) => rollups(core, PLANT, series, p, x, y);
     const read = (series: string) => any(series, period, a, b);
 
     const [charge, discharge, soc, capacity] = await Promise.all([

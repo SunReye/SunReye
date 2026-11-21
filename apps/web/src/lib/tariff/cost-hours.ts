@@ -2,6 +2,7 @@
 // `cost.*` rates, each hour laid out as the core lays out a day. No `cost.*` rate holds the standing
 // charge, so none is owed here.
 import { TARIFF } from "../api/computed-devices.ts";
+import { answerOf } from "../api/client.ts";
 import type { Core } from "../api/core.ts";
 import type { CostDays } from "../api/tariff.ts";
 import { periodOf, rollups, type Rolled } from "../history/history.ts";
@@ -51,15 +52,18 @@ async function costHours(
 
 /**
  * A chart's costs over `range`, from `from` to before `to`: by the tariff's hours for a chart that
- * reads hours on a range read by the hour, as a day or a brush on one; else the core's days.
+ * reads hours on a range read by the hour, as a day or a brush on one; else the core's days. A
+ * refusal fails the read with the core's reason.
  */
-export function costsOver(
+export async function costsOver(
   core: Readonly<Pick<Core, "costs" | "statistics">>,
   hourly: boolean,
   range: Readonly<Range>,
   span: readonly [Readonly<Date>, Readonly<Date>],
-): ReturnType<Core["costs"]> {
+): Promise<CostDays> {
   const [from, to] = span;
 
-  return hourly && periodOf(range) === "hour" ? costHours(core, from, to) : core.costs(from, to);
+  if (hourly && periodOf(range) === "hour") return costHours(core, from, to);
+
+  return answerOf(await core.costs(from, to));
 }

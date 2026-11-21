@@ -35,7 +35,7 @@
   ]);
 </script>
 
-<RangeState failed={range.failed} onretry={range.retry}>
+<RangeState failed={range.failed} refused={range.refused} onretry={range.retry}>
   {#if view && view.sessions.length === 0}
     <p class="py-2 text-sm text-muted-foreground">{m.detail_no_sessions()}</p>
   {:else if view}
