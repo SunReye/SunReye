@@ -59,3 +59,16 @@ export async function expectBuilds(build: Built["build"]): Promise<void> {
   await expect.poll(builds).not.toEqual([]);
   expect(builds().every((b) => b === "fade")).toBe(true);
 }
+
+/** What fades out on the page: each element a script animation takes to no opacity. */
+export function leaving(): Element[] {
+  return document.getAnimations().flatMap((a) => {
+    const effect = a.effect;
+
+    if (a instanceof CSSAnimation || !(effect instanceof KeyframeEffect)) return [];
+
+    const to = effect.getKeyframes().at(-1);
+
+    return effect.target !== null && to?.["opacity"] === "0" ? [effect.target] : [];
+  });
+}

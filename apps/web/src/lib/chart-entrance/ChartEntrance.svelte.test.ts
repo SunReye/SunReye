@@ -1,14 +1,15 @@
 // A chart builds up as it first shows (ADR 21 "Chart entrance").
 import { tick } from "svelte";
-import { afterEach, beforeEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
-import { finish, holdEntrances } from "../motion/animations.harness.ts";
-import { built } from "./built.harness.ts";
+import { finish, hold, holdEntrances } from "../motion/animations.harness.ts";
+import { built, leaving } from "./built.harness.ts";
 import Harness from "./entrance.harness.svelte";
 
 beforeEach(holdEntrances);
 
 afterEach(() => {
+  vi.restoreAllMocks();
   delete document.documentElement.dataset["motion"];
 });
 
@@ -95,6 +96,34 @@ test("a chart keyed anew builds again", async () => {
   await screen.rerender({ build: "grow", ready: true, key: "b" });
 
   await expect.poll(grows).toHaveLength(3);
+});
+
+test("what a chart keyed anew drew before fades out over it", async () => {
+  const screen = await render(Harness, { build: "grow", ready: true, key: "a" });
+
+  await finish();
+  hold();
+  await screen.rerender({ build: "grow", ready: true, key: "b" });
+
+  await expect.poll(bars).toHaveLength(6);
+  // The frame before, with its bars, fades out.
+  expect(leaving()).toHaveLength(1);
+  expect(leaving()[0]?.querySelectorAll("[data-grow]")).toHaveLength(3);
+
+  await finish();
+
+  expect(bars()).toHaveLength(3);
+});
+
+test("on the still tier a chart keyed anew takes its place at once", async () => {
+  document.documentElement.dataset["motion"] = "still";
+  const screen = await render(Harness, { build: "grow", ready: true, key: "a" });
+
+  await screen.rerender({ build: "grow", ready: true, key: "b" });
+  await tick();
+
+  expect(bars()).toHaveLength(3);
+  expect(built()).toEqual([]);
 });
 
 test("on the still tier a chart is drawn at once", async () => {

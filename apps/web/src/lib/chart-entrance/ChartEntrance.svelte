@@ -1,6 +1,7 @@
 <!--
   A chart's entrance (ADR 21 "Chart entrance"): it builds up as its first data shows, once per mount
-  and once per `key`: a chart keyed by what it draws builds again when that changes.
+  and once per `key`: a chart keyed by what it draws builds again when that changes, while what it
+  drew before fades out over it. A keyed chart's box is positioned, for the frame leaving.
   - `grow`: bars grow from their baseline, each a little after the one before. A bar opts in with
     `data-grow` (`data-grow="x"` grows sideways), sets its `transform-origin` at its baseline and
     `--i`, its place in the stagger from 0 to 1.
@@ -18,6 +19,7 @@
   import type { Snippet } from "svelte";
   import type { Attachment } from "svelte/attachments";
   import type { ClassValue } from "svelte/elements";
+  import { fade } from "../motion.ts";
 
   let {
     build,
@@ -41,6 +43,18 @@
   /** The tokens are 0 on the still tier and under reduced motion: nothing to build. */
   const still = (el: HTMLElement) =>
     getComputedStyle(el).getPropertyValue("--motion-move").trim() === "0ms";
+
+  /** `--motion-exit` on `el`, in ms. */
+  const exit = (el: HTMLElement) =>
+    Number(getComputedStyle(el).getPropertyValue("--motion-exit").trim().replace(/ms$/u, ""));
+
+  /** The frame before stands over the next as it fades; its effects are paused, so it keeps its drawing. */
+  function leave(el: HTMLElement) {
+    el.style.position = "absolute";
+    el.style.inset = "0";
+
+    return fade(el, { duration: exit(el) });
+  }
 
   // Set on the element itself, not through the template, so its animations exist at once.
   const enter: Attachment<HTMLElement> = (el) => {
@@ -67,7 +81,7 @@
 
 <div class={["entrance", className]} data-build={build}>
   {#key key}
-    <div class="frame" {@attach enter}>
+    <div class="frame" {@attach enter} out:leave>
       <div class="back">{@render children()}</div>
     </div>
   {/key}
