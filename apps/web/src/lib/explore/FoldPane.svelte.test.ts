@@ -156,6 +156,8 @@ test("refused statistics are said, not drawn as an empty range", async () => {
   await expect
     .element(screen.getByText("Die Statistik konnte nicht geladen werden."))
     .toBeVisible();
+  // The core's reason, from its refusal.
+  await expect.element(screen.getByText("Dieser Zeitraum ist leer oder zu lang.")).toBeVisible();
   expect(screen.getByRole("table").query()).toBeNull();
 });
 
