@@ -4,11 +4,10 @@
   import wasm from "../../../../../target/wasm32-unknown-unknown/release/sunreye_pv_wasm.wasm?url";
   import { Button } from "#lib/components/ui/button/index.js";
   import { Skeleton } from "#lib/components/ui/skeleton/index.js";
-  import Builder from "../../lib/builder/Builder.svelte";
+  import Builder, { BUILDER_SIZE } from "../../lib/builder/Builder.svelte";
   import { inputsOf, limitsOf } from "../../lib/builder/checks";
   import { emptyDraft } from "../../lib/builder/modules";
   import { loadPv } from "../../lib/builder/pv";
-  import { BUILDER_SIZE } from "../../lib/builder/size.ts";
   import { m } from "../../lib/paraglide/messages.js";
 
   const core = useCore();

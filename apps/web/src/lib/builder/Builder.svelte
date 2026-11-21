@@ -3,8 +3,12 @@
   inspector sits on the right. On a portrait tablet or a phone the inspector is a sheet pulled up
   over the canvas. A click on an object in 3D drills the inspector to it.
 -->
+<script lang="ts" module>
+  /** The builder's height, which its placeholder takes while it loads (ADR 21). */
+  export const BUILDER_SIZE = "h-[calc(100dvh-var(--bar-clear,0px))] min-h-[480px]";
+</script>
+
 <script lang="ts">
-  import { BUILDER_SIZE } from "./size.ts";
   import { MediaQuery } from "svelte/reactivity";
   import type { Core, Device, ModuleType } from "../api/core.ts";
   import InspectorPane, { PEEK } from "./InspectorPane.svelte";
