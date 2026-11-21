@@ -6,12 +6,11 @@
 -->
 <script lang="ts">
   import { untrack } from "svelte";
-  import ProblemAlert from "../components/problem-alert.svelte";
   import type { Core } from "../api/core";
   import BandChart from "../range/BandChart.svelte";
   import { money } from "../range/format.ts";
   import { RangeData, sumTitle, type Loaded } from "../range/range-data.svelte.ts";
-  import RangePane from "../range/RangePane.svelte";
+  import RangeRead from "../range/RangeRead.svelte";
   import type { RangeRoute } from "../range/route.svelte.ts";
   import { costsOver } from "./cost-hours.ts";
   import { COST_CHARTS, costsView } from "./costs.ts";
@@ -42,10 +41,7 @@
 
 {#snippet pane(got: Read | null)}
   {@const view = got && costsView(got, laid)}
-  {#if view?.problem}
-    <ProblemAlert problem={view.problem} />
-  {:else}
-    <BandChart
+  <BandChart
       bands={view?.bands ?? []}
       up={laid.up}
       down={laid.down}
@@ -59,14 +55,13 @@
       ondrill={data.drill}
       onbrush={data.brush}
     />
-  {/if}
 {/snippet}
 
-<RangePane model={data.travel}>
-  {#snippet children(p)}
-    {@render pane(p.got)}
+<RangeRead {data}>
+  {#snippet children(got)}
+    {@render pane(got)}
   {/snippet}
   {#snippet waiting()}
     {@render pane(null)}
   {/snippet}
-</RangePane>
+</RangeRead>

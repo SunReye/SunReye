@@ -5,9 +5,8 @@
   input or a string.
 -->
 <script lang="ts">
-  import LoadFailed from "../components/load-failed.svelte";
   import { m } from "../paraglide/messages.js";
-  import RangePane from "../range/RangePane.svelte";
+  import RangeRead from "../range/RangeRead.svelte";
   import { stackOf, type Line } from "./forecast.ts";
   import { ForecastData, type ForecastInput } from "./forecast-data.svelte.ts";
   import ForecastPane from "./ForecastPane.svelte";
@@ -52,18 +51,14 @@
     {/if}
   </header>
 
-  {#if data.failed}
-    <LoadFailed text={m.detail_error()} refused={data.refused} onretry={data.retry} />
-  {:else}
-    <RangePane model={data.travel}>
-      {#snippet children(p)}
-        <ForecastPane got={p.got} up={stack.up} ondrill={data.drill} onbrush={data.brush} />
-      {/snippet}
-      {#snippet waiting()}
-        <ForecastPane got={null} up={stack.up} ondrill={data.drill} onbrush={data.brush} />
-      {/snippet}
-    </RangePane>
-  {/if}
+  <RangeRead data={data.read}>
+    {#snippet children(got)}
+      <ForecastPane {got} up={stack.up} ondrill={data.drill} onbrush={data.brush} />
+    {/snippet}
+    {#snippet waiting()}
+      <ForecastPane got={null} up={stack.up} ondrill={data.drill} onbrush={data.brush} />
+    {/snippet}
+  </RangeRead>
 
   <p class="max-w-[68ch] text-xs text-pretty text-muted-foreground">{note}</p>
 </section>

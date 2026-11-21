@@ -1,6 +1,5 @@
 // The core's daily costs laid onto a range's bands (ADR 12): savings split into the import they
 // avoided and the feed-in pay, and what was paid: the import bill and the standing charge.
-import type { Problem } from "../api/client";
 import type { CostDays } from "../api/tariff";
 import { flowColour } from "../energy-colours.ts";
 import { m } from "../paraglide/messages.js";
@@ -66,13 +65,10 @@ export const COST_CHARTS = {
   }),
 };
 
-/** One read of costs as the chart draws it: its bands and totals, or why the core refused. */
+/** One read of costs as the chart draws it: its bands and totals. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- a load is never written.
-export function costsView(got: Readonly<Loaded<CostDays | Problem>>, laid: Readonly<CostChart>) {
-  if ("problem" in got.data) return { problem: got.data.problem };
-
+export function costsView(got: Readonly<Loaded<CostDays>>, laid: Readonly<CostChart>) {
   return {
-    problem: null,
     bands: bandsOf(got.list, costBands(got.data.days, got.spans, got.now, laid.sides)),
     total: laid.sides(got.data.total),
   };

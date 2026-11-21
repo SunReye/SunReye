@@ -1,7 +1,7 @@
 // One forecast line's figures over the route's range: its measurement and forecast read from the
 // core, then judged into bands, sums and the headline (ADR 17, 21). The judging is a function of one
 // load, so each pane of the card judges its own.
-import type { Core, Problem } from "../api/core.ts";
+import type { Core } from "../api/core.ts";
 import { periodOf, rollups } from "../history/history.ts";
 import { RangeData, sumTitle, type Loaded } from "../range/range-data.svelte.ts";
 import { rangeKey } from "../range/range.ts";
@@ -68,23 +68,10 @@ export class ForecastData {
     );
   }
 
-  get travel() {
-    return this.#data.travel;
+  /** The range's read, which the card's pane travels by or states the failure of. */
+  get read() {
+    return this.#data;
   }
-
-  /** The last read of the range failed. */
-  get failed(): boolean {
-    return this.#data.failed;
-  }
-
-  /** Why the core refused it. */
-  get refused(): Problem | undefined {
-    return this.#data.refused;
-  }
-
-  retry = (): void => {
-    this.#data.retry();
-  };
 
   drill = (i: number): void => {
     this.#data.drill(i);
