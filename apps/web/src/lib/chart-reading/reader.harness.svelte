@@ -7,7 +7,7 @@
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
-  class="fixed top-0 left-0 h-[100px] w-[400px]"
+  style="position: fixed; top: 0; left: 0; width: 400px; height: 100px"
   role="group"
   tabindex="0"
   data-plot

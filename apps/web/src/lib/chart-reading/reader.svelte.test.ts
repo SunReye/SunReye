@@ -69,6 +69,21 @@ function at(type: string, band: number, kind = "touch", dy = 0): void {
   );
 }
 
+/** A mouse's event at `x` px across the plot, its buttons held or not. */
+function mouse(type: string, x: number, buttons = 1): void {
+  plot().dispatchEvent(
+    new PointerEvent(type, {
+      pointerType: "mouse",
+      pointerId: 1,
+      clientX: x,
+      clientY: 50,
+      button: 0,
+      buttons,
+      bubbles: true,
+    }),
+  );
+}
+
 const key = (k: string, shiftKey = false) => {
   plot().dispatchEvent(new KeyboardEvent("keydown", { key: k, shiftKey, bubbles: true }));
 };
@@ -183,6 +198,31 @@ test("a mouse drag across bands narrows to them; a click drills its band", async
   at("pointerdown", 1, "mouse");
   at("pointerup", 1, "mouse");
   expect(told.drilled).toEqual([1]);
+});
+
+test("a click that jitters across a band's edge drills its band, never narrows", async () => {
+  const { read, told } = await reader(false);
+
+  mouse("pointerdown", 98);
+  mouse("pointermove", 101);
+  expect(read.brush).toBeNull();
+
+  mouse("pointerup", 101);
+  expect(told.narrowed).toEqual([]);
+  expect(told.drilled).toEqual([0]);
+});
+
+test("a press let go outside the plot leaves hovering to read and clear again", async () => {
+  const { read } = await reader(false, { brush: undefined });
+
+  mouse("pointerdown", 150);
+  mouse("pointerleave", 450);
+  // Back over the plot with no button held: the press ended outside.
+  mouse("pointermove", 250, 0);
+  expect(read.at).toBe(2);
+
+  mouse("pointerleave", 450, 0);
+  expect(read.at).toBeNull();
 });
 
 test("a chart that cannot narrow never brushes", async () => {

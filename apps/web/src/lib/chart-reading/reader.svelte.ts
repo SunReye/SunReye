@@ -6,8 +6,7 @@
 //   lifted on the band it went down on it taps, which drills. No brushing.
 // - Finger inside a sheet: reads once held (`rest.ts`), then leads; lifted before it held it taps,
 //   and lifted it ends the reading.
-// - Keys: arrows and Home/End move, Shift and arrows select a span, Enter or Space narrows or
-//   drills, Escape clears.
+// - Keys: arrows and Home/End move, Shift and arrows select, Enter narrows or drills, Escape clears.
 // A finger's or a key's reading ticks `selection` as it crosses into another band.
 import { inSheet } from "../detail/in-sheet.ts";
 import { haptics } from "../haptics.ts";
@@ -45,8 +44,11 @@ export interface Options<P> {
 
 /** What a handler reads of a pointer event. */
 type Pointer = Readonly<
-  Pick<PointerEvent, "button" | "clientX" | "clientY" | "pointerId" | "pointerType">
+  Pick<PointerEvent, "button" | "buttons" | "clientX" | "clientY" | "pointerId" | "pointerType">
 > & { readonly currentTarget: Element };
+
+/** How far a press moves before it drags, in px: less is a click's jitter. */
+const SLOP = 4;
 
 /** What a handler reads of a key event. */
 type Key = Readonly<Pick<KeyboardEvent, "key" | "preventDefault" | "shiftKey">>;
@@ -75,8 +77,8 @@ export class ChartReader<P> {
   readonly #hold: boolean;
   readonly #store: Store<P>;
 
-  /** A mouse pressed, on this place. */
-  #press: P | null = null;
+  /** A mouse pressed, on this place, at this x. */
+  #press: { readonly p: P; readonly x: number } | null = null;
   /** A finger down on a full screen: the band it went down on, while it stays there. */
   #finger: { from: number | null } | null = null;
   /** A finger inside a sheet. */
@@ -156,9 +158,8 @@ export class ChartReader<P> {
     if (e.pointerType === "mouse") {
       if (e.button !== 0) return;
 
-      this.#press = this.#over(e);
-
-      if (this.#chart().brush) e.currentTarget.setPointerCapture(e.pointerId);
+      this.#press = { p: this.#over(e), x: e.clientX };
+      e.currentTarget.setPointerCapture(e.pointerId);
     } else if (this.#hold)
       this.#rest.down(e, this.#over(e), (p) => {
         this.#lead(p);
@@ -185,13 +186,23 @@ export class ChartReader<P> {
 
   #hover(e: Pointer): void {
     const p = this.#over(e);
-    const { band, brush } = this.#chart();
 
     this.#store.set(p);
 
-    const from = this.#press;
+    // A press let go outside the plot sent no `pointerup` here.
+    if (e.buttons === 0) [this.#press, this.#brush] = [null, null];
+    else this.#select(e, p);
+  }
 
-    if (from !== null && brush && (this.#brush || band(p) !== band(from))) this.#brush = [from, p];
+  /** A press dragged past a jitter into another band selects the span from where it began. */
+  #select(e: Pointer, p: P): void {
+    const press = this.#press;
+    const { band, brush } = this.#chart();
+
+    if (press === null || !brush) return;
+
+    if (this.#brush || (Math.abs(e.clientX - press.x) >= SLOP && band(p) !== band(press.p)))
+      this.#brush = [press.p, p];
   }
 
   up = (e: Pointer): void => {
@@ -200,7 +211,7 @@ export class ChartReader<P> {
 
       this.#press = null;
 
-      if (from !== null && !this.#narrow()) this.#drill(from);
+      if (from !== null && !this.#narrow()) this.#drill(from.p);
     } else if (this.#hold) {
       const tapped = this.#rest.tapped;
 

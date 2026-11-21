@@ -145,7 +145,7 @@
       <ChartEntrance build="draw" ready={cells.length > 0} class="absolute inset-0">
         <canvas class="absolute inset-0 size-full" {@attach paint}></canvas>
       </ChartEntrance>
-      {#if sel}
+      {#if sel && sel[1] > sel[0]}
         <span
           class="pointer-events-none absolute inset-y-0 bg-brand-soft ring-1 ring-brand/50 ring-inset"
           style:left="{(sel[0] / n) * 100}%"
