@@ -155,3 +155,13 @@ test("a comment that names a pulse or the glass is no copy", () => {
   ).toEqual([]);
   expect(rules("setup/List.svelte", `<!-- not glass-ambient: a card -->`)).toEqual([]);
 });
+
+test("a link styled by hand, or the kit's link button, is a copy of the text link", () => {
+  const rule = "link outside the text link";
+
+  expect(
+    rules("settings/Tokens.svelte", `<a class="text-brand hover:underline" href="#/api">`),
+  ).toEqual([rule]);
+  expect(rules("settings/Motion.svelte", `<Button variant="link" onclick={go}>`)).toEqual([rule]);
+  expect(rules("components/text-link.svelte", `"text-brand hover:underline"`)).toEqual([]);
+});

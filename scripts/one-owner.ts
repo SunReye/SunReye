@@ -1,7 +1,7 @@
 // A behaviour met on more than one screen lives in one component (ADR 21 "One behaviour, one
 // component", #836): no file of the SPA outside its owner rebuilds a segmented control, tabs in
-// another look, a haptic, a transition, a chart's entrance, a card's glass or a pulse that reduced
-// motion does not stop. A gate step; `bun scripts/one-owner.ts` lists the copies.
+// another look, a haptic, a transition, a chart's entrance, a card's glass, a link or a pulse that
+// reduced motion does not stop. A gate step; `bun scripts/one-owner.ts` lists the copies.
 
 import { Glob } from "bun";
 
@@ -154,6 +154,17 @@ const RULES: readonly Rule[] = [
       "components/drawer-sheet.svelte",
       "components/value-editor/value-editor.svelte",
       "detail/DetailSheet.svelte",
+    ],
+  },
+  {
+    name: "link outside the text link",
+    found: first(/hover:underline|variant="link"/u),
+    owners: [
+      "components/ui/",
+      "components/text-link.svelte",
+      "gallery/",
+      // Held while the refused-read work of #836 changes it; it takes the text link next.
+      "components/load-failed.svelte",
     ],
   },
   {
