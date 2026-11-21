@@ -41,10 +41,13 @@ const CALLS: readonly Call[] = [
 /** Vitest's own budget for a wait (`expect.poll`, `expect.element`, `vi.waitFor`), in ms. */
 const WAIT_MS = 1000;
 
-const BUDGET = /\{\s*timeout:\s*([\d_]+)\s*\}/gu;
+const BUDGET = /\btimeout:\s*([\d_]+)/gu;
+
+/** A test's call up to its name and the comma after it. */
+const TEST_NAMED = /\b(?:test|it)(?:\.\w+)*\(\s*(["'`])(?:\\.|(?!\1)[^\\])*\1\s*,\s*$/u;
 
 /** Whether the text before an argument ends in a test's name: the budget is the test's own. */
-const testsOwn = (before: string) => /["'`],\s*$/u.test(before);
+const testsOwn = (before: string) => TEST_NAMED.test(before.slice(-500));
 
 const lineAt = (source: string, index: number) => source.slice(0, index).split("\n").length;
 
@@ -67,7 +70,7 @@ function budgets(source: string): RealTime[] {
       // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- a match, only read.
       .filter((match) => Number((match[1] ?? "0").replaceAll("_", "")) > WAIT_MS)
       // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- a match, only read.
-      .flatMap((match) => givenAt(source, match.index))
+      .flatMap((match) => givenAt(source, source.lastIndexOf("{", match.index)))
       .flatMap((index) =>
         testsOwn(source.slice(0, index)) ? [] : [{ call: "timeout", line: lineAt(source, index) }],
       )

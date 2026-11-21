@@ -87,6 +87,22 @@ test("a wait's budget above vitest's second is real time, named or not", () => {
   expect(calls("await expect.poll(drawn, { timeout: 1000 }).toBe(1);")).toEqual([]);
 });
 
+test("a wait's budget is found beside other options and as oxfmt lays it out", () => {
+  expect(calls("await expect.poll(f, { timeout: 15_000, interval: 50 }).toBe(1);")).toEqual([
+    "timeout",
+  ]);
+  expect(calls("await vi.waitFor(f, { interval: 50, timeout: 5000 });")).toEqual(["timeout"]);
+  expect(calls("await expect\n  .poll(f, {\n    timeout: 15_000,\n  })\n  .toBe(1);")).toEqual([
+    "timeout",
+  ]);
+});
+
+test("a wait whose first argument ends in a string is still a wait", () => {
+  expect(calls(`await expect.poll(() => x ?? "", { timeout: 9000 }).toBe("a");`)).toEqual([
+    "timeout",
+  ]);
+});
+
 test("a test's own budget is no wait's", () => {
   expect(calls(`test("draws", { timeout: 60_000 }, async () => {});`)).toEqual([]);
   expect(calls(`test(\n  "draws",\n  { timeout: 60_000 },\n  async () => {},\n);`)).toEqual([]);
