@@ -1,6 +1,6 @@
 <!-- At most three things worth a look, each leading to its cause. -->
 <script lang="ts">
-  import GlassCard from "../components/glass-card.svelte";
+  import * as Card from "#lib/components/ui/card/index.js";
   import OpenRow from "../components/open-row.svelte";
   import Info from "@lucide/svelte/icons/info";
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
@@ -10,7 +10,7 @@
   let { notes, onnote }: { notes: readonly Note[]; onnote: (note: Note) => void } = $props();
 </script>
 
-<GlassCard element="section" aria-label={m.stats_notes()}>
+<Card.Root element="section" aria-label={m.stats_notes()} class="glass-ambient gap-0 py-0">
   <h2 class="px-4 pt-3 pb-2 text-sm font-semibold">{m.stats_notes()}</h2>
   <ul class="divide-y divide-border/60 border-t border-border/60">
     {#each notes as n (n.text)}
@@ -33,4 +33,4 @@
       </li>
     {/each}
   </ul>
-</GlassCard>
+</Card.Root>

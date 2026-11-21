@@ -3,7 +3,7 @@
   back. "Done" always carries on, a layout saved or not: without 3D it is the only way on.
 -->
 <script lang="ts">
-  import GlassCard from "../components/glass-card.svelte";
+  import * as Card from "#lib/components/ui/card/index.js";
   // The glue crate's release build, which the SPA build makes first (ADR 2, 20).
   import wasm from "../../../../../target/wasm32-unknown-unknown/release/sunreye_pv_wasm.wasm?url";
   import ChevronLeft from "@lucide/svelte/icons/chevron-left";
@@ -75,10 +75,10 @@
       {/await}
     {:else}
       <div class="grid h-full place-items-center p-4">
-        <GlassCard class="flex max-w-sm flex-col gap-2 p-4 text-sm">
+        <Card.Root class="glass-ambient max-w-sm gap-2 p-4">
           <p class="font-medium">{m.builder_no_webgl()}</p>
           <p class="text-muted-foreground">{m.layout_later()}</p>
-        </GlassCard>
+        </Card.Root>
       </div>
     {/if}
   </div>

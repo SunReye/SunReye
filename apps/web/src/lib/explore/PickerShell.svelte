@@ -3,7 +3,7 @@
   below that a drawer under the bar, or a dialog beside the rail, open while the route says so.
 -->
 <script lang="ts">
-  import GlassCard from "../components/glass-card.svelte";
+  import * as Card from "#lib/components/ui/card/index.js";
   import ResponsiveSheet from "../components/responsive-sheet.svelte";
   import { m } from "../paraglide/messages.js";
   import type { Explore } from "./explore.svelte.ts";
@@ -22,13 +22,13 @@
 </script>
 
 {#if paned}
-  <GlassCard
+  <Card.Root
     element="aside"
     aria-label={m.explore_picker()}
-    class="sticky top-6 flex max-h-[calc(100dvh-3rem)] min-h-[416px] flex-col self-start"
+    class="glass-ambient sticky top-6 max-h-[calc(100dvh-3rem)] min-h-[416px] gap-0 self-start py-0"
   >
     <Picker {x} onpick={x.toggle} bind:search />
-  </GlassCard>
+  </Card.Root>
 {:else}
   <ResponsiveSheet
     label={m.explore_picker()}
