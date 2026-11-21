@@ -3,19 +3,32 @@
 import type { Attachment } from "svelte/attachments";
 import { tokenMs } from "../../../motion/token.ts";
 
-interface Start {
-  readonly from: number;
-  readonly at: CSSNumberish | null;
+const px = (value: string) => Number(value.replace(/px$/u, "")) || 0;
+
+/** Where `child`'s margin box ends below `card`'s padding edge, or 0 for one out of the flow. */
+function bottomOf(card: HTMLElement, child: Element): number {
+  if (!(child instanceof HTMLElement)) return 0;
+
+  const style = getComputedStyle(child);
+
+  if (style.position === "absolute" || style.position === "fixed") return 0;
+
+  // Layout offsets: a transform on the child, as a pane's slide, does not move them.
+  const origin = child.offsetParent === card ? 0 : card.offsetTop + card.clientTop;
+
+  return child.offsetTop - origin + child.offsetHeight + px(style.marginBottom);
 }
 
-interface Carried extends Start {
-  readonly to: number;
-}
+/**
+ * The height `card`'s content sets it, read past a glide: from where its last child ends, which
+ * the glide's `min-height` and `max-height` do not move.
+ */
+function contentHeight(card: HTMLElement): number {
+  const style = getComputedStyle(card);
+  const end = Math.max(0, ...Array.from(card.children, (child) => bottomOf(card, child)));
+  const edges = card.offsetHeight - card.clientHeight;
 
-/** What a change finds before it measures: the height drawn and the glide under way. */
-interface Before {
-  readonly drawn: number | undefined;
-  readonly carried: Carried | undefined;
+  return Math.max(end, px(style.paddingTop)) + px(style.paddingBottom) + edges;
 }
 
 interface Glide {
@@ -39,34 +52,37 @@ class Height {
 
   /** Its content changed: from the height drawn to the content's, unless its width changed. */
   changed(): void {
-    const before = this.#before();
+    if (this.#glide !== undefined) {
+      this.#moved(this.#glide);
+
+      return;
+    }
+
+    const drawn = this.#height;
     const widened = this.#widened();
     const height = this.#measure();
 
-    if (widened || before.drawn === undefined || before.drawn === height) return;
+    if (widened || drawn === undefined || drawn === height) return;
 
-    this.#run(Height.#start(before.carried, before.drawn, height), height);
+    this.#run(drawn, height);
   }
 
-  /** The height drawn and the glide under way, which stops. A cancelled animation has no time,
-   * so it is read first. */
-  #before(): Before {
-    const was = this.#glide;
+  /**
+   * Its content changed mid-glide. A glide begun anew waits a frame to start, so one begun on each
+   * frame of a swipe's slide would never move: the glide runs on unless the height it goes to moved.
+   */
+  #moved(glide: Glide): void {
+    const height = contentHeight(this.#card);
 
-    if (was === undefined) return { drawn: this.#height, carried: undefined };
+    // Layout offsets are whole pixels: a pixel apart is where the glide goes.
+    if (Math.abs(height - glide.to) <= 1) return;
 
     const drawn = this.#card.offsetHeight;
-    const carried = { from: was.from, to: was.to, at: was.animation.currentTime };
 
     this.stop();
-
-    return { drawn, carried };
-  }
-
-  /** A change that leaves the height where the glide is going (a figure ticking) carries it on;
-   * any other glides from the height drawn. */
-  static #start(carried: Carried | undefined, drawn: number, height: number): Start {
-    return carried?.to === height ? carried : { from: drawn, at: null };
+    this.#height = height;
+    this.#width = this.#card.offsetWidth;
+    this.#run(drawn, height);
   }
 
   /** The card resized with no change to its content (a row it stands in, the window): no glide.
@@ -85,7 +101,12 @@ class Height {
 
   stop(): void {
     this.#glide?.animation.cancel();
+    this.#ended();
+  }
+
+  #ended(): void {
     this.#glide = undefined;
+    delete this.#card.dataset["gliding"];
   }
 
   /** Whether the card's width changed since its content last did: the window's change. */
@@ -102,8 +123,7 @@ class Height {
 
   // `min-height` and `max-height`, not `height`: a child's percentage height stays `auto`, so a
   // chart sized to the card does not resize on every frame. The card's `overflow: hidden` clips.
-  #run(start: Start, to: number): void {
-    const { from, at } = start;
+  #run(from: number, to: number): void {
     const duration = tokenMs(this.#card, "--motion-move");
 
     if (duration === 0) return;
@@ -116,13 +136,13 @@ class Height {
       },
     );
 
-    if (at !== null) animation.currentTime = at;
-
     const glide: Glide = { animation, from, to };
 
     this.#glide = glide;
+    // The content keeps its size, clipped, rather than squeezed to the glide's (`card.svelte`).
+    this.#card.dataset["gliding"] = "";
     animation.addEventListener("finish", () => {
-      if (this.#glide === glide) this.#glide = undefined;
+      if (this.#glide === glide) this.#ended();
     });
   }
 }
@@ -150,6 +170,9 @@ export const glideHeight: Attachment<HTMLElement> = (card) => {
         record.target === card &&
         (record.attributeName === "class" || record.attributeName === "style"),
     );
+
+    // The glide's own mark is no change of content.
+    if (records.every((record) => record.attributeName === "data-gliding")) return;
 
     if (reframed) height.reframed();
     else height.changed();
