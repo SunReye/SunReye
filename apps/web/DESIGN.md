@@ -2,6 +2,8 @@
 
 `src/lib/components/ui`, `theme.css`, `motion.ts` and `components.json` come from kbase `73f4cab` (ADR 11) by way of the `prototype/look-feel` branch; SunReye owns them, kbase updates are manual diffs.
 
+The colour, type, spacing, radius, icon and glass tokens, the glass's opaque fallback included, live in `packages/tokens` (`@sunreye/tokens`, ADR 25) and `app.css` imports them; a new token goes there. The Tailwind utilities that read them stay here.
+
 Checklist for every screen ([ADR 21](../../docs/adr/0021-look-feel-and-navigation.md)):
 
 - [ ] Built on `components/ui`, the whole shadcn-svelte registry (ADR 11); no native control outside it (`bun scripts/native-controls.ts`). `#/gallery` under `vite dev` shows every component; `bun run gallery` writes its screenshots.

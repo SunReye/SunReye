@@ -114,7 +114,11 @@
       },
       {
         "name": "sdk",
-        "patterns": ["packages/**"]
+        "patterns": ["packages/sdk/**"]
+      },
+      {
+        "name": "tokens",
+        "patterns": ["packages/tokens/**"]
       },
       {
         "name": "profiles",
@@ -128,10 +132,14 @@
     "rules": [
       {
         "from": "web",
-        "allow": []
+        "allow": ["tokens"]
       },
       {
         "from": "sdk",
+        "allow": []
+      },
+      {
+        "from": "tokens",
         "allow": []
       },
       {
@@ -140,7 +148,7 @@
       },
       {
         "from": "tooling",
-        "allow": ["web", "sdk", "profiles"]
+        "allow": ["web", "sdk", "tokens", "profiles"]
       }
     ],
     "coverage": {
