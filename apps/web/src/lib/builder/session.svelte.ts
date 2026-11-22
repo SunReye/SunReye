@@ -8,6 +8,7 @@ import type {
   Layout,
   ModuleType,
   Problem,
+  Types,
 } from "../api/core.ts";
 import { checked, stringRefusal, type Checking, type StringRefusal } from "./checks.ts";
 import { Drafts } from "./drafts.svelte.ts";
@@ -28,6 +29,8 @@ export interface Reads extends Checking {
   readonly core: Core;
   /** The layout in force, or an empty one: nothing to undo before it. */
   readonly start: Draft;
+  /** The inverter and battery types of the layout in force, which a save keeps (ADR 27). */
+  readonly types?: Readonly<Types> | undefined;
   readonly moduleTypes: readonly Readonly<ModuleType>[];
   readonly devices: readonly Readonly<Device>[];
 }
@@ -276,6 +279,7 @@ export class Session {
       appliesFrom: new Date(`${this.appliesFrom}T00:00`).toISOString(),
       strings,
       scene: draft.scene,
+      types: this.#opening().types,
     });
 
     this.saved = saved;

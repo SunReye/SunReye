@@ -17,7 +17,7 @@ fn datasheet() -> Value {
     })
 }
 
-fn send(method: &str, uri: &str, body: &Value) -> Request<Body> {
+pub(super) fn send(method: &str, uri: &str, body: &Value) -> Request<Body> {
     let request = Request::builder()
         .method(method)
         .uri(uri)

@@ -119,10 +119,6 @@ impl SolarForecast {
         }
         let zone = storage.zones().now();
         let inverters = self.layouts.inverters();
-        let rating = |device| {
-            let profile = inverters.profile(device)?;
-            profile.inverter()?.ac_rating
-        };
         for (target, modelled) in estimates(&self.layouts, &versions, location, weather).await? {
             let (month, hour) = plant_hour(target, &zone);
             let factor = |input| {
@@ -130,7 +126,13 @@ impl SolarForecast {
                     .get(&input)
                     .map_or(1.0, |g: &Grid| g.factor(month, hour))
             };
-            let values = corrected(modelled, in_force(&versions, target), factor, rating);
+            let version = in_force(&versions, target);
+            // From the inverter type of the version in force, else the profile (ADR 27).
+            let rating = |device| {
+                let types = version.map(|v| &v.types);
+                inverters.limits(device, types)?.ac_rating
+            };
+            let values = corrected(modelled, version, factor, rating);
             for (key, points) in &mut series {
                 points.push((target, values.get(key).copied().unwrap_or(0.0)));
             }
@@ -377,9 +379,11 @@ impl Model {
         let (inverters, places) = wired
             .into_iter()
             .map(|(device, inputs)| {
-                let profile = inverters.profile(DeviceId(device));
-                let section = profile.as_deref().and_then(|p| p.inverter());
-                let declared = section.map(|i| i.mppt.as_slice()).unwrap_or_default();
+                let limits = inverters.limits(DeviceId(device), Some(&version.types));
+                let declared = limits
+                    .as_ref()
+                    .map(|l| l.inputs.as_slice())
+                    .unwrap_or_default();
                 let (inputs, places) = inputs
                     .into_iter()
                     .map(|(index, strings)| {
@@ -452,23 +456,19 @@ fn scene(
     (by_string, scene.occluders())
 }
 
-/// One MPPT input of the model, with its limits from the profile (ADR 5), and its place.
+/// One MPPT input of the model, with its limits from the inverter type or else the profile
+/// (ADR 5, 27), and its place.
 fn input(
     index: u32,
     strings: &[&PvString],
-    declared: &[sunreye_profile::Mppt],
+    declared: &[pv::MpptLimits],
     module_types: &HashMap<u32, pv::ModuleType>,
     placed: &Placed,
 ) -> (pv::Input, InputPlace) {
     let limits = usize::try_from(index)
         .ok()
         .and_then(|n| declared.get(n.checked_sub(1)?))
-        .map(|m| pv::MpptLimits {
-            max_current: m.max_current,
-            min_voltage: m.min_voltage,
-            max_voltage: m.max_voltage,
-            start_voltage: m.start_voltage,
-        });
+        .copied();
     let modelled: Vec<(u32, pv::PvString)> = strings
         .iter()
         .filter_map(|s| {

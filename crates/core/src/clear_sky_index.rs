@@ -11,7 +11,7 @@
 //! the next starts there, or at the first stored PV history.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::ops::ControlFlow;
+use std::ops::{ControlFlow, Range};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use jiff::tz::TimeZone;
@@ -21,7 +21,7 @@ use tokio::sync::watch;
 
 use crate::bus::{Bus, DeviceId, Series, SeriesId};
 use crate::correction::{Grid, Grids, at_limit, plant_hour};
-use crate::layout::{Layouts, Version, in_force};
+use crate::layout::{Layouts, Types, Version, in_force};
 use crate::location::Location;
 use crate::solar::{self, Key};
 use crate::storage::{self, Aggregate, ChangePoint, Policy, Reader, Storage, Tier};
@@ -232,8 +232,10 @@ impl ClearSkyIndex {
                 .into_iter()
                 .collect();
         let mut readings = HashMap::new();
+        let types = in_force(run.versions, to).map(|v| &v.types);
         for (device, inputs) in wired(run.versions) {
-            readings.insert(device, self.readings(device, inputs, from, to).await?);
+            let read = self.readings(device, inputs, types, from..to).await?;
+            readings.insert(device, read);
         }
         let snow = self.snow(from, to).await?;
         let mut points: Vec<ChangePoint> = Vec::new();
@@ -255,14 +257,19 @@ impl ClearSkyIndex {
         Ok(points)
     }
 
-    /// An inverter's readings from `from` to `to`, and the AC limit it reaches.
+    /// An inverter's readings over `span`, and the AC limit it reaches: its rating under `types`
+    /// or its profile (ADR 27), else its highest daily peak.
     async fn readings(
         &self,
         device: DeviceId,
         inputs: BTreeSet<u32>,
-        from: SystemTime,
-        to: SystemTime,
+        types: Option<&Types>,
+        span: Range<SystemTime>,
     ) -> Result<Readings, storage::Error> {
+        let Range {
+            start: from,
+            end: to,
+        } = span;
         let power_points = self.history.history(device, &power(None), from, to).await?;
         let mut own = HashMap::new();
         for input in inputs {
@@ -277,8 +284,8 @@ impl ClearSkyIndex {
         let rating = self
             .layouts
             .inverters()
-            .profile(device)
-            .and_then(|p| p.inverter()?.ac_rating);
+            .limits(device, types)
+            .and_then(|l| l.ac_rating);
         let cap = match rating {
             Some(rating) => Some(rating),
             None => self

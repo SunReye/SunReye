@@ -13,7 +13,7 @@ use tokio::sync::watch;
 use super::SolarForecast;
 use crate::bus::{Bus, DeviceId};
 use crate::correction::{Cell as Learned, Grid};
-use crate::layout::{Datasheet, Inverters, Layouts, StringDraft, Wiring};
+use crate::layout::{Datasheet, Draft, Inverters, Layouts, StringDraft, Types, Wiring};
 use crate::location::Location;
 use crate::profiles::{Catalogue, Chosen};
 use crate::storage::{Issue, Keep, Policy, Storage};
@@ -174,12 +174,14 @@ async fn the_owners_strings_inputs_and_inverter_are_forecast() {
         .layouts
         .change(
             at(0),
-            vec![
-                plant.string(None, 1, 0.0, 16),
-                plant.string(None, 1, 180.0, 16),
-                plant.string(None, 2, 0.0, 14),
-            ],
-            None,
+            Draft::new(
+                vec![
+                    plant.string(None, 1, 0.0, 16),
+                    plant.string(None, 1, 180.0, 16),
+                    plant.string(None, 2, 0.0, 14),
+                ],
+                None,
+            ),
             at(0),
         )
         .await
@@ -213,7 +215,11 @@ async fn an_issue_mid_hour_covers_its_hour_from_the_top() {
     let plant = plant(&[NOON, NOON + 900]).await;
     plant
         .layouts
-        .change(at(0), vec![plant.string(None, 1, 0.0, 16)], None, at(0))
+        .change(
+            at(0),
+            Draft::new(vec![plant.string(None, 1, 0.0, 16)], None),
+            at(0),
+        )
         .await
         .unwrap();
     let forecast = SolarForecast::new(plant.layouts.clone(), WEATHER, &plant.bus);
@@ -236,11 +242,13 @@ async fn a_refused_series_leaves_the_others_forecast() {
         .layouts
         .change(
             at(0),
-            vec![
-                plant.string(None, 1, 0.0, 16),
-                plant.string(None, 2, 0.0, 14),
-            ],
-            None,
+            Draft::new(
+                vec![
+                    plant.string(None, 1, 0.0, 16),
+                    plant.string(None, 2, 0.0, 14),
+                ],
+                None,
+            ),
             at(0),
         )
         .await
@@ -281,11 +289,13 @@ async fn each_series_is_forecast_in_the_step_its_profile_stores_it_in() {
         .layouts
         .change(
             at(0),
-            vec![
-                plant.string(None, 1, 0.0, 16),
-                plant.string(None, 2, 0.0, 14),
-            ],
-            None,
+            Draft::new(
+                vec![
+                    plant.string(None, 1, 0.0, 16),
+                    plant.string(None, 2, 0.0, 14),
+                ],
+                None,
+            ),
             at(0),
         )
         .await
@@ -338,11 +348,13 @@ async fn the_inverter_forecast_is_capped_at_its_variants_ac_rating() {
         .layouts
         .change(
             at(0),
-            vec![
-                plant.string(None, 1, 180.0, 16),
-                plant.string(None, 2, 180.0, 14),
-            ],
-            None,
+            Draft::new(
+                vec![
+                    plant.string(None, 1, 180.0, 16),
+                    plant.string(None, 2, 180.0, 14),
+                ],
+                None,
+            ),
             at(0),
         )
         .await
@@ -366,11 +378,13 @@ async fn two_inputs(variant: Option<&str>, grids: &HashMap<(DeviceId, u32), Grid
         .layouts
         .change(
             at(0),
-            vec![
-                plant.string(None, 1, 0.0, 16),
-                plant.string(None, 2, 0.0, 14),
-            ],
-            None,
+            Draft::new(
+                vec![
+                    plant.string(None, 1, 0.0, 16),
+                    plant.string(None, 2, 0.0, 14),
+                ],
+                None,
+            ),
             at(0),
         )
         .await
@@ -411,7 +425,11 @@ async fn a_capped_inputs_string_is_scaled_with_it() {
     let plant = plant_of(&[NOON], Some("5k")).await;
     let layout = plant
         .layouts
-        .change(at(0), vec![plant.string(None, 1, 0.0, 16)], None, at(0))
+        .change(
+            at(0),
+            Draft::new(vec![plant.string(None, 1, 0.0, 16)], None),
+            at(0),
+        )
         .await
         .unwrap();
     let forecast = SolarForecast::new(plant.layouts.clone(), WEATHER, &plant.bus);
@@ -455,20 +473,13 @@ async fn the_ac_rating_caps_the_corrected_inputs() {
 #[tokio::test]
 async fn each_inputs_learned_factor_scales_it_and_its_strings_at_the_plant_local_hour() {
     let plant = plant(&[NOON]).await;
-    let layout = plant
-        .layouts
-        .change(
-            at(0),
-            vec![
-                plant.string(None, 1, 0.0, 16),
-                plant.string(None, 1, 180.0, 16),
-                plant.string(None, 2, 0.0, 14),
-            ],
-            None,
-            at(0),
-        )
-        .await
-        .unwrap();
+    let strings = vec![
+        plant.string(None, 1, 0.0, 16),
+        plant.string(None, 1, 180.0, 16),
+        plant.string(None, 2, 0.0, 14),
+    ];
+    let draft = Draft::new(strings, None);
+    let layout = plant.layouts.change(at(0), draft, at(0)).await.unwrap();
     // Noon UTC is 13:00 in Berlin's summer. Ratio 1.5 over 5 hours shrinks to
     // 1 + 0.5 × 5 / (5 + 5) = 1.25; the UTC hour's 0.5 would give 0.75.
     let mut grid = Grid::default();
@@ -518,15 +529,18 @@ async fn a_layout_change_applies_from_its_date() {
     let plant = plant(&targets).await;
     let before = plant
         .layouts
-        .change(at(0), vec![plant.string(None, 1, 0.0, 16)], None, at(0))
+        .change(
+            at(0),
+            Draft::new(vec![plant.string(None, 1, 0.0, 16)], None),
+            at(0),
+        )
         .await
         .unwrap();
     let after = plant
         .layouts
         .change(
             at(NOON + HOUR),
-            vec![plant.string(None, 2, 0.0, 14)],
-            None,
+            Draft::new(vec![plant.string(None, 2, 0.0, 14)], None),
             at(0),
         )
         .await
@@ -570,8 +584,7 @@ async fn a_form_entered_strings_optimizers_reach_the_model() {
         .layouts
         .change(
             at(0),
-            vec![plant.string(None, 1, 0.0, 16), optimized],
-            None,
+            Draft::new(vec![plant.string(None, 1, 0.0, 16), optimized], None),
             at(0),
         )
         .await
@@ -652,11 +665,13 @@ async fn a_saved_scene_places_the_modules_and_its_obstacles_shade_the_forecast()
         .layouts
         .change(
             at(0),
-            vec![
-                plant.string(None, 1, 90.0, 1),
-                plant.string(None, 2, 90.0, 1),
-            ],
-            Some(walled_house(plant.module_type)),
+            Draft::new(
+                vec![
+                    plant.string(None, 1, 90.0, 1),
+                    plant.string(None, 2, 90.0, 1),
+                ],
+                Some(walled_house(plant.module_type)),
+            ),
             at(0),
         )
         .await
@@ -701,7 +716,7 @@ async fn it_issues_on_start_after_each_weather_issue_and_after_a_layout_change()
     let drafts = vec![plant.string(None, 1, 0.0, 16)];
     let layout = plant
         .layouts
-        .change(at(0), drafts, None, at(0))
+        .change(at(0), Draft::new(drafts, None), at(0))
         .await
         .unwrap();
     let forecast = SolarForecast::new(plant.layouts.clone(), WEATHER, &plant.bus);
@@ -718,7 +733,7 @@ async fn it_issues_on_start_after_each_weather_issue_and_after_a_layout_change()
         let kept = plant.string(Some(layout.strings[0].id), 2, 0.0, 16);
         plant
             .layouts
-            .change(at(0), vec![kept], None, at(0))
+            .change(at(0), Draft::new(vec![kept], None), at(0))
             .await
             .unwrap();
         issued(&calls, 3).await;
@@ -745,11 +760,13 @@ async fn the_model_leaves_the_io_thread_free_while_it_runs() {
         .layouts
         .change(
             at(0),
-            vec![
-                plant.string(None, 1, 90.0, 1),
-                plant.string(None, 2, 90.0, 1),
-            ],
-            Some(walled_house(plant.module_type)),
+            Draft::new(
+                vec![
+                    plant.string(None, 1, 90.0, 1),
+                    plant.string(None, 2, 90.0, 1),
+                ],
+                Some(walled_house(plant.module_type)),
+            ),
             at(0),
         )
         .await
@@ -779,4 +796,58 @@ async fn the_model_leaves_the_io_thread_free_while_it_runs() {
         ran > 1_000,
         "the I/O thread ran {ran} other polls during the model"
     );
+}
+
+/// An inverter type's AC rating caps the forecast in place of the profile's (ADR 27): 3 kW, not
+/// the family's 20 kW.
+#[tokio::test]
+async fn the_inverter_forecast_is_capped_at_its_inverter_types_ac_rating() {
+    let plant = plant_of(&[NOON], None).await;
+    let input = sunreye_pv::MpptInput {
+        max_current: 36.0,
+        min_voltage: 160.0,
+        max_voltage: 650.0,
+        start_voltage: 160.0,
+    };
+    let datasheet = sunreye_pv::InverterType {
+        maker: "Maker".into(),
+        model: "X3".into(),
+        maker_country: None,
+        made_in: None,
+        max_input_voltage: 800.0,
+        ac_rating: 3000.0,
+        efficiency: 97.0,
+        inputs: vec![input; 2],
+    };
+    let types = Types {
+        inverter_types: [(INVERTER.0, datasheet)].into(),
+        battery_types: std::collections::BTreeMap::new(),
+    };
+    plant
+        .layouts
+        .change(
+            at(0),
+            Draft {
+                types,
+                ..Draft::new(
+                    vec![
+                        plant.string(None, 1, 180.0, 16),
+                        plant.string(None, 2, 180.0, 14),
+                    ],
+                    None,
+                )
+            },
+            at(0),
+        )
+        .await
+        .unwrap();
+    let forecast = SolarForecast::new(plant.layouts.clone(), WEATHER, &plant.bus);
+
+    forecast
+        .refresh(&plant.storage, &HashMap::new(), BERLIN, at(NOON - HOUR))
+        .await
+        .unwrap();
+
+    let inverter = plant.forecast("pv.power", None, &[NOON]).await[0];
+    assert_near(inverter, 3000.0, "inverter");
 }

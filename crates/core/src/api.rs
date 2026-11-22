@@ -26,7 +26,7 @@ use crate::changes::Changes;
 use crate::correction::Corrections;
 use crate::devices::{Devices, Transport};
 use crate::import::Imports;
-use crate::layout::{Layouts, Version, in_force};
+use crate::layout::{Inverters, Layouts, Types, Version, in_force};
 use crate::live::{Frame, Live};
 use crate::location::PlantLocation;
 use crate::logs::Logs;
@@ -250,17 +250,40 @@ struct DeviceSupport {
     writes: bool,
     /// What its profile lets the core write, in the profile's order.
     settings: Vec<SettingSupport>,
-    /// An inverter's maximum DC input voltage in volts, from its profile: what a string's
-    /// open-circuit voltage at −10 °C is checked against (ADR 20).
+    /// An inverter's maximum DC input voltage in volts, from its inverter type or else its
+    /// profile (ADR 27): what a string's open-circuit voltage at −10 °C is checked against
+    /// (ADR 20).
     #[serde(skip_serializing_if = "Option::is_none")]
     max_input_voltage: Option<f64>,
-    /// An inverter's MPPT inputs' limits from its profile, in the inputs' order from 1: what the
-    /// builder offers a string and warns against (ADR 20).
+    /// An inverter's MPPT inputs' limits from its inverter type or else its profile, in the
+    /// inputs' order from 1: what the builder offers a string and warns against (ADR 20).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     inputs: Vec<InputSupport>,
 }
 
-/// One MPPT input's limits (ADR 5).
+/// Each inverter's limits under the version in force's `types`: its type, else its profile
+/// (ADR 27).
+fn add_limits(
+    support: &mut BTreeMap<String, DeviceSupport>,
+    inverters: &Inverters,
+    types: Option<&Types>,
+) {
+    let mut devices = inverters.devices();
+    let with_type = types.into_iter().flat_map(|t| t.inverter_types.keys());
+    devices.extend(with_type.map(|d| DeviceId(*d)));
+    devices.sort_unstable_by_key(|d| d.0);
+    devices.dedup();
+    for device in devices {
+        let Some(limits) = inverters.limits(device, types) else {
+            continue;
+        };
+        let entry = support.entry(device.0.to_string()).or_default();
+        entry.max_input_voltage = Some(limits.max_input_voltage);
+        entry.inputs = limits.inputs.iter().map(input_support).collect();
+    }
+}
+
+/// One MPPT input's limits (ADR 5, 27).
 #[derive(Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 struct InputSupport {
@@ -274,7 +297,7 @@ struct InputSupport {
     start_voltage: f64,
 }
 
-const fn input_support(mppt: &sunreye_profile::Mppt) -> InputSupport {
+const fn input_support(mppt: &sunreye_pv::MpptLimits) -> InputSupport {
     InputSupport {
         max_current: mppt.max_current,
         min_voltage: mppt.min_voltage,
@@ -343,11 +366,12 @@ async fn capabilities(
             .map(|(setting, enable)| setting_support(setting, *enable))
             .collect();
     }
-    for (DeviceId(device), inverter) in layouts.inverters().limits() {
-        let entry = support.entry(device.to_string()).or_default();
-        entry.max_input_voltage = Some(inverter.max_input_voltage);
-        entry.inputs = inverter.mppt.iter().map(input_support).collect();
-    }
+    let in_force_now = in_force(&versions, clock());
+    add_limits(
+        &mut support,
+        layouts.inverters(),
+        in_force_now.map(|v| &v.types),
+    );
     support
         .entry(weather::DEVICE.0.to_string())
         .or_default()

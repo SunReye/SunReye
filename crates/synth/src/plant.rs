@@ -13,7 +13,7 @@ use serde_json::{Value, json};
 use sunreye_core::api::{self, Api};
 use sunreye_core::auth::Auth;
 use sunreye_core::backup::Backups;
-use sunreye_core::bus::Bus;
+use sunreye_core::bus::{Bus, DeviceId};
 use sunreye_core::cars::CarBodies;
 use sunreye_core::changes::Changes;
 use sunreye_core::correction::Corrections;
@@ -388,26 +388,19 @@ fn module_type() -> Value {
 /// profiles declare, as the core's own model reads them.
 fn wiring(layouts: &Layouts) -> Result<Wiring, Error> {
     let module = datasheet().model();
-    let limits = layouts.inverters().limits();
     let mut inverters = Vec::new();
     let mut ratings = [0.0; 2];
     for (place, rating) in ratings.iter_mut().enumerate() {
         let device = u32::try_from(place + 1).map_err(|e| Error::Setup(e.to_string()))?;
-        let inverter = limits
-            .iter()
-            .find(|(id, _)| id.0 == device)
-            .map(|(_, inverter)| inverter)
+        let inverter = layouts
+            .inverters()
+            .limits(DeviceId(device), None)
             .ok_or_else(|| Error::Setup(format!("device {device} is no inverter")))?;
         *rating = inverter.ac_rating.unwrap_or(f64::INFINITY);
         let inputs = (1_u32..=2)
-            .zip(&inverter.mppt)
-            .map(|(input, mppt)| pv::Input {
-                limits: Some(pv::MpptLimits {
-                    max_current: mppt.max_current,
-                    min_voltage: mppt.min_voltage,
-                    max_voltage: mppt.max_voltage,
-                    start_voltage: mppt.start_voltage,
-                }),
+            .zip(&inverter.inputs)
+            .map(|(input, limits)| pv::Input {
+                limits: Some(*limits),
                 strings: STRINGS
                     .iter()
                     .filter(|s| s.inverter == place && s.input == input)

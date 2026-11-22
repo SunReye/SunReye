@@ -51,6 +51,7 @@ mod http;
 mod import;
 mod ingress;
 mod layout;
+mod layout_types;
 mod live;
 mod location;
 mod logs;

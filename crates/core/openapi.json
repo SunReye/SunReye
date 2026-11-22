@@ -118,6 +118,60 @@
         ],
         "type": "object"
       },
+      "BatteryType": {
+        "additionalProperties": false,
+        "description": "One battery model's datasheet values.",
+        "properties": {
+          "chargePower": {
+            "description": "Watts.",
+            "format": "double",
+            "type": "number"
+          },
+          "dischargePower": {
+            "format": "double",
+            "type": "number"
+          },
+          "madeIn": {
+            "description": "The country of manufacture, ISO 3166-1 alpha-2, only where the datasheet states one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "maker": {
+            "type": "string"
+          },
+          "makerCountry": {
+            "description": "The country of the maker's registered seat, ISO 3166-1 alpha-2.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "model": {
+            "type": "string"
+          },
+          "roundTripEfficiency": {
+            "description": "In %.",
+            "format": "double",
+            "type": "number"
+          },
+          "usableCapacity": {
+            "description": "Watt-hours.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "maker",
+          "model",
+          "usableCapacity",
+          "chargePower",
+          "dischargePower",
+          "roundTripEfficiency"
+        ],
+        "type": "object"
+      },
       "BestView": {
         "properties": {
           "date": {
@@ -1158,14 +1212,14 @@
             "type": "array"
           },
           "inputs": {
-            "description": "An inverter's MPPT inputs' limits from its profile, in the inputs' order from 1: what the\nbuilder offers a string and warns against (ADR 20).",
+            "description": "An inverter's MPPT inputs' limits from its inverter type or else its profile, in the\ninputs' order from 1: what the builder offers a string and warns against (ADR 20).",
             "items": {
               "$ref": "#/components/schemas/InputSupport"
             },
             "type": "array"
           },
           "maxInputVoltage": {
-            "description": "An inverter's maximum DC input voltage in volts, from its profile: what a string's\nopen-circuit voltage at −10 °C is checked against (ADR 20).",
+            "description": "An inverter's maximum DC input voltage in volts, from its inverter type or else its\nprofile (ADR 27): what a string's open-circuit voltage at −10 °C is checked against\n(ADR 20).",
             "format": "double",
             "type": [
               "number",
@@ -1985,7 +2039,7 @@
         "type": "object"
       },
       "InputSupport": {
-        "description": "One MPPT input's limits (ADR 5).",
+        "description": "One MPPT input's limits (ADR 5, 27).",
         "properties": {
           "maxCurrent": {
             "description": "Amperes.",
@@ -2013,6 +2067,63 @@
           "minVoltage",
           "maxVoltage",
           "startVoltage"
+        ],
+        "type": "object"
+      },
+      "InverterType": {
+        "additionalProperties": false,
+        "description": "One inverter model's datasheet values.",
+        "properties": {
+          "acRating": {
+            "description": "Watts of AC output at its rating.",
+            "format": "double",
+            "type": "number"
+          },
+          "efficiency": {
+            "description": "The European weighted efficiency, in %.",
+            "format": "double",
+            "type": "number"
+          },
+          "inputs": {
+            "description": "The MPPT inputs, numbered from 1 in order, as `pv.mppt.*` indices.",
+            "items": {
+              "$ref": "#/components/schemas/MpptInput"
+            },
+            "type": "array"
+          },
+          "madeIn": {
+            "description": "The country of manufacture, ISO 3166-1 alpha-2, only where the datasheet states one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "maker": {
+            "type": "string"
+          },
+          "makerCountry": {
+            "description": "The country of the maker's registered seat, ISO 3166-1 alpha-2.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "maxInputVoltage": {
+            "description": "Volts.",
+            "format": "double",
+            "type": "number"
+          },
+          "model": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "maker",
+          "model",
+          "maxInputVoltage",
+          "acRating",
+          "efficiency",
+          "inputs"
         ],
         "type": "object"
       },
@@ -2063,49 +2174,81 @@
         "type": "object"
       },
       "Layout": {
-        "description": "One layout version.",
-        "properties": {
-          "appliesFrom": {
-            "description": "RFC 3339, UTC.",
-            "type": "string"
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Types"
           },
-          "scene": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/Scene",
-                "description": "Its modules name their string by position in `strings`."
+          {
+            "properties": {
+              "appliesFrom": {
+                "description": "RFC 3339, UTC.",
+                "type": "string"
               },
-              {
-                "type": "null"
+              "scene": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/Scene",
+                    "description": "Its modules name their string by position in `strings`."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "strings": {
+                "items": {
+                  "$ref": "#/components/schemas/PvString"
+                },
+                "type": "array"
+              },
+              "warnings": {
+                "items": {
+                  "$ref": "#/components/schemas/Warning"
+                },
+                "type": "array"
               }
-            ]
-          },
-          "strings": {
-            "items": {
-              "$ref": "#/components/schemas/PvString"
             },
-            "type": "array"
-          },
-          "warnings": {
-            "items": {
-              "$ref": "#/components/schemas/Warning"
-            },
-            "type": "array"
+            "required": [
+              "appliesFrom",
+              "strings",
+              "warnings"
+            ],
+            "type": "object"
           }
-        },
-        "required": [
-          "appliesFrom",
-          "strings",
-          "warnings"
         ],
-        "type": "object"
+        "description": "One layout version."
       },
       "LayoutChange": {
-        "description": "A layout change: every string, applying from an instant on.",
+        "additionalProperties": false,
+        "description": "A layout change: every string, applying from an instant on. A member this core does not know\nis refused, not dropped (ADR 25).",
         "properties": {
           "appliesFrom": {
             "description": "RFC 3339.",
             "type": "string"
+          },
+          "batteryTypes": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/BatteryType"
+            },
+            "description": "By battery device.",
+            "propertyNames": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "inverterTypes": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/InverterType"
+            },
+            "description": "By inverter device: read before its profile (ADR 27).",
+            "propertyNames": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "object"
           },
           "scene": {
             "oneOf": [
@@ -2451,6 +2594,38 @@
           "earned",
           "saved",
           "standing"
+        ],
+        "type": "object"
+      },
+      "MpptInput": {
+        "additionalProperties": false,
+        "description": "One MPPT input's limits on a datasheet.",
+        "properties": {
+          "maxCurrent": {
+            "description": "Amperes.",
+            "format": "double",
+            "type": "number"
+          },
+          "maxVoltage": {
+            "format": "double",
+            "type": "number"
+          },
+          "minVoltage": {
+            "description": "The voltage window, in volts.",
+            "format": "double",
+            "type": "number"
+          },
+          "startVoltage": {
+            "description": "Volts.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "maxCurrent",
+          "minVoltage",
+          "maxVoltage",
+          "startVoltage"
         ],
         "type": "object"
       },
@@ -4180,6 +4355,35 @@
           "http"
         ],
         "type": "string"
+      },
+      "Types": {
+        "additionalProperties": false,
+        "description": "The inverter and battery types a version's devices carry, by device id, copied by value\n(ADR 27). Stored as this JSON, which refuses a member this build does not know (ADR 25).",
+        "properties": {
+          "batteryTypes": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/BatteryType"
+            },
+            "propertyNames": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "inverterTypes": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/InverterType"
+            },
+            "propertyNames": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "object"
+          }
+        },
+        "type": "object"
       },
       "Update": {
         "description": "A served profile and the update waiting for it, as the admin reviews it.",

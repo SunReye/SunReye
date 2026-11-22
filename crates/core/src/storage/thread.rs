@@ -75,6 +75,7 @@ pub(super) const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0037.sql"),
     include_str!("migrations/0038.sql"),
     include_str!("migrations/0039.sql"),
+    include_str!("migrations/0040.sql"),
 ];
 
 /// The schema version this build writes: the number of migrations.
