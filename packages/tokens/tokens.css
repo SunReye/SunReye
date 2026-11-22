@@ -1,0 +1,207 @@
+/* SunReye's look (ADR 21) as custom properties: light on `:root`, dark under `.dark` on the root.
+   Plain CSS, no build step. Fonts are the consumer's to load: Inter and JetBrains Mono, variable. */
+
+/* Surfaces and text: kbase's graphite preset with v3's blue brand. */
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.21 0.008 270);
+  --card: oklch(0.993 0.001 270);
+  --card-foreground: oklch(0.21 0.008 270);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.21 0.008 270);
+  --primary: oklch(0.546 0.245 262.9);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.96 0.004 270);
+  --secondary-foreground: oklch(0.25 0.008 270);
+  --muted: oklch(0.965 0.003 270);
+  --muted-foreground: oklch(0.49 0.012 270);
+  --accent: oklch(0.955 0.012 262);
+  --accent-foreground: oklch(0.25 0.008 270);
+  --destructive: oklch(0.55 0.22 25);
+  --border: oklch(0.915 0.005 270);
+  --input: oklch(0.9 0.005 270);
+  --ring: oklch(0.546 0.245 262.9 / 60%);
+  --chart-1: oklch(0.546 0.245 262.9);
+  --chart-2: oklch(0.62 0.14 250);
+  --chart-3: oklch(0.7 0.12 200);
+  --chart-4: oklch(0.65 0.15 320);
+  --chart-5: oklch(0.75 0.13 160);
+  --sidebar: oklch(0.975 0.002 270);
+  --sidebar-foreground: oklch(0.3 0.01 270);
+  --sidebar-primary: oklch(0.546 0.245 262.9);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.93 0.004 270);
+  --sidebar-accent-foreground: oklch(0.18 0.008 270);
+  --sidebar-border: oklch(0.915 0.005 270);
+  --sidebar-ring: oklch(0.546 0.245 262.9 / 60%);
+
+  /* The brand marks controls only, never data. */
+  --brand: oklch(0.546 0.245 262.9);
+  --brand-soft: oklch(0.546 0.245 262.9 / 14%);
+  --grid-line: oklch(0.21 0.008 270 / 6%);
+  --spotlight: oklch(0.6 0.2 277 / 18%);
+  --success: oklch(0.48 0.13 155);
+  /* Changed inputs, not yet recalculated. */
+  --warning: oklch(0.56 0.15 55);
+}
+
+.dark {
+  --background: oklch(0.165 0.004 270);
+  --foreground: oklch(0.96 0.003 270);
+  --card: oklch(0.19 0.005 270);
+  --card-foreground: oklch(0.96 0.003 270);
+  --popover: oklch(0.2 0.006 270);
+  --popover-foreground: oklch(0.96 0.003 270);
+  --primary: oklch(0.546 0.245 262.9);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.23 0.006 270);
+  --secondary-foreground: oklch(0.96 0.003 270);
+  --muted: oklch(0.225 0.006 270);
+  --muted-foreground: oklch(0.72 0.012 270);
+  --accent: oklch(0.25 0.03 262);
+  --accent-foreground: oklch(0.96 0.003 270);
+  --destructive: oklch(0.7 0.18 22);
+  --border: oklch(1 0 0 / 8%);
+  --input: oklch(1 0 0 / 11%);
+  --ring: oklch(0.623 0.214 259.8 / 60%);
+  --chart-1: oklch(0.623 0.214 259.8);
+  --chart-2: oklch(0.7 0.13 250);
+  --chart-3: oklch(0.76 0.11 200);
+  --chart-4: oklch(0.72 0.14 320);
+  --chart-5: oklch(0.8 0.13 160);
+  --sidebar: oklch(0.13 0.003 270);
+  --sidebar-foreground: oklch(0.86 0.006 270);
+  --sidebar-primary: oklch(0.546 0.245 262.9);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.21 0.006 270);
+  --sidebar-accent-foreground: oklch(0.97 0.003 270);
+  --sidebar-border: oklch(1 0 0 / 7%);
+  --sidebar-ring: oklch(0.623 0.214 259.8 / 60%);
+
+  --brand: oklch(0.623 0.214 259.8);
+  --brand-soft: oklch(0.623 0.214 259.8 / 16%);
+  --grid-line: oklch(1 0 0 / 4.5%);
+  --spotlight: oklch(0.6 0.2 277 / 26%);
+  --success: oklch(0.75 0.15 155);
+  --warning: oklch(0.8 0.14 65);
+}
+
+/* Energy colours: one per flow, everywhere. 3:1 as a mark on every surface, colour-blind separated. */
+:root {
+  --e-solar: oklch(0.665 0.148 67);
+  --e-battery: oklch(0.645 0.14 157);
+  --e-import: oklch(0.56 0.217 22);
+  --e-export: oklch(0.6 0.1 196);
+  --e-house: oklch(0.5 0.012 270);
+  --e-ev: oklch(0.56 0.2 300);
+  /* Diverging pair for corrections and comparisons; never a flow. */
+  --d-under: oklch(0.62 0.17 48);
+  --d-over: oklch(0.55 0.06 250);
+}
+
+.dark {
+  --e-solar: oklch(0.815 0.162 74);
+  --e-battery: oklch(0.785 0.16 153);
+  --e-import: oklch(0.685 0.19 19);
+  --e-export: oklch(0.81 0.118 198);
+  --e-house: oklch(0.72 0.008 270);
+  --e-ev: oklch(0.72 0.17 300);
+  --d-under: oklch(0.76 0.15 55);
+  --d-over: oklch(0.74 0.06 250);
+}
+
+/* Type, spacing, radius and icons. Boxy: one 2 px radius on every surface and control. */
+:root {
+  --type-sans: "Inter Variable", sans-serif;
+  --type-mono: "JetBrains Mono Variable", monospace;
+  --type-features: "cv01", "cv09", "ss03";
+  /* The step every gap and padding is a multiple of. */
+  --space: 0.25rem;
+  /* 44 px: the least a touch target takes. */
+  --touch-target: 2.75rem;
+  --radius: 0.125rem;
+  --icon-size: 1rem;
+  --icon-stroke: 2;
+}
+
+/* Glass. Overlay glass (menus, dialogs, sheets) is nearly opaque with the soft blur; ambient glass
+   (rail, bar, cards, toasts) is thin with the strong blur, its text still AA over the backdrop's
+   brightest light; a canvas chip lies over the 3D canvas, unblurred and nearly opaque. */
+:root {
+  --blur-soft: 8px;
+  --blur-strong: 16px;
+  --glass-filter-soft: blur(var(--blur-soft));
+  --glass-filter-strong: blur(var(--blur-strong));
+  --glass-opacity: 88%;
+  --glass-muted-mix: 25%;
+  --glass-destructive-mix: 40%;
+  --glass-scrim: rgb(0 0 0 / 16%);
+  --noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n' x='0' y='0' width='100%25' height='100%25' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.1 0 0 0 -0.04'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --noise-scrim: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n' x='0' y='0' width='100%25' height='100%25' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.07 0 0 0 -0.028'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --ambient-opacity: 64%;
+  /* At 90 % a chip's quietest text keeps AA over black and over white. */
+  --chip-opacity: 90%;
+  /* The backdrop's lights, in the energy hues; pale in light, so a light tints the glass without
+     darkening it. */
+  --light-pv: oklch(0.9 0.1 67 / 50%);
+  --light-battery: oklch(0.9 0.1 157 / 42%);
+  --light-grid: oklch(0.9 0.08 196 / 42%);
+}
+
+.dark {
+  --glass-opacity: 97%;
+  --glass-destructive-mix: 50%;
+  --glass-scrim: rgb(0 0 0 / 32%);
+  --noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n' x='0' y='0' width='100%25' height='100%25' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0.08 0 0 0 -0.032'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --noise-scrim: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n' x='0' y='0' width='100%25' height='100%25' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0.06 0 0 0 -0.024'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --ambient-opacity: 58%;
+  --light-pv: oklch(0.815 0.162 74 / 34%);
+  --light-battery: oklch(0.785 0.16 153 / 28%);
+  --light-grid: oklch(0.81 0.118 198 / 28%);
+}
+
+/* Opaque fallback: reduced transparency turns every glass surface opaque. Forced colours, and a
+   browser without backdrop blur, take overlay glass opaque. */
+@media (prefers-reduced-transparency: reduce), (forced-colors: active) {
+  :is(:root, .dark) {
+    --glass-opacity: 100%;
+    --glass-muted-mix: 0%;
+    --glass-destructive-mix: 0%;
+    --glass-filter-soft: none;
+    --glass-filter-strong: none;
+    --noise: none;
+    --noise-scrim: none;
+  }
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :is(:root, .dark) {
+    --glass-opacity: 100%;
+    --glass-muted-mix: 0%;
+    --glass-destructive-mix: 0%;
+    --glass-filter-soft: none;
+    --glass-filter-strong: none;
+    --noise: none;
+    --noise-scrim: none;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :is(:root, .dark) {
+    --ambient-opacity: 100%;
+    --chip-opacity: 100%;
+  }
+}
+
+/* The low-power switch: `data-low-power` on the root turns every glass surface opaque. */
+:root[data-low-power] {
+  --ambient-opacity: 100%;
+  --chip-opacity: 100%;
+  --glass-opacity: 100%;
+  --glass-muted-mix: 0%;
+  --glass-destructive-mix: 0%;
+  --glass-filter-soft: none;
+  --glass-filter-strong: none;
+  --noise: none;
+  --noise-scrim: none;
+}

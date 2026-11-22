@@ -1,0 +1,86 @@
+/* ADR 21's glass surfaces as plain classes, on `tokens.css`. Only colour and blur: shape, ring and
+   elevation come from the component a surface sits on. In the `components` layer, so a consumer's
+   utilities still win. */
+
+@layer components {
+  /* Overlay glass: menus, popovers, sheets. Muted and refusal text lean to the foreground on it. */
+  .glass,
+  .glass-modal,
+  .glass-sidebar {
+    background-color: color-mix(in oklab, var(--popover) var(--glass-opacity), transparent);
+    background-image: var(--noise);
+    -webkit-backdrop-filter: var(--glass-filter-soft);
+    backdrop-filter: var(--glass-filter-soft);
+    --glass-muted-base: var(--muted-foreground);
+    --glass-destructive-base: var(--destructive);
+
+    & > * {
+      --muted-foreground: color-mix(
+        in oklab,
+        var(--foreground) var(--glass-muted-mix),
+        var(--glass-muted-base)
+      );
+      --destructive: color-mix(
+        in oklab,
+        var(--foreground) var(--glass-destructive-mix),
+        var(--glass-destructive-base)
+      );
+    }
+  }
+
+  /* A dialog: the strong blur, and every other overlay goes opaque while it is open. */
+  .glass-modal {
+    -webkit-backdrop-filter: var(--glass-filter-strong);
+    backdrop-filter: var(--glass-filter-strong);
+  }
+
+  :where(:root:has(.glass-modal)) .glass {
+    background-color: var(--popover);
+    background-image: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .glass-sidebar {
+    background-color: color-mix(in oklab, var(--sidebar) var(--glass-opacity), transparent);
+  }
+
+  /* An open sheet dims the page without blurring it much. */
+  .glass-scrim {
+    background-color: var(--glass-scrim);
+    background-image: var(--noise-scrim);
+    -webkit-backdrop-filter: var(--glass-filter-soft);
+    backdrop-filter: var(--glass-filter-soft);
+  }
+
+  /* Ambient glass: rail, bottom bar, cards, toasts. */
+  .glass-ambient {
+    background-color: color-mix(
+      in oklab,
+      var(--card) var(--ambient-opacity),
+      transparent
+    ) !important;
+    background-image: var(--noise);
+    -webkit-backdrop-filter: var(--glass-filter-strong) saturate(140%);
+    backdrop-filter: var(--glass-filter-strong) saturate(140%);
+  }
+
+  /* A canvas chip: what lies over a live 3D canvas, which a backdrop blur would make again for every
+     frame. Unblurred and nearly opaque; a refusal's red leans to the foreground to keep AA. */
+  .canvas-chip,
+  .canvas-chip.glass-ambient {
+    background-color: color-mix(in oklab, var(--card) var(--chip-opacity), transparent) !important;
+    background-image: var(--noise);
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    --glass-destructive-base: var(--destructive);
+
+    & > * {
+      --destructive: color-mix(
+        in oklab,
+        var(--foreground) var(--glass-destructive-mix),
+        var(--glass-destructive-base)
+      );
+    }
+  }
+}

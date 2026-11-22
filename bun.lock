@@ -32,6 +32,7 @@
         "@inlang/plugin-message-format": "4.6.0",
         "@internationalized/date": "3.12.4",
         "@lucide/svelte": "1.71.0",
+        "@sunreye/tokens": "workspace:*",
         "@sveltejs/adapter-static": "4.0.1",
         "@sveltejs/kit": "3.1.1",
         "@sveltejs/vite-plugin-svelte": "7.3.1",
@@ -71,6 +72,10 @@
       "bin": {
         "sunreye-profile": "./src/cli.ts",
       },
+    },
+    "packages/tokens": {
+      "name": "@sunreye/tokens",
+      "version": "5.0.0",
     },
   },
   "packages": {
@@ -503,6 +508,8 @@
     "@standard-schema/spec": ["@standard-schema/spec@1.1.0", "", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
 
     "@sunreye/sdk": ["@sunreye/sdk@workspace:packages/sdk"],
+
+    "@sunreye/tokens": ["@sunreye/tokens@workspace:packages/tokens"],
 
     "@sunreye/web": ["@sunreye/web@workspace:apps/web"],
 
