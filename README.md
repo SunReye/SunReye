@@ -4,6 +4,17 @@ A local-first monitor for home solar, battery and meter hardware. It reads devic
 
 This is version 5, a restart from specs: the branch `v5` shares no code with SunReye 3, which stays on `master`.
 
+## Built for small hardware
+
+SunReye Home is made to run for years on the kind of box that sits next to an inverter: an old mini PC, a Raspberry Pi, a NAS, a Home Assistant host.
+
+- **Ten years fit on a 16 GB SD card.** Ten years of the reference plant take 4.5 GB: two hybrid inverters with eight strings and a battery, two three-phase meters and a wallbox, with weather, spot prices and forecasts. Readings are stored only when they change, packed by the hour; hourly and daily figures are kept forever.
+- **Tens of megabytes of memory.** A running install sits at about 12 MB. The benchmark runs the ten-year file under a 64 MB, half-a-CPU limit, with a budget of 48 MB at peak.
+- **Fast at that size.** On that limit and that file, every screen's data has to arrive within 150 ms once warm and the core has to start within 5 s, or the release is blocked (`docs/adr/0024-performance-at-ten-years.md`).
+- **One 34 MB image.** One static binary for amd64 and arm64 with the web app inside. One SQLite file is the whole install: no database server, no cache, no second container.
+- **Gentle on flash.** History is written once a minute, there are no log files, and a power cut loses at most the last 60 seconds of history.
+- **Local.** It needs no cloud and no account. Only public feeds are fetched: prices and weather.
+
 ## What it does
 
 - **Devices as data.** A profile describes a device model: its quantities, how to read them, which settings may be written. Inverters, batteries, meters, wallboxes through EVCC, heat pumps, gas and water meters.
@@ -63,7 +74,7 @@ A device profile is the easiest contribution: [docs/profiles.md](docs/profiles.m
 
 ## SunReye Plan
 
-[SunReye Plan](https://github.com/SunReye/plan) is the hosted planner for installers, a separate private product. It reads this repository's scene, PV and economics models, and hands a planned plant to Home as a plant document (`docs/adr/0025-sunreye-plan-and-shared-packages.md`).
+SunReye Plan is the hosted planner for installers, a separate and private product. It reads this repository's scene, PV and economics models, and hands a planned plant to Home as a plant document (`docs/adr/0025-sunreye-plan-and-shared-packages.md`).
 
 ## Licence
 
