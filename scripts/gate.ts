@@ -1,5 +1,6 @@
 // The one check (ADR 13): serial, cheapest first, stops at the first failure.
-// The pre-commit hook runs it unscoped; hosted CI will run the same command.
+// It runs before a merge; hosted CI will run the same command. `--fast` is what the pre-commit
+// hook runs: the steps marked fast, which need neither the SPA build nor the core compiled.
 // A check whose inputs hash as they did on its last green run is skipped; a step that builds what
 // a later one reads always runs; a tool installed outside the lock keys its steps with its version.
 // `GATE_FRESH=1` runs every step.
@@ -15,6 +16,7 @@ export type Command = readonly string[];
 export interface Step {
   readonly run: Command;
   readonly reads?: Reads;
+  readonly fast?: true;
 }
 
 /** Where green runs are kept, and what a step's inputs hash to; null runs the step every time. */
@@ -80,25 +82,25 @@ const bans = (crate: string): Command => [
 
 const steps: readonly Step[] = [
   // Generates apps/web/.svelte-kit, which oxlint's type-aware mode reads.
-  { run: [...web, "sync"] },
+  { run: [...web, "sync"], fast: true },
   // The core embeds the SPA's build (ADR 11), so every cargo step needs it.
   { run: [...web, "build"] },
   // Formatting
-  { run: ["cargo", "fmt", "--all", "--check"], reads: RUST },
-  { run: ["rsvelte", "format", "--check"], reads: ALL },
+  { run: ["cargo", "fmt", "--all", "--check"], reads: RUST, fast: true },
+  { run: ["rsvelte", "format", "--check"], reads: ALL, fast: true },
   // Lints
   {
     run: ["cargo", "clippy", "--workspace", "--all-targets", "--locked", "--", "-D", "warnings"],
     reads: CORE,
   },
-  { run: ["oxlint", "--deny-warnings"], reads: JS },
-  { run: ["fallow", "--quiet"], reads: JS },
+  { run: ["oxlint", "--deny-warnings"], reads: JS, fast: true },
+  { run: ["fallow", "--quiet"], reads: JS, fast: true },
   // The kit is the only source of controls (ADR 11).
-  { run: ["bun", "scripts/native-controls.ts"], reads: JS },
+  { run: ["bun", "scripts/native-controls.ts"], reads: JS, fast: true },
   // A shared behaviour lives in one component (ADR 21, #836).
-  { run: ["bun", "scripts/one-owner.ts"], reads: JS },
+  { run: ["bun", "scripts/one-owner.ts"], reads: JS, fast: true },
   // Component tests run side by side under load: none waits on the wall clock.
-  { run: ["bun", "scripts/fake-time.ts"], reads: JS },
+  { run: ["bun", "scripts/fake-time.ts"], reads: JS, fast: true },
   // The built glass keeps its blur in Chromium (#763).
   { run: ["bun", "scripts/built-css.ts"], reads: JS },
   // Asks the advisory database, which changes without a file here changing.
@@ -108,15 +110,15 @@ const steps: readonly Step[] = [
   { run: bans("pv-wasm"), reads: DENY },
   { run: ["cargo", "shear"], reads: SHEAR },
   // Types
-  { run: ["tsrs", "-p", "tsconfig.json"], reads: JS },
-  { run: [...web, "check"], reads: JS },
+  { run: ["tsrs", "-p", "tsconfig.json"], reads: JS, fast: true },
+  { run: [...web, "check"], reads: JS, fast: true },
   // The generated client types match the core's committed OpenAPI document (ADR 9).
-  { run: [...web, "api:check"], reads: BOTH },
+  { run: [...web, "api:check"], reads: BOTH, fast: true },
   // Builds and tests
   { run: ["cargo", "test", "--workspace", "--locked"], reads: CORE },
   { run: ["cargo", "build", "--locked", "-p", "sunreye-pv", "--target", "wasm32-unknown-unknown"] },
   // The SDK's tests load the WASM from where the package ships it.
-  { run: ["bun", "run", "--cwd", "packages/sdk", "wasm"] },
+  { run: ["bun", "run", "--cwd", "packages/sdk", "wasm"], fast: true },
   {
     run: [
       "cargo",
@@ -128,8 +130,9 @@ const steps: readonly Step[] = [
       "--target",
       "wasm32-unknown-unknown",
     ],
+    fast: true,
   },
-  { run: ["bun", "test"], reads: ALL },
+  { run: ["bun", "test"], reads: ALL, fast: true },
   { run: [...web, "test:components"], reads: BOTH },
 ];
 
@@ -152,6 +155,11 @@ function inputsNow(cache: Cache | undefined, step: Readonly<Step>): Promise<stri
 
 function lastGreen(cache: Readonly<Cache>, step: Readonly<Step>): Promise<string | null> {
   return readFile(recordOf(cache, step), "utf8").catch(() => null);
+}
+
+/** The steps a run takes: all of them for the gate, those marked fast for the hook. */
+export function chosen(all: readonly Step[], fast: boolean): readonly Step[] {
+  return fast ? all.filter((step) => step.fast === true) : all;
 }
 
 /** Runs the steps in turn; returns the exit code of the first failure, or 0. */
@@ -193,15 +201,19 @@ if (import.meta.main) {
   const key = (step: Readonly<Step>) =>
     step.reads === undefined ? null : hash(step.run.join(" "), step.reads);
 
+  const fast = process.argv.includes("--fast");
+
   const code = await runGate(
-    steps,
+    chosen(steps, fast),
     process.env["GATE_FRESH"] === "1"
       ? undefined
       : { dir: join(commonDir(root), "gate-cache"), key },
   );
 
+  const name = fast ? "fast checks" : "gate";
+
   process.stderr.write(
-    code === 0 ? "\n✓ gate green\n" : `\n✗ gate red: the last step exited ${code}\n`,
+    code === 0 ? `\n✓ ${name} green\n` : `\n✗ ${name} red: the last step exited ${code}\n`,
   );
   process.exitCode = code;
 }

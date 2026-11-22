@@ -1,1 +1,1 @@
-bun run gate
+bun run gate:fast

@@ -3,12 +3,14 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { hasher } from "./gate-cache.ts";
+import { git } from "./git.ts";
 
 let root = "";
 
 beforeEach(async () => {
   root = `${await mkdtemp(join(tmpdir(), "gate-cache-"))}/`;
-  Bun.spawnSync(["git", "init", "-q"], { cwd: root });
+  // Under a git hook a bare `git init` would re-initialise the checkout being committed.
+  git(root, ["init", "-q"]);
   await writeFile(join(root, "a.ts"), "a");
 });
 

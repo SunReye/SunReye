@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runGate, type Step } from "./gate.ts";
+import { chosen, runGate, type Step } from "./gate.ts";
 
 let dir = "";
 
@@ -16,6 +16,10 @@ afterEach(async () => {
 
 function record(mark: string): Step {
   return { run: ["sh", "-c", `echo ${mark} >> ${join(dir, "log")}`] };
+}
+
+function quick(mark: string): Step {
+  return { ...record(mark), fast: true };
 }
 
 test("a green gate runs every step in order", async () => {
@@ -73,4 +77,18 @@ test("a step without a key always runs", async () => {
   await runGate([record("a")], store);
 
   expect(await readFile(join(dir, "log"), "utf8")).toBe("a\na\n");
+});
+
+test("the fast run keeps only the steps marked fast, in order", () => {
+  const slow = record("slow");
+  const first = quick("first");
+  const second = quick("second");
+
+  expect(chosen([first, slow, second], true)).toEqual([first, second]);
+});
+
+test("the gate itself runs every step, fast or not", () => {
+  const all = [quick("first"), record("slow")];
+
+  expect(chosen(all, false)).toEqual(all);
 });
