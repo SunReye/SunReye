@@ -2,7 +2,7 @@
 name = "sunreye-profile"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+license = "AGPL-3.0-only OR LicenseRef-PolyForm-Shield-1.0.0"
 publish.workspace = true
 
 [lints]

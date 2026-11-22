@@ -7,9 +7,9 @@ yanked = "deny"
 
 [licenses]
 version = 2
-# Compatible with AGPL-3.0-only.
+# What a dependency may be licensed under: permissive or file-level copyleft only, so the
+# repository can carry the PolyForm Shield licence (ADR 25). No GPL or AGPL dependency.
 allow = [
-  "AGPL-3.0-only",
   "Apache-2.0",
   "Apache-2.0 WITH LLVM-exception",
   "BSD-2-Clause",
@@ -25,6 +25,10 @@ confidence-threshold = 0.9
 unused-allowed-license = "allow"
 # Mozilla's root certificates as data, for the HTTPS client (ADR 2): a permissive data licence.
 exceptions = [{ crate = "webpki-roots", allow = ["CDLA-Permissive-2.0"] }]
+
+# The workspace's own crates are not published; their licence is ADR 25's, not an SPDX one.
+[licenses.private]
+ignore = true
 
 [bans]
 multiple-versions = "warn"

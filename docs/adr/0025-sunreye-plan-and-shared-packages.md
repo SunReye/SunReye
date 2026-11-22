@@ -30,10 +30,10 @@ The builder moves out of `apps/web` into `packages/builder` before the first rel
 
 **Licence (2026-11-23).** From `v5` onward this repository is licensed under PolyForm Shield 1.0.0: anyone may use, change and share it for any purpose except to provide a product that competes with ours. It never turns into another licence. The owner does not want the crates taken and a product built around them, and AGPL allows exactly that to anyone who publishes their changes.
 - *Why not keep the planner-grade parts private instead.* The owner wants what Plan gains to reach Home: the roof tracing, the full yield simulation and its views are in this repository and a homeowner uses them. The licence protects them; what Home never needs stays in Plan's private repository (Plan's ADR 11).
-- *What stays open.* The device profiles and the profile SDK keep an open licence: they live from other people's contributions.
+- *What stays open.* The device profiles and the profile SDK (`profiles/`, `packages/sdk`, the `profile` crates) may be used under AGPL-3.0-only or under PolyForm Shield, as the user chooses: they live from other people's contributions. `LICENSING.md` says which part is under what.
 - *What stays private.* The collected datasheet catalogue of inverters and batteries is Plan's; this repository holds its format and the module catalogue (ADR 27).
 - *What is already out.* Everything published before the change remains usable under AGPL-3.0-only. Nothing planner-grade (the year's run, the tracing tool, the household model, the simulation's views) is pushed to a public branch before the `LICENSE` file changes.
-- *Before it ships.* A lawyer reads the licence and its fit: this ADR describes it from memory. The change is one commit replacing `LICENSE` and every `license` field, with cargo-deny's allow-list reviewed against the new licence.
+- *Done (2026-11-23).* The owner read the licence and confirmed it fits. `LICENSE` holds its text as published, the `license` fields follow, and cargo-deny no longer allows an AGPL dependency.
 - *Plan* uses the crates and packages as their owner. An outside contribution is accepted only under an agreement that leaves the owner free to license it.
 
 **Imagery stays out of Home.** Plan loads aerial imagery and building models by address; Home fetches no map data (ADR 20). A plant document carries finished geometry and never imagery.
