@@ -20,14 +20,13 @@
   },
   "devDependencies": {
     "@oxlint/plugins": "1.92.0",
+    "@rsvelte/cli": "0.5.0",
     "@types/bun": "1.4.4",
     "fallow": "3.41.0",
     "husky": "9.1.7",
-    "oxfmt": "0.77.0",
     "oxlint": "1.92.0",
-    "oxlint-tsgolint": "7.0.2006",
     "playwright": "1.65.0",
-    "typescript": "6.0.3"
+    "tsrs": "7.1.0-beta.tsrs4"
   },
   "packageManager": "bun@1.4.0"
 }

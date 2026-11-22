@@ -16,7 +16,7 @@
     "api:types": "openapi-typescript ../../crates/core/openapi.json -o src/lib/api/schema.d.ts",
     "api:check": "bun run api:types --check",
     "sync": "bun run i18n && svelte-kit sync",
-    "check": "bun run sync && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
+    "check": "bun run sync && rsvelte typecheck && rsvelte lint",
     "test:components": "bun run wasm && bun run i18n && bun ../../scripts/components.ts",
     "wasm": "cargo build --locked --release -p sunreye-pv-wasm --target wasm32-unknown-unknown"
   },
@@ -55,7 +55,6 @@
     "playwright": "1.65.0",
     "shadcn-svelte": "1.8.0",
     "svelte": "5.57.3",
-    "svelte-check": "4.7.8",
     "svelte-sonner": "1.2.3",
     "tailwind-merge": "3.7.0",
     "tailwind-variants": "3.3.1",

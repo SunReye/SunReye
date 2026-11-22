@@ -1,0 +1,13 @@
+{
+  "plugins": {
+    "svelte.lint": {
+      "rules": {
+        "svelte/comment-directive": "error",
+        "svelte/valid-compile": "error"
+      }
+    },
+    "typescript.lint": {
+      "rules": {}
+    }
+  }
+}

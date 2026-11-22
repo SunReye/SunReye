@@ -83,6 +83,7 @@
   {/key}
 </div>
 
+<!-- svelte-ignore css_unused_selector (rsvelte 0.5.0 calls the used selector ".frame > .back" unused; the compiler does not) -->
 <style>
   .frame,
   .back {
