@@ -1,6 +1,6 @@
 # 25. SunReye Plan and the shared packages
 
-Status: accepted (2026-11-19), amended (2026-11-20, 2026-11-23): design accepted; the packages' extraction blocks the first release, publishing follows Plan's
+Status: accepted (2026-11-19), amended (2026-11-20, 2026-11-23): licence: design accepted; the packages' extraction blocks the first release, publishing follows Plan's
 
 ## Context
 
@@ -28,7 +28,13 @@ The builder moves out of `apps/web` into `packages/builder` before the first rel
 
 **Crates as well as packages (2026-11-23).** Plan's whole engine is Rust (Plan's ADR 3), and the engines only a planner needs are private crates in Plan's repository that depend on this repository's `pv`, `economics` and catalogue crates by path, as Plan's packages do. So the crates' public interfaces are a contract with a second consumer too. Whatever the builder gains for Plan (the simulation's views: moving shadows over the year, irradiance on a face, a module's shading loss, the sun's path, the loss chain) Home's builder shows as well; imagery and building data do not come with it.
 
-**Licence.** Everything here stays AGPL-3.0-only. The owner, the sole author, also offers the shared crates and packages under a commercial licence, which Plan uses. An outside contribution is accepted only under a contributor licence agreement that keeps both licences possible.
+**Licence (2026-11-23).** From `v5` onward this repository is licensed under PolyForm Shield 1.0.0: anyone may use, change and share it for any purpose except to provide a product that competes with ours. It never turns into another licence. The owner does not want the crates taken and a product built around them, and AGPL allows exactly that to anyone who publishes their changes.
+- *Why not keep the planner-grade parts private instead.* The owner wants what Plan gains to reach Home: the roof tracing, the full yield simulation and its views are in this repository and a homeowner uses them. The licence protects them; what Home never needs stays in Plan's private repository (Plan's ADR 11).
+- *What stays open.* The device profiles and the profile SDK keep an open licence: they live from other people's contributions.
+- *What stays private.* The collected datasheet catalogue of inverters and batteries is Plan's; this repository holds its format and the module catalogue (ADR 27).
+- *What is already out.* Everything published before the change remains usable under AGPL-3.0-only. Nothing planner-grade (the year's run, the tracing tool, the household model, the simulation's views) is pushed to a public branch before the `LICENSE` file changes.
+- *Before it ships.* A lawyer reads the licence and its fit: this ADR describes it from memory. The change is one commit replacing `LICENSE` and every `license` field, with cargo-deny's allow-list reviewed against the new licence.
+- *Plan* uses the crates and packages as their owner. An outside contribution is accepted only under an agreement that leaves the owner free to license it.
 
 **Imagery stays out of Home.** Plan loads aerial imagery and building models by address; Home fetches no map data (ADR 20). A plant document carries finished geometry and never imagery.
 
@@ -40,7 +46,10 @@ The builder moves out of `apps/web` into `packages/builder` before the first rel
 ## Considered options
 
 - **Planning inside the core.** Rejected: multi-tenancy would bend a design built on one plant per install.
-- **Plan in this repository.** Rejected: it would be AGPL like the rest, or a second licence in one tree.
+- **Plan in this repository.** Rejected: it would be public like the rest, or a second licence in one tree.
+- **Business Source License, Functional Source License.** Rejected: both turn each release into an open licence after a period, which the owner does not want.
+- **PolyForm Noncommercial with a permission for commercial monitoring.** Rejected: it needs wording of our own, and forbids an installer's own use, which the owner does not mind.
+- **AGPL with the valuable parts private in Plan.** Rejected: Home would not get them.
 - **A git submodule instead of packages.** Rejected: Plan could import any file here, so the packages' interfaces would never harden; a change made inside the submodule would pass by this repository's gate; and every shared change would need its pin moved in Plan.
 - **One workspace above both repositories.** Rejected: each root has its own dependency catalogue and lockfile, and an install from a root above them fails on Plan's catalogue (tried 2026-11-20).
 - **Ground-mounted parks in Plan.** Rejected: project developers are another customer with another workflow, and nothing is handed to a Home. Plan stops at what an installer builds: roofs, several buildings of one plant, racks on flat roofs and small ground fields (ADR 20).
