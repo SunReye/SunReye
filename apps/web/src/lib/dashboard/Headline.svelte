@@ -50,13 +50,7 @@
   class="pointer-events-none absolute top-0 left-0 flex max-w-[calc(100%-7.5rem)] flex-col p-4"
   bind:clientHeight={height}
 >
-  <HeadlineStatus
-    {subject}
-    {staleSince}
-    {lost}
-    {refused}
-    connecting={live === undefined}
-  />
+  <HeadlineStatus {subject} {staleSince} {lost} {refused} connecting={live === undefined} />
   <span
     class={[
       "text-gradient text-5xl leading-[1.1] font-semibold tracking-tight",

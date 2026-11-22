@@ -19,6 +19,11 @@
 
 {#each loadpoints as loadpoint (loadpoint.id)}
   <Presence class="shrink-0">
-    <EvCard device={loadpoint.id} name={names.get(loadpoint.id)} values={loadpoint.values} {onopen} />
+    <EvCard
+      device={loadpoint.id}
+      name={names.get(loadpoint.id)}
+      values={loadpoint.values}
+      {onopen}
+    />
   </Presence>
 {/each}

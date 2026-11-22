@@ -163,11 +163,7 @@
     </HourMarks>
   </WeatherRow>
 
-  <WeatherRow
-    label={m.weather_humidity()}
-    figure={range("humidity", "%")}
-    read={read?.humidity}
-  >
+  <WeatherRow label={m.weather_humidity()} figure={range("humidity", "%")} read={read?.humidity}>
     <HourLines
       hours={day.hours}
       {span}

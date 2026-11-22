@@ -18,7 +18,8 @@
 
 <Demo name="aspect-ratio">
   <div class="w-64">
-    <AspectRatio ratio={16 / 9} class="grid place-items-center bg-muted text-sm">16 : 9</AspectRatio>
+    <AspectRatio ratio={16 / 9} class="grid place-items-center bg-muted text-sm">16 : 9</AspectRatio
+    >
   </div>
 </Demo>
 
@@ -50,7 +51,9 @@
   <Resizable.PaneGroup direction="horizontal" class="h-24 w-80 border">
     <Resizable.Pane defaultSize={40} class="grid place-items-center text-sm">Groups</Resizable.Pane>
     <Resizable.Handle withHandle />
-    <Resizable.Pane defaultSize={60} class="grid place-items-center text-sm">Settings</Resizable.Pane>
+    <Resizable.Pane defaultSize={60} class="grid place-items-center text-sm"
+      >Settings</Resizable.Pane
+    >
   </Resizable.PaneGroup>
 </Demo>
 

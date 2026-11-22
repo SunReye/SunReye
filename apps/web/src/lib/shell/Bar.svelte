@@ -73,9 +73,7 @@
       >
         <item.icon class={active === item.route ? "size-5 text-brand" : "size-5"} />
         <!-- Truncated as a last resort; every locale's labels fit 320 px (tested). -->
-        <span class="max-w-full truncate text-[11px] leading-none font-medium"
-          >{item.label()}</span
-        >
+        <span class="max-w-full truncate text-[11px] leading-none font-medium">{item.label()}</span>
       </ToggleGroup.Item>
     {/each}
   </ToggleGroup.Root>

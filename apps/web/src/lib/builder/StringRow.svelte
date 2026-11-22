@@ -24,11 +24,7 @@
   } = $props();
 </script>
 
-<Pressable
-  feedback
-  class="flex min-h-12 w-full items-center gap-3 px-4 py-1.5 text-left"
-  {onclick}
->
+<Pressable feedback class="flex min-h-12 w-full items-center gap-3 px-4 py-1.5 text-left" {onclick}>
   <span class="size-3 shrink-0 rounded-sm" style:background={stringCss(position)}></span>
   <span class="flex min-w-0 flex-1 flex-col">
     <span class="truncate text-[15px] font-medium">{name}</span>

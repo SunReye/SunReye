@@ -38,7 +38,8 @@
 <div
   style:width="{width}px"
   style:height={column > 0 ? `${column}px` : undefined}
-  class={{ "flex flex-col": column > 0 }}>
+  class={{ "flex flex-col": column > 0 }}
+>
   <Card.Root {interactive} class={[frame, column > 0 && "flex-1"]} data-testid="card">
     {#if words > 0}
       <p>{Array.from({ length: words }, () => "Ertrag").join(" ")}</p>
@@ -50,7 +51,8 @@
         style:height="{height}px"
         class={{ builds }}
         data-testid="content"
-        data-glide-shown={travels ? "" : undefined}>
+        data-glide-shown={travels ? "" : undefined}
+      >
         {label}
       </div>
     {/if}

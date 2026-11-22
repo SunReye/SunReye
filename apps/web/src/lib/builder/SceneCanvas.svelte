@@ -277,9 +277,11 @@
 
     const controls = orbit(canvas, camera, flight, render);
 
-    opening.open(kept.built, () => onready?.(), parking.due).catch(() => {
-      onerror?.("failed");
-    });
+    opening
+      .open(kept.built, () => onready?.(), parking.due)
+      .catch(() => {
+        onerror?.("failed");
+      });
 
     return () => {
       resize.disconnect();

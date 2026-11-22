@@ -49,12 +49,7 @@
     class="order-2 ml-auto flex items-center gap-1.5 max-[415px]:ml-0 max-[415px]:w-full max-[415px]:justify-between sm:gap-2 lg:order-3 lg:col-start-3 lg:justify-self-end"
   >
     {#if !full}
-      <ExploreActions
-        {admin}
-        {table}
-        saved={x.saved}
-        labels={x.chosen.map((each) => each.label)}
-      />
+      <ExploreActions {admin} {table} saved={x.saved} labels={x.chosen.map((each) => each.label)} />
     {/if}
     <ModeSwitch mode={x.view.mode} onchange={x.setMode} />
     <FullscreenButton {full} onchange={onfull} />

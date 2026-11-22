@@ -75,18 +75,18 @@
       class="px-4"
       text={m.explore_catalog_error()}
       refused={x.refused}
-      onretry={() => void x.load()} />
+      onretry={() => void x.load()}
+    />
   {:else if found.length === 0}
     <p class="px-4 py-6 text-center text-sm text-muted-foreground">
-      {query.trim() === "" ? m.explore_catalog_empty() : m.explore_no_match({ query: query.trim() })}
+      {query.trim() === ""
+        ? m.explore_catalog_empty()
+        : m.explore_no_match({ query: query.trim() })}
     </p>
   {/if}
   {#each found as device (device.id)}
     <section aria-labelledby="{uid}-{device.id}" class="pt-3">
-      <h3
-        id="{uid}-{device.id}"
-        class="flex items-baseline gap-2 px-4 pb-1 text-sm font-semibold"
-      >
+      <h3 id="{uid}-{device.id}" class="flex items-baseline gap-2 px-4 pb-1 text-sm font-semibold">
         <span class="min-w-0 truncate">{device.name}</span>
         {#if device.removed}
           <span class="text-xs font-normal text-muted-foreground">{m.explore_removed()}</span>

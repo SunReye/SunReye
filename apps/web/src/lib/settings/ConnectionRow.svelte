@@ -29,12 +29,7 @@
 
 <Item.Root class="rounded-none border-0">
   {#snippet child({ props })}
-    <Pressable
-      feedback
-      {...props}
-      {onclick}
-      class={[props.class, "group flex-nowrap text-left"]}
-    >
+    <Pressable feedback {...props} {onclick} class={[props.class, "group flex-nowrap text-left"]}>
       <Item.Content class="min-w-0">
         <Item.Title class="text-[15px]">{connection.name}</Item.Title>
         <Item.Description class="truncate tabular-nums">{reach}</Item.Description>

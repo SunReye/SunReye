@@ -37,11 +37,17 @@
   <p class="text-sm text-muted-foreground">{m.password_hint()}</p>
   <TextField
     label={m.password_label()}
-    type="password" autocomplete="new-password" required bind:value={password}
+    type="password"
+    autocomplete="new-password"
+    required
+    bind:value={password}
   />
   <TextField
     label={m.password_repeat()}
-    type="password" autocomplete="new-password" required bind:value={repeated}
+    type="password"
+    autocomplete="new-password"
+    required
+    bind:value={repeated}
   />
   <Refusal {refused} text={mismatch} />
   <Button type="submit" class="w-full sm:w-auto sm:self-end">{m.password_set()}</Button>

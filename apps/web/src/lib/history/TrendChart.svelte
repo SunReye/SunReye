@@ -96,9 +96,7 @@
   }));
 
   /** The row under the pointer, read in the legend. */
-  const read: TrendRow | null = $derived(
-    reading.at === null ? null : (rows[reading.at] ?? null),
-  );
+  const read: TrendRow | null = $derived(reading.at === null ? null : (rows[reading.at] ?? null));
 
   /** A chart too narrow or with one row has nothing to draw. */
   const drawn = $derived(width > 24 && rows.length > 1);

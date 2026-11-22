@@ -16,8 +16,11 @@
       <Tabs.Trigger value="pattern">Pattern</Tabs.Trigger>
       <Tabs.Trigger value="strings">Strings</Tabs.Trigger>
     </Tabs.List>
-    <Tabs.Content value="time" class="text-sm text-muted-foreground">Energy over time.</Tabs.Content>
-    <Tabs.Content value="pattern" class="text-sm text-muted-foreground">Hour by weekday.</Tabs.Content>
+    <Tabs.Content value="time" class="text-sm text-muted-foreground">Energy over time.</Tabs.Content
+    >
+    <Tabs.Content value="pattern" class="text-sm text-muted-foreground"
+      >Hour by weekday.</Tabs.Content
+    >
     <Tabs.Content value="strings" class="text-sm text-muted-foreground">Each string.</Tabs.Content>
   </Tabs.Root>
   <Tabs.Root value="time" class="w-80">
@@ -26,8 +29,11 @@
       <Tabs.Trigger value="pattern">Pattern</Tabs.Trigger>
       <Tabs.Trigger value="strings">Strings</Tabs.Trigger>
     </Tabs.List>
-    <Tabs.Content value="time" class="text-sm text-muted-foreground">Energy over time.</Tabs.Content>
-    <Tabs.Content value="pattern" class="text-sm text-muted-foreground">Hour by weekday.</Tabs.Content>
+    <Tabs.Content value="time" class="text-sm text-muted-foreground">Energy over time.</Tabs.Content
+    >
+    <Tabs.Content value="pattern" class="text-sm text-muted-foreground"
+      >Hour by weekday.</Tabs.Content
+    >
     <Tabs.Content value="strings" class="text-sm text-muted-foreground">Each string.</Tabs.Content>
   </Tabs.Root>
 </Demo>
@@ -35,7 +41,8 @@
 <Demo name="breadcrumb">
   <Breadcrumb.Root>
     <Breadcrumb.List>
-      <Breadcrumb.Item><Breadcrumb.Link href="#/gallery">Settings</Breadcrumb.Link></Breadcrumb.Item>
+      <Breadcrumb.Item><Breadcrumb.Link href="#/gallery">Settings</Breadcrumb.Link></Breadcrumb.Item
+      >
       <Breadcrumb.Separator />
       <Breadcrumb.Item><Breadcrumb.Link href="#/gallery">Devices</Breadcrumb.Link></Breadcrumb.Item>
       <Breadcrumb.Separator />

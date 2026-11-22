@@ -1,5 +1,4 @@
 {
-  "$schema": "./node_modules/oxfmt/configuration_schema.json",
   "printWidth": 100,
   "ignorePatterns": [
     ".agents/**",
@@ -9,7 +8,6 @@
     "apps/web/src/lib/api/schema.d.ts",
     "packages/sdk/src/generated.ts",
     "profiles/*.json",
-    "**/*.svelte",
     "**/*.md"
   ]
 }

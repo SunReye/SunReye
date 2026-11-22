@@ -43,7 +43,6 @@
 
   /** Why the last change to the opening was not made, until one is. */
   let unfit = $state<Unfit>();
-
 </script>
 
 {#if block !== undefined}

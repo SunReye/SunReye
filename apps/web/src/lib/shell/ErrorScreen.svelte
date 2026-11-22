@@ -41,7 +41,8 @@
       <Empty.Content>
         <div class="flex flex-wrap justify-center gap-2">
           {#if !missing}
-            <Button onclick={reload}><RotateCw data-icon="inline-start" />{m.error_reload()}</Button>
+            <Button onclick={reload}><RotateCw data-icon="inline-start" />{m.error_reload()}</Button
+            >
           {/if}
           <Button variant={missing ? "default" : "outline"} href="#/">{m.error_home()}</Button>
         </div>

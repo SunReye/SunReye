@@ -7,7 +7,6 @@
 
   let { core }: { core: Core } = $props();
 
-
   const zone = $derived(core.spotZone());
 </script>
 

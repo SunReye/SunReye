@@ -72,10 +72,7 @@
   }
 </script>
 
-<main
-  {@attach full.watch}
-  class={["flex w-full flex-col", look.main]}
->
+<main {@attach full.watch} class={["flex w-full flex-col", look.main]}>
   <ExploreHeader {x} {admin} table={plotted?.() ?? null} full={full.on} onfull={full.toggle} />
 
   <div class={["grid gap-4 lg:gap-6", look.panes]}>

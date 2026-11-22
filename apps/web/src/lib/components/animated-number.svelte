@@ -63,7 +63,6 @@
 </script>
 
 <span class="inline-grid tabular-nums"
-  ><span class={["[grid-area:1/1]", value === null && "invisible"]}
-    >{write(shown)}</span
+  ><span class={["[grid-area:1/1]", value === null && "invisible"]}>{write(shown)}</span
   >{#if value === null}<span class="[grid-area:1/1] text-center">{dash}</span>{/if}</span
 >{@render unit?.(shown)}

@@ -39,5 +39,8 @@
   {/snippet}
 </AnalyticsTabs>
 <RangeState failed={range.failed} refused={range.refused} onretry={range.retry}>
-  <StatStrip closes="panel" stats={batteryFacts(range.view?.efficiency ?? null, range.view?.cycles ?? null)} />
+  <StatStrip
+    closes="panel"
+    stats={batteryFacts(range.view?.efficiency ?? null, range.view?.cycles ?? null)}
+  />
 </RangeState>

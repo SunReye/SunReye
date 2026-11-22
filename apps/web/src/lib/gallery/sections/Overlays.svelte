@@ -80,7 +80,9 @@
         <Drawer.Title>More</Drawer.Title>
         <Drawer.Description>Every other screen.</Drawer.Description>
       </Drawer.Header>
-      <ul class="flex max-h-[50dvh] flex-col gap-3 overflow-y-auto px-4 text-sm scroll-fade-y no-scrollbar">
+      <ul
+        class="flex max-h-[50dvh] flex-col gap-3 overflow-y-auto px-4 text-sm scroll-fade-y no-scrollbar"
+      >
         {#each { length: 30 }, index (index)}
           <li>Screen {index + 1}</li>
         {/each}

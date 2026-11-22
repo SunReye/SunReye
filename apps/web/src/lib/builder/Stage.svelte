@@ -8,19 +8,10 @@
   import type { Core } from "../api/core.ts";
   import { modelLoader } from "../cars/models.ts";
   import type { Parked } from "../cars/parked.ts";
-  import {
-    faceView,
-    parseView,
-    presetView,
-    type View,
-  } from "./camera.ts";
+  import { faceView, parseView, presetView, type View } from "./camera.ts";
   import type { SceneWeather } from "../scene/weather.ts";
   import type { Geometry, Point, RoofFace } from "./pv.ts";
-  import SceneCanvas, {
-    type Editing,
-    type Roofwork,
-    type Projector,
-  } from "./SceneCanvas.svelte";
+  import SceneCanvas, { type Editing, type Roofwork, type Projector } from "./SceneCanvas.svelte";
   import type { Hit, Panel } from "./scene.ts";
   import ViewMenu from "./ViewMenu.svelte";
   import WeatherMenu, { type Trial } from "./WeatherMenu.svelte";

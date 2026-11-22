@@ -17,9 +17,7 @@
 
 {#snippet row(choice: Choice<Value>)}
   <Select.Item value={choice.value} label={choice.label}>
-    {#snippet children()}
-      {#if item}{@render item(choice)}{:else}{choice.label}{/if}
-    {/snippet}
+    {#if item}{@render item(choice)}{:else}{choice.label}{/if}
   </Select.Item>
 {/snippet}
 

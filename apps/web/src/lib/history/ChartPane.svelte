@@ -14,14 +14,7 @@
 </script>
 
 {#if view.tab === "time"}
-  <TimePanel
-    {got}
-    metric={view.metric}
-    {route}
-    begun={begunOf(facts)}
-    {loading}
-    {height}
-  />
+  <TimePanel {got} metric={view.metric} {route} begun={begunOf(facts)} {loading} {height} />
 {:else if view.tab === "years"}
   <YearsPanel {core} {route} metric={view.metric} {fresh} height={height - 40} />
 {:else if view.tab === "pattern"}

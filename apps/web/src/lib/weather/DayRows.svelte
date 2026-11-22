@@ -39,9 +39,7 @@
   );
 
   /** The hour the slot being read is in, which the marks follow. */
-  const readHour = $derived(
-    read === null ? null : Math.floor((read * hours.length) / slots),
-  );
+  const readHour = $derived(read === null ? null : Math.floor((read * hours.length) / slots));
 
   /** Where now is across the day, in %; null on another day. */
   const nowAt = $derived(

@@ -69,13 +69,17 @@
                   {settingLabel({ key: entry.setting })}
                 </Item.Title>
                 <Item.Description class="tabular-nums">
-                  {[device(entry.device), time.format(new Date(entry.time)), entry.actor].join(" · ")}
+                  {[device(entry.device), time.format(new Date(entry.time)), entry.actor].join(
+                    " · ",
+                  )}
                 </Item.Description>
                 <Item.Description>
                   {[OUTCOMES[entry.outcome](), after(entry), step(entry)].filter(Boolean).join(" ")}
                 </Item.Description>
               </Item.Content>
-              <Item.Actions class="self-start text-[15px] font-medium whitespace-nowrap tabular-nums">
+              <Item.Actions
+                class="self-start text-[15px] font-medium whitespace-nowrap tabular-nums"
+              >
                 {value(entry.before)} → {value(entry.requested)}
               </Item.Actions>
             </Item.Root>

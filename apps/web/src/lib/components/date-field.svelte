@@ -203,27 +203,27 @@
 {/if}
 
 {#snippet calendar()}
-    <Calendar
-      class="mx-auto"
-      type="single"
-      calendarLabel={label}
-      captionLayout={look.caption}
-      {...shown}
-      {locale}
-      onValueChange={picked}
-    />
-    {#if shortcut !== undefined}
-      {@const to = shortcut.value}
-      <div class={look.foot}>
-        <Button
-          variant="ghost"
-          size="sm"
-          class={look.shortcut}
-          disabled={rests}
-          onclick={() => {
-            pick(to);
-          }}>{shortcut.text}</Button
-        >
-      </div>
-    {/if}
+  <Calendar
+    class="mx-auto"
+    type="single"
+    calendarLabel={label}
+    captionLayout={look.caption}
+    {...shown}
+    {locale}
+    onValueChange={picked}
+  />
+  {#if shortcut !== undefined}
+    {@const to = shortcut.value}
+    <div class={look.foot}>
+      <Button
+        variant="ghost"
+        size="sm"
+        class={look.shortcut}
+        disabled={rests}
+        onclick={() => {
+          pick(to);
+        }}>{shortcut.text}</Button
+      >
+    </div>
+  {/if}
 {/snippet}

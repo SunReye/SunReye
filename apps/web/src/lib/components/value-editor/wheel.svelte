@@ -42,11 +42,9 @@
 
   // The wheel's own position, seeded from the bound row: the wheel writes `index`, never reads it
   // back, so a parent changes the row by remounting the wheel.
-  // svelte-ignore state_referenced_locally
   let pos = $state(index);
 
   // The row last written to `index`, seeded like `pos`.
-  // svelte-ignore state_referenced_locally
   let committed = index;
   let cancel: (() => void) | undefined;
   let dragging = $state(false);

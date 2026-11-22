@@ -5,10 +5,8 @@
   import { m } from "../paraglide/messages.js";
   import type { Proposal, WiringMode } from "./wiring-mode.svelte.ts";
 
-  let {
-    wiring,
-    proposed,
-  }: { wiring: WiringMode; proposed: Pick<Proposal, "strings" | "left"> } = $props();
+  let { wiring, proposed }: { wiring: WiringMode; proposed: Pick<Proposal, "strings" | "left"> } =
+    $props();
 </script>
 
 <div class="flex flex-col gap-2 p-3">

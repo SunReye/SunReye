@@ -43,7 +43,8 @@
 
   const shown = $derived(read === null ? undefined : bands[read]);
 
-  const pct = (v: number | null | undefined) => (v === null || v === undefined ? "–" : `${num(v)} %`);
+  const pct = (v: number | null | undefined) =>
+    v === null || v === undefined ? "–" : `${num(v)} %`;
 
   /** What a band reads on a side: nothing for one without readings yet. */
   const valueOf = (b: Band, side: "up" | "down") =>

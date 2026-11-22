@@ -5,10 +5,8 @@
   import { Button } from "#lib/components/ui/button/index.js";
   import { m } from "../paraglide/messages.js";
 
-  let {
-    disabled,
-    onstart,
-  }: { disabled: boolean; onstart: () => Promise<Problem | undefined> } = $props();
+  let { disabled, onstart }: { disabled: boolean; onstart: () => Promise<Problem | undefined> } =
+    $props();
 
   let asking = $state(false);
 </script>

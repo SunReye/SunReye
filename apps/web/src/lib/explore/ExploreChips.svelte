@@ -8,9 +8,4 @@
 </script>
 
 <ViewChips views={x.saved.list} marked={x.saved.marked} onopen={x.saved.open} />
-<SeriesChips
-  chosen={x.chosen}
-  ready={x.catalog === "ready"}
-  onremove={x.toggle}
-  {onadd}
-/>
+<SeriesChips chosen={x.chosen} ready={x.catalog === "ready"} onremove={x.toggle} {onadd} />

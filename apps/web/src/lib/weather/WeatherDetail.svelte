@@ -84,9 +84,10 @@
 
   /** Whether any hour of any day has a value; undefined until read. */
   const stored = $derived(
-    days?.some((d) => d.hours.some((h) => Object.values({ ...h, at: null }).some((v) => v !== null))),
+    days?.some((d) =>
+      d.hours.some((h) => Object.values({ ...h, at: null }).some((v) => v !== null)),
+    ),
   );
-
 </script>
 
 {#if days === null || zone === undefined || !stored}

@@ -25,7 +25,6 @@
       ? m.display_motion_measured({ tier: CHOICES[motion.measured === "lite" ? "lite" : "full"]() })
       : m.display_motion_hint();
   });
-
 </script>
 
 <SegmentRow

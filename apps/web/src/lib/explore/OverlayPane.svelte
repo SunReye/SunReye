@@ -48,10 +48,7 @@
     </Empty.Header>
   </Empty.Root>
 {:else}
-  <div
-    class="@container flex flex-col gap-3"
-    style:min-height={least}
-  >
+  <div class="@container flex flex-col gap-3" style:min-height={least}>
     <!-- Fullscreen leaves the periods to the legend (ADR 22), and the lanes take the window's rest. -->
     <OverlayPeriods
       hidden={props.full === true}
@@ -64,11 +61,7 @@
     />
 
     {#if !chart}
-      <Skeleton
-        style="height: {waiting}px"
-        role="status"
-        aria-label={m.loading()}
-      />
+      <Skeleton style="height: {waiting}px" role="status" aria-label={m.loading()} />
     {:else}
       <div class="flex flex-1 flex-col gap-2">
         <SeriesLegend

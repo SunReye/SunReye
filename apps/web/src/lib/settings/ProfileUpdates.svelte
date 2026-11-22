@@ -39,7 +39,8 @@
     <DrillCard
       element="section"
       aria-labelledby="updates-title"
-      class="flex flex-col gap-3 border-t border-border/60 p-4 drill:mt-4">
+      class="flex flex-col gap-3 border-t border-border/60 p-4 drill:mt-4"
+    >
       <header class="flex flex-col gap-1">
         <h3 id="updates-title" class="text-[15px] font-medium">{m.updates_title()}</h3>
         <p class="text-sm text-muted-foreground">{m.updates_note()}</p>

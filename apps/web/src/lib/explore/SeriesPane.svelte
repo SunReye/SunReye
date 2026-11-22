@@ -21,7 +21,6 @@
 
   const chart = $derived(view.chart);
 
-
   /** In fullscreen the pane is as tall as the window leaves, and the lanes take its rest. */
   const least = $derived(props.full === true ? `${props.height}px` : null);
 
@@ -35,10 +34,7 @@
 {#if !chart}
   <Skeleton style="height: {props.height}px" role="status" aria-label={m.loading()} />
 {:else}
-  <div
-    class="@container flex flex-col gap-2"
-    style:min-height={least}
-  >
+  <div class="@container flex flex-col gap-2" style:min-height={least}>
     <SeriesLegend
       title={view.title(pointer.at)}
       label={m.explore_series_chart()}

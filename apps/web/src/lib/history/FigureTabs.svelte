@@ -36,8 +36,7 @@
     "text-[10px] font-medium tracking-normal text-muted-foreground @[640px]:text-sm";
 
   /** A figure tab: the pressable gives it its focus ring and fade. */
-  const FIGURE =
-    "relative flex min-w-0 flex-col items-start gap-1 px-2 py-3 text-left sm:px-4";
+  const FIGURE = "relative flex min-w-0 flex-col items-start gap-1 px-2 py-3 text-left sm:px-4";
 </script>
 
 <div

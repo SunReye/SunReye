@@ -13,7 +13,10 @@
   import HeatGrid from "./HeatGrid.svelte";
   import StringFlag from "./StringFlag.svelte";
   import {
-    MONTHS, stringEnergy, stringFacts, type StringFacts,
+    MONTHS,
+    stringEnergy,
+    stringFacts,
+    type StringFacts,
     type PvString,
     type StringsCore,
   } from "./string-energy.ts";
@@ -130,96 +133,101 @@
       }}
     />
   {:else}
-  <!-- The yield bars grow as the yields first show (ADR 21 "Chart entrance"). -->
-  <ChartEntrance build="grow" ready={rows.some((r) => r.perKwp !== null)}>
-  <div role="table" aria-label={m.strings_table()} class="text-sm">
-    <div role="row" class={[COLS, "border-b border-border/60 pb-1.5 text-xs text-muted-foreground"]}>
-      <span role="columnheader">{m.strings_string()}</span>
-      <span role="columnheader" class="text-right">{m.strings_yield()}</span>
-      <span role="columnheader" class="text-right">{m.strings_ratio()}</span>
-    </div>
-    {#each rows as r, i (r.id)}
-      <Pressable
-        feedback
-        role="row"
-        aria-selected={r.id === chosen?.id}
-        selected={r.id === chosen?.id}
-        class={[COLS, "w-full border-b border-border/60 py-2 text-left"]}
-        onclick={() => {
-          picked = r.id;
-        }}
-      >
-        <span role="cell" class="flex min-w-0 items-start gap-1.5">
-          <StringFlag flag={r.flag} label />
-          <span class="min-w-0">
-            <span class="line-clamp-2 font-medium">{r.name}</span>
-            <span class="block truncate text-xs text-muted-foreground tabular-nums"
-              >{num(r.kwp, 1)} kWp{r.kwh === null ? "" : ` · ${energy(r.kwh)}`}{r.estimated
-                ? ` · ${m.detail_estimated()}`
-                : ""}</span
-            >
-          </span>
-        </span>
-        <span role="cell" class="flex flex-col items-end gap-1">
-          <span class="font-semibold tabular-nums"
-            >{r.perKwp === null ? "–" : num(r.perKwp, r.perKwp < 100 ? 1 : 0)}</span
-          >
-          <span class="h-1 w-full max-w-24 bg-foreground/10"
-            ><span
-              class="block h-full origin-left bg-solar"
-              style:width="{((r.perKwp ?? 0) / best) * 100}%"
-              style:--i={i / rows.length}
-              data-grow="x"
-            ></span></span
-          >
-        </span>
-        <span role="cell" class="text-right font-semibold tabular-nums">{ratioText(r.ratio)}</span>
-      </Pressable>
-    {/each}
-    <p class="pt-2 text-xs text-muted-foreground">{m.strings_foot({ range: route.label })}</p>
-  </div>
-  </ChartEntrance>
-
-  {#if chosen}
-    <section
-      class="flex flex-col gap-2 border-t border-border/60 pt-3"
-      aria-label={m.strings_grid_label()}
-    >
-      <h3 class="text-sm font-semibold">
-        {m.strings_correction({ input: chosen.input })}
-        <span class="font-normal text-muted-foreground">· {chosen.name}</span>
-      </h3>
-      {#if note(chosen)}
-        <p class="flex max-w-[68ch] items-start gap-2 text-sm text-pretty">
-          <StringFlag flag={chosen.flag} label={false} />
-          {note(chosen)}
-        </p>
-      {/if}
-      {#if !input || input.factors.length === 0}
-        <p class="py-6 text-sm text-muted-foreground">{m.strings_fresh()}</p>
-      {:else}
-        <HeatGrid
-          cols={MONTHS}
-          cells={grid}
-          colour={fill}
-          describe={(v) =>
-            v === null ? m.strings_cell_none() : m.strings_cell({ value: ratioText(v) })}
-          idle={m.strings_grid_idle()}
-          label={m.strings_grid_label()}
-          blank
-        />
+    <!-- The yield bars grow as the yields first show (ADR 21 "Chart entrance"). -->
+    <ChartEntrance build="grow" ready={rows.some((r) => r.perKwp !== null)}>
+      <div role="table" aria-label={m.strings_table()} class="text-sm">
         <div
-          class="flex flex-wrap items-center gap-x-2 gap-y-1 pl-10 text-xs text-muted-foreground tabular-nums"
+          role="row"
+          class={[COLS, "border-b border-border/60 pb-1.5 text-xs text-muted-foreground"]}
         >
-          <span>80 %</span>
-          <span class="flex h-2 w-40 gap-px"
-            >{#each SCALE as v (v)}<span class="flex-1" style:background={fill(v)}
-              ></span>{/each}</span
-          >
-          <span>{m.strings_scale({ value: "120 %" })}</span>
+          <span role="columnheader">{m.strings_string()}</span>
+          <span role="columnheader" class="text-right">{m.strings_yield()}</span>
+          <span role="columnheader" class="text-right">{m.strings_ratio()}</span>
         </div>
-      {/if}
-    </section>
-  {/if}
+        {#each rows as r, i (r.id)}
+          <Pressable
+            feedback
+            role="row"
+            aria-selected={r.id === chosen?.id}
+            selected={r.id === chosen?.id}
+            class={[COLS, "w-full border-b border-border/60 py-2 text-left"]}
+            onclick={() => {
+              picked = r.id;
+            }}
+          >
+            <span role="cell" class="flex min-w-0 items-start gap-1.5">
+              <StringFlag flag={r.flag} label />
+              <span class="min-w-0">
+                <span class="line-clamp-2 font-medium">{r.name}</span>
+                <span class="block truncate text-xs text-muted-foreground tabular-nums"
+                  >{num(r.kwp, 1)} kWp{r.kwh === null ? "" : ` · ${energy(r.kwh)}`}{r.estimated
+                    ? ` · ${m.detail_estimated()}`
+                    : ""}</span
+                >
+              </span>
+            </span>
+            <span role="cell" class="flex flex-col items-end gap-1">
+              <span class="font-semibold tabular-nums"
+                >{r.perKwp === null ? "–" : num(r.perKwp, r.perKwp < 100 ? 1 : 0)}</span
+              >
+              <span class="h-1 w-full max-w-24 bg-foreground/10"
+                ><span
+                  class="block h-full origin-left bg-solar"
+                  style:width="{((r.perKwp ?? 0) / best) * 100}%"
+                  style:--i={i / rows.length}
+                  data-grow="x"
+                ></span></span
+              >
+            </span>
+            <span role="cell" class="text-right font-semibold tabular-nums"
+              >{ratioText(r.ratio)}</span
+            >
+          </Pressable>
+        {/each}
+        <p class="pt-2 text-xs text-muted-foreground">{m.strings_foot({ range: route.label })}</p>
+      </div>
+    </ChartEntrance>
+
+    {#if chosen}
+      <section
+        class="flex flex-col gap-2 border-t border-border/60 pt-3"
+        aria-label={m.strings_grid_label()}
+      >
+        <h3 class="text-sm font-semibold">
+          {m.strings_correction({ input: chosen.input })}
+          <span class="font-normal text-muted-foreground">· {chosen.name}</span>
+        </h3>
+        {#if note(chosen)}
+          <p class="flex max-w-[68ch] items-start gap-2 text-sm text-pretty">
+            <StringFlag flag={chosen.flag} label={false} />
+            {note(chosen)}
+          </p>
+        {/if}
+        {#if !input || input.factors.length === 0}
+          <p class="py-6 text-sm text-muted-foreground">{m.strings_fresh()}</p>
+        {:else}
+          <HeatGrid
+            cols={MONTHS}
+            cells={grid}
+            colour={fill}
+            describe={(v) =>
+              v === null ? m.strings_cell_none() : m.strings_cell({ value: ratioText(v) })}
+            idle={m.strings_grid_idle()}
+            label={m.strings_grid_label()}
+            blank
+          />
+          <div
+            class="flex flex-wrap items-center gap-x-2 gap-y-1 pl-10 text-xs text-muted-foreground tabular-nums"
+          >
+            <span>80 %</span>
+            <span class="flex h-2 w-40 gap-px"
+              >{#each SCALE as v (v)}<span class="flex-1" style:background={fill(v)}
+                ></span>{/each}</span
+            >
+            <span>{m.strings_scale({ value: "120 %" })}</span>
+          </div>
+        {/if}
+      </section>
+    {/if}
   {/if}
 </div>

@@ -34,8 +34,7 @@
             class={[props["class"], "text-left", FEEDBACK]}
           >
             <Item.Media variant="icon"><item.icon /></Item.Media>
-            <Item.Content><Item.Title class="text-[15px]">{item.label()}</Item.Title></Item.Content
-            >
+            <Item.Content><Item.Title class="text-[15px]">{item.label()}</Item.Title></Item.Content>
             <Item.Actions>
               {#if item.admin}<Badge variant="secondary">{m.nav_admin()}</Badge>{/if}
               <ChevronRight class="size-4 text-muted-foreground" />

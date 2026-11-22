@@ -18,8 +18,7 @@
   const battery = $derived(plant["battery.power"]);
   const exporting = $derived(grid !== undefined && grid < 0);
 
-  const figure =
-    "rounded-sm hover:text-foreground";
+  const figure = "rounded-sm hover:text-foreground";
 </script>
 
 <span
@@ -39,7 +38,10 @@
     <Pressable class={figure} onclick={() => onselect("battery")}
       >{m.dash_battery()}
       <span class="font-semibold text-battery"
-        ><PowerNumber watts={Math.abs(battery)} unitClass="font-normal text-muted-foreground" /></span
+        ><PowerNumber
+          watts={Math.abs(battery)}
+          unitClass="font-normal text-muted-foreground"
+        /></span
       ></Pressable
     >
   {/if}

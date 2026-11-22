@@ -71,7 +71,10 @@
           go(parent(at));
         }}
       />
-      <section class="flex min-h-0 flex-1 flex-col overflow-y-auto scroll-fade-y" aria-label={title(at, plan)}>
+      <section
+        class="flex min-h-0 flex-1 flex-col overflow-y-auto scroll-fade-y"
+        aria-label={title(at, plan)}
+      >
         {#if at.kind === "section" && at.section === "strings"}
           <StringsLevel {session} />
           {@render check()}

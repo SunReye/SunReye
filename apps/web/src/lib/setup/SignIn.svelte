@@ -43,7 +43,10 @@
       {/if}
       <TextField
         label={m.password_label()}
-        type="password" autocomplete="current-password" required bind:value={password}
+        type="password"
+        autocomplete="current-password"
+        required
+        bind:value={password}
       />
       <Refusal {refused} />
       <Button type="submit" class="w-full">

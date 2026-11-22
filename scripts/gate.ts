@@ -85,7 +85,7 @@ const steps: readonly Step[] = [
   { run: [...web, "build"] },
   // Formatting
   { run: ["cargo", "fmt", "--all", "--check"], reads: RUST },
-  { run: ["oxfmt", "--check"], reads: ALL },
+  { run: ["rsvelte", "format", "--check"], reads: ALL },
   // Lints
   {
     run: ["cargo", "clippy", "--workspace", "--all-targets", "--locked", "--", "-D", "warnings"],
@@ -108,7 +108,7 @@ const steps: readonly Step[] = [
   { run: bans("pv-wasm"), reads: DENY },
   { run: ["cargo", "shear"], reads: SHEAR },
   // Types
-  { run: ["tsc", "-p", "tsconfig.json"], reads: JS },
+  { run: ["tsrs", "-p", "tsconfig.json"], reads: JS },
   { run: [...web, "check"], reads: JS },
   // The generated client types match the core's committed OpenAPI document (ADR 9).
   { run: [...web, "api:check"], reads: BOTH },

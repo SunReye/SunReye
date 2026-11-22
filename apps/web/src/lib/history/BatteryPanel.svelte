@@ -81,7 +81,12 @@
           colour: flowColour("battery"),
           kind: "points",
         },
-        { key: "trend", label: m.stats_capacity_trend(), colour: flowColour("battery"), kind: "line" },
+        {
+          key: "trend",
+          label: m.stats_capacity_trend(),
+          colour: flowColour("battery"),
+          kind: "line",
+        },
       ]}
       rules={nameplate === null ? [] : [{ y: nameplate, label: m.stats_capacity_nameplate() }]}
       fmt={kwh}

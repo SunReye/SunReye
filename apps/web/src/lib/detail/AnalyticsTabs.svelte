@@ -35,7 +35,9 @@
   const tabs = $derived(
     TABS.filter(
       ([t]) =>
-        t === "overview" || (t === "heat" && analytics.heat) || (t === "compare" && analytics.compare),
+        t === "overview" ||
+        (t === "heat" && analytics.heat) ||
+        (t === "compare" && analytics.compare),
     ),
   );
 

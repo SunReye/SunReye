@@ -14,7 +14,6 @@
   import { sceneOf } from "./scene.ts";
   import { scenesOf, type Chart } from "./series-chart.ts";
 
-
   let {
     chart,
     label,
@@ -34,9 +33,7 @@
 
   let width = $state(0);
 
-  const scene = $derived(
-    sceneOf(scenesOf(chart.lanes), { from: chart.from, to: chart.to, width }),
-  );
+  const scene = $derived(sceneOf(scenesOf(chart.lanes), { from: chart.from, to: chart.to, width }));
 
   /** The series each lane draws: a series added or removed builds the chart in again (ADR 21). */
   const drawn = $derived(
