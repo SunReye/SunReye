@@ -44,7 +44,9 @@
 
   /** Where the string leaves its inverter's limits, and the inputs that inverter has. */
   const warnings = $derived(
-    [...plan.cold, ...plan.sized].flatMap((warned) => (warned.string === index ? [warned.text] : [])),
+    [...plan.cold, ...plan.sized].flatMap((warned) =>
+      warned.string === index ? [warned.text] : [],
+    ),
   );
 
   const inputs = $derived(string && plan.inputs[string.device]);
@@ -89,7 +91,6 @@
   function sceneEdit(next: Draft["scene"]): void {
     onchange({ ...draft, scene: next });
   }
-
 </script>
 
 {#if building !== null}
@@ -104,13 +105,7 @@
     {onremove}
   />
 {:else if surrounding !== null}
-  <SurroundingLevel
-    kind={surrounding}
-    {index}
-    {scene}
-    onchange={sceneEdit}
-    {onremove}
-  />
+  <SurroundingLevel kind={surrounding} {index} {scene} onchange={sceneEdit} {onremove} />
 {:else if marker !== undefined}
   <EquipmentFieldset
     {marker}
@@ -146,13 +141,5 @@
     {onremove}
   />
 {:else if roof !== undefined}
-  <FaceLevel
-    {roof}
-    module={tapped}
-    {plan}
-    {moduleTypes}
-    {types}
-    {onchange}
-    {onremove}
-  />
+  <FaceLevel {roof} module={tapped} {plan} {moduleTypes} {types} {onchange} {onremove} />
 {/if}

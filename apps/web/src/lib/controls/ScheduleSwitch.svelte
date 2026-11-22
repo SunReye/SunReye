@@ -45,10 +45,7 @@
     {#snippet child({ props })}
       <label
         {...props}
-        class={[
-          props.class,
-          control.writable ? ["cursor-pointer", FEEDBACK] : "cursor-default",
-        ]}
+        class={[props.class, control.writable ? ["cursor-pointer", FEEDBACK] : "cursor-default"]}
       >
         <Item.Content>
           <Item.Title class="text-[15px] font-normal">{label}</Item.Title>

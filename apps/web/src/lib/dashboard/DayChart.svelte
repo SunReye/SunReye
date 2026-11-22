@@ -50,7 +50,9 @@
     y="forecast"
     xDomain={span}
     yDomain={[0, max]}
-    padding={bare ? { top: 3, bottom: 1, left: 0, right: 0 } : { top: 8, bottom: 20, left: 26, right: 6 }}
+    padding={bare
+      ? { top: 3, bottom: 1, left: 0, right: 0 }
+      : { top: 8, bottom: 20, left: 26, right: 6 }}
   >
     <Layer type="svg">
       <defs>

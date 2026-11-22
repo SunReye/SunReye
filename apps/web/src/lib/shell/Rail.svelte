@@ -136,12 +136,7 @@
     <ul class="flex flex-col gap-1" data-sidebar="menu">
       {#each items as item (item.route)}
         <li data-sidebar="menu-item">
-          <RailItem
-            {item}
-            active={current === item.route}
-            {expanded}
-            onnavigate={navigate}
-          />
+          <RailItem {item} active={current === item.route} {expanded} onnavigate={navigate} />
         </li>
       {/each}
     </ul>

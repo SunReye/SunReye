@@ -73,8 +73,7 @@
 
   const sky = $derived(day === undefined ? null : skyOf(day.weather));
 
-  const cell =
-    "flex min-w-0 flex-col items-start gap-0.5 px-3 py-3 text-left sm:px-4";
+  const cell = "flex min-w-0 flex-col items-start gap-0.5 px-3 py-3 text-left sm:px-4";
 
   const label = "max-w-full truncate text-xs font-medium text-muted-foreground";
   const figure = "text-xl leading-tight font-semibold tracking-tight whitespace-nowrap";

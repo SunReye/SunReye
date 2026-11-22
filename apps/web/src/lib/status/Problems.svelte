@@ -28,7 +28,11 @@
         {#each got as condition (condition.code)}
           <Item.Root class="rounded-none border-0" role="listitem">
             <Item.Media>
-              <CircleAlert role="img" aria-label={m.status_error()} class="size-4 text-destructive" />
+              <CircleAlert
+                role="img"
+                aria-label={m.status_error()}
+                class="size-4 text-destructive"
+              />
             </Item.Media>
             <Item.Content>
               <Item.Title class="text-[15px] font-normal">{problemText(condition.code)}</Item.Title>

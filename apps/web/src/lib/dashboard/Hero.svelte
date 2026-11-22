@@ -84,18 +84,18 @@
     {#if mode === "3d"}
       <CameraLock bind:locked />
     {/if}
-  <ViewToggle
-    shows={mode}
-    toggles={shown.toggles}
-    build={layout === null && admin}
-    onchoose={(view) => {
-      // The wish is still 3D after a failed load: asking again retries.
-      if (view === "3d" && failed) load.retry();
-      else {
-        choice = view;
-        localStorage.setItem(CHOICE, view);
-      }
-    }}
-  />
+    <ViewToggle
+      shows={mode}
+      toggles={shown.toggles}
+      build={layout === null && admin}
+      onchoose={(view) => {
+        // The wish is still 3D after a failed load: asking again retries.
+        if (view === "3d" && failed) load.retry();
+        else {
+          choice = view;
+          localStorage.setItem(CHOICE, view);
+        }
+      }}
+    />
   </div>
 </section>

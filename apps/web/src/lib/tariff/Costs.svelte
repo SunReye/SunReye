@@ -42,19 +42,19 @@
 {#snippet pane(got: Read | null)}
   {@const view = got && costsView(got, laid)}
   <BandChart
-      bands={view?.bands ?? []}
-      up={laid.up}
-      down={laid.down}
-      groups={laid.groups}
-      via={got?.via}
-      summary={{ title: got ? sumTitle(got) : "", ...(view?.total ?? laid.sides()) }}
-      fmt={money}
-      unit="€"
-      loading={!view}
-      label={laid.label}
-      ondrill={data.drill}
-      onbrush={data.brush}
-    />
+    bands={view?.bands ?? []}
+    up={laid.up}
+    down={laid.down}
+    groups={laid.groups}
+    via={got?.via}
+    summary={{ title: got ? sumTitle(got) : "", ...(view?.total ?? laid.sides()) }}
+    fmt={money}
+    unit="€"
+    loading={!view}
+    label={laid.label}
+    ondrill={data.drill}
+    onbrush={data.brush}
+  />
 {/snippet}
 
 <RangeRead {data}>

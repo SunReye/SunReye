@@ -9,7 +9,6 @@
 
   let { core }: { core: Core } = $props();
 
-
   // Read again once the admin enters an investment.
   let payback = $derived(core.payback());
 </script>
@@ -21,7 +20,9 @@
     {#if "problem" in answer}
       <div class="p-4"><ProblemAlert problem={answer.problem} /></div>
     {:else}
-      <div class="flex flex-col divide-y divide-border/60 border-y border-border/60 drill:border-y-0">
+      <div
+        class="flex flex-col divide-y divide-border/60 border-y border-border/60 drill:border-y-0"
+      >
         <InvestmentForm
           {core}
           investment={answer.investment ?? null}

@@ -37,7 +37,10 @@
     route,
     got: { range, label: `Tag ${range.from - TODAY}` },
     loading: false,
-    pending: (_: Readonly<{ range: Range }>, next: Range) => ({ range: next, label: `Nachbar ${next.from - TODAY}` }),
+    pending: (_: Readonly<{ range: Range }>, next: Range) => ({
+      range: next,
+      label: `Nachbar ${next.from - TODAY}`,
+    }),
   }));
 
   const band = (key: string, up: number): Band => ({

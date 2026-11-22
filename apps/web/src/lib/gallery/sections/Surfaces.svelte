@@ -62,7 +62,9 @@
 </Demo>
 
 <Demo name="pressable">
-  <Pressable class="flex w-64 items-baseline justify-between border px-4 py-3 hover:bg-foreground/[0.04]">
+  <Pressable
+    class="flex w-64 items-baseline justify-between border px-4 py-3 hover:bg-foreground/[0.04]"
+  >
     <span class="text-sm text-muted-foreground">Battery</span>
     <span class="font-semibold tabular-nums">1.2 kW</span>
   </Pressable>

@@ -39,10 +39,7 @@
 <form class="flex flex-col" onsubmit={save}>
   <ScheduleFields legend={m.tariff_import()} bind:schedule={draft.import} />
   <ScheduleFields legend={m.tariff_export()} bind:schedule={draft.export} />
-  <TermsFields
-    bind:standingCharge={draft.standingCharge}
-    bind:appliesFrom={draft.appliesFrom}
-  />
+  <TermsFields bind:standingCharge={draft.standingCharge} bind:appliesFrom={draft.appliesFrom} />
   <!-- A save is confirmed by a toast; a refusal stays here, beside what has to change. -->
   {#if answer !== undefined && "problem" in answer}
     <div class="px-4 pt-3"><ProblemAlert problem={answer.problem} /></div>

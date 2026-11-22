@@ -16,7 +16,8 @@
           <Item.Description class="line-clamp-none [&_a]:underline [&_a]:underline-offset-2">
             <a href="https://sketchfab.com/3d-models/61ddcbdbd3854c239e0c95bf60b00022"
               >2024 Tesla Model 3 + Interior</a
-            > {m.about_car_by()}
+            >
+            {m.about_car_by()}
             <a href="https://sketchfab.com/tonielpro520">tonielpro520</a>,
             <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>; {m.about_car_changed()}.
           </Item.Description>

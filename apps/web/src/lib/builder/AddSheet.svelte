@@ -39,8 +39,10 @@
 
 <!-- Over the 3D canvas: the sheet and its groups are canvas chips, without blur (ADR 21). -->
 <ResponsiveSheet bind:open label={m.builder_add()} class="canvas-chip">
-  <div class="flex min-h-0 touch-pan-y flex-col gap-3 overflow-y-auto px-4 pt-1 pb-2 scroll-fade-y no-scrollbar"
-    data-vaul-no-drag>
+  <div
+    class="flex min-h-0 touch-pan-y flex-col gap-3 overflow-y-auto px-4 pt-1 pb-2 scroll-fade-y no-scrollbar"
+    data-vaul-no-drag
+  >
     <h2 class="px-1 text-lg font-semibold">{m.builder_add()}</h2>
     {#each groups as { section, adds } (section)}
       <section aria-labelledby="add-{section}" class="flex flex-col gap-1.5">
@@ -61,7 +63,9 @@
                   }}
                 >
                   <Item.Media variant="icon"><Plus /></Item.Media>
-                  <Item.Content><Item.Title class="text-[15px]">{add.label}</Item.Title></Item.Content>
+                  <Item.Content
+                    ><Item.Title class="text-[15px]">{add.label}</Item.Title></Item.Content
+                  >
                 </Pressable>
               {/snippet}
             </Item.Root>

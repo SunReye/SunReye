@@ -53,9 +53,7 @@
 </script>
 
 <!-- A column, so a card that appears or leaves glides what stands below (ADR 21); in two columns it does so at once. -->
-<aside
-  class="flex flex-col gap-4 sm:max-lg:grid sm:max-lg:grid-cols-2 sm:max-lg:content-start"
->
+<aside class="flex flex-col gap-4 sm:max-lg:grid sm:max-lg:grid-cols-2 sm:max-lg:content-start">
   <BreakdownCard {label} rows={shown.breakdown} against={shown.against} {loading} />
 
   {#if shown.peaks.length > 0 && !loading}

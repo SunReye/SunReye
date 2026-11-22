@@ -91,7 +91,10 @@
 
   /** The range's forecast as History's forecast chart sums it: so far, and still expected. */
   function summed(ps: readonly Weighed[]) {
-    const [sofar, rest] = ps.reduce(([a, b], p) => [a + (p?.sofar ?? 0), b + (p?.rest ?? 0)], [0, 0]);
+    const [sofar, rest] = ps.reduce(
+      ([a, b], p) => [a + (p?.sofar ?? 0), b + (p?.rest ?? 0)],
+      [0, 0],
+    );
 
     return { mark: sofar > 0 ? sofar : null, ghost: rest > 0 ? rest : null };
   }
@@ -163,26 +166,26 @@
 {#if data.failed}
   <LoadFailed text={m.detail_error()} refused={data.refused} onretry={data.retry} />
 {:else}
-<BandChart
-  bands={view.bands}
-  up={view.up ?? meta}
-  down={view.down}
-  via={view.via}
-  markLabel={view.forecast ? m.range_forecast() : ""}
-  ghostLabel={view.forecast ? m.forecast_expected() : ""}
-  summary={{
-    title,
-    ...view.sum,
-    mark: view.forecast?.mark ?? null,
-    ghost: view.forecast?.ghost ?? null,
-  }}
-  fmt={reads.fmt}
-  unit={reads.unit}
-  loading={view.loading}
-  {estimated}
-  label={m.history_chart({ series: meta[0]!.label })}
-  ondrill={data.drill}
-  onbrush={data.brush}
-  {onread}
-/>
+  <BandChart
+    bands={view.bands}
+    up={view.up ?? meta}
+    down={view.down}
+    via={view.via}
+    markLabel={view.forecast ? m.range_forecast() : ""}
+    ghostLabel={view.forecast ? m.forecast_expected() : ""}
+    summary={{
+      title,
+      ...view.sum,
+      mark: view.forecast?.mark ?? null,
+      ghost: view.forecast?.ghost ?? null,
+    }}
+    fmt={reads.fmt}
+    unit={reads.unit}
+    loading={view.loading}
+    {estimated}
+    label={m.history_chart({ series: meta[0]!.label })}
+    ondrill={data.drill}
+    onbrush={data.brush}
+    {onread}
+  />
 {/if}

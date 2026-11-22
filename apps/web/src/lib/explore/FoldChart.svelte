@@ -120,12 +120,7 @@
     </div>
 
     <!-- The table below holds every figure for a keyboard and a screen reader. -->
-    <div
-      class="relative min-w-0 flex-1 touch-pan-y"
-      role="img"
-      aria-label={label}
-      {...reading.on}
-    >
+    <div class="relative min-w-0 flex-1 touch-pan-y" role="img" aria-label={label} {...reading.on}>
       {#if read}
         <div
           class="pointer-events-none absolute inset-y-0 bg-foreground/[0.08]"
@@ -134,9 +129,7 @@
         ></div>
       {/if}
       <ChartEntrance build="draw" ready={bars.length > 0} class="absolute inset-0">
-        <canvas
-          class="absolute inset-0 size-full"
-          {@attach (canvas) => paintFold(canvas, painting)}
+        <canvas class="absolute inset-0 size-full" {@attach (canvas) => paintFold(canvas, painting)}
         ></canvas>
       </ChartEntrance>
     </div>

@@ -12,7 +12,9 @@
 <span
   class="grid size-9 shrink-0 place-items-center rounded-md border-2"
   style:border-color={active ? accent : "var(--border)"}
-  style:background-color={active ? `color-mix(in oklab, ${accent} 12%, var(--card))` : "var(--card)"}
+  style:background-color={active
+    ? `color-mix(in oklab, ${accent} 12%, var(--card))`
+    : "var(--card)"}
   style:color={active ? accent : "var(--muted-foreground)"}
   aria-hidden="true"
 >

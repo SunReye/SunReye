@@ -51,7 +51,9 @@
     const { name, transport, host, port } = fields;
 
     const changed = Object.entries(fields.secrets).flatMap(([key, value]) =>
-      value !== undefined && secretsOf(transport).some((secret) => secret === key) ? [[key, value] as const] : [],
+      value !== undefined && secretsOf(transport).some((secret) => secret === key)
+        ? [[key, value] as const]
+        : [],
     );
 
     let made: ConnectionDraft = { name: name.trim(), transport, host: host.trim(), port };
@@ -126,7 +128,12 @@
 </script>
 
 <div class="flex flex-col gap-3 p-4">
-  <TextField required autocomplete="off" label={m.settings_connection_name()} bind:value={fields.name} />
+  <TextField
+    required
+    autocomplete="off"
+    label={m.settings_connection_name()}
+    bind:value={fields.name}
+  />
   <SelectField
     field
     label={m.devices_endpoint_transport()}
@@ -134,7 +141,13 @@
     options={CHOICES}
     onchange={pick}
   />
-  <TextField required autocomplete="off" label={m.devices_endpoint_host()} placeholder="192.168.1.40" bind:value={fields.host} />
+  <TextField
+    required
+    autocomplete="off"
+    label={m.devices_endpoint_host()}
+    placeholder="192.168.1.40"
+    bind:value={fields.host}
+  />
   <div class="overflow-hidden rounded-md border border-border/60">
     <ValueRow
       edit={PORT}
@@ -154,7 +167,9 @@
     {/if}
   </div>
   {#if fields.transport === "mqtt"}
-    <TextField required autocomplete="off"
+    <TextField
+      required
+      autocomplete="off"
       label={m.settings_connection_topic_root()}
       placeholder="evcc"
       bind:value={fields.topicRoot}

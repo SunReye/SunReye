@@ -34,13 +34,7 @@
 </script>
 
 <Level back={m.settings_devices()} title={device.name} {onback}>
-  <DeviceForm
-    {core}
-    {connections}
-    {device}
-    readAs={readAs(profiles, device)}
-    onsaved={onchanged}
-  />
+  <DeviceForm {core} {connections} {device} readAs={readAs(profiles, device)} onsaved={onchanged} />
   <RemoveConfirm
     ask={m.settings_device_remove()}
     name={device.name}

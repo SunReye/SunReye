@@ -7,13 +7,13 @@
 	places the card in its column (`shrink-0`, `min-w-0`) goes on it.
 -->
 <script lang="ts">
-	import type { Snippet } from "svelte";
-	import type { ClassValue } from "svelte/elements";
-	import { presence } from "./presence.ts";
+  import type { Snippet } from "svelte";
+  import type { ClassValue } from "svelte/elements";
+  import { presence } from "./presence.ts";
 
-	let { class: className, children }: { class?: ClassValue; children: Snippet } = $props();
+  let { class: className, children }: { class?: ClassValue; children: Snippet } = $props();
 </script>
 
 <div data-slot="card-presence" class={className} transition:presence>
-	{@render children()}
+  {@render children()}
 </div>

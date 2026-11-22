@@ -48,10 +48,14 @@
 
   // Only `full` pays for the tile's glow and tint transitions: one 34 px blur per node.
   const boxTransition = $derived(
-    tier === "full" ? "transition-[box-shadow,border-color,background-color] duration-(--motion-flow-tile)" : "",
+    tier === "full"
+      ? "transition-[box-shadow,border-color,background-color] duration-(--motion-flow-tile)"
+      : "",
   );
 
-  const gaugeEase = $derived(tier === "full" ? "transition:stroke-dashoffset var(--motion-flow-tile) linear" : "");
+  const gaugeEase = $derived(
+    tier === "full" ? "transition:stroke-dashoffset var(--motion-flow-tile) linear" : "",
+  );
 
   const boxStyle = $derived.by(() => {
     const border = hasSoc ? "transparent" : active ? node.accent : "var(--border)";

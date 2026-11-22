@@ -60,24 +60,24 @@
 {/if}
 
 {#snippet list()}
-    <Command.Root>
-      <Command.Input placeholder={search} />
-      <Command.List>
-        <Command.Empty>{none}</Command.Empty>
-        <Command.Group>
-          {#each options as option (option)}
-            <Command.Item
-              value={option}
-              onSelect={() => {
-                value = option;
-                open = false;
-              }}
-            >
-              {option}
-              <Check class={["ml-auto", option !== value && "invisible"]} />
-            </Command.Item>
-          {/each}
-        </Command.Group>
-      </Command.List>
-    </Command.Root>
+  <Command.Root>
+    <Command.Input placeholder={search} />
+    <Command.List>
+      <Command.Empty>{none}</Command.Empty>
+      <Command.Group>
+        {#each options as option (option)}
+          <Command.Item
+            value={option}
+            onSelect={() => {
+              value = option;
+              open = false;
+            }}
+          >
+            {option}
+            <Check class={["ml-auto", option !== value && "invisible"]} />
+          </Command.Item>
+        {/each}
+      </Command.Group>
+    </Command.List>
+  </Command.Root>
 {/snippet}

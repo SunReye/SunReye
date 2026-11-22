@@ -58,7 +58,8 @@
       <LoadFailed
         text={m.explore_chart_unread()}
         refused={x.refused}
-        onretry={() => void x.load()} />
+        onretry={() => void x.load()}
+      />
     </div>
   {:else}
     <Pane

@@ -27,7 +27,11 @@
   {#snippet child({ props })}
     <label
       {...props}
-      class={[props.class, "flex-nowrap", disabled ? "cursor-default" : ["cursor-pointer", FEEDBACK]]}
+      class={[
+        props.class,
+        "flex-nowrap",
+        disabled ? "cursor-default" : ["cursor-pointer", FEEDBACK],
+      ]}
     >
       <Item.Content class="min-w-0">
         <Item.Title class="text-[15px] leading-snug font-normal text-wrap">{label}</Item.Title>

@@ -65,7 +65,8 @@
   const approx = (v: number) => `≈ ${fmt(v)}`;
 
   /** At the row's right edge on a phone, beside its key from 520 px. */
-  const VALUE = "ml-auto pl-3 font-semibold whitespace-nowrap tabular-nums @[520px]:ml-0 @[520px]:pl-0";
+  const VALUE =
+    "ml-auto pl-3 font-semibold whitespace-nowrap tabular-nums @[520px]:ml-0 @[520px]:pl-0";
 
   const rows = $derived<Row[]>(
     legend.rows.map((r) =>
@@ -128,7 +129,9 @@
   >
     {#if r.name}
       <!-- Named on a phone too, on a line of its own: which side of the baseline is what. -->
-      <dt class="text-[11px] font-medium text-muted-foreground @[520px]:w-[4.75rem] @[520px]:shrink-0 @[520px]:text-xs @[520px]:font-normal">
+      <dt
+        class="text-[11px] font-medium text-muted-foreground @[520px]:w-[4.75rem] @[520px]:shrink-0 @[520px]:text-xs @[520px]:font-normal"
+      >
         {r.name}
       </dt>
     {/if}
@@ -149,12 +152,15 @@
   </dl>
 {/snippet}
 
-<div class="flex min-h-[4.5rem] flex-col gap-1.5 pointer-coarse:min-h-[5.25rem] @[520px]:gap-1" aria-live="polite">
+<div
+  class="flex min-h-[4.5rem] flex-col gap-1.5 pointer-coarse:min-h-[5.25rem] @[520px]:gap-1"
+  aria-live="polite"
+>
   <div class="flex h-7 items-center justify-between gap-3 pointer-coarse:h-10">
     <p class="min-w-0 truncate text-base font-semibold tabular-nums">
       {legend.title}{#if legend.status}<span class="font-normal text-muted-foreground"
-        >&nbsp;· {legend.status}</span
-      >{/if}
+          >&nbsp;· {legend.status}</span
+        >{/if}
     </p>
     {#if legend.open}
       <Button

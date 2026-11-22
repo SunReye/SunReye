@@ -110,9 +110,7 @@
         size="sm"
         variant="outline"
         aria-label={m.perf_ratio()}
-        bind:value={
-          () => String(perf.trial.pixelRatio ?? ""), (value) => pick("pixelRatio", value)
-        }
+        bind:value={() => String(perf.trial.pixelRatio ?? ""), (value) => pick("pixelRatio", value)}
       >
         {#each RATIOS as ratio (ratio)}
           <ToggleGroup.Item value={ratio} class="h-6 px-1.5 text-[10px]">{ratio}</ToggleGroup.Item>

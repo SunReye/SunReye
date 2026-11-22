@@ -25,9 +25,7 @@
   >
     {#each figures as f (f.key)}
       <li class="flex min-w-0 items-baseline gap-1.5">
-        <span
-          class="size-2 shrink-0 translate-y-[-1px] rounded-[1px]"
-          style:background={f.colour}
+        <span class="size-2 shrink-0 translate-y-[-1px] rounded-[1px]" style:background={f.colour}
         ></span>
         <span class="min-w-0 truncate text-muted-foreground">
           <span class="text-foreground">{f.label}</span>{f.device === null ? "" : ` · ${f.device}`}

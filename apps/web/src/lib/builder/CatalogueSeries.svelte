@@ -33,7 +33,12 @@
 <Item.Group aria-labelledby="{uid}-series" class="mt-1 gap-0 divide-y divide-border/60">
   {#each series.modules as entry (entry.key)}
     <DrillRow
-      group={{ id: entry.key, label: entry.datasheet.name, summary: entry.summary, disabled: adding }}
+      group={{
+        id: entry.key,
+        label: entry.datasheet.name,
+        summary: entry.summary,
+        disabled: adding,
+      }}
       onclick={() => {
         onpick(entry.datasheet);
       }}

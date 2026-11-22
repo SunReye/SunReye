@@ -32,7 +32,6 @@
 
   /** Under the periods: in fullscreen all the window leaves, so their row is measured. */
   const rest = $derived(props.full === true && head > 0 ? height - head - GAP : height - 44);
-
 </script>
 
 {#snippet said(title: string, text: string)}

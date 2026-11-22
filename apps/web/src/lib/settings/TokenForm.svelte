@@ -38,7 +38,13 @@
   }
 </script>
 
-<AccessForm action={m.access_add_token()} icon={KeyRound} {refused} onsubmit={() => void submit()} {oncancel}>
+<AccessForm
+  action={m.access_add_token()}
+  icon={KeyRound}
+  {refused}
+  onsubmit={() => void submit()}
+  {oncancel}
+>
   <label class="flex flex-col gap-1.5 text-sm">
     {m.access_name()}
     <Input required autocomplete="off" placeholder="evcc" bind:value={name} />

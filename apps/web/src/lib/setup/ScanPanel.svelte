@@ -40,7 +40,9 @@
     <TextField
       label={m.devices_subnet()}
       class="flex-1"
-      placeholder="192.168.1.0/24" autocomplete="off" bind:value={subnet}
+      placeholder="192.168.1.0/24"
+      autocomplete="off"
+      bind:value={subnet}
     />
     <!-- Primary until it found something: then adding is. -->
     <Button

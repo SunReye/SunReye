@@ -153,8 +153,16 @@
     class="grid shrink-0 grid-cols-2 gap-6 border-t border-border/60 px-4 py-3 text-left"
     onclick={() => onopen("autarky")}
   >
-    <Meter label={m.dash_autarky()} value={day?.today.autarky ?? null} colour={flowColour("battery")} />
-    <Meter label={m.dash_self_use()} value={day?.today.selfUse ?? null} colour={flowColour("solar")} />
+    <Meter
+      label={m.dash_autarky()}
+      value={day?.today.autarky ?? null}
+      colour={flowColour("battery")}
+    />
+    <Meter
+      label={m.dash_self_use()}
+      value={day?.today.selfUse ?? null}
+      colour={flowColour("solar")}
+    />
   </Pressable>
 
   <DayTile {day} hours={clock} onopen={() => onopen("production")} />

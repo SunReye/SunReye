@@ -91,7 +91,9 @@
     };
 
     const answer =
-      device === undefined ? await core.addDevice(draft) : await core.changeDevice(device.id, draft);
+      device === undefined
+        ? await core.addDevice(draft)
+        : await core.changeDevice(device.id, draft);
 
     refused = "problem" in answer ? answered(answer) : undefined;
 

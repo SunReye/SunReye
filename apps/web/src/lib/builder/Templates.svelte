@@ -73,7 +73,10 @@
                 onpick(template === "empty" ? undefined : fill(draft, template));
               }}
             >
-              <span class="flex h-32 items-center justify-center bg-muted/40 p-3" aria-hidden="true">
+              <span
+                class="flex h-32 items-center justify-center bg-muted/40 p-3"
+                aria-hidden="true"
+              >
                 {#if picture === undefined}
                   <Plus class="size-8 text-muted-foreground" />
                 {:else}

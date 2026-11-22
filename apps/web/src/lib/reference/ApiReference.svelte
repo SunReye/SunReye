@@ -44,7 +44,14 @@
   function scalar(document: ApiDocument) {
     return (node: HTMLElement) => {
       const before = new Set(globalThis.document.body.classList);
-      const reference = createApiReference(node, settings(document, untrack(() => dark)));
+
+      const reference = createApiReference(
+        node,
+        settings(
+          document,
+          untrack(() => dark),
+        ),
+      );
 
       // Scalar reads its forced mode only when it mounts; its styles follow the body's class.
       $effect(() => {

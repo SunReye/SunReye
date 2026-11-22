@@ -36,7 +36,9 @@
   const face = $derived(
     choices(
       m.field_roof_face(),
-      roofs.map(({ block, face: index }) => m.builder_face_item({ block: block + 1, face: index + 1 })),
+      roofs.map(({ block, face: index }) =>
+        m.builder_face_item({ block: block + 1, face: index + 1 }),
+      ),
     ),
   );
 </script>

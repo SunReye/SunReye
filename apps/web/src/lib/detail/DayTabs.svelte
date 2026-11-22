@@ -31,7 +31,9 @@
 
   const HOUR = 3_600_000;
 
-  const weekday = $derived(new Intl.DateTimeFormat(getLocale(), { weekday: "long", timeZone: zone }));
+  const weekday = $derived(
+    new Intl.DateTimeFormat(getLocale(), { weekday: "long", timeZone: zone }),
+  );
 
   /** Each day's tab: today, then the weekdays after it. */
   const tabs = $derived(

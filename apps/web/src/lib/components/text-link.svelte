@@ -14,10 +14,11 @@
     onward = false,
     class: className,
     children,
-  }: (
-    | { href: string; onclick?: undefined }
-    | { onclick: () => void; href?: undefined }
-  ) & { onward?: boolean; class?: string; children: Snippet } = $props();
+  }: ({ href: string; onclick?: undefined } | { onclick: () => void; href?: undefined }) & {
+    onward?: boolean;
+    class?: string;
+    children: Snippet;
+  } = $props();
 
   // Pressable's own ring, so both forms share it.
   const look = $derived([

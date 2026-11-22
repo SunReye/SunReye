@@ -21,7 +21,6 @@
   } = $props();
 
   const uid = $props.id();
-
 </script>
 
 <h3 id="{uid}-types" class="px-4 pt-3 pb-1 text-xs font-medium text-muted-foreground">
@@ -48,8 +47,5 @@
     }}
     onclick={oncatalogue}
   />
-  <DrillRow
-    group={{ id: "new", label: m.builder_new_module_type(), icon: Plus }}
-    onclick={onnew}
-  />
+  <DrillRow group={{ id: "new", label: m.builder_new_module_type(), icon: Plus }} onclick={onnew} />
 </Item.Group>

@@ -66,7 +66,12 @@
       <TrendChart
         {rows}
         series={[
-          { key: "saved", label: m.stats_payback_so_far(), colour: flowColour("solar"), kind: "area" },
+          {
+            key: "saved",
+            label: m.stats_payback_so_far(),
+            colour: flowColour("solar"),
+            kind: "area",
+          },
           {
             key: "projected",
             label: m.stats_payback_at_pace(),

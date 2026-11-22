@@ -55,8 +55,7 @@
   <div
     class={[
       "relative min-h-dvh",
-      shell === "bar" &&
-        "pb-(--bar-clear) [--bar-clear:calc(84px+env(safe-area-inset-bottom))]",
+      shell === "bar" && "pb-(--bar-clear) [--bar-clear:calc(84px+env(safe-area-inset-bottom))]",
     ]}
     style:padding-left="{railed ? GUTTER : 0}px"
   >
@@ -67,7 +66,12 @@
     <div class="grid overflow-x-clip">
       {#key current}
         <!-- No landmark: each screen brings its own `main`. -->
-        <div class="col-start-1 row-start-1 min-w-0" data-screen in:enter={current} out:leave={current}>
+        <div
+          class="col-start-1 row-start-1 min-w-0"
+          data-screen
+          in:enter={current}
+          out:leave={current}
+        >
           {@render children()}
         </div>
       {/key}

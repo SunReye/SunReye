@@ -29,12 +29,7 @@
 {#if toggles}
   <Segmented options={VIEWS} value={shows} label={m.dash_view()} canvas onchange={onchoose} />
 {:else if build}
-  <Button
-    variant="outline"
-    size="sm"
-    class="canvas-chip"
-    href="#/builder"
-  >
+  <Button variant="outline" size="sm" class="canvas-chip" href="#/builder">
     <Box data-icon="inline-start" />
     {m.dash_build()}
   </Button>

@@ -18,7 +18,13 @@
   } = $props();
 
   // Quarter hours, as spot slots and time-of-use tariffs run.
-  const edit = $derived<Editable>({ kind: "time", name: label, min: 0, max: 24 * 60 - 15, step: 15 });
+  const edit = $derived<Editable>({
+    kind: "time",
+    name: label,
+    min: 0,
+    max: 24 * 60 - 15,
+    step: 15,
+  });
 
   const minutes = $derived.by(() => {
     const [h = 0, mm = 0] = value.split(":").map(Number);

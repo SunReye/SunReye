@@ -79,14 +79,14 @@
         close();
       }}
     >
-    <label class="flex flex-col gap-1.5 text-sm">
-      {m.access_name()}
-      <Input required autocomplete="off" bind:value={name} />
-    </label>
-    <label class="flex flex-col gap-1.5 text-sm">
-      {m.access_password()}
-      <Input type="password" required autocomplete="new-password" bind:value={password} />
-    </label>
+      <label class="flex flex-col gap-1.5 text-sm">
+        {m.access_name()}
+        <Input required autocomplete="off" bind:value={name} />
+      </label>
+      <label class="flex flex-col gap-1.5 text-sm">
+        {m.access_password()}
+        <Input type="password" required autocomplete="new-password" bind:value={password} />
+      </label>
     </AccessForm>
   {/snippet}
 </AccessSection>

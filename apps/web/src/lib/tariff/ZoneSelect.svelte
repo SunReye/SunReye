@@ -30,11 +30,16 @@
   }
 </script>
 
-<div class="flex items-center justify-between gap-3 border-y border-border/60 px-4 py-3 text-[15px]">
+<div
+  class="flex items-center justify-between gap-3 border-y border-border/60 px-4 py-3 text-[15px]"
+>
   <span id="{id}-zone">{m.tariff_zone()}</span>
   <div class="shrink-0">
     <Segmented
-      options={[["none", m.tariff_zone_none()], ...ZONES.map((option) => [option, option] as const)]}
+      options={[
+        ["none", m.tariff_zone_none()],
+        ...ZONES.map((option) => [option, option] as const),
+      ]}
       value={zone}
       labelledby="{id}-zone"
       onchange={(next) => void choose(next)}

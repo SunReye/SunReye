@@ -32,14 +32,9 @@
 
   let refused = $state.raw<Problem>();
 
-  const points = $derived(
-    edited ??
-      readings.proposed(devices),
-  );
+  const points = $derived(edited ?? readings.proposed(devices));
 
-  const unclaimed = $derived(
-    points === undefined ? [] : readings.left(points, devices),
-  );
+  const unclaimed = $derived(points === undefined ? [] : readings.left(points, devices));
 
   const index = $derived(points?.findIndex(({ claims }) => claims === picked) ?? -1);
 

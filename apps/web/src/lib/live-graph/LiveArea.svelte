@@ -13,12 +13,7 @@
   import { valueDomain } from "./domain.ts";
   import { downsample, pointBudget } from "./downsample.ts";
   import { liveCursor } from "./live-cursor.svelte.ts";
-  import {
-    bufferStart,
-    pixelQuantum,
-    sampleInterval,
-    sampleUnder,
-  } from "./live-window.ts";
+  import { bufferStart, pixelQuantum, sampleInterval, sampleUnder } from "./live-window.ts";
   import LiveLegend from "./LiveLegend.svelte";
   import LiveMarks from "./LiveMarks.svelte";
   import { WINDOW_MS, type LivePoint } from "./series.ts";
@@ -131,14 +126,7 @@
   <ChartEntrance build="fade" ready={plotWidth >= 24 && data.length > 1} class="size-full">
     <!-- Held until the box is measured: building every scale at width 0 is thrown away a frame later. -->
     {#if plotWidth >= 24 && data.length > 1}
-      <Chart
-        {data}
-        x="t"
-        {xDomain}
-        y="v"
-        {yDomain}
-        padding={PADDING}
-      >
+      <Chart {data} x="t" {xDomain} y="v" {yDomain} padding={PADDING}>
         <Layer type="svg">
           <LiveMarks
             {lastT}

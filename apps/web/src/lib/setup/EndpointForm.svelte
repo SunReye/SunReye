@@ -44,7 +44,10 @@
     <p class="text-sm text-muted-foreground">{m.devices_endpoint()}</p>
     <TextField
       label={m.devices_endpoint_host()}
-      required autocomplete="off" placeholder="192.168.1.40" bind:value={host}
+      required
+      autocomplete="off"
+      placeholder="192.168.1.40"
+      bind:value={host}
     />
     <div class="overflow-hidden rounded-md border border-border/60">
       <ValueRow

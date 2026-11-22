@@ -35,12 +35,16 @@
   // The archives under `/share`, then the uploaded one; an upload reads `/share` again.
   let archives = $derived.by(() => {
     const upload: readonly Archive[] =
-      uploaded === undefined ? [] : [{ path: "upload", label: m.import_uploaded(), devices: uploaded }];
+      uploaded === undefined
+        ? []
+        : [{ path: "upload", label: m.import_uploaded(), devices: uploaded }];
 
-    return core.importFiles().then((files): readonly Archive[] => [
-      ...("problem" in files ? [] : files.map((file) => ({ ...file, label: file.path }))),
-      ...upload,
-    ]);
+    return core
+      .importFiles()
+      .then((files): readonly Archive[] => [
+        ...("problem" in files ? [] : files.map((file) => ({ ...file, label: file.path }))),
+        ...upload,
+      ]);
   });
 
   function pick(options: readonly Archive[], next: string): void {
