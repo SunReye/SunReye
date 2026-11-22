@@ -31,7 +31,7 @@ test("a defined profile loads in the WASM without a warning", () => {
   expect(wasm.lint(JSON.stringify(profile))).toEqual([]);
 });
 
-// The `@ts-expect-error` lines are the autocomplete proof: `tsc` in the gate fails if the generated
+// The `@ts-expect-error` lines are the autocomplete proof: `tsrs` in the gate fails if the generated
 // types stop rejecting a misspelt field.
 test("a misspelt field fails to compile and to load", () => {
   const top = defineProfile({
