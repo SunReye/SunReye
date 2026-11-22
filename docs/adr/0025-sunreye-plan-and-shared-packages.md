@@ -1,6 +1,6 @@
 # 25. SunReye Plan and the shared packages
 
-Status: accepted (2026-11-19), amended (2026-11-20): design accepted; the packages' extraction blocks the first release, publishing follows Plan's
+Status: accepted (2026-11-19), amended (2026-11-20, 2026-11-23): design accepted; the packages' extraction blocks the first release, publishing follows Plan's
 
 ## Context
 
@@ -25,6 +25,8 @@ Installers plan a PV plant before it exists, and the homeowner monitors it after
 The builder moves out of `apps/web` into `packages/builder` before the first release, so Home is its first consumer and Plan its second. Publishing to npm starts when Plan ships.
 
 **Until then** (2026-11-20). Plan's checkout stands beside this repository's in one folder, which is no workspace of its own, and Plan depends on the packages by path. On a developer's machine they are linked, so an edit here shows in Plan without an install. Plan's gate checks this repository out at a commit Plan names and builds the packages from it, the `pv` crate's browser build included. Each repository keeps its own root, lockfile and gate, and a change to a package is committed here, never from Plan. A package is built as it will be published, so moving to npm changes Plan's dependency lines and nothing else.
+
+**Crates as well as packages (2026-11-23).** Plan's whole engine is Rust (Plan's ADR 3), and the engines only a planner needs are private crates in Plan's repository that depend on this repository's `pv`, `economics` and catalogue crates by path, as Plan's packages do. So the crates' public interfaces are a contract with a second consumer too. Whatever the builder gains for Plan (the simulation's views: moving shadows over the year, irradiance on a face, a module's shading loss, the sun's path, the loss chain) Home's builder shows as well; imagery and building data do not come with it.
 
 **Licence.** Everything here stays AGPL-3.0-only. The owner, the sole author, also offers the shared crates and packages under a commercial licence, which Plan uses. An outside contribution is accepted only under a contributor licence agreement that keeps both licences possible.
 

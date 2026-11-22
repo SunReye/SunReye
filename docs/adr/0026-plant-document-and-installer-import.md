@@ -1,6 +1,6 @@
 # 26. Plant document and installer import
 
-Status: accepted (2026-11-19)
+Status: accepted (2026-11-19), amended (2026-11-23)
 
 ## Context
 
@@ -12,16 +12,16 @@ A plant planned in SunReye Plan (ADR 25) should arrive in Home configured: the h
 
 - the plant's location, rounded to 0.01° as the core stores it (ADR 17). The address stays in Plan;
 - module types, inverter types and battery types, copied by value (ADRs 17, 27);
-- the PV layout with its scene (ADRs 17, 20);
+- the PV layout with its scene (ADRs 17, 20), the equipment markers Plan placed included;
 - the devices: each a name, a kind, and its profile by id where one exists (ADR 5), never a connection, an address or a secret;
-- optionally a tariff (ADR 12);
+- optionally a tariff (ADR 12): Plan sends the one its offer was calculated with, so the app's first savings figure matches the offer;
 - credits: one line per open-data source the geometry was taken from, each its Land, licence and year.
 
 **Unsigned.** A plant document is admin input. The core validates it exactly as it validates a layout, a scene and a tariff entered by hand, and it can do nothing the admin could not type. No key is added to ADR 8's.
 
 **Import.** First-run setup offers "Import from installer" beside the setup scan (ADR 6); a plant with no devices and no layout may import later from the settings. The admin enters a handoff code or scans its QR code, and the core fetches the document over HTTPS from Plan, once, on that action; or the admin uploads the document as a file. Nothing is fetched on a timer. The import is one logged configuration change (ADR 19): it stores the location, the types, the devices and the layout, the layout applying from the instant of import.
 
-**Handoff code.** Issued by a person in Plan for one design of one project. It is single-purpose, expires after 30 days and names no install. Plan logs every fetch.
+**Handoff code.** Issued by a person in Plan for a project's as-built design (2026-11-23): the design the customer chose, corrected to what was installed, with the house as found on site. The installer imports it on site at commissioning; a homeowner importing alone later works the same. It is single-purpose, expires after 30 days and names no install. Plan logs every fetch.
 
 **Pending device.** A device without a connection (ADR 6, amended). It has its id, name, kind and profile, so strings and equipment markers name it, and it is polled by nothing and stores nothing. The app shows it as waiting for its connection; giving it one makes it an ordinary device with the same id. A device whose inverter has no profile stays pending until a profile exists: it is planned, not yet monitorable (ADR 27).
 

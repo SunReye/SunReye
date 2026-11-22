@@ -1,6 +1,6 @@
 # 17. Solar forecast and string model
 
-Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12, 2026-11-13, 2026-11-15, 2026-11-16, 2026-11-17, 2026-11-18, 2026-11-19, 2026-11-20)
+Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12, 2026-11-13, 2026-11-15, 2026-11-16, 2026-11-17, 2026-11-18, 2026-11-19, 2026-11-20, 2026-11-23)
 
 ## Context
 
@@ -47,7 +47,18 @@ Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12, 2026-11-13, 2026
 
 ## Open
 
-- Yield an installer can put in an offer (2026-11-19, ADR 25), after the first release: diffuse shading by a sky-view factor per substring; a horizon profile; soiling and snow; degradation per year; mismatch, cable and inverter-efficiency losses; a reference weather year and P50/P90 from the spread of a multi-year archive; and reference plants checked against pvlib and PVsyst, committed as fixtures. Each changes no stored contract. The licence of the reference year's source is unchecked.
+- Yield an installer can put in an offer (2026-11-19, ADR 25; 2026-11-23). SunReye Plan prints no yearly yield before the crate has all of this, so it is built before Plan's first offer, not after the first release:
+  - a run over a year, per quarter-hour, returning energy per string, input and inverter and the loss chain from sunlight to grid, each loss named;
+  - diffuse shading by a sky-view factor per substring, with the circumsolar part following the beam's shade; a horizon profile, which the caller supplies;
+  - the AC side: the inverter's efficiency curve and clipping at its rating, from its inverter type (ADR 27);
+  - cable losses from lengths and cross-sections the caller supplies, soiling, and degradation per year from the module type's performance warranty;
+  - one typical year per site, made from twenty or more past years, simulated in full: it gives the expected yield, the loss chain and every chart;
+  - the cautious yield (P90) without simulating more years: a plant's yearly yield follows the yearly irradiation on its planes almost in proportion, so each past year's irradiation is summed, with no shading or electrical model, and the simulated year is scaled by it. Shade costs a little more in a dull year than this assumes; an offer says how the figure was made;
+  - shading as a table: which substrings the scene shades is a matter of where the sun stands, not of the date, so it is computed once per scene over a grid of sun positions, with each substring's sky view, and a time step only looks it up. The table is made again when the scene or the layout changes;
+  - proof: reference plants checked against pvlib, committed as fixtures, and the model run against the measured production of plants on SunReye Home, both published. A live plant's first November week read 11–37 % under the model (#835), so this will find work.
+  Each changes no stored contract. Snow and mismatch beyond the substring model stay open.
+- The weather years' source for Plan (2026-11-23): Open-Meteo's archive on its commercial plan, through the adapter the core has, so an offer and the homeowner's app model the plant from the same weather. Its terms and price are to be confirmed in writing. If they turn against us, EUMETSAT's SARAH-3 (global and direct irradiance, 30 minutes, from 1983) with DWD's hourly 1 km grids for temperature and wind, both CC BY 4.0, can be hosted by us. PVGIS is not used: its API forbids calls from a browser and states no commercial terms.
+- How long the shading table and the one year's run take in a browser and in a Worker step, to be measured on the first full run. The structure above is expected to make a recomputation feel immediate; that is an expectation, not a measurement.
 - Calibrating cell temperature from measured `pv.mppt.voltage`, once a season of voltage history exists.
 
 ## Considered options
