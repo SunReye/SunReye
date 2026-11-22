@@ -9,6 +9,7 @@
   "type": "module",
   "scripts": {
     "gate": "bun scripts/gate.ts",
+    "gate:fast": "bun scripts/gate.ts --fast",
     "prepare": "husky",
     "image:smoke": "bun scripts/image-smoke.ts",
     "bench": "bun scripts/bench.ts",
