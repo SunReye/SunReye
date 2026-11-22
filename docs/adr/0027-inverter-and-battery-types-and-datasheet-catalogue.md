@@ -1,6 +1,6 @@
 # 27. Inverter and battery types and the datasheet catalogue
 
-Status: accepted (2026-11-19)
+Status: accepted (2026-11-19), amended (2026-11-22)
 
 ## Context
 
@@ -15,16 +15,22 @@ An MPPT input's limits come from the inverter's profile (ADRs 5, 17), and a stri
 
 A device may carry one inverter type and one battery type, copied by value. The layout reads an inverter's limits from its inverter type when it has one, else from its profile, so every device added before this keeps working. A string may name any inverter device that has either.
 
+- *In the layout (2026-11-22).* Each layout version carries its devices' types beside its strings and scene, as `inverterTypes` and `batteryTypes` keyed by device id, so a type changed from a date leaves earlier estimates as they were (ADR 17). A layout change without them removes them; the builder sends back those of the version it opened. A version without types reads and saves as before, its members left out.
+- *Read whole.* An inverter's limits (its maximum DC input voltage, AC rating, efficiency and MPPT inputs) come all from its type or all from its profile, never mixed. No profile declares an efficiency, so an inverter without a type has none.
+- *Values.* Volts, amperes, watts and watt-hours; efficiency in %, the inverter's European weighted efficiency. Origin is an ISO 3166-1 alpha-2 code; a type may leave it out where the admin does not know it.
+- *Bounds.* A type is refused when a value is unphysical: a blank maker or model, an origin that is no two-letter code, a voltage, current, power or capacity not positive and finite, an efficiency outside 0–100 % (0 excluded), an inverter without inputs, an input whose window is empty or reaches above the maximum DC input voltage, or whose start voltage lies above its window. The catalogue's plausibility ranges are its own, under the module catalogue's rules.
+- *Unknown members.* A type, and a layout change, refuse a member this core does not know, as the scene does (ADR 25): an older core refuses a layout with types rather than dropping them. Cores before this amendment ignore unknown members of a layout change.
+
 **Datasheet catalogue.** Bundled with the core beside the module catalogue and under its rules (ADR 17): one sheet per maker's datasheet with its title, revision and URL; every value copied from it, a missing one left out and never estimated; a sheet without its source or with a value out of range or inconsistent is refused at build time by test. An entry names the profile that reads the same model, where one exists (ADR 5). Admins read it at `GET /api/v1/datasheet-catalogue`; picking an entry adds a type, so a layout never depends on the catalogue.
 
 **Origin.** Every sheet, the module catalogue's included (ADR 17), names the country of its maker's registered seat as the datasheet prints it, and the country of manufacture only where the datasheet states one, never inferred from the brand. A type copies both. SunReye Plan filters on them when a customer asks for makers from a region (ADR 25); the core only stores them.
 
 **Not yet monitorable.** An inverter type without a profile can be planned, wired and forecast. Its device stays pending (ADR 26) until a profile for it exists.
 
-## Open before build
+## Decided before build (2026-11-22)
 
-- The bounds each value is checked against.
-- Whether hybrid inverters need a battery-side voltage window in the inverter type.
+- The bounds each value is checked against: see *Bounds*.
+- A hybrid inverter's battery-side voltage window waits for the EMS stage (ADR 1): nothing plans a battery's DC side before then, and adding it is additive.
 
 ## Considered options
 
