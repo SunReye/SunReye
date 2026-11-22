@@ -2,64 +2,31 @@
 // multisampled HDR, ambient occlusion, tone mapping, Ultra's burst of refining frames, and the
 // lens glass over it all while the weather puts something on it (ADR 23).
 import {
-  DoubleSide,
+  type Fog,
   type PerspectiveCamera,
   type Scene,
+  type Vector3,
   type WebGLRenderer,
   type WebGLRenderTarget,
 } from "three";
-import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
-import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { Composer } from "./composer.ts";
+import { FocusPass, type Focus, type FocusFrame } from "./focus-pass.ts";
 import { LensPass } from "./lens-pass.ts";
+import { OcclusionPass } from "./occlusion-pass.ts";
 import { Probe } from "./probe.ts";
 import type { Look } from "./quality.ts";
 import { jitter, Refiner } from "./refine.ts";
 import type { Glass } from "./weather.ts";
 
-/** One ambient-occlusion pass, wide and strong: on a white model it is what sets a wall on the
- * ground and an eave on its wall. */
-// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js reads them.
-function ambientOcclusion(scene: Scene, camera: PerspectiveCamera): GTAOPass {
-  const pass = new GTAOPass(scene, camera, 1, 1);
-
-  // The pass draws the scene's depths and normals with a material of its own, which culls a
-  // face wound away from the camera: what stands behind it would then shade it, a wall's edge
-  // showing through its roof. The crate promises no winding, so both sides are drawn, each
-  // with the normal of the side seen.
-  pass.normalMaterial.side = DoubleSide;
-
-  pass.blendIntensity = 1;
-
-  return pass;
-}
-
-/** The occlusion and its denoising, each from `samples` a pixel: a look's own (ADR 20). */
-// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js sets it in place.
-function sample(pass: GTAOPass, samples: number): void {
-  pass.updateGtaoMaterial({
-    radius: 2,
-    distanceExponent: 1.5,
-    thickness: 1.5,
-    scale: 1.5,
-    samples,
-  });
-  pass.updatePdMaterial({
-    lumaPhi: 10,
-    depthPhi: 2,
-    normalPhi: 3,
-    radius: 6,
-    rings: 2,
-    samples,
-  });
-}
+export type { Focus } from "./focus-pass.ts";
 
 export class Passes {
   readonly #renderer: WebGLRenderer;
   readonly #camera: PerspectiveCamera;
   readonly #composer: Composer;
-  readonly #occlusion: GTAOPass;
+  readonly #occlusion: OcclusionPass;
+  readonly #focus: FocusPass;
   readonly #lens = new LensPass();
   readonly #refiner = new Refiner();
   #finest = false;
@@ -71,20 +38,29 @@ export class Passes {
   /** Counts each frame, once asked for (ADR 21 "Measuring"). */
   #probe: Probe | undefined;
 
-  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws with them.
-  constructor(renderer: WebGLRenderer, scene: Scene, camera: PerspectiveCamera) {
+  /* oxlint-disable typescript/prefer-readonly-parameter-types -- three.js draws with them. */
+  constructor(
+    renderer: WebGLRenderer,
+    scene: Scene,
+    camera: PerspectiveCamera,
+    fog: Fog,
+    drawWeather: (source: WebGLRenderTarget, frame: FocusFrame) => void,
+  ) {
     this.#renderer = renderer;
     this.#camera = camera;
-    // Multisampled HDR, then ambient occlusion, then tone mapping and sRGB.
-    this.#composer = new Composer(renderer);
-    this.#occlusion = ambientOcclusion(scene, camera);
-    this.#composer.addPass(new RenderPass(scene, camera));
+    this.#composer = new Composer(renderer, scene, camera);
+    this.#occlusion = new OcclusionPass(scene, camera, this.#composer.depth, fog);
+    this.#focus = new FocusPass(camera, this.#composer.depth, (frame) => {
+      drawWeather(this.#composer.scene, frame);
+    });
     this.#composer.addPass(this.#occlusion);
+    this.#composer.addPass(this.#focus);
     this.#composer.addPass(new OutputPass());
     // Last, and off while the lens is clear: the tone-mapped picture then goes to the canvas.
     this.#lens.enabled = false;
     this.#composer.addPass(this.#lens);
   }
+  /* oxlint-enable typescript/prefer-readonly-parameter-types */
 
   /** Whether the ambient-occlusion pass runs. */
   get occlusion(): boolean {
@@ -96,11 +72,19 @@ export class Passes {
     return this.#composer.scene;
   }
 
+  focus(effects: Focus): void {
+    this.#focus.show(effects);
+  }
+
+  frame(centre: Readonly<Vector3>, radius: number): void {
+    this.#focus.frame(centre, radius);
+  }
+
   /** The passes `look` asks for. */
   follow({ occlusion, occluded, samples, finest, glass }: Look): void {
     this.#occlusion.enabled = occlusion;
     this.#occluded = occluded;
-    sample(this.#occlusion, samples);
+    this.#occlusion.sample(samples);
     this.#finest = finest;
     this.#glass = glass;
     this.#lens.enabled = glass && this.#glazed;
@@ -126,6 +110,7 @@ export class Passes {
     this.#composer.setPixelRatio(ratio);
     this.#composer.setSize(width, height);
     this.#occlusion.setSize(Math.round(width * occluded), Math.round(height * occluded));
+    this.#focus.fit(width, height);
     this.#lens.fit(width, height);
     this.#refiner.reset();
   }
@@ -155,7 +140,7 @@ export class Passes {
     this.#probe = undefined;
   }
 
-  /** Draws once with every pass, the glass too: each makes and first uses its programs. */
+  /** Draws once with the enabled passes and the glass: each makes and first uses its programs. */
   warm(): void {
     const { enabled } = this.#lens;
 
@@ -188,6 +173,7 @@ export class Passes {
   dispose(): void {
     this.#composer.dispose();
     this.#occlusion.dispose();
+    this.#focus.dispose();
     this.#lens.dispose();
     this.#refiner.dispose();
     this.unmeasure();

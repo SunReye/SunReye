@@ -4,6 +4,7 @@
 import { untrack } from "svelte";
 import type { PerspectiveCamera } from "three";
 import { motion } from "../motion/tier.svelte.ts";
+import { focusEffects } from "./focus-effects.svelte.ts";
 import { perf } from "./perf.svelte.ts";
 import { weatherEffects } from "./weather-effects.svelte.ts";
 import { quality } from "./quality.svelte.ts";
@@ -15,6 +16,8 @@ export interface Opened {
   readonly studio: Studio;
   /** What the studio is to draw now: read in an effect, it follows the choice and the tier. */
   readonly look: () => Look;
+  /** Follows this browser's 3D quality and focus settings. */
+  readonly follow: (editing: boolean) => void;
   /** What the studio is to draw of `given`: read in an effect, it follows the Wettereffekte
    * switch. */
   readonly weather: (given: SceneWeather | undefined) => SceneWeather | undefined;
@@ -58,6 +61,10 @@ export function openStudio(
   return {
     studio,
     look,
+    follow(editing) {
+      studio.follow(look());
+      studio.focus(editing ? { tiltShift: false, depthOfField: false } : focusEffects);
+    },
     weather,
     settle,
     close() {

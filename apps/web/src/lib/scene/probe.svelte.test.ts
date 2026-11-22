@@ -96,9 +96,9 @@ test("only the scene is drawn multisampled: no pass after it is, the lens glass'
 
   const passes = frame().passes.filter(({ target }) => target === "target");
 
-  // The scene, the occlusion's three, its copy and blend, the tone mapping and the glass's field.
-  expect(passes).toHaveLength(8);
-  expect(passes.map(({ samples }) => samples)).toEqual([4, 0, 0, 0, 0, 0, 0, 0]);
+  // The scene, the occlusion's three and its composite, tone mapping and the glass's field.
+  expect(passes).toHaveLength(7);
+  expect(passes.map(({ samples }) => samples)).toEqual([4, 0, 0, 0, 0, 0, 0]);
 });
 
 test("on a phone Mittel draws its occlusion at half its pixel ratio, and Hoch at Mittel's", async () => {
@@ -115,7 +115,6 @@ test("on a phone Mittel draws its occlusion at half its pixel ratio, and Hoch at
     "target 293×450",
     // Its blend over the picture, which no longer needs the scene's samples.
     "target 585×900",
-    "target 585×900",
     "canvas 585×900",
   ]);
   expect(told(measured("high", size).frame())).toEqual([
@@ -124,7 +123,6 @@ test("on a phone Mittel draws its occlusion at half its pixel ratio, and Hoch at
     "target 585×900",
     "target 585×900",
     "target 585×900",
-    "target 780×1200",
     "target 780×1200",
     "canvas 780×1200",
   ]);

@@ -60,7 +60,8 @@ const BEADS = `
     // Whole beads or none: a bead is never cut where the glass thins out.
     float there = step(hash(id + 11.1), amount * rim((id + 0.5) * cell - shift));
     vec2 off = (within - centre) / max(radius, 0.001);
-    float here = (1.0 - smoothstep(0.7, 1.0, length(off))) * there * (1.0 - smoothstep(0.85, 1.0, life));
+    off.y *= mix(0.80, 1.15, seed);
+    float here = (1.0 - smoothstep(0.76, 1.0, length(off))) * there * (1.0 - smoothstep(0.85, 1.0, life));
 
     return vec3(off * here, here);
   }
@@ -68,28 +69,32 @@ const BEADS = `
 
 /** Drops that run down in columns, each with the trail it leaves; as the beads are. */
 const RUNS = `
-  const vec2 RUN = vec2(46.0, 190.0);
-  const float HEAD = 0.85;
+  const vec2 RUN = vec2(52.0, 180.0);
 
   vec3 runs(vec2 at, float seconds, float amount) {
     float column = floor(at.x / RUN.x);
-    float fallen = seconds * (50.0 + 80.0 * hash(vec2(column, 3.0)));
+    float speed = hash(vec2(column, 3.0));
+    float phase = hash(vec2(column, 8.4)) * 6.283;
+    float fallen = seconds * mix(28.0, 84.0, speed) - 10.0 * sin(seconds * 2.1 + phase);
     float row = floor((at.y - fallen) / RUN.y);
     vec2 id = vec2(column, row);
     vec2 within = vec2(fract(at.x / RUN.x), fract((at.y - fallen) / RUN.y));
     float seed = hash(id);
-    // It wanders a little as it runs.
-    float x = 0.5 + (seed - 0.5) * 0.5 + sin(at.y * 0.03 + seed * 6.283) * 0.08;
-    vec2 off = vec2((within.x - x) * RUN.x, (within.y - HEAD) * RUN.y);
-    float head = 1.0 - smoothstep(4.0, 9.0, length(off * vec2(1.0, 0.7)));
-    float along = clamp(within.y / HEAD, 0.0, 1.0);
-    float trail = (1.0 - smoothstep(1.0, 3.5, abs(off.x))) * step(within.y, HEAD) * along * along * 0.5;
-    // By where its head is now: it thins out as it runs into the middle.
-    vec2 centre = vec2((column + x) * RUN.x, (row + HEAD) * RUN.y + fallen);
-    float here = max(head, trail) * step(hash(id + 2.9), amount * 0.5) * rim(centre);
-    vec2 bend = vec2(off.x, head > trail ? off.y * 0.7 : 0.0) / 9.0;
+    float y = mix(0.68, 0.88, hash(id + 1.8));
+    float x = mix(0.26, 0.74, seed) + sin(at.y * 0.036 + phase) * 0.07;
+    vec2 off = (within - vec2(x, y)) * RUN;
+    float radius = mix(3.5, 9.0, hash(id + 7.2));
+    vec2 normal = off * vec2(1.0, mix(0.54, 0.80, speed)) / radius;
+    float head = 1.0 - smoothstep(0.72, 1.0, length(normal));
+    float taper = clamp(1.0 + off.y / mix(34.0, 105.0, seed), 0.0, 1.0);
+    float width = mix(1.2, 3.6, taper * seed);
+    float side = off.x / width;
+    float trail = (1.0 - smoothstep(0.22, 1.0, abs(side))) * step(off.y, 0.0) * taper * taper * 0.52;
+    vec2 centre = vec2((column + x) * RUN.x, (row + y) * RUN.y + fallen);
+    float there = step(hash(id + 2.9), amount * 0.67) * rim(centre);
+    vec2 bend = head * clamp(normal, -1.0, 1.0) + trail * vec2(clamp(side, -1.0, 1.0), 0.0);
 
-    return vec3(clamp(bend, -1.0, 1.0) * here, here);
+    return vec3(bend * there, max(head, trail) * there);
   }
 `;
 
@@ -100,10 +105,11 @@ const SETTLED = `
     float aside = min(at.x, uSize.x - at.x);
     float melt = 0.75 + 0.25 * sin(seconds * 0.15 + noise(vec2(at.x / 140.0, 3.5)) * 6.283);
     // Deeper in the corners.
-    float bank = (14.0 + 30.0 * noise(vec2(at.x / 55.0, 1.5)) + 30.0 * exp(-aside / 60.0)) * amount * melt;
-    float drift = (4.0 + 12.0 * noise(vec2(at.y / 45.0, 7.5))) * amount * melt * (0.3 + 0.7 * at.y / uSize.y);
+    float bank = (10.0 + 16.0 * noise(vec2(at.x / 55.0, 1.5)) + 24.0 * exp(-aside / 55.0)) * amount * melt;
+    float drift = (5.0 + 10.0 * noise(vec2(at.y / 45.0, 7.5))) * amount * melt * smoothstep(0.5, 1.0, at.y / uSize.y);
+    float grains = 0.65 + 0.35 * noise(at / 4.5);
 
-    return max(1.0 - smoothstep(bank - 5.0, bank, above), 1.0 - smoothstep(drift - 4.0, drift, aside));
+    return grains * max(1.0 - smoothstep(bank - 6.0, bank, above), 1.0 - smoothstep(drift - 4.0, drift, aside));
   }
 `;
 
@@ -148,11 +154,11 @@ const FROST = `
     vec2 edges = min(at, uSize - at) / (0.5 * min(uSize.x, uSize.y));
     float from = min(length(edges), min(edges.x, edges.y) * 4.0 + 0.3);
     float ice = max(crystals(at, 64.0), 0.7 * crystals(at + 31.0, 30.0));
-    float reach = amount * 0.62;
+    float reach = amount * 0.43;
     // A ragged front, which the crystals grow out past.
     float edge = from + (noise(at / 46.0) - 0.5) * 0.3 - ice * 0.08;
 
-    return (1.0 - smoothstep(reach * 0.45, reach, edge)) * (0.22 + 0.78 * ice);
+    return (1.0 - smoothstep(reach * 0.45, reach, edge)) * (0.16 + 0.60 * ice);
   }
 `;
 
@@ -182,23 +188,16 @@ export const FIELD = `
     float white = 0.0;
 
     if (uGlass.x > 0.0) {
-      vec3 large = beads(at, 0.0, 26.0, uSeconds * 0.05, uGlass.x);
-      vec3 small = beads(at, 13.7, 12.0, uSeconds * 0.08, uGlass.x * 0.35);
+      vec3 large = beads(at, 0.0, 31.0, uSeconds * 0.05, uGlass.x * 0.8);
+      vec3 small = beads(at, 13.7, 15.0, uSeconds * 0.08, uGlass.x * 0.24);
 
       wet = runs(at, uSeconds, uGlass.x);
       wet = large.z > wet.z ? large : wet;
       wet = small.z > wet.z ? small : wet;
       bend = wet.xy;
-      // A drop is clear glass: it shades at its rim.
-      wet.z *= 0.25 + 0.75 * dot(wet.xy, wet.xy) / max(wet.z * wet.z, 0.001);
     }
 
-    if (uGlass.y > 0.0) {
-      // Flakes that land on the glass and melt away.
-      float flakes = beads(at, 91.0, 34.0, uSeconds * 0.06, uGlass.y * 0.6).z;
-
-      white = max(settled(at, uSeconds, uGlass.y), flakes * 0.8);
-    }
+    if (uGlass.y > 0.0) white = settled(at, uSeconds, uGlass.y);
 
     if (uGlass.z > 0.0) {
       float iced = frost(at, uGlass.z);
@@ -223,7 +222,6 @@ export const GLASS = `
   uniform sampler2D tField;
   // The most the glass bends, as a share of the picture.
   uniform vec2 uBend;
-  uniform vec3 uWet;
   uniform float uShade;
   uniform vec3 uWhite;
   varying vec2 vUv;
@@ -231,9 +229,16 @@ export const GLASS = `
   void main() {
     vec4 field = texture2D(tField, vUv);
     vec2 bend = (field.rg * 255.0 - 128.0) / 127.0;
-    vec3 seen = texture2D(tDiffuse, vUv + bend * uBend).rgb;
+    vec3 seen = texture2D(tDiffuse, vUv - bend * uBend).rgb;
 
-    seen = mix(seen, uWet, field.b * uShade);
+    if (field.b > 0.0) {
+      // A grazing edge catches the scene on the opposite side of the curved water.
+      float rim = smoothstep(0.03, 0.40, length(bend)) * field.b;
+      float facing = smoothstep(-0.08, 0.24, bend.y + bend.x * 0.35);
+      vec3 caught = texture2D(tDiffuse, vUv + bend * uBend * 1.7).rgb;
+
+      seen = mix(seen * (1.0 - rim * uShade), caught, rim * facing * 0.72);
+    }
     gl_FragColor = vec4(mix(seen, uWhite, field.a), 1.0);
   }
 `;

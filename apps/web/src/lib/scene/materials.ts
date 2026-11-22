@@ -11,6 +11,7 @@ import {
   MeshStandardMaterial,
   NoColorSpace,
   RepeatWrapping,
+  ShaderChunk,
   SRGBColorSpace,
 } from "three";
 import type { FenceFinish, GroundFinish } from "../builder/pv.ts";
@@ -164,7 +165,7 @@ export const leaf = (): MeshStandardMaterial => matte(TONE.metal);
 /** Light on the ground from a lit opening: added to what lies there, each patch at the strength
  * in its vertex colours, and out by day. */
 export function spilled(): MeshBasicMaterial {
-  return new MeshBasicMaterial({
+  const material = new MeshBasicMaterial({
     map: map("spill", "map"),
     vertexColors: true,
     transparent: true,
@@ -175,4 +176,15 @@ export function spilled(): MeshBasicMaterial {
     polygonOffsetFactor: -8,
     polygonOffsetUnits: -8,
   });
+
+  // The landing already carries the fog colour. The additive decal contributes light alone.
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js patches it in place.
+  material.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace(
+      "#include <fog_fragment>",
+      ShaderChunk.fog_fragment.replace("fogColor", "vec3(0.0)"),
+    );
+  };
+
+  return material;
 }

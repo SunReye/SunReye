@@ -234,6 +234,7 @@
           handled.place(project);
           onrender?.(project);
         },
+        () => editing !== undefined || roofwork !== undefined,
       );
     } catch {
       onerror?.("webgl2");

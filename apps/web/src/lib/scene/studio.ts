@@ -17,7 +17,7 @@ import { toThree } from "../builder/scene.ts";
 import { Environment } from "./environment.ts";
 import { Fall } from "./falling.ts";
 import type { Daylight, Theme } from "./light.ts";
-import { Passes } from "./passes.ts";
+import { Passes, type Focus } from "./passes.ts";
 import { Plot } from "./plot.ts";
 import { gpuOf, type Look } from "./quality.ts";
 import { shade, shadowFor, soften } from "./sun-shadow.ts";
@@ -70,7 +70,16 @@ export class Studio {
     this.scene.add(this.#sun, this.#sun.target, this.#fill, this.#plot.floor, this.#fall.object);
     this.scene.fog = this.#plot.fog;
 
-    this.#passes = new Passes(this.renderer, this.scene, camera);
+    this.#passes = new Passes(
+      this.renderer,
+      this.scene,
+      camera,
+      this.#plot.fog,
+      // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the pass samples the target's texture.
+      (source, frame) => {
+        this.#fall.drawOver(this.renderer, camera, source, frame);
+      },
+    );
     this.#apply();
   }
 
@@ -110,6 +119,7 @@ export class Studio {
     this.#radius = Math.max(radius, 5);
     this.#plot.fit(centre.x, centre.z, this.#radius);
     this.#fall.fit(centre.x, centre.z, this.#radius);
+    this.#passes.frame(centre, this.#radius);
 
     const reach = this.#radius + 2;
     const camera = this.#sun.shadow.camera;
@@ -161,6 +171,11 @@ export class Studio {
    * look decides whether it is drawn: not at Niedrig, and on the full tier alone. */
   lens(glass: Glass | null, seconds: number): void {
     this.#passes.lens(glass, seconds);
+  }
+
+  focus(effects: Focus): void {
+    this.#fall.afterFocus(effects.depthOfField || effects.tiltShift, this.scene);
+    this.#passes.focus(effects);
   }
 
   /** Rain or snow in the air (ADR 23): `sparse` for the lite tier's thin field, null for none.

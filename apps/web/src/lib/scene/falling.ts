@@ -1,19 +1,28 @@
-// Rain and snow in the air (ADR 23 "Scene weather"): particles in the scene's own render, without
-// a pass. Rain streaks and snow drifts; both slant with the wind. The field is seeded once and
+// Rain and snow in the air (ADR 23 "Scene weather"). Rain streaks and snow drifts; both slant
+// with the wind. The field is seeded once and
 // moved in the vertex shader by the seconds it is handed, so a frame costs no upload and a frame
 // drawn again is the same picture.
 import {
   BufferAttribute,
-  BufferGeometry,
+  type BufferGeometry,
+  type Camera,
+  type DepthTexture,
   Group,
   LineSegments,
   type Object3D,
   Points,
+  Scene,
   ShaderMaterial,
+  Uniform,
+  Vector2,
   Vector3,
+  type WebGLRenderer,
+  type WebGLRenderTarget,
 } from "three";
 import { toThree } from "../builder/scene.ts";
-import { RAIN, SNOW } from "./falling-shaders.ts";
+import { field } from "./falling-field.ts";
+import { RAIN, RAIN_BOKEH, SNOW } from "./falling-shaders.ts";
+import type { FocusFrame } from "./focus-shader.ts";
 import { untone } from "./tone.ts";
 import type { Falling } from "./weather.ts";
 
@@ -46,52 +55,14 @@ const EXPOSURE = 0.06;
  * above and its `rim` shade below, which sets it off the white page. */
 const SHADE = {
   rain: {
-    light: { colour: [0.035, 0.05, 0.085], rim: [0, 0, 0], opacity: 0.9 },
-    dark: { colour: [0.3, 0.34, 0.4], rim: [0, 0, 0], opacity: 0.5 },
+    light: { colour: [0.035, 0.05, 0.085], rim: [0, 0, 0], opacity: 1 },
+    dark: { colour: [0.3, 0.34, 0.4], rim: [0, 0, 0], opacity: 0.11 },
   },
   snow: {
     light: { colour: [0.9, 0.92, 0.95], rim: [0.3, 0.37, 0.52], opacity: 0.95 },
     dark: { colour: [0.9, 0.92, 0.95], rim: [0.45, 0.5, 0.6], opacity: 0.9 },
   },
 } as const;
-
-/** A seeded generator: the same field in every browser and on every draw. */
-function seeded(seed: number): () => number {
-  let state = seed;
-
-  return () => {
-    state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
-
-    // The low bits of such a state repeat early: mixed down from the high ones.
-    const mixed = Math.imul(state ^ (state >>> 15), 0x2c1b3c6d) >>> 0;
-
-    return ((mixed ^ (mixed >>> 12)) >>> 0) / 4_294_967_296;
-  };
-}
-
-/** `count` places in the unit box, each `copies` times over, and a seed for each place. */
-function field(count: number, copies: number, seed: number): BufferGeometry {
-  const random = seeded(seed);
-  const places = new Float32Array(count * copies * 3);
-  const seeds = new Float32Array(count * copies);
-
-  for (let i = 0; i < count; i++) {
-    const place = [random(), random(), random()];
-    const own = random();
-
-    for (let copy = 0; copy < copies; copy++) {
-      places.set(place, (i * copies + copy) * 3);
-      seeds[i * copies + copy] = own;
-    }
-  }
-
-  const geometry = new BufferGeometry();
-
-  geometry.setAttribute("position", new BufferAttribute(places, 3));
-  geometry.setAttribute("seed", new BufferAttribute(seeds, 1));
-
-  return geometry;
-}
 
 /** The box rain and snow fall in, and where they have fallen to: one for both. */
 interface Shared {
@@ -100,6 +71,14 @@ interface Shared {
   readonly uOffset: { readonly value: Vector3 };
   readonly uStreak: { readonly value: Vector3 };
   readonly uPixels: { value: number };
+  readonly tSceneDepth: Uniform<DepthTexture | null>;
+  readonly uDepthSize: { readonly value: Vector2 };
+  readonly tiltShift: Uniform<boolean>;
+  readonly depthOfField: Uniform<boolean>;
+  readonly focusDepth: Uniform<number>;
+  readonly focusY: Uniform<number>;
+  readonly plotRadius: Uniform<number>;
+  readonly blurPixels: Uniform<number>;
 }
 
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- shared with the shaders.
@@ -135,12 +114,22 @@ export class Fall {
     uOffset: { value: new Vector3() },
     uStreak: { value: new Vector3() },
     uPixels: { value: 1 },
+    tSceneDepth: new Uniform<DepthTexture | null>(null),
+    uDepthSize: { value: new Vector2() },
+    tiltShift: new Uniform(false),
+    depthOfField: new Uniform(false),
+    focusDepth: new Uniform(1),
+    focusY: new Uniform(0.5),
+    plotRadius: new Uniform(10),
+    blurPixels: new Uniform(0),
   };
 
   readonly #rain: LineSegments<BufferGeometry, ShaderMaterial>;
+  readonly #bokehRain: Points<BufferGeometry, ShaderMaterial>;
   readonly #snow: Points<BufferGeometry, ShaderMaterial>;
   /** What the scene draws: nothing of it while dry. */
   readonly object = new Group();
+  readonly #overlay = new Scene();
   #velocity: readonly [number, number, number] = [0, 0, 0];
   #seconds = 0;
 
@@ -156,9 +145,13 @@ export class Fall {
       ),
     );
     this.#rain = unstruck(new LineSegments(streaks, material(RAIN, this.#shared)));
+    this.#bokehRain = unstruck(
+      new Points(field(COUNT.rain, 1, 812), material(RAIN_BOKEH, this.#shared)),
+    );
+    this.#bokehRain.material.depthTest = false;
     this.#snow = unstruck(new Points(field(COUNT.snow, 1, 2023), material(SNOW, this.#shared)));
     this.object.name = "falling";
-    this.object.add(this.#rain, this.#snow);
+    this.object.add(this.#rain, this.#bokehRain, this.#snow);
   }
 
   /** Fits the box to the plot: its centre east and south, and its radius in metres. Wide, so it
@@ -176,9 +169,10 @@ export class Fall {
   show(falling: Falling | null, sparse: boolean): void {
     const share = (falling?.density ?? 0) * (sparse ? SPARSE : 1);
 
-    this.#rain.visible = falling?.kind === "rain";
+    this.#showRain(falling?.kind === "rain");
     this.#snow.visible = falling?.kind === "snow";
     this.#rain.geometry.setDrawRange(0, Math.round(COUNT.rain * share) * 2);
+    this.#bokehRain.geometry.setDrawRange(0, Math.round(COUNT.rain * share));
     this.#snow.geometry.setDrawRange(0, Math.round(COUNT.snow * share));
 
     if (falling === null) return;
@@ -188,10 +182,65 @@ export class Fall {
     this.drift(this.#seconds);
   }
 
+  /** Focus effects see the plant's colour and depth separately from what falls. */
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js reparents the group.
+  afterFocus(enabled: boolean, scene: Scene): void {
+    const parent = enabled ? this.#overlay : scene;
+
+    if (this.object.parent === parent) return;
+
+    parent.add(this.object);
+    this.#showRain(this.#rain.visible || this.#bokehRain.visible);
+    this.#snow.material.depthTest = !enabled;
+    this.#shared.tSceneDepth.value = null;
+    this.#shared.uDepthSize.value.set(0, 0);
+    this.#shared.tiltShift.value = false;
+    this.#shared.depthOfField.value = false;
+    this.#shared.blurPixels.value = 0;
+  }
+
+  #showRain(raining: boolean): void {
+    const focused = this.object.parent === this.#overlay;
+
+    this.#rain.visible = raining && !focused;
+    this.#bokehRain.visible = raining && focused;
+  }
+
+  /** Focuses each particle at its own depth and tests it against the opaque scene. */
+  /* oxlint-disable typescript/prefer-readonly-parameter-types -- three.js renders with them. */
+  drawOver(
+    renderer: WebGLRenderer,
+    camera: Camera,
+    source: WebGLRenderTarget,
+    frame: FocusFrame,
+  ): void {
+    if (!this.#bokehRain.visible && !this.#snow.visible) return;
+
+    this.#shared.tSceneDepth.value = source.depthTexture;
+    this.#shared.uDepthSize.value.set(source.width, source.height);
+    this.#shared.tiltShift.value = frame.tiltShift;
+    this.#shared.depthOfField.value = frame.depthOfField;
+    this.#shared.focusDepth.value = frame.focusDepth;
+    this.#shared.focusY.value = frame.focusY;
+    this.#shared.plotRadius.value = frame.plotRadius;
+    this.#shared.blurPixels.value = frame.blurPixels;
+    const clear = renderer.autoClear;
+
+    renderer.autoClear = false;
+
+    try {
+      renderer.render(this.#overlay, camera);
+    } finally {
+      renderer.autoClear = clear;
+    }
+  }
+  /* oxlint-enable typescript/prefer-readonly-parameter-types */
+
   /** Its shades for the theme, as they land on screen after `exposure` and the tone mapping. */
   tint(dark: boolean, exposure: number): void {
     for (const [part, shades] of [
       [this.#rain, SHADE.rain],
+      [this.#bokehRain, SHADE.rain],
       [this.#snow, SHADE.snow],
     ] as const) {
       const { colour, rim, opacity } = dark ? shades.dark : shades.light;
@@ -226,7 +275,7 @@ export class Fall {
   }
 
   dispose(): void {
-    for (const part of [this.#rain, this.#snow]) {
+    for (const part of [this.#rain, this.#bokehRain, this.#snow]) {
       part.geometry.dispose();
       part.material.dispose();
     }

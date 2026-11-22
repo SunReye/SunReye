@@ -153,8 +153,9 @@ export function lit(
   camera: PerspectiveCamera,
   sky: () => Sky,
   drawn: () => void,
+  editing: () => boolean = () => false,
 ): Lit {
-  const { studio, look, weather, settle, close } = openStudio(canvas, camera);
+  const { studio, look, follow, weather, settle, close } = openStudio(canvas, camera);
   const opened = new Opening(studio, drawn, settle);
   const { flight, render } = opened;
   const shown = stage(studio);
@@ -171,7 +172,7 @@ export function lit(
   });
 
   $effect(() => {
-    studio.follow(look());
+    follow(editing());
     render();
   });
 

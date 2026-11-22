@@ -1,6 +1,6 @@
 # 20. 3D house builder
 
-Status: accepted (2026-11-09), amended (2026-11-10, 2026-11-12, 2026-11-13, 2026-11-14, 2026-11-15, 2026-11-17, 2026-11-19, 2026-11-20)
+Status: accepted (2026-11-09), amended (2026-11-10, 2026-11-12, 2026-11-13, 2026-11-14, 2026-11-15, 2026-11-17, 2026-11-19, 2026-11-20, 2026-11-22)
 
 ## Context
 
@@ -99,6 +99,8 @@ The PV layout (ADR 17) is entered as numbers: planes, module counts, MPPT inputs
     - Ultra's temporal antialiasing is a burst of 16 frames after the picture settles, each begun once the GPU has drawn the last; a frame over 50 ms ends the burst, and any change starts it over.
   - 2026-11-16: the levels had also changed the look: per-finish variation from Mittel up (per-tile hue, streaks, moss, patches, clover, wear), and in Hoch stronger relief, stronger reflections and bloom, in Ultra grass blades. The owner judged the scene worse than before, in its overall look and colours, so all of it is removed and the look before the setting is every level's.
   - 2026-11-16, later: the owner judged that look too, the generated finishes at every level, as "trying too much to make it look real with our pseudo real textures", and flat. Look above is its replacement: a white box under realistic light (#783). Filmic ACES tone mapping went with it: its shoulder pressed sunlit and shaded white together and turned warm light salmon.
+
+**Camera effects (2026-11-22).** Settings › Display has separate *Tilt-Shift* and *Depth of field* switches, kept per browser and off by default. Tilt-shift keeps a band around the plant's projected centre sharp and softens above and below it. Depth of field keeps a slice at the plant's centre distance in focus. Nearer and farther surfaces, including rain and snow, soften into round bokeh as their distance from the slice grows. Both effects share one pass before tone mapping and lens glass. They apply to the dashboard and the builder's preview, with a sharp view while editing. Labels and picking are outside the pass.
 
 **Motion.** There is no continuous loop but moving weather's (ADR 23): on the full tier, while rain, snow or wet glass move, the scene renders at the display's rate, paused while hidden. Otherwise short ease-in-out tweens run, then rendering stops:
 - the camera flies to a preset in about 600 ms;

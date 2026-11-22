@@ -1,7 +1,15 @@
 // The studio's composer (ADR 20 Look, Rendering quality): the scene is drawn into a multisampled
 // target of its own, and every pass after it into one of two that have no samples.
-import { HalfFloatType, type WebGLRenderer, WebGLRenderTarget } from "three";
+import {
+  type Camera,
+  DepthTexture,
+  HalfFloatType,
+  type Scene,
+  type WebGLRenderer,
+  WebGLRenderTarget,
+} from "three";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 
 /**
  * three.js's composer clones one target for both of its buffers, so a multisampled scene makes
@@ -10,12 +18,18 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
  * the passes after it swap between the two plain ones.
  */
 export class Composer extends EffectComposer {
-  /** What the scene pass draws into: multisampled HDR. */
-  readonly scene = new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples: 4 });
+  readonly depth = new DepthTexture(1, 1);
+  /** What the scene pass draws into: multisampled HDR and depth for the post passes. */
+  readonly scene = new WebGLRenderTarget(1, 1, {
+    type: HalfFloatType,
+    samples: 4,
+    depthTexture: this.depth,
+  });
 
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws with it.
-  constructor(renderer: WebGLRenderer) {
+  constructor(renderer: WebGLRenderer, scene: Scene, camera: Camera) {
     super(renderer, new WebGLRenderTarget(1, 1, { type: HalfFloatType }));
+    this.addPass(new RenderPass(scene, camera));
   }
 
   override render(deltaTime?: number): void {

@@ -28,8 +28,8 @@ const BEND = 14;
 /** A drop's shade and the white of snow and frost, as they land on screen by theme: never
  * glowing on the dark page, and apart from the light one. */
 const SHADE = {
-  light: { wet: [0.3, 0.36, 0.45], shade: 0.45, white: [0.78, 0.84, 0.93] },
-  dark: { wet: [0.62, 0.68, 0.76], shade: 0.3, white: [0.36, 0.4, 0.47] },
+  light: { shade: 0.45, white: [0.78, 0.84, 0.93] },
+  dark: { shade: 0.48, white: [0.36, 0.4, 0.47] },
 } as const;
 
 /** Seconds after which the glass's clock starts over: a shader counts in 32 bits, and after
@@ -55,7 +55,6 @@ export class LensPass extends Pass {
     tDiffuse: sampler(),
     tField: sampler(),
     uBend: { value: new Vector2() },
-    uWet: { value: new Vector3() },
     uShade: { value: 0 },
     uWhite: { value: new Vector3() },
   };
@@ -93,9 +92,8 @@ export class LensPass extends Pass {
 
   /** The glass's colours for the theme. */
   tint(dark: boolean): void {
-    const { wet, shade, white } = dark ? SHADE.dark : SHADE.light;
+    const { shade, white } = dark ? SHADE.dark : SHADE.light;
 
-    this.#glassUniforms.uWet.value.fromArray(wet);
     this.#glassUniforms.uShade.value = shade;
     this.#glassUniforms.uWhite.value.fromArray(white);
   }

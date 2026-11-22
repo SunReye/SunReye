@@ -8,8 +8,8 @@
   import LowPowerRow from "./LowPowerRow.svelte";
   import MotionRow from "./MotionRow.svelte";
   import QualityRow from "./QualityRow.svelte";
+  import SceneEffectsRows from "./SceneEffectsRows.svelte";
   import ThemeRow from "./ThemeRow.svelte";
-  import WeatherEffectsRow from "./WeatherEffectsRow.svelte";
 </script>
 
 <DrillCard>
@@ -18,7 +18,7 @@
     <LanguageRow />
     <QualityRow />
     <FrameLimitRow />
-    <WeatherEffectsRow />
+    <SceneEffectsRows />
     <MotionRow />
     <LowPowerRow />
     <HapticsRow />

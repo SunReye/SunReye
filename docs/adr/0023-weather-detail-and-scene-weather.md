@@ -1,6 +1,6 @@
 # 23. Weather detail and scene weather
 
-Status: accepted (2026-11-17), amended (2026-11-18, 2026-11-19)
+Status: accepted (2026-11-17), amended (2026-11-18, 2026-11-19, 2026-11-22)
 
 ## Context
 
@@ -36,9 +36,9 @@ One Open-Meteo request asks for `minutely_15` and `hourly` together. Sunshine is
 
 **Scene weather.** It follows the instant shown, as the light does: the dashboard's now and the time slider's. Dates with neither forecast nor archive are clear and dry.
 
-- *Rain and snow:* particles drawn in the scene's own render, without a pass. Their density follows precipitation or snowfall; they slant with the wind's speed and direction; snow drifts, rain streaks. They move on the full tier only; lite draws a sparse still field; still and reduced motion draw none.
-- *Lens glass:* one fragment pass after tone mapping, at reduced resolution. Rain beads and runs down it and refracts the scene; snow settles at its edges and melts; frost creeps in from the corners below about 0 °C in humid air. It is sparse and weighted to the edges, so the middle of the plant stays readable, and fades in and out with the weather. Full tier only, and off at *Niedrig*. Labels, the inspector and hit-testing sit above it: it bends only the rendered scene.
-- *Fog:* the scene's distance fog thickens toward grey as visibility falls, or on codes 45 and 48, scaled to the plant's own distances so it deepens away from the camera; the backdrop greys with it, so the floor no longer lands on the page colour while fog stands.
+- *Rain and snow:* particles drawn with the scene. Their density follows precipitation or snowfall; they slant with the wind's speed and direction. Rain streaks vary in length and brightness and fade with distance; snow drifts. With a camera focus effect on, each particle uses its own depth and the same focus slice as the scene. Softening spreads its light in a round footprint, and the original scene depth keeps particles behind buildings hidden. They move on the full tier only; lite draws a sparse still field; still and reduced motion draw none.
+- *Lens glass:* a low-resolution field distorts the picture after tone mapping. Clear beads bend and catch light from the scene. Larger drops run at varying speeds and leave thin, tapering trails. Snow settles at the lower edge and in the corners, and below about 0 °C in humid air frost creeps in from the corners. The middle of the plant stays clear. Full tier only, and off at *Niedrig*. Labels, the inspector and hit-testing sit above it: it bends only the rendered scene.
+- *Fog:* the scene's distance fog thickens toward grey as visibility falls, or on codes 45 and 48, scaled to the plant's own distances so it deepens away from the camera; the backdrop greys with it, so the floor no longer lands on the page colour while fog stands. Ambient occlusion darkens the surfaces through the fog. The light from windows fades through the fog and its decals keep their soft edges. Fully fogged surfaces show only the fog colour.
 - *Wet ground:* the ground and roofs darken while precipitation is above 0 and dry back over about an hour.
 - *Lying snow:* the ground and roofs whiten while snow depth is at least 1 cm; snow-covered modules are drawn white.
 - *Thunder:* codes 95–99 close the sky and dim the whole scene's light by about a third. No lightning flashes.

@@ -114,6 +114,41 @@ test("rain is sparse: most of the picture around the middle is as it was", () =>
   expect(differing(picture(opened), clear).around).toBeLessThan((SIDE * SIDE * 3) / 4 / 3);
 });
 
+test("rain on the lens takes its light from the scene, even on a completely dark backdrop", () => {
+  const opened = open(true);
+  const floor = opened.scene.getObjectByName("floor");
+
+  if (floor === undefined) throw new TypeError("no floor");
+
+  floor.visible = false;
+  opened.scene.background = new Color(0x000000);
+  const black = picture(opened);
+
+  opened.lens(RAIN, 5);
+  expect(differing(picture(opened), black)).toEqual({ middle: 0, around: 0 });
+});
+
+test("snow on the lens gathers below the plant and leaves open sky above it", () => {
+  const opened = open(true);
+  const clear = picture(opened);
+
+  const upperSky = (pixels: readonly number[]): number[] =>
+    pixels.filter((_, i) => {
+      const x = i % SIDE;
+
+      return i >= (SIDE * SIDE * 3) / 4 && x >= SIDE / 4 && x < (SIDE * 3) / 4;
+    });
+
+  opened.lens(SNOW, 5);
+
+  const snow = picture(opened);
+
+  const skyBefore = upperSky(clear);
+
+  expect(upperSky(snow).some((value, i) => Math.abs(value - skyBefore[i]!) > 2)).toBe(false);
+  expect(differing(snow, clear).around).toBeGreaterThan(SIDE * 2);
+});
+
 test("the less of it, the less is on the lens", () => {
   const opened = open();
   const clear = picture(opened);
