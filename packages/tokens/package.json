@@ -1,0 +1,17 @@
+{
+  "name": "@sunreye/tokens",
+  "version": "5.0.0",
+  "private": true,
+  "description": "SunReye's design tokens and glass surfaces as plain CSS (ADR 21).",
+  "license": "SEE LICENSE IN LICENSE",
+  "style": "./index.css",
+  "files": [
+    "*.css"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./index.css",
+    "./tokens.css": "./tokens.css",
+    "./glass.css": "./glass.css"
+  }
+}

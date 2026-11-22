@@ -72,6 +72,10 @@
         "sunreye-profile": "./src/cli.ts",
       },
     },
+    "packages/tokens": {
+      "name": "@sunreye/tokens",
+      "version": "5.0.0",
+    },
   },
   "packages": {
     "@ai-sdk/gateway": ["@ai-sdk/gateway@4.0.115", "", { "dependencies": { "@ai-sdk/provider": "4.0.28", "@ai-sdk/provider-utils": "5.0.61", "@vercel/oidc": "3.2.0" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-Xn+gDWM4Ti2FzYmxhlZtjEuGBGZlOYaQMpwcVRSN4c9qCMUszD5F5TAbkxgLV/tHKeMfEX+WEuTCl6Kkj2r73A=="],
@@ -503,6 +507,8 @@
     "@standard-schema/spec": ["@standard-schema/spec@1.1.0", "", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
 
     "@sunreye/sdk": ["@sunreye/sdk@workspace:packages/sdk"],
+
+    "@sunreye/tokens": ["@sunreye/tokens@workspace:packages/tokens"],
 
     "@sunreye/web": ["@sunreye/web@workspace:apps/web"],
 
