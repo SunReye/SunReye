@@ -8,12 +8,18 @@
   import { untrack } from "svelte";
   import { PerspectiveCamera } from "three";
   import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-  import { openGarage, parkedKey, type Garage, type ModelLoader } from "../cars/garage.ts";
-  import type { Parked } from "../cars/parked.ts";
+  import {
+    openGarage,
+    parkedKey,
+    type Garage,
+    type ModelLoader,
+    type Parked,
+  } from "../cars/garage.ts";
   import { m } from "../paraglide/messages.js";
   import PerfOverlay from "../scene/PerfOverlay.svelte";
   import { Ghost, lit, type Lit, type SceneFailure, type Sky } from "../scene/stage.svelte.ts";
   import { FOV, type View } from "./camera.ts";
+  import type { Geometry, Point } from "./pv.ts";
   import {
     RoofTool,
     Handled,
@@ -22,9 +28,7 @@
     picking,
     projector,
     type Editing,
-    type Geometry,
     type Hit,
-    type Point,
     type Roofwork,
     type Panel,
     type Projector,

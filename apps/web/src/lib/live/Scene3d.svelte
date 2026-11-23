@@ -1,6 +1,5 @@
 <script lang="ts">
   // The glue crate's release build, which the SPA build makes first (ADR 2, 20).
-  import wasm from "../../../../../target/wasm32-unknown-unknown/release/sunreye_pv_wasm.wasm?url";
   import type { Core } from "../api/core.ts";
   import type { SceneFailure } from "../scene/stage.svelte.ts";
   import { warm } from "../scene/warm.ts";
@@ -47,9 +46,7 @@
       await Promise.all([
         import("./LiveScene.svelte"),
         import("../cars/models.ts"),
-        import("../builder/pv.ts").then(async ({ loadPv }) =>
-          loadPv(new Uint8Array(await (await fetch(wasm)).arrayBuffer())),
-        ),
+        import("../builder/engine.ts").then(({ fetchPv }) => fetchPv()),
         core.moduleTypes(),
         core.capabilities(),
         // The admin's (ADR 9): for a viewer the sun stays put.

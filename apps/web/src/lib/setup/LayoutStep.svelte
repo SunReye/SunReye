@@ -7,10 +7,9 @@
   import { Skeleton } from "#lib/components/ui/skeleton/index.js";
   import DrillHeader from "../components/drill-in/drill-header.svelte";
   // The glue crate's release build, which the SPA build makes first (ADR 2, 20).
-  import wasm from "../../../../../target/wasm32-unknown-unknown/release/sunreye_pv_wasm.wasm?url";
   import type { Core, Device } from "../api/core.ts";
   import { emptyDraft } from "../builder/modules";
-  import { loadPv } from "../builder/pv";
+  import { fetchPv } from "../builder/engine.ts";
   import { stream } from "../live/stream.svelte.ts";
   import { Button } from "@sunreye/ui/button";
   import { m } from "../paraglide/messages.js";
@@ -41,7 +40,7 @@
     const [{ default: Builder }, pv, moduleTypes] = await Promise.all([
       // Lazy, so three.js loads up front only on the builder route (ADR 20).
       import("../builder/Builder.svelte"),
-      fetch(wasm).then(async (response) => loadPv(new Uint8Array(await response.arrayBuffer()))),
+      fetchPv(),
       core.moduleTypes(),
     ]);
 

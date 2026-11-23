@@ -1,15 +1,13 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
 import { picked } from "./levels.ts";
-import { loadPv, type GridModule, type Point, type Scene } from "./pv.ts";
+import { loadPv } from "@sunreye/pv-wasm";
+import type { GridModule, Point, Scene } from "./pv.ts";
 
 // What the crate answers while modules are laid (ADR 20 Modules), on the south face of a 10 m × 8 m
 // gable house at 35°: 10 m across and 4.883 m up the slope, behind a 0.3 m setback.
 
-const wasm = new URL(
-  "../../../../../target/wasm32-unknown-unknown/release/sunreye_pv_wasm.wasm",
-  import.meta.url,
-);
+const wasm = new URL(import.meta.resolve("@sunreye/pv-wasm/pv.wasm"));
 
 const pv = await loadPv(await Bun.file(wasm).bytes());
 

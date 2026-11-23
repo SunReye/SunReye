@@ -18,7 +18,7 @@
     "sync": "bun run i18n && svelte-kit sync",
     "check": "bun run sync && rsvelte typecheck && rsvelte lint",
     "test:components": "bun run wasm && bun run i18n && bun ../../scripts/components.ts",
-    "wasm": "cargo build --locked --release -p sunreye-pv-wasm --target wasm32-unknown-unknown"
+    "wasm": "bun run --cwd ../../packages/pv-wasm wasm"
   },
   "dependencies": {
     "@scalar/api-reference": "1.76.4",
@@ -36,6 +36,7 @@
     "@internationalized/date": "3.12.4",
     "@lucide/svelte": "1.71.0",
     "@sunreye/catalogue": "workspace:*",
+    "@sunreye/pv-wasm": "workspace:*",
     "@sunreye/scene": "workspace:*",
     "@sunreye/tokens": "workspace:*",
     "@sunreye/ui": "workspace:*",

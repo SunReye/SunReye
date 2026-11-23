@@ -13,8 +13,6 @@ import { buildScene, buildSliced, strike, tint, toThree, type Hit, type Panel } 
 
 export type { Hit, Panel } from "./scene.ts";
 
-export type { Geometry, Point } from "./pv.ts";
-
 export { Handled, type Editing } from "./handles/handled.svelte.ts";
 
 export { layingOf, type Roofwork } from "./gestures.ts";

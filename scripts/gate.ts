@@ -132,19 +132,8 @@ const steps: readonly Step[] = [
   },
   // The SDK's tests load the WASM from where the package ships it.
   { run: ["bun", "run", "--cwd", "packages/sdk", "wasm"], fast: true },
-  {
-    run: [
-      "cargo",
-      "build",
-      "--locked",
-      "--release",
-      "-p",
-      "sunreye-pv-wasm",
-      "--target",
-      "wasm32-unknown-unknown",
-    ],
-    fast: true,
-  },
+  // The app's tests load the engine from where @sunreye/pv-wasm ships it.
+  { run: ["bun", "run", "--cwd", "packages/pv-wasm", "wasm"], fast: true },
   { run: ["bun", "test"], reads: ALL, fast: true },
   { run: [...web, "test:components"], reads: BOTH },
 ];

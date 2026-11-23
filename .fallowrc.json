@@ -151,6 +151,10 @@
         "patterns": ["packages/ui/**"]
       },
       {
+        "name": "pv-wasm",
+        "patterns": ["packages/pv-wasm/**"]
+      },
+      {
         "name": "profiles",
         "patterns": ["profiles/**"]
       },
@@ -162,7 +166,7 @@
     "rules": [
       {
         "from": "web",
-        "allow": ["tokens", "catalogue", "scene", "ui"]
+        "allow": ["tokens", "catalogue", "scene", "ui", "pv-wasm"]
       },
       {
         "from": "sdk",
@@ -185,12 +189,16 @@
         "allow": []
       },
       {
+        "from": "pv-wasm",
+        "allow": ["scene"]
+      },
+      {
         "from": "profiles",
         "allow": ["sdk"]
       },
       {
         "from": "tooling",
-        "allow": ["web", "sdk", "tokens", "catalogue", "scene", "ui", "profiles"]
+        "allow": ["web", "sdk", "tokens", "catalogue", "scene", "ui", "pv-wasm", "profiles"]
       }
     ],
     "coverage": {

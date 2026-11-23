@@ -4,12 +4,9 @@ import type { Core, ModuleType } from "../api/core.ts";
 import { perSeries } from "../api/core.harness.ts";
 import { emptyDraft, type Draft } from "./modules.ts";
 import { load, shareAt, sourceOf, wattsAt } from "./moment.ts";
-import { loadPv } from "./pv.ts";
+import { loadPv } from "@sunreye/pv-wasm";
 
-const wasm = new URL(
-  "../../../../../target/wasm32-unknown-unknown/release/sunreye_pv_wasm.wasm",
-  import.meta.url,
-);
+const wasm = new URL(import.meta.resolve("@sunreye/pv-wasm/pv.wasm"));
 
 const pv = await loadPv(await Bun.file(wasm).bytes());
 

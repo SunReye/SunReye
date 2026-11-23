@@ -1,8 +1,34 @@
-// The scene as the pv crate lays it out (ADR 20): the roof faces and the module grids on them, and
+// The scene's module grids as the `pv` crate lays them out on the roof faces (ADR 20 Modules), and
 // what the builder's handles stand on.
-import type { Point, Spot, Wall } from "./pv.ts";
-import type { Footing } from "./roofing.ts";
-import type { WallFrame } from "./walls.ts";
+
+import type { Scene, Wall } from "@sunreye/scene";
+import type { Point, WallFrame } from "./geometry.d.ts";
+
+/** Where a module lies on its face, and which way. */
+export interface Spot {
+  /** Its lower left corner: metres across the slope and up it from the face's lowest corner on
+   * the left, seen from the front. */
+  readonly across: number;
+  readonly up: number;
+  /** Long side across the slope. */
+  readonly landscape: boolean;
+}
+
+/** A module's outline in metres; `height` is its long side. */
+export interface Size {
+  readonly width: number;
+  readonly height: number;
+}
+
+/** Each module type's size, by its id. */
+export type Sizes = Readonly<Record<number, Size>>;
+
+/** A grid of a scene, by its position, with the sizes of the scene's module types. */
+export interface OnGrid {
+  readonly scene: Scene;
+  readonly sizes: Sizes;
+  readonly grid: number;
+}
 
 /** A roof face as a module grid sees it. */
 export interface RoofFace {
@@ -57,6 +83,13 @@ export type Misplaced =
       /** Its footprint on its face; null without a module size. */
       readonly area: Area | null;
     };
+
+/** A chimney's foot on its roof face as the crate lays it out: its corners from the lower left,
+ * east, north, up, and the height of its level top. */
+export interface Footing {
+  readonly foot: readonly Point[];
+  readonly top: number;
+}
 
 /** The roofs, each grid on its face (null for a missing face or module type) and the first misfit;
  * and what the builder's handles stand on. */

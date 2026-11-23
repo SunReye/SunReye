@@ -1,7 +1,7 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
 import { inputsOf, limitsOf, sized } from "./checks.ts";
-import type { Sizing } from "./sizing.ts";
+import type { Sizing } from "./pv.ts";
 
 test("the limits are each inverter's maximum DC input voltage, by device id", () => {
   const support = { estimated: [], series: [], settings: [], writes: false };

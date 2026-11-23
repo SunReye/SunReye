@@ -1,6 +1,7 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { loadPv, type Opening, type Scene } from "./pv.ts";
+import { loadPv } from "@sunreye/pv-wasm";
+import type { Opening, Scene } from "./pv.ts";
 import {
   duplicate,
   pasted,
@@ -11,11 +12,7 @@ import {
   type OpeningGrip,
 } from "./wall-openings.ts";
 
-// The release build the gate and the SPA build produce (crates/pv-wasm).
-const wasm = new URL(
-  "../../../../../target/wasm32-unknown-unknown/release/sunreye_pv_wasm.wasm",
-  import.meta.url,
-);
+const wasm = new URL(import.meta.resolve("@sunreye/pv-wasm/pv.wasm"));
 
 const pv = await loadPv(await Bun.file(wasm).bytes());
 

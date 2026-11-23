@@ -2,7 +2,7 @@
 import type { Device } from "../api/core.ts";
 import { m } from "../paraglide/messages.js";
 import { getLocale } from "../paraglide/runtime.js";
-import type { Cold, Inverters, Sized, StringRefusal } from "./checks.ts";
+import type { Cold, Sized, StringRefusal } from "./checks.ts";
 import { moduleOf, parent, type Level, type Section } from "./levels.ts";
 import { inNoString, wiredIn, type Draft } from "./modules.ts";
 import {
@@ -14,7 +14,7 @@ import {
   ROOFS,
   WALL_NAMES,
 } from "./names.ts";
-import type { Fence, Modules, Pv, Sizes } from "./pv.ts";
+import type { Fence, Inverters, Modules, Pv, Sizes } from "./pv.ts";
 
 export {
   FENCE_FINISHES,

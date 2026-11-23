@@ -5,14 +5,12 @@ import { misplacedText } from "../checks.ts";
 import { picked } from "../levels.ts";
 import { addGrid, withoutBlock } from "../modules.ts";
 import { place } from "../placing.ts";
-import { loadPv, type Point, type RoofWindow, type Scene } from "../pv.ts";
+import { loadPv } from "@sunreye/pv-wasm";
+import type { Point, RoofWindow, Scene } from "../pv.ts";
 import { buildScene } from "../scene.ts";
 import { drag, handles, type Ray, type Target } from "./grips.ts";
 
-const wasm = new URL(
-  "../../../../../../target/wasm32-unknown-unknown/release/sunreye_pv_wasm.wasm",
-  import.meta.url,
-);
+const wasm = new URL(import.meta.resolve("@sunreye/pv-wasm/pv.wasm"));
 
 const pv = await loadPv(await Bun.file(wasm).bytes());
 
