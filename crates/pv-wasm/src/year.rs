@@ -1,4 +1,5 @@
-//! A plant's run over a year of weather (ADR 17): energy per string, MPPT input and inverter.
+//! A plant's run over a year of weather (ADR 17): energy per string, MPPT input and inverter, and
+//! a typed inverter's AC side.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -81,7 +82,8 @@ impl Steps {
 pub struct YearRun {
     #[serde(flatten)]
     plant: Plant,
-    /// Each input's limits come from its inverter's type; without one, nothing is capped.
+    /// Each inverter's MPPT limits and AC side come from its type; without one, nothing is capped
+    /// and no AC side is reported.
     #[serde(default)]
     inverter_types: HashMap<u32, InverterType>,
     weather: Steps,
@@ -95,17 +97,11 @@ impl YearRun {
             Ok(samples) => samples,
             Err(error) => return json!({ "error": error }),
         };
-        let limits = |device, input: u32| {
-            let limits = self.inverter_types.get(&device)?.limits();
-            limits
-                .get(usize::try_from(input).ok()?.checked_sub(1)?)
-                .copied()
-        };
         let Wired {
             layout,
             order,
             devices,
-        } = match self.plant.layout(limits) {
+        } = match self.plant.layout(&self.inverter_types) {
             Ok(wired) => wired,
             Err(refused) => return json!({ "error": refused.to_string() }),
         };
@@ -131,7 +127,13 @@ impl YearRun {
                     .zip(&inverter.inputs)
                     .map(|(number, input)| json!({ "input": number, "energy": energy(&input.energy) }))
                     .collect();
-                json!({ "device": device, "dc": energy(&inverter.dc), "inputs": inputs })
+                inverter.ac.as_ref().map_or_else(
+                    || json!({ "device": device, "dc": energy(&inverter.dc), "inputs": inputs }),
+                    |ac| {
+                        let ac = json!({ "energy": energy(&ac.energy), "clipped": energy(&ac.clipped) });
+                        json!({ "device": device, "dc": energy(&inverter.dc), "ac": ac, "inputs": inputs })
+                    },
+                )
             })
             .collect();
         json!({ "ok": { "strings": strings, "inverters": inverters } })

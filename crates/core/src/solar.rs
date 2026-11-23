@@ -390,7 +390,7 @@ impl Model {
                         input(index, &strings, declared, module_types, &by_string)
                     })
                     .unzip();
-                let inverter = pv::Inverter { inputs };
+                let inverter = pv::Inverter { inputs, ac: None };
                 let place = InverterPlace {
                     device: DeviceId(device),
                     inputs: places,

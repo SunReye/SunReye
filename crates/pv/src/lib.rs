@@ -53,7 +53,7 @@ pub use surroundings::{
     Fence, FenceFinish, FencePoint, Fencing, Ground, GroundFinish, GroundSurface,
 };
 pub use temperature::cell_temperature;
-pub use year::{Energy, InputYear, InverterYear, Year, year, year_with};
+pub use year::{AcYear, Energy, InputYear, InverterYear, Year, year, year_with};
 
 /// The cell temperature in °C a string's open-circuit voltage is checked at (ADR 20).
 pub const COLD: f64 = -10.0;
@@ -233,6 +233,17 @@ pub struct Layout {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Inverter {
     pub inputs: Vec<Input>,
+    /// From its inverter type; without one a year's run reports no AC side (ADR 27).
+    pub ac: Option<AcSide>,
+}
+
+/// An inverter type's AC rating and efficiency, which a year's run turns DC into AC with.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AcSide {
+    /// Watts.
+    pub rating: f64,
+    /// The European weighted efficiency, in %.
+    pub efficiency: f64,
 }
 
 /// One MPPT input and its strings in parallel.

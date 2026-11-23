@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::MpptLimits;
+use crate::{AcSide, MpptLimits};
 
 /// One inverter model's datasheet values.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -78,6 +78,15 @@ impl InverterType {
                 start_voltage: i.start_voltage,
             })
             .collect()
+    }
+
+    /// Its AC rating and efficiency, for a year's run.
+    #[must_use]
+    pub const fn ac_side(&self) -> AcSide {
+        AcSide {
+            rating: self.ac_rating,
+            efficiency: self.efficiency,
+        }
     }
 
     /// The first value out of its physical range, as a JSON pointer below the type without its

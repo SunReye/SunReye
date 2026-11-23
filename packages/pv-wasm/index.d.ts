@@ -96,7 +96,7 @@ export interface YearRun {
   readonly neighbours?: readonly Neighbour[];
   readonly moduleTypes: readonly ModuleType[];
   readonly strings: readonly Wiring[];
-  /** By inverter device id: its inputs' limits. An inverter without one caps no input. */
+  /** By inverter device id: its inputs' limits and AC side. An inverter without one caps no input and has no AC side. */
   readonly inverterTypes?: Readonly<Record<number, InverterType>>;
   readonly weather: WeatherSteps;
 }
@@ -115,6 +115,8 @@ export interface YearEnergy {
     readonly device: number;
     /** The sum of its inputs, on the DC side. */
     readonly dc: Energy;
+    /** After its type's efficiency curve, capped at its AC rating, and what the cap cut; absent without a type. */
+    readonly ac?: { readonly energy: Energy; readonly clipped: Energy };
     /** By input number, from 1. */
     readonly inputs: readonly { readonly input: number; readonly energy: Energy }[];
   }[];

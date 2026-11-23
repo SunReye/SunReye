@@ -3,8 +3,8 @@
 
 use super::fixtures::MODULE;
 use crate::{
-    Energy, Input, Inverter, Layout, Location, Plane, PvString, Weather, clear_weather, estimate,
-    year,
+    AcSide, Energy, Input, Inverter, Layout, Location, Plane, PvString, Weather, clear_weather,
+    estimate, year,
 };
 
 const QUARTER: i64 = 900;
@@ -44,12 +44,14 @@ fn plant(location: Location) -> Layout {
                         strings: vec![string(0.0, 14)],
                     },
                 ],
+                ac: None,
             },
             Inverter {
                 inputs: vec![Input {
                     limits: None,
                     strings: vec![string(90.0, 10)],
                 }],
+                ac: None,
             },
         ],
         occluders: Vec::new(),
@@ -190,4 +192,101 @@ fn a_night_yields_nothing() {
 
     assert!(run.inverters.iter().all(|i| i.dc.total == 0.0));
     assert_eq!(run.inverters[0].inputs[0].strings[1].months, [0.0; 12]);
+}
+
+/// A bright June noon in Berlin, and the first inverter's DC watts then.
+fn noon() -> (Weather, f64) {
+    let june = clear_weather(utc(2026, 6, 21, 11, 0), BERLIN);
+    let dc = estimate(&plant(BERLIN), &june).inverters[0].power;
+    assert!(dc > 5000.0, "{dc} W");
+    (june, dc)
+}
+
+/// The first inverter typed at 96 %, rated so that `dc` watts load it to `load` of its DC rating.
+fn typed(dc: f64, load: f64) -> Layout {
+    let mut layout = plant(BERLIN);
+    layout.inverters[0].ac = Some(AcSide {
+        rating: 0.96 * dc / load,
+        efficiency: 96.0,
+    });
+    layout
+}
+
+#[test]
+fn ac_is_below_dc_by_the_efficiency_curve() {
+    let (june, dc) = noon();
+    // pvlib's `inverter.pvwatts` at 96 %: (−0.0162 ζ − 0.0059 / ζ + 0.9858) / 0.9637 of 96 %.
+    for (load, curve) in [(0.1, 0.925_18), (0.5, 0.965_9), (0.99, 0.963_802_404_04)] {
+        let run = year(&typed(dc, load), &[june], QUARTER);
+
+        let inverter = &run.inverters[0];
+        let ac = inverter
+            .ac
+            .as_ref()
+            .expect("a typed inverter has an AC side");
+        let expected = dc * 0.96 * curve / 0.9637 / 4.0;
+        assert_near(ac.energy.total, expected, &format!("at {load}"));
+        assert_near(ac.energy.months[5], ac.energy.total, "June");
+        assert_eq!(ac.clipped.total, 0.0, "at {load}");
+        assert_near(inverter.dc.total, dc / 4.0, "DC stays the inputs' sum");
+    }
+}
+
+#[test]
+fn power_above_the_ac_rating_is_clipped_and_reported() {
+    let (june, dc) = noon();
+    let morning = clear_weather(utc(2026, 6, 21, 4, 0), BERLIN);
+    // Twice its DC rating at noon: the curve gives (−0.0324 − 0.00295 + 0.9858) / 0.9637 of 96 %.
+    let layout = typed(dc, 2.0);
+    let rating = 0.48 * dc;
+
+    let run = year(&layout, &[june, morning], QUARTER);
+
+    let ac = run.inverters[0].ac.as_ref().expect("typed");
+    let at_noon = dc * 0.96 * 0.950_45 / 0.9637;
+    let at_morning = estimate(&layout, &morning).inverters[0].power;
+    assert!(
+        at_morning > 0.0 && at_morning < rating,
+        "the morning stays under the rating: {at_morning} W"
+    );
+    assert_near(
+        ac.clipped.total,
+        (at_noon - rating) / 4.0,
+        "clipped at noon",
+    );
+    assert!(
+        ac.energy.total > rating / 4.0 && ac.energy.total < (rating + at_morning) / 4.0,
+        "noon at the rating, the morning below DC: {}",
+        ac.energy.total
+    );
+    assert_near(ac.clipped.months[5], ac.clipped.total, "clipped in June");
+    assert!(
+        run.inverters[1].ac.is_none(),
+        "an untyped inverter has no AC side"
+    );
+}
+
+#[test]
+fn an_inverter_without_a_type_computes_as_before() {
+    let (june, dc) = noon();
+    let untyped = year(&plant(BERLIN), &[june], QUARTER);
+    let typed = year(&typed(dc, 2.0), &[june], QUARTER);
+
+    assert!(untyped.inverters.iter().all(|i| i.ac.is_none()));
+    assert_near(untyped.inverters[0].dc.total, dc / 4.0, "DC");
+    for (untyped, typed) in untyped.inverters.iter().zip(&typed.inverters) {
+        assert_eq!(untyped.dc, typed.dc, "the type leaves DC as it was");
+        assert_eq!(untyped.inputs, typed.inputs);
+    }
+}
+
+#[test]
+fn a_load_too_small_for_the_curve_yields_no_ac() {
+    let (june, dc) = noon();
+    // Under 0.0059 / 0.9858 of its DC rating the curve's efficiency is negative.
+    let run = year(&typed(dc, 0.001), &[june], QUARTER);
+
+    let ac = run.inverters[0].ac.as_ref().expect("typed");
+    assert_eq!(ac.energy.total, 0.0);
+    assert_eq!(ac.clipped.total, 0.0);
 }

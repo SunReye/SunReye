@@ -121,6 +121,11 @@ const neverStarts = pv.year({ ...plant, inverterTypes: { 7: {
   maker: "Example", model: "Two inputs", maxInputVoltage: 1100, acRating: 10000, efficiency: 97,
   inputs: [limits(180), limits(900)],
 } } });
+// Rated far under the plant's 32 modules, so noon clips.
+const typed = pv.year({ ...plant, inverterTypes: { 7: {
+  maker: "Example", model: "Small", maxInputVoltage: 1100, acRating: 1000, efficiency: 97,
+  inputs: [limits(180), limits(180)],
+} } }).inverters[0];
 const [south, unknown, north] = ran.strings;
 const [inverter] = ran.inverters;
 const [input] = inverter.inputs;
@@ -136,6 +141,10 @@ console.log(JSON.stringify({
   inputsSum: Math.abs(input.energy.total - inverter.dc.total) < 1e-6,
   monthsSum: Math.abs(inverter.dc.months.reduce((a, b) => a + b) - inverter.dc.total) < 1e-6,
   neverStarts: neverStarts.inverters[0].dc.total,
+  untypedHasNoAc: !("ac" in inverter),
+  typedDcAsBefore: typed.dc.total === inverter.dc.total,
+  acBelowDc: typed.ac !== undefined && typed.ac.energy.total + typed.ac.clipped.total < typed.dc.total,
+  clipped: (typed.ac?.clipped.total ?? 0) > 0,
 }));
 `;
 
@@ -153,6 +162,10 @@ test("a consumer runs a plant over a year of weather", async () => {
     inputsSum: true,
     monthsSum: true,
     neverStarts: 0,
+    untypedHasNoAc: true,
+    typedDcAsBefore: true,
+    acBelowDc: true,
+    clipped: true,
   });
 });
 

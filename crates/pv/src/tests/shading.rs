@@ -81,6 +81,7 @@ fn shaded(location: Location, azimuth: f64, toward: f64) -> Layout {
                 limits: None,
                 strings: vec![row(azimuth, 8), row(azimuth + 30.0, 8)],
             }],
+            ac: None,
         }],
         occluders,
     }
