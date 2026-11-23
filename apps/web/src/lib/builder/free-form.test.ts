@@ -152,6 +152,35 @@ test("a wall stepping up under two faces is drawn over its own area", () => {
   expect(covered(drawn, "wall")).toBeCloseTo(2 * 35 + 12 + 16, 6);
 });
 
+test("a wall only partly under a face is drawn up to it there and not past it", () => {
+  const box: readonly (readonly [number, number])[] = [
+    [0, 0],
+    [0, 4],
+    [10, 4],
+    [10, 0],
+  ];
+
+  // The face stands over the west 6 m only.
+  const drawn = buildScene(
+    pv.geometry(
+      scene({
+        footprint: box,
+        faces: [
+          [
+            [0, 3, 0],
+            [0, 3, 4],
+            [6, 3, 4],
+            [6, 3, 0],
+          ],
+        ],
+      }),
+    ),
+  );
+
+  // The long sides 6 m at 3 m, the west end 4 m at 3 m; the east end has none.
+  expect(covered(drawn, "wall")).toBeCloseTo(2 * 18 + 12, 6);
+});
+
 test("a level free-form face is drawn flat though its first corners lie in a line", () => {
   const face = [[10, 3, 0], [5, 3, 0], ...L.slice(1).map(([x, z]) => [x, 3, z])];
 
