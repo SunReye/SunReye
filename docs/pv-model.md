@@ -77,9 +77,18 @@ The profile `cargo test -p sunreye-pv --release profile::a_shading_table -- --ig
 
 `sunreye_pv::typical_year(years, step)` takes twenty or more whole UTC years of weather and keeps each calendar month whole from the past year whose daily global and direct normal irradiation and mean temperature are closest to all years' (weighted Finkelstein–Schafer statistic, ½, ¼, ¼, its distributions compared by value at every day of all years), restamped into 2001; 29 February is dropped. A sample that averages the step before its time is stamped at the step's middle, where the sun's mean position lies.
 
-`irradiation(layout, weather, step)` is Perez on the layout's planes in Wh/m², weighted by each module's Vmp × Imp, without shade or electrics. `cautious(simulated, typical, years)` scales the simulated typical year's energy by each past year's irradiation over the typical year's and fits a normal distribution: P50 is its mean, P90 the mean less 1.2816 deviations. Its `basis` says how the figure was made.
+The archive is hourly, so the typical year is picked at the hour and then split: `quarter_hours(hourly, location)` turns each hourly mean into four quarter hours stamped at their middles (ADR 17).
 
-`@sunreye/pv-wasm` exposes them as `typicalYear`, `irradiation` and `cautious`, and `Location::rounded` as `roundedLocation`: a consumer caching a typical year per rounded location keys it with that.
+- Global, direct normal and diffuse irradiance each take the shape of their Ineichen clear sky (`clear_sky.rs`) at the four quarters' middles, scaled so the quarters' mean is the hour's: the hour's energy is kept, and a clear day's hourly means split back into its quarter hours.
+- In a sunrise or sunset hour the quarters with the sun below the horizon get nothing.
+- An hour whose clear sky is dark throughout, twilight in the archive, is spread evenly.
+- Temperature and wind are held for the hour.
+
+The split stays inside each hour, so the months picked are the same.
+
+`irradiation(layout, weather, step)` is Perez on the layout's planes in Wh/m², weighted by each module's Vmp × Imp, without shade or electrics. `cautious(simulated, typical, years)` takes each past year's irradiation over the typical year's: P50 is the simulated typical year's energy itself, P90 = P50 × (1 − 1.2816 σ), σ the ratios' sample deviation. Its `basis` says how the figure was made: each past year's irradiation, the typical year's, and the ratios' mean and deviation; the mean moves neither figure.
+
+`@sunreye/pv-wasm` exposes them as `typicalYear`, which takes the rounded location and returns a typical year made from hourly years at 900 s steps, `irradiation` and `cautious`, and `Location::rounded` as `roundedLocation`: a consumer caching a typical year per rounded location keys it with that.
 
 ## How shade reaches the electrics
 

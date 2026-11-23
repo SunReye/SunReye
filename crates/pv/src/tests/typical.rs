@@ -1,5 +1,6 @@
 //! A typical year and the cautious yield (ADR 17): a site's typical year from twenty or more past
-//! years, a layout's irradiation, and P50 and P90 by scaling the simulated year.
+//! years, split into quarter hours, a layout's irradiation, and P50 and P90 from the simulated
+//! year and the spread of past years' irradiation.
 
 use std::f64::consts::TAU;
 
@@ -7,7 +8,8 @@ use super::fixtures::MODULE;
 use crate::estimate::day_of_year;
 use crate::{
     Input, Inverter, Layout, Location, Occluder, Plane, PvString, Sky, TypicalRefused, Weather,
-    cautious, clear_weather, irradiation, plane_irradiance, sun_position, typical_year,
+    cautious, clear_weather, irradiation, plane_irradiance, quarter_hours, sun_position,
+    typical_year,
 };
 
 const BERLIN: Location = Location {
@@ -230,6 +232,118 @@ fn a_step_that_does_not_divide_a_day_is_refused() {
     );
 }
 
+/// `quarters` as the archive gives them: each hour's mean, stamped at the hour's middle.
+fn hourly(quarters: &[Weather]) -> Vec<Weather> {
+    quarters
+        .chunks(4)
+        .map(|hour| {
+            let mean = |f: fn(&Weather) -> f64| hour.iter().map(f).sum::<f64>() / 4.0;
+            Weather {
+                unix: hour[0].unix - QUARTER / 2 + 1800,
+                ghi: mean(|w| w.ghi),
+                dni: mean(|w| w.dni),
+                dhi: mean(|w| w.dhi),
+                temperature: mean(|w| w.temperature),
+                wind: Some(3.0),
+            }
+        })
+        .collect()
+}
+
+fn close(a: f64, b: f64) -> bool {
+    (a - b).abs() <= 1e-9 * a.abs().max(b.abs()).max(1.0)
+}
+
+#[test]
+fn a_clear_days_hourly_means_split_back_into_its_quarter_hours() {
+    let day = june_day();
+
+    let split = quarter_hours(&hourly(&day), BERLIN);
+
+    assert_eq!(split.len(), 96);
+    for (ours, clear) in split.iter().zip(&day) {
+        assert_eq!(ours.unix, clear.unix);
+        assert!(close(ours.ghi, clear.ghi), "{} {}", ours.ghi, clear.ghi);
+        assert!(close(ours.dni, clear.dni), "{} {}", ours.dni, clear.dni);
+        assert!(close(ours.dhi, clear.dhi), "{} {}", ours.dhi, clear.dhi);
+        // Temperature and wind are held for the hour.
+        assert!(close(ours.temperature, clear.temperature));
+        assert_eq!(ours.wind, Some(3.0));
+    }
+}
+
+#[test]
+fn a_cloudy_hour_keeps_its_energy_and_the_clear_skys_shape() {
+    // 10:00 to 11:00 UTC on 21 June, the clear sky rising through it.
+    let noonish = midnight(2026, 6, 21) + 10 * 3600 + 1800;
+    let hour = Weather {
+        unix: noonish,
+        ghi: 300.0,
+        dni: 80.0,
+        dhi: 240.0,
+        temperature: 14.0,
+        wind: None,
+    };
+
+    let split = quarter_hours(&[hour], BERLIN);
+
+    let stamps: Vec<i64> = split.iter().map(|w| w.unix).collect();
+    assert_eq!(
+        stamps,
+        [noonish - 1350, noonish - 450, noonish + 450, noonish + 1350]
+    );
+    let mean = |f: fn(&Weather) -> f64| split.iter().map(f).sum::<f64>() / 4.0;
+    assert!(close(mean(|w| w.ghi), 300.0));
+    assert!(close(mean(|w| w.dni), 80.0));
+    assert!(close(mean(|w| w.dhi), 240.0));
+    assert!(
+        split.windows(2).all(|q| q[0].ghi < q[1].ghi),
+        "morning: rising"
+    );
+}
+
+#[test]
+fn a_sunrise_hour_puts_its_light_where_the_sun_is_up() {
+    // Berlin's sun rises near 02:43 UTC on 21 June: the hour from 02:00 has its first two
+    // quarters dark.
+    let hour = Weather {
+        unix: midnight(2026, 6, 21) + 2 * 3600 + 1800,
+        ghi: 8.0,
+        dni: 4.0,
+        dhi: 6.0,
+        temperature: 12.0,
+        wind: None,
+    };
+
+    let split = quarter_hours(&[hour], BERLIN);
+
+    let ghi: Vec<f64> = split.iter().map(|w| w.ghi).collect();
+    assert_eq!(&ghi[..2], [0.0, 0.0]);
+    assert!(close(ghi.iter().sum::<f64>() / 4.0, 8.0));
+}
+
+#[test]
+fn twilight_with_no_clear_sky_in_the_hour_is_spread_evenly() {
+    // 21 June 01:00 to 02:00 UTC: the sun stays below the horizon, the archive still has light.
+    let hour = Weather {
+        unix: midnight(2026, 6, 21) + 3600 + 1800,
+        ghi: 2.0,
+        dni: 0.0,
+        dhi: 2.0,
+        temperature: 12.0,
+        wind: None,
+    };
+
+    let split = quarter_hours(&[hour], BERLIN);
+
+    let even = |a: f64, b: f64| (a - b).abs() < 1e-12;
+    assert!(
+        split
+            .iter()
+            .all(|w| even(w.ghi, 2.0) && even(w.dhi, 2.0) && even(w.dni, 0.0))
+    );
+}
+
 fn layout(strings: Vec<PvString>, occluders: Vec<Occluder>) -> Layout {
     Layout {
         location: BERLIN,
@@ -326,7 +440,7 @@ fn each_module_weighs_by_its_datasheet_power() {
 }
 
 #[test]
-fn p50_and_p90_scale_the_simulated_year_by_each_past_years_irradiation() {
+fn p90_lies_below_the_simulated_year_by_the_spread_of_past_years_irradiation() {
     let years = [
         (2001, 900.0),
         (2002, 1000.0),
@@ -337,8 +451,8 @@ fn p50_and_p90_scale_the_simulated_year_by_each_past_years_irradiation() {
 
     let figure = cautious(10_000_000.0, 1000.0, &years).expect("five years");
 
-    // Ratios 0.9, 1, 1.1, 1, 1: mean 1, sample deviation √0.005; P90 lies 1.28155 deviations
-    // below the mean, exceeded in nine years of ten.
+    // Ratios 0.9, 1, 1.1, 1, 1: mean 1, sample deviation √0.005; P50 is the simulated year and
+    // P90 lies 1.28155 deviations below it, exceeded in nine years of ten.
     assert!((figure.p50 - 10_000_000.0).abs() < 1e-6, "{}", figure.p50);
     assert!(
         (figure.p90 - 9_093_806.197_563).abs() < 1e-3,
@@ -353,14 +467,32 @@ fn p50_and_p90_scale_the_simulated_year_by_each_past_years_irradiation() {
 }
 
 #[test]
-fn a_brighter_past_lifts_p50_above_the_simulated_year() {
+fn p50_is_the_simulated_typical_year_however_bright_the_past() {
+    let years = [(2001, 1000.0), (2002, 1100.0), (2003, 1200.0)];
+
+    let figure = cautious(10_000.0, 1000.0, &years).expect("three years");
+
+    // Ratios 1, 1.1, 1.2: mean 1.1, sample deviation 0.1. P50 is not scaled by the mean; P90 lies
+    // 1.28155 deviations below P50.
+    assert!((figure.p50 - 10_000.0).abs() < 1e-9, "{}", figure.p50);
+    assert!(
+        (figure.p90 - 8_718.448_434_455_4).abs() < 1e-6,
+        "{}",
+        figure.p90
+    );
+    assert!((figure.basis.mean - 1.1).abs() < 1e-12);
+    assert!((figure.basis.deviation - 0.1).abs() < 1e-12);
+}
+
+#[test]
+fn past_years_alike_give_p90_equal_to_p50() {
     let years = [(2001, 1100.0), (2002, 1100.0)];
 
     let figure = cautious(1000.0, 1000.0, &years).expect("two years");
 
-    assert!((figure.p50 - 1100.0).abs() < 1e-9, "{}", figure.p50);
+    assert!((figure.p50 - 1000.0).abs() < 1e-9, "{}", figure.p50);
     assert!(
-        (figure.p90 - 1100.0).abs() < 1e-9,
+        (figure.p90 - 1000.0).abs() < 1e-9,
         "no spread: {}",
         figure.p90
     );

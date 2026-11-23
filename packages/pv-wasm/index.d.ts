@@ -101,14 +101,17 @@ export interface YearRun {
   readonly weather: WeatherSteps;
 }
 
-/** Twenty or more whole UTC years at one step (ADR 17). A value that averages the step before its
- * time is stamped at the step's middle; `start` is the first such stamp. */
+/** Twenty or more whole UTC years at one step over a rounded location (ADR 17). A value that
+ * averages the step before its time is stamped at the step's middle; `start` is the first such
+ * stamp. Hourly years give a typical year at quarter hours. */
 export interface PastYears {
+  readonly location: Location;
   readonly years: readonly WeatherSteps[];
 }
 
-/** A rounded location's typical year, stamped in 2001 at its past years' step, and the past year each month,
- * January first, comes from. */
+/** A rounded location's typical year, stamped in 2001, and the past year each month, January first,
+ * comes from. Made from hourly years it comes at quarter hours: each hour's mean split along the
+ * clear sky's shape, its energy kept; otherwise at the years' step. */
 export interface TypicalYear {
   readonly weather: WeatherSteps;
   readonly sources: readonly number[];
@@ -130,9 +133,9 @@ export interface Scaling {
   readonly years: readonly PastIrradiation[];
 }
 
-/** P50 and P90 in the simulated energy's unit, and how they were made: the simulated year scaled
- * by each past year's irradiation over the typical year's, a normal distribution fitted to them,
- * P90 exceeded in nine years of ten. */
+/** P50 and P90 in the simulated energy's unit, and how they were made: P50 is the simulated typical
+ * year itself; P90, exceeded in nine years of ten, is P50 × (1 − 1.2816 σ), σ the sample deviation
+ * of each past year's irradiation over the typical year's. */
 export interface Cautious {
   readonly p50: number;
   readonly p90: number;
@@ -140,7 +143,7 @@ export interface Cautious {
     readonly method: "irradiationScaling";
     readonly typical: number;
     readonly years: readonly PastIrradiation[];
-    /** The mean and the sample deviation of the ratios. */
+    /** The mean and the sample deviation of the ratios; P50 does not read the mean. */
     readonly mean: number;
     readonly deviation: number;
   };

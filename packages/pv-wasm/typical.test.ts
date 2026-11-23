@@ -7,6 +7,7 @@ import { loadPv } from "./index.js";
 
 const pv = await loadPv(await Bun.file(new URL("dist/pv.wasm", import.meta.url)).bytes());
 const HOUR = 3600;
+const QUARTER = 900;
 
 /** The sun's share at the middle of hour `h` of a year. */
 const sun = (h: number) => Math.max(0, Math.cos((((h % 24) + 0.5 - 12) / 24) * 2 * Math.PI));
@@ -67,23 +68,44 @@ test("a rounded location is to a hundredth of a degree", () => {
   expect(plant.location).toEqual({ latitude: 52.52, longitude: 13.37 });
 });
 
-test("twenty past years give one typical year at their step, each month from one of them", () => {
-  const { weather, sources } = pv.typicalYear({ years });
+test("twenty hourly past years give one typical year at quarter hours, each month from one of them", () => {
+  const { weather, sources } = pv.typicalYear({ location: plant.location, years });
 
-  expect(weather.start).toBe(Date.UTC(2001, 0, 1) / 1000 + HOUR / 2);
-  expect(weather.step).toBe(HOUR);
-  expect(weather.ghi).toHaveLength(8760);
+  expect(weather.start).toBe(Date.UTC(2001, 0, 1) / 1000 + QUARTER / 2);
+  expect(weather.step).toBe(QUARTER);
+  expect(weather.ghi).toHaveLength(35_040);
   expect(sources).toHaveLength(12);
   // The years brighten steadily, so every month's middle lies near 2009.
   expect(sources.every((year) => year >= 2007 && year <= 2012)).toBe(true);
 });
 
 test("nineteen past years are refused", () => {
-  expect(() => pv.typicalYear({ years: years.slice(1) })).toThrow("19 past years, 20 needed");
+  expect(() => pv.typicalYear({ location: plant.location, years: years.slice(1) })).toThrow(
+    "19 past years, 20 needed",
+  );
 });
 
-test("P50 and P90 scale the simulated year by each past year's irradiation", () => {
-  const { weather } = pv.typicalYear({ years });
+test("the quarter hours keep each source month's energy", () => {
+  const { weather, sources } = pv.typicalYear({ location: plant.location, years });
+
+  // Each month's hourly global irradiation in its source year, 29 February left out.
+  const expected = sources.reduce((sum, year, month) => {
+    const start = Date.UTC(year, 0, 1);
+    const from = (Date.UTC(year, month, 1) - start) / 1000 / HOUR;
+    const end = month === 1 ? Date.UTC(year, 1, 29) : Date.UTC(year, month + 1, 1);
+    const to = (end - start) / 1000 / HOUR;
+    const ghi = years[year - 2000]?.ghi ?? [];
+
+    return sum + ghi.slice(from, to).reduce((a, b) => a + b, 0);
+  }, 0);
+
+  const quarters = weather.ghi.reduce((a, b) => a + b, 0) / 4;
+
+  expect(Math.abs(quarters / expected - 1)).toBeLessThan(1e-9);
+});
+
+test("P50 is the simulated typical year and P90 lies below it by the past years' spread", () => {
+  const { weather } = pv.typicalYear({ location: plant.location, years });
   const typical = pv.irradiation({ ...plant, weather });
 
   const past = years.map((year, i) => ({
@@ -95,7 +117,11 @@ test("P50 and P90 scale the simulated year by each past year's irradiation", () 
 
   expect(past[19]?.irradiation ?? 0).toBeGreaterThan(past[0]?.irradiation ?? 0);
   expect(figure.p90).toBeLessThan(figure.p50);
-  expect(Math.abs(figure.p50 / 10_000_000 - 1)).toBeLessThan(0.06);
+  expect(figure.p50).toBe(10_000_000);
+  expect(figure.p90).toBeCloseTo(
+    10_000_000 * (1 - 1.281_551_565_544_6 * figure.basis.deviation),
+    3,
+  );
   expect(figure.basis.method).toBe("irradiationScaling");
   expect(figure.basis.typical).toBe(typical);
   expect(figure.basis.years).toEqual(past);

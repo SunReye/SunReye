@@ -56,7 +56,9 @@ pub use surroundings::{
     Fence, FenceFinish, FencePoint, Fencing, Ground, GroundFinish, GroundSurface,
 };
 pub use temperature::cell_temperature;
-pub use typical::{FEWEST_YEARS, TYPICAL_YEAR, Typical, TypicalRefused, typical_year};
+pub use typical::{
+    FEWEST_YEARS, TYPICAL_YEAR, Typical, TypicalRefused, quarter_hours, typical_year,
+};
 pub use year::{AcYear, Energy, InputYear, InverterYear, Year, year, year_with};
 
 /// The cell temperature in °C a string's open-circuit voltage is checked at (ADR 20).

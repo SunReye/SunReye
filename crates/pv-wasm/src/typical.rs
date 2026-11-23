@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use serde::Deserialize;
 use serde_json::{Value, json};
-use sunreye_pv::{Location, Weather, cautious, irradiation, typical_year};
+use sunreye_pv::{Location, Weather, cautious, irradiation, quarter_hours, typical_year};
 
 use crate::Place;
 use crate::clear::{Plant, Wired};
@@ -19,14 +19,22 @@ pub fn rounded(place: Place) -> Value {
     json!({ "latitude": latitude, "longitude": longitude })
 }
 
-/// Twenty or more whole UTC years at one step.
+/// Twenty or more whole UTC years at one step, over a rounded location.
 #[derive(Deserialize)]
 pub struct PastYears {
+    location: Place,
     years: Vec<Steps>,
 }
 
+/// The archive's step, an hour.
+const HOUR: i64 = 3600;
+
+/// The step a typical year made from hourly years comes at.
+const QUARTER: i64 = 900;
+
 impl PastYears {
-    /// The typical year as columns at the years' step, and each month's source year.
+    /// The typical year as columns, hourly years split into quarter hours, and each month's
+    /// source year.
     pub fn reply(&self) -> Value {
         let step = self.years.first().map_or(0, |y| y.step);
         if self.years.iter().any(|y| y.step != step) {
@@ -37,10 +45,17 @@ impl PastYears {
             Err(error) => return json!({ "error": error }),
         };
         match typical_year(&years, step) {
-            Ok(typical) => json!({ "ok": {
-                "weather": columns(&typical.weather, step),
-                "sources": typical.sources,
-            }}),
+            Ok(typical) => {
+                let (weather, step) = if step == HOUR {
+                    (
+                        quarter_hours(&typical.weather, self.location.into()),
+                        QUARTER,
+                    )
+                } else {
+                    (typical.weather, step)
+                };
+                json!({ "ok": { "weather": columns(&weather, step), "sources": typical.sources } })
+            }
             Err(refused) => json!({ "error": refused.to_string() }),
         }
     }

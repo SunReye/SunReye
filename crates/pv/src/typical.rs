@@ -1,8 +1,8 @@
 //! A rounded location's typical year (ADR 17): for each calendar month, the past year's month closest to all
 //! of them, by Sandia's Finkelstein–Schafer statistic, restamped into one year.
 
-use crate::Weather;
-use crate::estimate::{SECONDS_PER_DAY, month};
+use crate::estimate::{SECONDS_PER_DAY, day_of_year, month};
+use crate::{Location, Weather, clear_sky, sun_position};
 
 /// The fewest past years a typical year is made from.
 pub const FEWEST_YEARS: usize = 20;
@@ -86,6 +86,50 @@ pub fn typical_year(years: &[Vec<Weather>], step: i64) -> Result<Typical, Typica
         );
     }
     Ok(Typical { weather, sources })
+}
+
+/// Each hourly mean of `hourly`, stamped at its hour's middle, as four quarter hours stamped at
+/// theirs (ADR 17).
+///
+/// Global, direct normal and diffuse irradiance each follow their clear-sky shape over `location`
+/// across the hour, and the four quarters' mean is the hour's, so the hour's energy is kept. An
+/// hour whose clear sky is dark throughout is spread evenly. Temperature and wind are held.
+#[must_use]
+pub fn quarter_hours(hourly: &[Weather], location: Location) -> Vec<Weather> {
+    let mut quarters = Vec::with_capacity(hourly.len() * 4);
+    for hour in hourly {
+        let stamps = [-1350, -450, 450, 1350].map(|offset| hour.unix + offset);
+        let clear = stamps.map(|unix| {
+            let sky = clear_sky(
+                sun_position(unix, location),
+                day_of_year(unix.div_euclid(SECONDS_PER_DAY)),
+            );
+            [sky.ghi.max(0.0), sky.dni.max(0.0), sky.dhi.max(0.0)]
+        });
+        let means = [hour.ghi, hour.dni, hour.dhi];
+        let shares: [[f64; 4]; 3] = std::array::from_fn(|k| {
+            let shape = clear.map(|c| c.get(k).copied().unwrap_or(0.0));
+            let sum: f64 = shape.iter().sum();
+            let mean = means.get(k).copied().unwrap_or(0.0);
+            if sum > 0.0 {
+                shape.map(|c| 4.0 * mean * c / sum)
+            } else {
+                [mean; 4]
+            }
+        });
+        let [ghi, dni, dhi] = shares;
+        for (q, unix) in stamps.into_iter().enumerate() {
+            let at = |of: &[f64; 4]| of.get(q).copied().unwrap_or(0.0);
+            quarters.push(Weather {
+                unix,
+                ghi: at(&ghi),
+                dni: at(&dni),
+                dhi: at(&dhi),
+                ..*hour
+            });
+        }
+    }
+    quarters
 }
 
 /// The UTC year `samples` cover whole at `step`, in order.

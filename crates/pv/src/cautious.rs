@@ -1,5 +1,6 @@
 //! The cautious yield (ADR 17): a plant's yearly yield follows the yearly irradiation on its
-//! planes almost in proportion, so past years' irradiation scales the simulated typical year.
+//! planes almost in proportion, so the spread of past years' irradiation around the typical year's
+//! sets how far below the simulated typical year P90 lies.
 
 use crate::estimate::{SECONDS_PER_DAY, day_of_year};
 use crate::{Layout, Plane, Sky, Weather, plane_irradiance, sun_position};
@@ -65,28 +66,32 @@ const P90: f64 = 1.281_551_565_544_600_4;
 /// The expected and the cautious yield, and how they were made.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Cautious {
-    /// The mean of the scaled yields, in the simulated year's unit.
+    /// The simulated typical year's energy itself.
     pub p50: f64,
-    /// The yield exceeded in nine years of ten, by a normal distribution fitted to them.
+    /// The yield exceeded in nine years of ten: P50 less 1.2816 deviations of the ratios.
     pub p90: f64,
     pub basis: Basis,
 }
 
-/// How a cautious figure was made: the simulated typical year scaled by each past year's
-/// irradiation on the planes over the typical year's.
+/// How a cautious figure was made: the ratios of each past year's irradiation on the planes to
+/// the typical year's, whose deviation sets P90 below the simulated typical year.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Basis {
     /// The typical year's irradiation on the planes, in Wh/m².
     pub typical: f64,
     /// Each past year and its irradiation on the planes, in Wh/m².
     pub years: Vec<(i64, f64)>,
-    /// The mean and the sample deviation of the ratios.
+    /// The mean and the sample deviation of the ratios; P50 does not read the mean, which shows
+    /// how the typical year sits among the past years.
     pub mean: f64,
     pub deviation: f64,
 }
 
-/// P50 and P90 of `simulated`, the typical year's energy, from `typical`, its irradiation, and
-/// each past year's; `None` with fewer than two years or no typical irradiation.
+/// P50 and P90 of `simulated`, the typical year's energy; `None` with fewer than two years or no
+/// typical irradiation.
+///
+/// P50 is `simulated` itself and P90 is `simulated × (1 − 1.2816 σ)`, σ the sample deviation of
+/// each past year's irradiation over `typical`, the typical year's.
 #[must_use]
 pub fn cautious(simulated: f64, typical: f64, years: &[(i64, f64)]) -> Option<Cautious> {
     if years.len() < 2 || typical <= 0.0 {
@@ -98,8 +103,8 @@ pub fn cautious(simulated: f64, typical: f64, years: &[(i64, f64)]) -> Option<Ca
     let mean = ratios.clone().sum::<f64>() / n;
     let deviation = (ratios.map(|r| (r - mean).powi(2)).sum::<f64>() / (n - 1.0)).sqrt();
     Some(Cautious {
-        p50: simulated * mean,
-        p90: simulated * P90.mul_add(-deviation, mean),
+        p50: simulated,
+        p90: simulated * P90.mul_add(-deviation, 1.0),
         basis: Basis {
             typical,
             years: years.to_vec(),

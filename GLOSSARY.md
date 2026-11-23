@@ -473,11 +473,11 @@ A whole instant's weather the builder's weather button shows the plant in, in pl
 _Avoid_: Sample (a reading), preset (a camera view), demo weather
 
 **Typical year**:
-One year of weather for a rounded location, each calendar month taken whole from the past year closest to twenty or more of them; the year an offer's expected yield is simulated on.
+One year of weather for a rounded location, each calendar month taken whole from the past year closest to twenty or more of them, at quarter hours; the year an offer's expected yield (P50) is simulated on.
 _Avoid_: TMY, average year, reference year
 
 **Cautious yield**:
-The yearly yield exceeded in nine years of ten (P90): the simulated typical year scaled by past years' irradiation on the planes.
+The yearly yield exceeded in nine years of ten (P90): the simulated typical year less 1.2816 deviations of past years' irradiation on the planes over the typical year's.
 _Avoid_: Worst case, minimum yield
 
 **Correction**:
