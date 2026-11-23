@@ -18,13 +18,28 @@ export function unit(v: Vector): Vector {
   return [v[0] / length, v[1] / length, v[2] / length];
 }
 
-/** A face's normal, east, north, up, turned to the sky. */
-export function normal([a, b, c]: readonly Point[]): Vector {
-  if (a === undefined || b === undefined || c === undefined) return [0, 0, 1];
+/** A flat polygon's normal by Newell's method, its length twice the area, the way its corners
+ * turn: any three of them may lie in a line, and it need not be convex. */
+export function newell(corners: readonly Point[]): Vector {
+  return corners.reduce<Vector>(
+    (sum, a, i) => {
+      const b = corners[(i + 1) % corners.length] ?? a;
 
-  const n = unit(
-    cross([b[0] - a[0], b[1] - a[1], b[2] - a[2]], [c[0] - a[0], c[1] - a[1], c[2] - a[2]]),
+      return [
+        sum[0] + (a[1] - b[1]) * (a[2] + b[2]),
+        sum[1] + (a[2] - b[2]) * (a[0] + b[0]),
+        sum[2] + (a[0] - b[0]) * (a[1] + b[1]),
+      ];
+    },
+    [0, 0, 0],
   );
+}
+
+/** A face's normal, east, north, up, turned to the sky. */
+export function normal(corners: readonly Point[]): Vector {
+  if (corners.length < 3) return [0, 0, 1];
+
+  const n = unit(newell(corners));
 
   return n[2] < 0 || (n[2] === 0 && n[0] + n[1] < 0) ? [-n[0], -n[1], -n[2]] : n;
 }
