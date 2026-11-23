@@ -3,7 +3,7 @@
 
 use serde_json::{Value, json};
 
-use crate::catalogue::{Invalid, Sheet};
+use crate::datasheets::{Invalid, Sheet};
 
 /// A two-input 10 kW inverter and its battery, made up where the ticket is silent.
 fn sheet() -> Value {

@@ -16,6 +16,8 @@ use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
+use sunreye_catalogue::modules as catalogue;
+pub use sunreye_catalogue::modules::Datasheet;
 use sunreye_profile::{Inverter, Profile};
 use sunreye_pv::{self as pv, Scene};
 use tokio::sync::watch;
@@ -28,7 +30,6 @@ use crate::bus::DeviceId;
 use crate::changes::{self, Action, Entry, Subject};
 use crate::storage::{Database, Error};
 
-mod catalogue;
 mod scene;
 #[cfg(test)]
 mod tests;
@@ -230,47 +231,6 @@ impl Types {
     }
 }
 
-/// A PV module model's datasheet values.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct Datasheet {
-    pub name: String,
-    /// Watts at standard test conditions.
-    pub pmax: f64,
-    /// Volts and amperes at the maximum power point.
-    pub vmp: f64,
-    pub imp: f64,
-    /// Open-circuit volts and short-circuit amperes.
-    pub voc: f64,
-    pub isc: f64,
-    /// Of Pmax, Voc and Isc, in %/K.
-    pub power_coefficient: f64,
-    pub voltage_coefficient: f64,
-    pub current_coefficient: f64,
-    /// Metres.
-    pub width: f64,
-    pub height: f64,
-    pub bypass_diodes: u8,
-}
-
-impl Datasheet {
-    /// The values the `pv` model uses.
-    #[must_use]
-    pub const fn model(&self) -> pv::ModuleType {
-        pv::ModuleType {
-            vmp: self.vmp,
-            imp: self.imp,
-            voc: self.voc,
-            isc: self.isc,
-            voltage_coefficient: self.voltage_coefficient,
-            current_coefficient: self.current_coefficient,
-            width: self.width,
-            height: self.height,
-            bypass_diodes: self.bypass_diodes,
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Serialize, ToSchema)]
 pub struct ModuleType {
     /// Stable; never reused.
@@ -436,7 +396,7 @@ impl Layouts {
     /// # Errors
     /// A datasheet value is not physical, or the file cannot be written.
     pub async fn add_module_type(&self, datasheet: Datasheet) -> Result<ModuleType, Refused> {
-        if let Some(field) = unphysical(&datasheet) {
+        if let Some(field) = datasheet.unphysical() {
             return Err(Refusal::Value {
                 string: None,
                 field,
@@ -570,29 +530,6 @@ impl Layouts {
             .routes(routes!(layout, change_layout))
             .with_state((self, clock))
     }
-}
-
-/// The first datasheet value out of its physical range, by its field's name.
-fn unphysical(d: &Datasheet) -> Option<&'static str> {
-    let positive = [
-        ("pmax", d.pmax),
-        ("vmp", d.vmp),
-        ("imp", d.imp),
-        ("voc", d.voc),
-        ("isc", d.isc),
-        ("width", d.width),
-        ("height", d.height),
-    ];
-    let coefficients = [
-        ("powerCoefficient", d.power_coefficient),
-        ("voltageCoefficient", d.voltage_coefficient),
-        ("currentCoefficient", d.current_coefficient),
-    ];
-    let bad = positive
-        .into_iter()
-        .find(|(_, v)| !(v.is_finite() && *v > 0.0));
-    bad.or_else(|| coefficients.into_iter().find(|(_, v)| !v.is_finite()))
-        .map(|(field, _)| field)
 }
 
 fn seconds(time: SystemTime) -> i64 {

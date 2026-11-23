@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use super::{Invalid, bundled, parse};
+use crate::modules::{Invalid, bundled, parse};
 
 /// AIKO's A450 as its datasheet `DS_EN_2405_V1.5` prints it.
 fn sheet() -> Value {

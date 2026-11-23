@@ -500,7 +500,7 @@ fn a_datasheet_entry_links_to_a_bundled_profile_by_model_id() {
             .get(id)
             .is_some_and(|family| variant.is_none_or(|v| family.declared(v).is_some()))
     };
-    let sheet = |profile: Value| -> sunreye_pv::catalogue::Sheet {
+    let sheet = |profile: Value| -> sunreye_catalogue::datasheets::Sheet {
         serde_json::from_value(json!({
             "source": { "title": "Made-up hybrid", "revision": "1", "url": "https://maker.example" },
             "inverters": [{

@@ -6,7 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{BatteryType, InverterType, MpptInput};
+use sunreye_pv::{BatteryType, InverterType, MpptInput};
 
 /// The models one maker's datasheet prints.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

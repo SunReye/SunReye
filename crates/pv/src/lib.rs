@@ -2,7 +2,6 @@
 //!
 //! Angles are in degrees. Azimuths follow ADR 17: 0 = south, −90 = east, 90 = west.
 
-pub mod catalogue;
 mod chimney;
 mod clear_sky;
 mod device_types;
