@@ -48,10 +48,17 @@ function builtOf(material: MeshStandardMaterial): Built {
   return data.built;
 }
 
-/** A roof's or the ground's finish: white under snow, else darker and smoother the wetter. */
+/** A roof's or the ground's finish, an aerial image's too: white under snow, else darker and
+ * smoother the wetter. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js recolours in place.
 function lie(material: MeshStandardMaterial, { wet, snow }: Lying): void {
   const built = builtOf(material);
+  // Snow hides an aerial image lying there.
+  const map = snow ? null : built.map;
+
+  // With or without a map is another program.
+  material.needsUpdate ||= material.map !== map;
+  material.map = map;
 
   if (snow) {
     material.color.setHex(SNOW);
