@@ -118,6 +118,7 @@ impl Chimney {
                     surface: Surface::Chimney,
                     corners,
                     colour: None,
+                    obstacle: None,
                 })
                 .collect(),
         )

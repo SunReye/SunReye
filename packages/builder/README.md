@@ -72,6 +72,7 @@ The scene canvas. Loads three.js: import it where a scene is drawn, or lazily.
   - Name and picking: `label` names the canvas; `onpick` answers a click with a `Hit`, its points in the shading frame (east, north, up):
     - `{ kind: "grid", grid, module?, point }`: a module, by its grid's position in the scene and its own in the grid, and the point struck on it.
     - `{ kind: "equipment", index }`, `{ kind: "opening", index }`: a marker or an opening, by its position in the scene.
+    - `{ kind: "obstacle", index, point }`: a box, a hedge, a pole or a tree, by its position in the scene's `obstacles`, and the point struck on it. A neighbour of `around` is a `point`.
     - `{ kind: "point", point }`: any other surface, or the floor.
   - A roof face, in and out: given the crate's `roofs`, it marks the face whose `@sunreye/scene` key is `selected`, and `onselect` answers a click on a roof or a module with the face's block and face, or null off every roof. Two views of one scene take one key.
   - Lifecycle: `onrender`, `onready`, `onerror`.

@@ -215,6 +215,8 @@ export function picked(
 
   if (hit.kind === "opening") return { kind: "opening", index: hit.index };
 
+  if (hit.kind === "obstacle") return { kind: "obstacle", index: hit.index };
+
   if (hit.kind === "point") return at(scene, pv, hit.point);
 
   const grid = scene.grids?.[hit.grid];
