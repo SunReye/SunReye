@@ -170,3 +170,16 @@ test("the sheet builds the kit's utilities and variants under a consumer's Tailw
 
   expect(missing).toEqual([]);
 });
+
+test("the button's text size is the sheet's --button-text, by default Tailwind's text-sm", async () => {
+  const css = `@import "tailwindcss";\n@import "@sunreye/ui/theme.css";\n`;
+  const sheet = await tailwind(css, { base: out, onDependency: () => {} });
+  // The candidates Tailwind's scanner finds in the shipped button.
+  const source = await Bun.file(join(installed, "src/button/button.svelte")).text();
+  const built = sheet.build(source.split(/[\s"'`]+/u));
+
+  expect(built).toMatch(/--button-text:\s*0\.875rem/u);
+  expect(built).toMatch(/--button-leading:\s*1\.25rem/u);
+  expect(built).toMatch(/font-size:\s*var\(--button-text\)/u);
+  expect(built).toMatch(/line-height:\s*var\(--button-leading\)/u);
+});

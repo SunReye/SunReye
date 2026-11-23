@@ -71,6 +71,9 @@
 
 :root {
   --glow-strength: 20%;
+  /* The button's text: Tailwind's text-sm unless a consumer sets it (ADR 25). */
+  --button-text: 0.875rem;
+  --button-leading: 1.25rem;
   --glow-blur: 16px;
   --glow-spread: 0px;
   --shadow-color: 17 17 24;
