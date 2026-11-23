@@ -66,6 +66,10 @@
         "vitest-browser-svelte": "3.1.0",
       },
     },
+    "packages/catalogue": {
+      "name": "@sunreye/catalogue",
+      "version": "5.0.0",
+    },
     "packages/sdk": {
       "name": "@sunreye/sdk",
       "version": "5.0.0",
@@ -506,6 +510,8 @@
     "@sinclair/typebox": ["@sinclair/typebox@0.31.30", "", {}, "sha512-MGsM7bVmHg3sUKCphlu3SGQ+T+5JTbygZWYArfKQCW5anJeACHeqLhcnf+R7XlCWZ+QR3C8JTBx3kCKJTN69ow=="],
 
     "@standard-schema/spec": ["@standard-schema/spec@1.1.0", "", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
+
+    "@sunreye/catalogue": ["@sunreye/catalogue@workspace:packages/catalogue"],
 
     "@sunreye/sdk": ["@sunreye/sdk@workspace:packages/sdk"],
 
