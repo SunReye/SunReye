@@ -227,7 +227,14 @@ export function aerialGround(aerial: Aerial): Mesh {
   geometry.setAttribute("position", new Float32BufferAttribute([nw, sw, se, nw, se, ne].flat(), 3));
   geometry.computeVertexNormals();
 
-  const mesh = drape(new Mesh(geometry, photo(aerial)), aerial.extent);
+  const material = photo(aerial);
+
+  // Over the floor and under the first ground surface in depth too, which stays exact far off.
+  material.polygonOffset = true;
+  material.polygonOffsetFactor = -0.5;
+  material.polygonOffsetUnits = -0.5;
+
+  const mesh = drape(new Mesh(geometry, material), aerial.extent);
 
   mesh.name = "aerial";
 
