@@ -31,7 +31,7 @@ Loads three.js: import it where a scene is drawn, or lazily.
   - Name and picking: `label` names the canvas; `onpick` answers a click with a `Hit`.
   - Lifecycle: `onrender`, `onready`, `onerror`.
   - Editing: `editing` and `roofwork` carry the editing tools' handles and roof gestures.
-- Camera: `presetView`, `parseView`, and the types `View` and `Preset`.
+- Camera: `presetView` (a preset, turned to a compass heading), `headingOf` (the bearing a view looks toward, for a compass), `parseView`, and the types `View` and `Preset`.
 - The draft: `emptyDraft`, `panels`, `Draft`; `sunAt`, the sun's direction at an instant.
 - Types the props name: `Around`, `Aerial`, `Editing`, `Hit`, `Panel`, `Projector`, `Roofwork`, `Limits`.
 - The host's shapes: `Keeper`, `Records`, `Host`, `LayoutChange`, `Device`, `Corrections`, `Interval`, `Span`, `Problem`.

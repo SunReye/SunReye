@@ -9,7 +9,7 @@ export { BUILDER_SIZE } from "./builder/size.ts";
 
 export { default as SceneCanvas } from "./builder/SceneCanvas.svelte";
 
-export { parseView, presetView, type Preset, type View } from "./builder/camera.ts";
+export { headingOf, parseView, presetView, type Preset, type View } from "./builder/camera.ts";
 
 export type { Around, Editing, Hit, Panel, Projector, Roofwork } from "./builder/drawing.svelte.ts";
 
