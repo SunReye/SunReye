@@ -618,6 +618,19 @@ fn a_past_years_hourly_means_stand_at_each_hours_middle() {
     );
 }
 
+/// The next 1 January's first hour closes the year before it.
+#[test]
+fn a_past_year_ends_with_the_hour_to_the_next_new_year() {
+    let body = include_str!("../../fixtures/open-meteo-archive-means.json");
+
+    let samples = open_meteo::parse_year(body, 2023).unwrap();
+
+    // 2023-12-30 23:30, the hour to the recorded first, to 2023-12-31 23:30.
+    let new_year = 1_704_067_200;
+    assert_eq!(samples.len(), 25);
+    assert_eq!(samples.last().map(|w| w.unix), Some(new_year - 1800));
+}
+
 /// An archive hour of 2026-06-21 at `hour` UTC.
 fn past(hour: u64, ghi: f64) -> Slot {
     Slot {
