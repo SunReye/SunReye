@@ -4,12 +4,15 @@ import { createSubscriber } from "svelte/reactivity";
 import type { Group, PerspectiveCamera } from "three";
 import type { Glow } from "../builder/scene.ts";
 import { motion } from "../motion/tier.svelte.ts";
-import { cssColour, flowRgb } from "./backdrop.ts";
+import { cssColour } from "./backdrop.ts";
 import { daylight, theme } from "./light.ts";
 import { easeGlow } from "./live-glow.svelte.ts";
 import { Opening } from "./opening.svelte.ts";
 import { DRY, stage, type SceneWeather, type Staged } from "./staged.ts";
 import { openStudio, type Opened } from "./studio-look.svelte.ts";
+
+/** The solar flow's colour (ADR 21), as @sunreye/tokens names it: the modules glow in it. */
+const SOLAR = "var(--e-solar)";
 
 /** Follows mode-watcher's class on the root element. */
 const themed = createSubscriber((update) => {
@@ -169,7 +172,7 @@ export function lit(
     studio.light(day, theme(dark()), cssColour("var(--background)"), steady.weather);
     shown.lamp(day.lamps);
     shown.weather(steady.weather);
-    colour = flowRgb("solar").getHex();
+    colour = cssColour(SOLAR).getHex();
     render();
   });
 
