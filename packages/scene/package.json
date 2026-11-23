@@ -8,6 +8,7 @@
     "index.js",
     "index.d.ts",
     "roof.js",
+    "roof-nest.js",
     "roof-dormer.js",
     "roof-faces.js",
     "roof-heights.js",

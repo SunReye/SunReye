@@ -4,7 +4,7 @@
 // handed to `rebuild`.
 
 import { rebuild, withoutBlock } from "./roof-faces.js";
-import { within } from "./roof-dormer.js";
+import { within } from "./roof-nest.js";
 import { PLACE, along, apart, between, crossing, onSegment, touching } from "./roof-plan.js";
 import { linesOf, snap, spot } from "./roof-snap.js";
 

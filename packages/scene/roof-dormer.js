@@ -1,82 +1,98 @@
-// Dormers (ADR 20): a closed loop traced inside a face stands on it. Which faces stand on which,
-// seen from above. Pure.
+// Dormers (ADR 20): a closed loop traced inside a face is a small roof of its own, standing on that
+// face. Each is named, and pulled up by its own eaves and ridges, never below its face. Pure.
 
-import { area, onSegment } from "./roof-plan.js";
+import { rebuild } from "./roof-faces.js";
+import { kinds, plane } from "./roof-heights.js";
+import { PLACE } from "./roof-plan.js";
+import { hosts } from "./roof-nest.js";
+import { linesOf } from "./roof-snap.js";
+
+/** @import { Scene } from "./schema.d.ts" */
+/** @import { Dormer, Edited, Kind } from "./roof.d.ts" */
+/** @import { Lines } from "./roof-faces.js" */
 
 /**
- * Whether `p` lies on an edge of the polygon of `corners` seen from above.
- * @param {readonly (readonly number[])[]} corners
- * @param {readonly number[]} p
- * @returns {boolean}
+ * The dormers of `lines`: the faces standing on one face, grouped where they share a point.
+ * @param {Lines} lines
+ * @returns {Dormer[]}
  */
-const edged = (corners, p) =>
-  corners.some((a, k) => onSegment(p, a, corners[(k + 1) % corners.length] ?? a));
+function grouped(lines) {
+  const on = hosts(lines.points, lines.faces);
+  /** @type {Dormer[]} */
+  const found = [];
 
-/**
- * Whether `p` lies inside the polygon of `corners` seen from above, clear of its edges.
- * @param {readonly (readonly number[])[]} corners
- * @param {readonly number[]} p
- * @returns {boolean}
- */
-export function within(corners, p) {
-  const [x = 0, , z = 0] = p;
-  let crossings = 0;
+  for (const [g, host] of on.entries()) {
+    const face = lines.faces[g] ?? [];
 
-  for (const [k, a] of corners.entries()) {
-    const b = corners[(k + 1) % corners.length] ?? a;
+    /** @param {Dormer} d */
+    const joins = (d) =>
+      d.face === host && d.faces.some((f) => (lines.faces[f] ?? []).some((p) => face.includes(p)));
 
-    if (onSegment(p, a, b)) return false;
+    const near = found.filter((d) => joins(d));
 
-    const [ax = 0, , az = 0] = a;
-    const [bx = 0, , bz = 0] = b;
+    const rest = found.filter((d) => !joins(d));
 
-    if (az > z !== bz > z && x < ax + ((bx - ax) * (z - az)) / (bz - az)) crossings += 1;
+    if (host >= 0)
+      found.splice(0, found.length, ...rest, {
+        face: host,
+        faces: [...near.flatMap((d) => d.faces), g].toSorted((a, b) => a - b),
+      });
   }
 
-  return crossings % 2 === 1;
+  return found.toSorted((a, b) => (a.faces[0] ?? 0) - (b.faces[0] ?? 0));
 }
 
 /**
- * Whether the plan `plan` lies inside the plan `around`, one corner clear of its edges.
- * @param {readonly (readonly number[])[]} plan
- * @param {readonly (readonly number[])[]} around
- * @returns {boolean}
+ * @param {Scene} scene
+ * @param {number} block
+ * @returns {Dormer[]}
  */
-const inside = (plan, around) =>
-  plan.some((p) => within(around, p)) && plan.every((p) => within(around, p) || edged(around, p));
+export function dormers(scene, block) {
+  return grouped(linesOf(scene.blocks[block]));
+}
 
 /**
- * For each face, the face it lies inside seen from above, the one a dormer stands on: the
- * smallest larger face holding it; -1 for none.
- * @param {readonly (readonly number[])[]} points
- * @param {readonly (readonly number[])[]} faces
- * @returns {number[]}
+ * @param {Scene} scene
+ * @param {number} block
+ * @param {number} face
+ * @param {Kind} kind
+ * @param {number} height
+ * @returns {Edited}
  */
-function hosts(points, faces) {
-  /** @type {readonly (readonly (readonly number[])[])[]} */
-  const plans = faces.map((face) => face.map((p) => points[p] ?? []));
-  const size = faces.map((face) => Math.abs(area(points, face)));
+export function pullDormer(scene, block, face, kind, height) {
+  const lines = linesOf(scene.blocks[block]);
+  const dormer = grouped(lines).find((d) => d.faces.includes(face));
 
-  return plans.map((plan, g) => {
-    const around = [...plans.keys()].filter(
-      (f) => (size[f] ?? 0) > (size[g] ?? 0) && inside(plan, plans[f] ?? []),
-    );
+  if (dormer === undefined || !Number.isFinite(height)) return { refused: "missing" };
 
-    return around.reduce(
-      (host, f) => (host < 0 || (size[f] ?? 0) < (size[host] ?? 0) ? f : host),
-      -1,
-    );
+  const own = new Set(dormer.faces.flatMap((f) => lines.faces[f] ?? []));
+  const faces = dormer.faces.map((f) => lines.faces[f] ?? []);
+
+  const of = kinds({
+    ...lines,
+    faces,
+    lines: lines.lines.filter((l) => l.every((p) => own.has(p))),
+    eaves: [],
+    ridges: [],
   });
-}
 
-/**
- * The faces that stand on no other: those the house's outline is made of.
- * @param {readonly (readonly number[])[]} points
- * @param {readonly (readonly number[])[]} faces
- * @returns {(readonly number[])[]}
- */
-export function standing(points, faces) {
-  const on = hosts(points, faces);
+  const level =
+    plane((lines.faces[dormer.face] ?? []).map((p) => lines.points[p] ?? [])) ?? (() => 0);
 
-  return faces.filter((_, f) => on[f] === -1);
+  /** Each of the dormer's points of `kind` at `height`, or on its face where that is higher. */
+  const pulled = lines.points.map((p, i) => {
+    const [x = 0, , z = 0] = p;
+    const floor = level(x, z);
+
+    return own.has(i) && of[i] === kind
+      ? { at: [x, Math.max(floor, height), z], up: height > floor + PLACE }
+      : undefined;
+  });
+
+  const points = lines.points.map((p, i) => pulled[i]?.at ?? p);
+  const raised = [...pulled.keys()].filter((i) => pulled[i]?.up === true);
+
+  const set = [...lines.set.filter((p) => pulled[p] === undefined), ...raised];
+
+  return { ...rebuild(scene, block, { ...lines, points, set }), block, from: -1, to: -1 };
 }

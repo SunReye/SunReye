@@ -9,4 +9,6 @@ export { addLine, loops, moveLine, removeLine, snap } from "./roof.js";
 
 export { bent, lineKind, markLine, pullEaves, pullRidges, setHeight } from "./roof-pull.js";
 
+export { dormers, pullDormer } from "./roof-dormer.js";
+
 export { SCENE_SCHEMA, SCENE_SCHEMA_VERSION } from "./scene-schema.js";

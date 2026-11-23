@@ -107,3 +107,24 @@ export declare function lineKind(scene: Scene, block: number, line: number): Kin
 /** Block `block`'s faces bent off their plane by more than 2 cm: drawn in the warning colour,
  * they carry no modules. */
 export declare function bent(scene: Scene, block: number): number[];
+
+/** A dormer (ADR 20): a closed loop traced inside a face, by the face it stands on and its own
+ * faces, by their places in the block. */
+export interface Dormer {
+  readonly face: number;
+  readonly faces: readonly number[];
+}
+
+/** Block `block`'s dormers, in the order of their first faces. */
+export declare function dormers(scene: Scene, block: number): Dormer[];
+
+/** The scene with the eaves, or ridges, of the dormer that face `face` of block `block` belongs to
+ * at `height` metres, but where its face stands higher: there they stay on it and follow it. A
+ * point pulled above its face is set. Refused (`"missing"`) for a face of no dormer. */
+export declare function pullDormer(
+  scene: Scene,
+  block: number,
+  face: number,
+  kind: Kind,
+  height: number,
+): Edited;

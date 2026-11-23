@@ -1,7 +1,7 @@
 // A traced roof's heights (ADR 20): which points are eaves and which ridges, the points that follow
 // them so faces stay flat, and whether a face is flat. Pure.
 
-import { standing } from "./roof-dormer.js";
+import { raisedOn, standing } from "./roof-nest.js";
 import { rim } from "./roof-outline.js";
 import { PLACE } from "./roof-plan.js";
 
@@ -56,9 +56,11 @@ export function kinds(lines) {
     ),
   );
 
+  const raised = new Set([...raisedOn(lines.points, lines.faces).values()].flat());
+
   const inner = new Set(
     lines.lines
-      .filter(([a = 0, b = 0]) => !edges.has(key(a, b)))
+      .filter(([a = 0, b = 0]) => !edges.has(key(a, b)) && !raised.has(a) && !raised.has(b))
       .flatMap(([a = 0, b = 0]) => [a, b]),
   );
 
@@ -104,7 +106,7 @@ const det = ([a = 0, b = 0, c = 0, d = 0, e = 0, f = 0, g = 0, h = 0, i = 0]) =>
  * @param {readonly (readonly number[])[]} spots
  * @returns {((x: number, z: number) => number) | null}
  */
-function plane(spots) {
+export function plane(spots) {
   // The normal equations of least squares, in x, z and 1.
   let [xx, xz, x1, zz, z1, n, xy, zy, y1] = [0, 0, 0, 0, 0, 0, 0, 0, 0];
 
@@ -133,15 +135,16 @@ function plane(spots) {
 }
 
 /**
- * The points of `face` not yet known, each with its spot on the plane the known ones fix; none
- * where they fix none.
+ * The points of `face`, and `also`, not yet known, each with its spot on the plane the face's known
+ * points fix; none where they fix none.
  * @param {readonly number[]} face
+ * @param {readonly number[]} also
  * @param {readonly (readonly number[])[]} points
  * @param {readonly boolean[]} known
  * @returns {[number, number[]][]}
  */
-function levelled(face, points, known) {
-  const free = face.filter((p) => known[p] !== true);
+function levelled(face, also, points, known) {
+  const free = [...face, ...also].filter((p) => known[p] !== true);
   const fixed = face.filter((p) => known[p] === true).map((p) => points[p] ?? []);
   const on = free.length > 0 ? plane(fixed) : null;
 
@@ -166,6 +169,9 @@ export function follow(lines, faces) {
   const points = lines.points.map((p) => [...p]);
 
   const known = lines.points.map((_, p) => kind[p] !== undefined || lines.set.includes(p));
+  const on = raisedOn(lines.points, faces);
+  // A dormer's points lie on the face it stands on before its own faces level them.
+  const order = [...faces.keys()].toSorted((f, g) => Number(!on.has(f)) - Number(!on.has(g)));
 
   // A face that levels its points may give the next face its third.
   for (let found = levelledAll(); found.length > 0; found = levelledAll())
@@ -178,7 +184,7 @@ export function follow(lines, faces) {
   return { ...lines, points };
 
   function levelledAll() {
-    return faces.flatMap((face) => levelled(face, points, known));
+    return order.flatMap((f) => levelled(faces[f] ?? [], on.get(f) ?? [], points, known));
   }
 }
 
