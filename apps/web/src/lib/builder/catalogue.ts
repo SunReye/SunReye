@@ -1,15 +1,7 @@
 // The module catalogue as the builder offers it (ADR 17): by maker, then series, filtered by what the admin types.
-import type { CatalogueSheet, Datasheet } from "../api/core.ts";
+import type { Datasheet, Sheet, Source } from "@sunreye/catalogue";
 import { compact, found, queryWords, tokens } from "../search.ts";
 import { summary } from "./datasheet.ts";
-
-export type Source = Readonly<CatalogueSheet["source"]>;
-
-/** A catalogue sheet, read-only through and through. */
-export type Sheet = Readonly<Pick<CatalogueSheet, "maker" | "series">> & {
-  readonly source: Source;
-  readonly modules: readonly Readonly<Datasheet>[];
-};
 
 /** One power class, keyed by its sheet and name. */
 export interface Entry {

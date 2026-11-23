@@ -37,7 +37,7 @@ afterEach(async () => {
 
 const { id: _, ...DATASHEET } = MODULE;
 
-/** AIKO's A450 as its datasheet prints it. */
+/** AIKO's A450 as its datasheet prints it, and the catalogue holds it. */
 const A450 = {
   name: "AIKO-A450-MAH54Db",
   pmax: 450,
@@ -53,28 +53,6 @@ const A450 = {
   bypassDiodes: 3,
 };
 
-/** The module catalogue: two AIKO power classes and one LONGi. */
-const CATALOGUE = {
-  sheets: [
-    {
-      maker: "AIKO",
-      series: "Neostar 2S+",
-      source: {
-        title: "Neostar 2S+ AIKO-A-MAH54Db",
-        revision: "DS_EN_2405_V1.5",
-        url: "https://a",
-      },
-      modules: [{ ...A450, name: "AIKO-A440-MAH54Db", pmax: 440, imp: 12.8 }, A450],
-    },
-    {
-      maker: "LONGi",
-      series: "Hi-MO 6",
-      source: { title: "Hi-MO 6 Explorer LR5-54HTH", revision: "20230210V17", url: "https://l" },
-      modules: [{ ...A450, name: "LR5-54HTH-430M", pmax: 430 }],
-    },
-  ],
-};
-
 /** A core without module types that keeps each one added, or refuses it with `refusal` at
  * `pointer`. */
 function emptyCore(refusal?: string, pointer?: string): Transport & { readonly posts: unknown[] } {
@@ -84,8 +62,6 @@ function emptyCore(refusal?: string, pointer?: string): Transport & { readonly p
     base: "http://core.test/",
     posts,
     fetch: async (request) => {
-      if (request.url.endsWith("/api/v1/module-catalogue")) return Response.json(CATALOGUE);
-
       if (request.method !== "POST" || !request.url.endsWith("/api/v1/module-types")) {
         return Promise.withResolvers<Response>().promise;
       }
@@ -241,17 +217,18 @@ test("a datasheet the core refuses names the value and keeps what was entered", 
 });
 
 test("an admin picks an AIKO Neostar 2S+ from the module catalogue and fills a face with it", async () => {
+  // The catalogue comes from @sunreye/catalogue: this core answers nothing about it.
   const core = emptyCore();
 
   await opened(core);
   await page.getByRole("button", { name: "Einfamilienhaus mit Satteldach" }).click();
 
   await drill("Module", SOUTH, "Aus dem Modulkatalog");
-  await expect.element(inspector().getByText("LR5-54HTH-430M")).toBeVisible();
+  await expect.element(inspector().getByText("LR5-54HTH-415M").first()).toBeVisible();
   await expect.element(inspector().getByText(/DS_EN_2405_V1\.5/u)).toBeVisible();
 
   await userEvent.fill(inspector().getByRole("searchbox", { name: "Modul suchen" }), "aiko 450");
-  await expect.element(inspector().getByText("LR5-54HTH-430M")).not.toBeInTheDocument();
+  await expect.element(inspector().getByText("LR5-54HTH-415M").first()).not.toBeInTheDocument();
   await drill(A450.name);
 
   expect(core.posts).toEqual([A450]);

@@ -136,7 +136,7 @@
     "rules": [
       {
         "from": "web",
-        "allow": ["tokens"]
+        "allow": ["tokens", "catalogue"]
       },
       {
         "from": "sdk",
