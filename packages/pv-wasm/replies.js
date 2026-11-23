@@ -2,7 +2,7 @@
 // glue crate's own shape is trusted past the top level.
 
 /** @import { Chimney, Opening, RoofWindow } from "@sunreye/scene" */
-/** @import { Face, Geometry, Ghost, Modules, Sizing, Sun, Unfit } from "./index.d.ts" */
+/** @import { Face, Geometry, Ghost, Modules, Sizing, Sun, Unfit, YearEnergy } from "./index.d.ts" */
 
 /**
  * @template T
@@ -119,6 +119,20 @@ export const isWatts = (value) =>
     "ok" in value &&
     Array.isArray(value.ok) &&
     value.ok.every((row) => Array.isArray(row)));
+
+/**
+ * @param {unknown} value
+ * @returns {value is Reply<YearEnergy>}
+ */
+export const isYear = (value) =>
+  isFailure(value) ||
+  (isRecord(value) &&
+    "ok" in value &&
+    isRecord(value.ok) &&
+    "strings" in value.ok &&
+    Array.isArray(value.ok.strings) &&
+    "inverters" in value.ok &&
+    Array.isArray(value.ok.inverters));
 
 const KINDS = new Set(["start", "low", "high", "current", "uneven", "noInput"]);
 
