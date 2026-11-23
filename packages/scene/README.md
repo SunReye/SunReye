@@ -15,7 +15,7 @@ SunReye's scene and layout types, generated from the crates, and the pure operat
 A traced roof is a free-form block whose `freeForm.traced` keeps its points (x, y, z; y its height now), the points whose height was set, its lines (pairs of points) and, per face, the points its corners are. The lines are the source; the faces are derived. Each operation takes a scene and returns the next one, so a consumer may run it in the browser or where it keeps the scene.
 
 - `snap(scene, click, reach): Snap`: what a click (`{ x, z, height? }`, metres) snaps to within `reach` metres seen from above: `{ kind: "point", block, point, at }`, `{ kind: "line", block, line, at }`, or `{ kind: "free", at }`. A point wins over a line.
-- `addLine(scene, from, to, reach): Edited`: a line between two ends, each a click (snapped) or a traced point (`{ block, point }`). It splits the line a click snaps onto and every line it crosses, adding points but no line. A line touching no traced block starts a new one; one joining two is refused (`"joins"`), as is one of no length (`"short"`). Chaining clicks passes the answer's `{ block, point: to }` as the next `from`.
+- `addLine(scene, from, to, reach): Edited`: a line between two ends, each a click (snapped) or a traced point (`{ block, point }`). It splits the line a click snaps onto and every line it crosses, adding points but no line. A line touching no traced block, nor lying inside one of its faces, starts a new one; one joining two is refused (`"joins"`), as is one of no length (`"short"`). Chaining clicks passes the answer's `{ block, point: to }` as the next `from`.
 - `moveLine(scene, block, line, { x, z }): Edited`: moves a line level, its points with it; refused (`"crosses"`) when lines would cross.
 - `removeLine(scene, block, line): Edited`: removes a line and the points no line uses; a block left without lines goes, and what named a later block moves up.
 - `loops(points, lines): number[][]`: the closed loops seen from above, counter-clockwise, as point indices.
@@ -37,7 +37,16 @@ Without the person's word, a corner of the outline is an eave; any other point a
 
 After every edit, a point that is no eave, ridge or set point takes its height on a face whose eave, ridge and set points fix a plane (the best fit to three or more not in one line), again until none changes; so faces stay flat, and a line drawn on a pulled roof lands on it.
 
-Ready shapes and dormers will join this module, each an edit of a block's lines whose faces `rebuild` derives (`roof-faces.js`).
+## Dormers
+
+A closed loop traced inside a face, apart from its lines or joined to them by one line or at one point, is a dormer: the faces inside it are its own, and the face around it keeps its place and its loop. The house's outline, eaves and ridges are its faces' that stand on no other.
+
+- `dormers(scene, block): Dormer[]`: each dormer as `{ face, faces }`, the face it stands on and its own.
+- `pullDormer(scene, block, face, kind, height): Edited`: the eaves (its outline's corners) or ridges (its inner lines' ends) of the dormer face `face` belongs to, at `height`, but where its face stands higher; a point pulled above its face is set. Refused (`"missing"`) for a face of no dormer.
+
+A dormer's points that are not set lie on the plane of its face, so one traced on a pulled roof lies on it and follows the house's pulls. The edit that cuts a face, or moves its cut, drops that face's grid. The `pv` crate takes a traced face lying inside another as a cut in that one's module area, its setback holding from the cut, and stands the dormer's walls on that face.
+
+Ready shapes will join this module, each an edit of a block's lines whose faces `rebuild` derives (`roof-faces.js`).
 
 ## Face details
 

@@ -4,6 +4,8 @@ import { loadPv } from "@sunreye/pv-wasm";
 import {
   addLine,
   bent,
+  dormers,
+  pullDormer,
   pullEaves,
   pullRidges,
   setHeight,
@@ -181,4 +183,46 @@ test("a bent traced face is drawn, offers no free roof, and bends exactly where 
 
   expect(pv.geometry(bentRoof).faces.length).toBeGreaterThan(0);
   expect(pv.fillFace({ scene: { ...bentRoof, grids: [empty] }, sizes, grid: 0 })).toEqual([]);
+});
+
+/** A grid of one 1 m module on face `face` of block 0, its corner `across` and `up` it. */
+const one = (face: number, across: number, up: number) => ({
+  block: 0,
+  face,
+  moduleType: 1,
+  landscape: false,
+  setback: 0.1,
+  modules: [{ across, up, landscape: false }],
+});
+
+test("a dormer traced on a pulled gable cuts its face's module area and carries modules of its own", () => {
+  const outline = ground(
+    { north: 0, blocks: [], obstacles: [] },
+    { x: 0, z: 0 },
+    [0, 8],
+    [10, 8],
+    [10, 0],
+    [0, 0],
+  );
+
+  const pulled = made(
+    pullRidges(made(pullEaves(ground(outline, { x: 0, z: 4 }, [10, 4]), 0, 3)), 0, RIDGE),
+  );
+
+  const cut = ground(pulled, { x: 4, z: 1 }, [4, 3], [6, 3], [6, 1], [4, 1]);
+  const [dormer] = dormers(cut, 0);
+  const own = dormer?.faces[0] ?? -1;
+  const raised = made(pullDormer(cut, 0, own, "eave", 4.2));
+  const sizes = { 1: { width: 1, height: 1 } };
+
+  // Where the dormer stands, 1.2 m to 3.7 m up the face's slope, across 4 m to 6 m.
+  expect(pv.modules({ ...pulled, grids: [one(0, 4.5, 2)] }, sizes).misplaced).toBeNull();
+  expect(pv.modules({ ...raised, grids: [one(0, 4.5, 2)] }, sizes).misplaced).not.toBeNull();
+  expect(pv.modules({ ...raised, grids: [one(0, 1, 1)] }, sizes).misplaced).toBeNull();
+
+  const lain = pv.modules({ ...raised, grids: [one(own, 0.2, 0.2)] }, sizes);
+
+  expect(dormer?.face).toBe(0);
+  expect(lain.misplaced).toBeNull();
+  expect(lain.grids[0]?.modules).toHaveLength(1);
 });

@@ -134,11 +134,100 @@ fn facing(face: &[[f64; 3]]) -> Option<Point> {
 impl FreeForm {
     /// The wall under each side of the footprint, up to the faces above it and stepping where
     /// they step; along a stretch no face stands over, it has no height, and a side with none
-    /// has no wall.
+    /// has no wall. Then each dormer's walls.
     pub(crate) fn walls(&self) -> Vec<Vec<[f64; 3]>> {
         polygon::edges(&self.footprint)
             .map(|side| self.wall(side))
             .filter(|wall| wall.iter().any(|&[_, up, _]| up > TOLERANCE))
+            .chain(self.cheeks())
+            .collect()
+    }
+
+    /// For each face, the face it stands on seen from above, as a traced dormer's does (ADR 20):
+    /// the smallest larger face holding all its corners, one clear of its edges.
+    fn hosts(&self) -> Vec<Option<usize>> {
+        let plans: Vec<Vec<Plan>> = self
+            .faces
+            .iter()
+            .map(|face| face.iter().map(|&[x, _, z]| [x, z]).collect())
+            .collect();
+        let size = plans.iter().map(|plan| polygon::area(plan).abs());
+        let holds = |around: &[Plan], plan: &[Plan]| {
+            plan.iter().any(|&p| polygon::inside(around, p, TOLERANCE))
+                && plan.iter().all(|&p| polygon::inside(around, p, -TOLERANCE))
+        };
+        let sized: Vec<(&Vec<Plan>, f64)> = plans.iter().zip(size).collect();
+        sized
+            .iter()
+            .map(|&(plan, small)| {
+                sized
+                    .iter()
+                    .enumerate()
+                    .filter(|&(_, &(around, large))| {
+                        large > small && self.traced.is_some() && holds(around, plan)
+                    })
+                    .min_by(|(_, (_, p)), (_, (_, q))| p.total_cmp(q))
+                    .map(|(f, _)| f)
+            })
+            .collect()
+    }
+
+    /// The corners of the faces of the dormers standing on face `face`: its cuts.
+    pub(crate) fn cuts(&self, face: usize) -> Vec<Vec<[f64; 3]>> {
+        self.hosts()
+            .into_iter()
+            .zip(&self.faces)
+            .filter(|(host, _)| *host == Some(face))
+            .map(|(_, corners)| corners.clone())
+            .collect()
+    }
+
+    /// Each dormer's walls: under every edge of its outline, from the face it stands on up to its
+    /// own face, where that stands higher.
+    fn cheeks(&self) -> Vec<Vec<[f64; 3]>> {
+        let hosts = self.hosts();
+        let raised: Vec<(usize, &Vec<[f64; 3]>)> = hosts
+            .iter()
+            .zip(&self.faces)
+            .filter_map(|(host, face)| host.map(|host| (host, face)))
+            .collect();
+        let shared = |a: [f64; 3], b: [f64; 3]| {
+            raised
+                .iter()
+                .flat_map(|(_, face)| edges3(face))
+                .filter(|&(p, q)| near(p, b) && near(q, a))
+                .count()
+                > 0
+        };
+        raised
+            .iter()
+            .flat_map(|&(host, face)| {
+                let under = self.faces.get(host).map_or(&[][..], Vec::as_slice);
+                edges3(face)
+                    .filter(|&(a, b)| !shared(a, b))
+                    .map(move |(a, b)| {
+                        let foot = |[x, _, z]: [f64; 3]| [x, level(under, [x, z]), z];
+                        vec![foot(a), foot(b), b, a]
+                    })
+                    .collect::<Vec<_>>()
+            })
+            // A wall's top corners stand over its feet; one the dormer meets its face along has none.
+            .filter(|wall| {
+                wall.iter()
+                    .zip(wall.iter().rev())
+                    .any(|(foot, top)| top[1] - foot[1] > TOLERANCE)
+            })
+            .map(|mut wall| {
+                wall.dedup_by(|p, q| near(*p, *q));
+                if wall
+                    .first()
+                    .zip(wall.last())
+                    .is_some_and(|(p, q)| near(*p, *q))
+                {
+                    wall.pop();
+                }
+                wall
+            })
             .collect()
     }
 
@@ -228,4 +317,11 @@ fn level(face: &[[f64; 3]], [x, z]: Plan) -> f64 {
 
 fn near(a: [f64; 3], b: [f64; 3]) -> bool {
     a.iter().zip(b).all(|(p, q)| (p - q).abs() < TOLERANCE)
+}
+
+/// Each edge of a face, corner to corner, the last back to the first.
+fn edges3(face: &[[f64; 3]]) -> impl Iterator<Item = ([f64; 3], [f64; 3])> + '_ {
+    face.iter()
+        .copied()
+        .zip(face.iter().cycle().skip(1).copied())
 }

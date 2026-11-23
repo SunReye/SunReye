@@ -208,6 +208,8 @@ pub struct RoofFace {
     pub windows: Vec<Area>,
     /// The fields of the existing PV on it.
     pub existing: Vec<Area>,
+    /// The outlines its dormers cut out of it, seen from above, across and up it (ADR 20).
+    pub holes: Vec<Vec<[f64; 2]>>,
     /// The outline's frame: its origin, and the unit directions across the slope and up it.
     pub origin: Point,
     pub across: Point,
@@ -356,7 +358,29 @@ impl Scene {
                     .filter(|e| (e.block, e.face) == (block, face))
                     .map(ExistingPv::area)
                     .collect();
+                roof.holes = self.holes(block, face, &roof);
                 roof
+            })
+            .collect()
+    }
+
+    /// The outlines of the dormers standing on roof face `face` of block `block`, dropped onto it
+    /// from above, across and up it.
+    fn holes(&self, block: usize, face: usize, roof: &RoofFace) -> Vec<Vec<[f64; 2]>> {
+        let Some(on) = self.blocks.get(block) else {
+            return Vec::new();
+        };
+        let frame = self.frame(on);
+        on.free_form
+            .as_ref()
+            .map(|free| free.cuts(face))
+            .unwrap_or_default()
+            .into_iter()
+            .map(|corners| {
+                corners
+                    .into_iter()
+                    .map(|p| roof.project(roof.drop(frame.place(p))))
+                    .collect()
             })
             .collect()
     }
@@ -470,6 +494,7 @@ impl RoofFace {
             chimneys: Vec::new(),
             windows: Vec::new(),
             existing: Vec::new(),
+            holes: Vec::new(),
             origin: offset(offset(first, across, left), up, bottom),
             across,
             up,
@@ -490,6 +515,13 @@ impl RoofFace {
         }
         if self.existing.iter().any(|e| overlap(area, *e, 0.0)) {
             return Err(Blocked::Existing);
+        }
+        if !self
+            .holes
+            .iter()
+            .all(|hole| polygon::apart(hole, area, setback - TOLERANCE))
+        {
+            return Err(Blocked::Setback);
         }
         Ok(())
     }
@@ -540,6 +572,13 @@ impl RoofFace {
         let at = self.project(point);
         let off = sub(point, self.point(at));
         (dot(off, off).sqrt() <= ON_FACE && self.inside(at, -TOLERANCE)).then_some(at)
+    }
+
+    /// A point of the scene moved straight up or down onto the face's plane.
+    fn drop(&self, point: Point) -> Point {
+        let normal = cross(self.across, self.up);
+        let rise = dot(sub(self.origin, point), normal) / normal[2];
+        [point[0], point[1], point[2] + rise]
     }
 
     /// A point of the scene across and up the outline, dropped onto the face's plane.

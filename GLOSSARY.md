@@ -356,6 +356,10 @@ _Avoid_: Extrude, lift
 A traced roof face whose corners lie more than 2 cm off its plane, as set heights can leave it. It is kept, drawn in the warning colour, and carries no modules until it is flat.
 _Avoid_: Warped face, invalid face
 
+**Dormer**:
+A small roof traced inside a face of a traced roof: a closed loop of lines whose faces are its own. It cuts its outline out of the face it stands on, which keeps no modules there, and its front and cheeks are walls up from that face. German UI: Gaube.
+_Avoid_: Roof extension, Dachaufbau
+
 **Covering**:
 What a roof face is covered with: tiles, slate, sheet metal or bitumen; unknown until someone says.
 _Avoid_: Roofing, material, Eindeckung

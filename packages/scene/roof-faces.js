@@ -2,7 +2,10 @@
 // face that stays. Pure.
 
 import { flat, follow } from "./roof-heights.js";
-import { area, loops, outline } from "./roof-plan.js";
+import { raisedOn, standing } from "./roof-nest.js";
+import { outline } from "./roof-outline.js";
+import { area, loops } from "./roof-plan.js";
+import { linesOf } from "./roof-snap.js";
 
 /** @import { Block, Scene } from "./schema.d.ts" */
 /**
@@ -179,6 +182,23 @@ function stored(lines, faces) {
 }
 
 /**
+ * For each face, where the dormers standing on it lie seen from above, as one key.
+ * @param {readonly (readonly number[])[]} points
+ * @param {readonly (readonly number[])[]} faces
+ * @returns {string[]}
+ */
+function cuts(points, faces) {
+  const on = raisedOn(points, faces);
+
+  return faces.map((_, f) =>
+    (on.get(f) ?? [])
+      .map((p) => `${points[p]?.[0] ?? 0},${points[p]?.[2] ?? 0}`)
+      .toSorted()
+      .join(" "),
+  );
+}
+
+/**
  * Block `index` of `scene` traced as `lines`, its faces derived again from their loops, its points
  * that follow at their heights, and for each old face its place now, or -1 where it went, taking
  * what stood on it; a bent face's module grids go. `lines.faces` are the old faces, by `lines`'
@@ -200,7 +220,7 @@ export function rebuild(scene, index, lines) {
   const corners = faces.map((loop) => loop.map((p) => followed.points[p] ?? []));
 
   const freeForm = {
-    footprint: outline(followed.points, faces),
+    footprint: outline(followed.points, standing(followed.points, faces)),
     faces: corners,
     traced: stored(followed, faces),
   };
@@ -217,10 +237,17 @@ export function rebuild(scene, index, lines) {
   const block = scene.blocks[index] ?? FRESH;
 
   const placed = onFaces(scene, change);
+  const before = linesOf(scene.blocks[index]);
+  const was = cuts(before.points, before.faces);
+  const now = cuts(followed.points, faces);
+  // A face whose cut is new or moved drops its grid, as a bent one does.
+  const recut = new Set([...faces.keys()].filter((f) => now[f] !== (was[moved.indexOf(f)] ?? "")));
 
   const next = {
     ...placed,
-    grids: placed.grids?.filter((g) => g.block !== index || flat(corners[g.face] ?? [])),
+    grids: placed.grids?.filter(
+      (g) => g.block !== index || (flat(corners[g.face] ?? []) && !recut.has(g.face)),
+    ),
     blocks: [
       ...scene.blocks.slice(0, index),
       { ...block, freeForm },

@@ -746,3 +746,21 @@ fn a_bent_traced_face_offers_no_free_roof_to_fill() {
     assert!(free(raised(3.0)) > 0);
     assert_eq!(free(raised(4.0)), 0);
 }
+
+#[test]
+fn existing_pv_stays_on_a_bent_traced_face() {
+    // In the middle of the face, which a bent face's outline still holds.
+    let field =
+        json!([{ "block": 0, "face": 0, "across": 2.0, "up": 2.0, "width": 1.0, "length": 1.0 }]);
+    let on = |block: Value| {
+        let stored =
+            json!({ "north": 0.0, "blocks": [block], "obstacles": [], "existingPv": field });
+        serde_json::from_value::<Scene>(stored)
+            .unwrap()
+            .existing_fields()
+            .map(|f| f.len())
+    };
+
+    assert_eq!(on(raised(3.0)), Ok(1));
+    assert_eq!(on(raised(4.0)), Ok(1));
+}
