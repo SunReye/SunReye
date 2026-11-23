@@ -656,6 +656,7 @@ fn walled_house(module_type: u32) -> Scene {
         openings: vec![],
         roof_windows: vec![],
         face_details: vec![],
+        existing_pv: vec![],
     }
 }
 

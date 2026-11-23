@@ -76,7 +76,7 @@ export interface Ghost extends Spot {
 export type Misplaced =
   | { readonly kind: "face" | "moduleType"; readonly grid: number }
   | {
-      readonly kind: "setback" | "overlap" | "chimney" | "window";
+      readonly kind: "setback" | "overlap" | "chimney" | "window" | "existing";
       readonly grid: number;
       /** The module's position in its grid. */
       readonly module: number;

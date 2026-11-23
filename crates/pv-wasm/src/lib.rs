@@ -224,6 +224,7 @@ fn misplaced(misplaced: Misplaced, grids: &[ModuleGrid], sizes: &HashMap<u32, Si
         Misplaced::Overlap { grid, module } => ("overlap", grid, module),
         Misplaced::Chimney { grid, module } => ("chimney", grid, module),
         Misplaced::Window { grid, module } => ("window", grid, module),
+        Misplaced::Existing { grid, module } => ("existing", grid, module),
     };
     let area = grids
         .get(grid)

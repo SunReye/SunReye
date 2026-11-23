@@ -1644,6 +1644,30 @@ export interface components {
          * @enum {string}
          */
         EquipmentKind: "inverter" | "battery";
+        /**
+         * @description Modules already on a block's roof face, placed in the face's outline like a roof window:
+         *     metres across the slope and up it from the face's lowest corner on the left.
+         */
+        ExistingPv: {
+            /**
+             * Format: double
+             * @description Its centre on the face.
+             */
+            across: number;
+            /** @description The block's index in the scene. */
+            block: number;
+            /** @description The roof face's index in its block, as module grids name it. */
+            face: number;
+            /** Format: double */
+            length: number;
+            /** Format: double */
+            up: number;
+            /**
+             * Format: double
+             * @description Its size: across the slope, and up it.
+             */
+            width: number;
+        };
         /** @description A roof face's covering and pitch, named by block and face as a module grid names it. */
         FaceDetail: {
             /** @description The block's index in the scene. */
@@ -2594,6 +2618,8 @@ export interface components {
             chimneys?: components["schemas"]["Chimney"][];
             /** @description Markers for inverters and batteries. */
             equipment?: components["schemas"]["Equipment"][];
+            /** @description Modules already on roof faces that stay. Drawn only; they never shade and produce nothing. */
+            existingPv?: components["schemas"]["ExistingPv"][];
             /**
              * @description What is known of roof faces: their covering and whether their pitch is confirmed. A face
              *     without one has an unknown covering and an estimated pitch.

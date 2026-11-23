@@ -22,12 +22,15 @@ pub fn derive(
     scene.check_chimneys().map_err(|_| Refusal::Scene)?;
     scene.check_details().map_err(|_| Refusal::Scene)?;
     scene.panes().map_err(|_| Refusal::Scene)?;
+    scene.existing_fields().map_err(|_| Refusal::Scene)?;
     let placed = scene.modules(size).map_err(|misplaced| match misplaced {
         Misplaced::Face { .. } => Refusal::Scene,
         Misplaced::ModuleType { .. } => Refusal::ModuleType,
         Misplaced::Setback { .. } => Refusal::Setback,
         Misplaced::Overlap { .. } => Refusal::Overlap,
-        Misplaced::Chimney { .. } | Misplaced::Window { .. } => Refusal::Covered,
+        Misplaced::Chimney { .. } | Misplaced::Window { .. } | Misplaced::Existing { .. } => {
+            Refusal::Covered
+        }
     })?;
     let painted = scene.grids.iter().flat_map(|grid| {
         let module_type = grid.module_type;
