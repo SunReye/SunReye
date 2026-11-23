@@ -18,6 +18,7 @@ export type {
   Misplaced,
   Modules,
   Mount,
+  Neighbour,
   Point,
   Pv,
   RoofFace,
@@ -38,7 +39,7 @@ export type {
   Equipment,
   Fence,
   FenceFinish,
-  FencePoint,
+  FreeForm,
   GridModule,
   GroundFinish,
   GroundSurface,
@@ -53,6 +54,8 @@ export type {
   Scene,
   Wall,
 } from "@sunreye/scene";
+
+export type { Aerial, Around } from "./supplied.ts";
 
 /** The unit vector toward the sun: east, north, up, as the pv crate shades. */
 export function sunward({ zenith, azimuth }: Sun): Point {

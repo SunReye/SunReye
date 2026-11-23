@@ -714,6 +714,40 @@ async fn overhangs_chimneys_and_colours_are_saved_and_a_bad_one_is_refused() {
 }
 
 #[tokio::test]
+async fn a_free_form_roof_is_saved_with_its_modules_and_a_bent_face_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let module = core.module_type(&set_cookie).await;
+    let strings = [string(None, "south", &module, 1, 0.0)];
+    // The gable house's two faces given by their corners; `lift` raises one eave corner.
+    let with = |lift: f64| {
+        let ridge = 4f64.mul_add(35f64.to_radians().tan(), 3.0);
+        let mut scene = house(&module, &[cell(0, 0, Some(0), false)]);
+        scene["blocks"][0]["freeForm"] = json!({
+            "footprint": [[0.0, 0.0], [10.0, 0.0], [10.0, 8.0], [0.0, 8.0]],
+            "faces": [
+                [[0.0, 3.0, 0.0], [0.0, ridge, 4.0], [10.0, ridge, 4.0], [10.0, 3.0, 0.0]],
+                [[0.0, 3.0, 8.0], [10.0, 3.0 + lift, 8.0], [10.0, ridge, 4.0], [0.0, ridge, 4.0]],
+            ],
+        });
+        scene
+    };
+
+    let (status, saved) = core.put_scene(&set_cookie, &strings, &with(0.0)).await;
+    let (_, read) = core.call(&set_cookie, get("/api/v1/layout")).await;
+    let (refused, body) = core.put_scene(&set_cookie, &strings, &with(0.5)).await;
+
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    assert_eq!(read["scene"], with(0.0));
+    assert_eq!(read["strings"][0]["modules"], json!(1));
+    assert!((read["strings"][0]["tilt"].as_f64().unwrap() - 35.0).abs() < 1e-6);
+    assert_eq!(
+        (refused, &body["code"]),
+        (StatusCode::UNPROCESSABLE_ENTITY, &json!("layout.scene"))
+    );
+}
+
+#[tokio::test]
 async fn a_string_no_module_is_painted_into_is_refused_naming_its_module_count() {
     let dir = tempfile::tempdir().unwrap();
     let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;

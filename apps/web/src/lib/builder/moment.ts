@@ -3,6 +3,7 @@
 import { only, type Core, type ModuleType } from "../api/core.ts";
 import type { Draft } from "./modules.ts";
 import type { Location, Pv } from "./pv.ts";
+import type { Neighbour } from "./pv.ts";
 
 /** Measured or estimated history, the solar forecast, or a clear sky run in the browser. */
 export type Source = "measured" | "forecast" | "clearSky";
@@ -80,6 +81,8 @@ export interface Reading {
   readonly moduleTypes: readonly Readonly<ModuleType>[];
   /** Unknown to a viewer: then a clear sky shows nothing. */
   readonly location: Location | undefined;
+  /** The builder's consumer's: a clear sky is shaded by them as by the scene's obstacles. */
+  readonly neighbours?: readonly Neighbour[];
   /** `YYYY-MM-DD` in the browser's calendar. */
   readonly day: string;
   readonly today: string;
@@ -132,7 +135,7 @@ function stored(
 }
 
 /** Every string under a clear sky through the day, in 15-minute steps. */
-function clearSky({ pv, draft, moduleTypes, location, day }: Reading): Interval[][] {
+function clearSky({ pv, draft, moduleTypes, location, neighbours, day }: Reading): Interval[][] {
   if (location === undefined) return draft.strings.map(() => []);
 
   const start = new Date(`${day}T00:00`).getTime();
@@ -146,6 +149,7 @@ function clearSky({ pv, draft, moduleTypes, location, day }: Reading): Interval[
   const watts = pv.clearSky({
     location,
     scene: draft.scene,
+    neighbours: neighbours ?? [],
     moduleTypes,
     strings: draft.strings,
     times: starts.map((at) => Math.floor(at / 1000)),

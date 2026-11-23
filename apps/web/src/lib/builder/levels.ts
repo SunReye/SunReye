@@ -1,16 +1,8 @@
 // The builder inspector's levels and what a click in 3D drills it to (ADR 20). Pure.
 import { roofFaceKey, type RoofFaceId } from "@sunreye/scene";
-import type {
-  Block,
-  FencePoint,
-  GridModule,
-  LaidGrid,
-  Modules,
-  Point,
-  Pv,
-  RoofFace,
-  Scene,
-} from "./pv.ts";
+import type { Block, GridModule, LaidGrid, Modules, Point, Pv, RoofFace, Scene } from "./pv.ts";
+import { overFreeForm } from "./free-form.ts";
+import { distance } from "./plan.ts";
 import type { Hit } from "./scene.ts";
 
 /** The inspector's root groups. */
@@ -119,18 +111,6 @@ function reach({ overhang, roof }: Block): readonly [number, number] {
   return [roof.kind === "flat" || roof.kind === "hip" ? eave : verge, eave];
 }
 
-/** How far scene point `p` lies from the segment from `a` to `b`. */
-function distance(
-  [px, pz]: readonly [number, number],
-  { x: ax, z: az }: FencePoint,
-  { x: bx, z: bz }: FencePoint,
-): number {
-  const [dx, dz] = [bx - ax, bz - az];
-  const t = Math.min(1, Math.max(0, ((px - ax) * dx + (pz - az) * dz) / (dx * dx + dz * dz || 1)));
-
-  return Math.hypot(px - ax - t * dx, pz - az - t * dz);
-}
-
 /** The index of the car place under scene point `x`, `z`; −1 for none. */
 function placed(scene: Scene, point: readonly [number, number]): number {
   return (scene.carPlaces ?? []).findIndex((item) =>
@@ -153,6 +133,12 @@ function obstacleAt(scene: Scene, point: readonly [number, number]): number {
 function indexed(kind: Extract<Level, { index: number }>["kind"], index: number): Level | null {
   return index >= 0 ? { kind, index } : null;
 }
+
+/** The index of the block under scene point `x`, `z`, its roof's overhang too; −1 for none. */
+const blockAt = (scene: Scene, point: readonly [number, number]): number =>
+  scene.blocks.findIndex((item) =>
+    item.freeForm ? overFreeForm(point, item.freeForm, EDGE) : within(point, item, reach(item)),
+  );
 
 /** The crate, which finds what a strike lands on: a chimney, a roof window or a grid's face. */
 type Finder = Pick<Pv, "chimneyAt" | "roofWindowAt" | "gridAt"> | undefined;
@@ -193,15 +179,15 @@ function at(scene: Scene, pv: Finder, [east, north, up]: Point): Level | null {
       indexed(
         "fence",
         (scene.fences ?? []).findIndex(({ points }) =>
-          points.some((to, i) => i > 0 && distance(point, points[i - 1] ?? to, to) <= NEAR),
+          points.some((to, i) => {
+            const from = points[i - 1] ?? to;
+
+            return i > 0 && distance(point, [from.x, from.z], [to.x, to.z]) <= NEAR;
+          }),
         ),
       ),
     () => indexed("place", up < CAR ? placed(scene, point) : -1),
-    () =>
-      indexed(
-        "block",
-        scene.blocks.findIndex((item) => within(point, item, reach(item))),
-      ),
+    () => indexed("block", blockAt(scene, point)),
     () =>
       indexed(
         "surface",

@@ -5,8 +5,8 @@ use super::fixtures::MODULE;
 use super::fixtures::shaded_substrings;
 use crate::Overhang;
 use crate::{
-    Block, GridModule, Misplaced, ModuleGrid, Obstacle, Place, Plane, Point, Roof, Scene, Size,
-    Spot, Sun, open_circuit_voltage,
+    Block, GridModule, Misplaced, ModuleGrid, Neighbour, Obstacle, Place, Plane, Point, Roof,
+    Scene, Size, Spot, Sun, open_circuit_voltage,
 };
 
 const SIZE: Size = Size {
@@ -32,6 +32,7 @@ fn house(north: f64, grids: Vec<ModuleGrid>) -> Scene {
             overhang: Overhang::default(),
             roof_colour: None,
             wall_colour: None,
+            free_form: None,
         }],
         obstacles: vec![],
         grids,
@@ -389,6 +390,36 @@ fn a_placed_module_is_shaded_by_a_wall_in_front_of_the_house_but_never_by_its_ow
         rotation: 0.0,
     });
     assert_eq!(shade(&scene), 3);
+}
+
+#[test]
+fn a_supplied_neighbour_shades_a_module_as_an_equal_box_does() {
+    let low_south = Sun {
+        zenith: 70.0,
+        azimuth: 0.0,
+    };
+    let scene = house(0.0, vec![grid(false, vec![cell(0, 0, Some(1))])]).settled(size);
+    let module = scene.modules(size).unwrap()[0].module;
+    let shade = |occluders: &[crate::Occluder]| {
+        shaded_substrings(
+            &MODULE,
+            module.plane,
+            module.place.unwrap(),
+            low_south,
+            occluders,
+        )
+    };
+    // The wall above as the consumer gives it: east and north of the scene's origin.
+    let wall = Neighbour {
+        footprint: vec![[-5.0, -10.0], [15.0, -10.0], [15.0, -10.3], [-5.0, -10.3]],
+        height: 6.0,
+    };
+
+    let mut occluders = scene.occluders();
+    occluders.extend(Neighbour::occluders(&[wall]).unwrap());
+
+    assert_eq!(shade(&scene.occluders()), 0);
+    assert_eq!(shade(&occluders), 3);
 }
 
 #[test]

@@ -3,6 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::polygon;
 use crate::shade::{cross, dot, offset, sub};
 use crate::{Module, Place, Plane, Point, RoofWindow, Scene};
 
@@ -453,10 +454,7 @@ impl RoofFace {
 
     /// Whether a footprint lies inside the setback and off every chimney and roof window.
     pub(crate) fn clear(&self, area: Area, setback: f64) -> Result<(), Blocked> {
-        if !corners(area)
-            .iter()
-            .all(|p| self.inside(*p, setback - TOLERANCE))
-        {
+        if !self.holds(area, setback - TOLERANCE) {
             return Err(Blocked::Setback);
         }
         if self.chimneys.iter().any(|c| overlap(area, *c, 0.0)) {
@@ -522,14 +520,16 @@ impl RoofFace {
         [dot(off, self.across), dot(off, self.up)]
     }
 
-    /// Whether `p` lies at least `margin` inside every edge.
-    pub(crate) fn inside(&self, [u, v]: [f64; 2], margin: f64) -> bool {
-        let next = self.outline.iter().cycle().skip(1);
-        self.outline.iter().zip(next).all(|([au, av], [bu, bv])| {
-            let (du, dv) = (bu - au, bv - av);
-            let length = du.hypot(dv);
-            length < EPSILON || du.mul_add(v - av, -(dv * (u - au))) / length >= margin - EPSILON
-        })
+    /// Whether `p` lies at least `margin` inside every edge, or with a negative margin no further
+    /// than that outside them.
+    pub(crate) fn inside(&self, p: [f64; 2], margin: f64) -> bool {
+        polygon::inside(&self.outline, p, margin)
+    }
+
+    /// Whether a footprint lies wholly on the face, at least `margin` inside every edge, though
+    /// the face need not be convex.
+    pub(crate) fn holds(&self, area: Area, margin: f64) -> bool {
+        polygon::holds(&self.outline, area, margin)
     }
 
     #[must_use]

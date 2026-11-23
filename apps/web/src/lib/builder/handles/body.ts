@@ -109,6 +109,9 @@ function surfaceIn(scene: Scene, index: number): Body | undefined {
 function blockIn(scene: Scene, index: number): Body | undefined {
   const block = scene.blocks[index];
 
+  // A free-form block's rectangle goes unused: no handle stands on it (ADR 20).
+  if (block?.freeForm) return undefined;
+
   return (
     block && {
       ...block,
@@ -120,8 +123,8 @@ function blockIn(scene: Scene, index: number): Body | undefined {
   );
 }
 
-/** Each kind's footprint the handles drag; fences, chimneys, roof windows and openings have
- * none. */
+/** Each kind's footprint the handles drag; fences, chimneys, roof windows, openings and free-form
+ * blocks have none. */
 const BODIES: Readonly<
   Record<Target["kind"], ((scene: Scene, index: number) => Body | undefined) | undefined>
 > = {

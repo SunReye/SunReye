@@ -2,7 +2,7 @@
 // reads and returns the scene as `@sunreye/scene` types it.
 
 import type { Chimney, Opening, OpeningKind, RoofWindow, Scene, Wiring } from "@sunreye/scene";
-import type { Geometry, Point, Unfit } from "./geometry.d.ts";
+import type { Face, Geometry, Point, Unfit } from "./geometry.d.ts";
 import type { Ghost, Modules, OnGrid, Sizes } from "./layout.d.ts";
 
 export type * from "./geometry.d.ts";
@@ -39,10 +39,24 @@ export interface ModuleType {
   readonly bypassDiodes: number;
 }
 
+/**
+ * An upright body around the plant that its consumer supplies: a footprint on the ground under a
+ * level top. It shades as the scene's obstacles do (ADR 20).
+ */
+export interface Neighbour {
+  /** Its outline's corners, metres east and north of the scene's origin: north up, whatever the
+   * scene's compass. */
+  readonly footprint: readonly (readonly [number, number])[];
+  /** Its top's height above the ground, in metres. */
+  readonly height: number;
+}
+
 /** A layout under a clear sky: the scene names its strings by position in `strings`. */
 export interface ClearRun {
   readonly location: Location;
   readonly scene: Scene;
+  /** The consumer's neighbours, shading as the scene's obstacles do. */
+  readonly neighbours?: readonly Neighbour[];
   readonly moduleTypes: readonly ModuleType[];
   readonly strings: readonly Wiring[];
   /** Seconds since 1970, UTC. */
@@ -89,6 +103,8 @@ export interface Pv {
   readonly modules: (scene: Scene, sizes: Sizes) => Modules;
   /** Where the sun stands at `unix` seconds over `location`. */
   readonly sun: (unix: number, location: Location) => Sun;
+  /** The neighbours' walls and tops, east, north, up; throws the crate's reason for one refused. */
+  readonly neighbours: (neighbours: readonly Neighbour[]) => Face[];
   /** Each string's watts under a clear sky, by time, then string position (ADR 20). */
   readonly clearSky: (run: ClearRun) => number[][];
   /** Each string's open-circuit voltage at −10 °C, by position; null for an unknown module type. */

@@ -232,6 +232,17 @@
             "format": "double",
             "type": "number"
           },
+          "freeForm": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FreeForm",
+                "description": "A polygon footprint under free-form roof faces; with it the corner, size, eave, rotation\nand roof above go unused."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "open": {
             "description": "A carport: a post at each corner instead of walls.",
             "type": "boolean"
@@ -1691,6 +1702,42 @@
         },
         "required": [
           "devices"
+        ],
+        "type": "object"
+      },
+      "FreeForm": {
+        "additionalProperties": false,
+        "description": "A footprint and the faces over it, in the scene's frame before the compass turns it.",
+        "properties": {
+          "faces": {
+            "description": "Each face's corners as x, y and z, in metres, counter-clockwise seen from above.",
+            "items": {
+              "items": {
+                "items": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "type": "array"
+          },
+          "footprint": {
+            "description": "Corners as x and z, in metres.",
+            "items": {
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "footprint",
+          "faces"
         ],
         "type": "object"
       },

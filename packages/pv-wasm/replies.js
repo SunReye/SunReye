@@ -2,7 +2,7 @@
 // glue crate's own shape is trusted past the top level.
 
 /** @import { Chimney, Opening, RoofWindow } from "@sunreye/scene" */
-/** @import { Geometry, Ghost, Modules, Sizing, Sun, Unfit } from "./index.d.ts" */
+/** @import { Face, Geometry, Ghost, Modules, Sizing, Sun, Unfit } from "./index.d.ts" */
 
 /**
  * @template T
@@ -53,6 +53,13 @@ export const isGeometry = (value) =>
     Array.isArray(value.ok.faces) &&
     "solids" in value.ok &&
     Array.isArray(value.ok.solids));
+
+/**
+ * @param {unknown} value
+ * @returns {value is Reply<Face[]>}
+ */
+export const isFaces = (value) =>
+  isFailure(value) || (isRecord(value) && "ok" in value && Array.isArray(value.ok));
 
 /**
  * The roof faces and the grids, and what the builder's handles stand on.

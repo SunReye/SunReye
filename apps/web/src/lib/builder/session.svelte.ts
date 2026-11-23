@@ -244,7 +244,7 @@ export class Session {
     if (this.wiring.aimed(level) || level === null) return;
 
     this.go(level);
-    this.picking.strike(hit, this.laid.walls);
+    this.picking.strike(hit, this.laid.walls, this.draft.scene);
     // A wall spot's toolbar is on the canvas: the inspector stays where it is.
     this.expanded = !peek && this.picking.spot === undefined;
   }

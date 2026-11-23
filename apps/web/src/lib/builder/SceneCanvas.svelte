@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export type { Plant, SceneWeather } from "../scene/weather.ts";
 
-  export type { Editing, Roofwork, Projector } from "./drawing.svelte.ts";
+  export type { Around, Editing, Roofwork, Projector } from "./drawing.svelte.ts";
 </script>
 
 <script lang="ts">
@@ -27,6 +27,7 @@
     overlaid,
     picking,
     projector,
+    type Around,
     type Editing,
     type Hit,
     type Roofwork,
@@ -37,6 +38,7 @@
   let {
     geometry,
     panels = [],
+    around,
     shares,
     cars = [],
     sun = null,
@@ -56,6 +58,8 @@
     geometry: Geometry;
     /** The placed modules. */
     panels?: readonly Panel[];
+    /** The aerial image and the neighbours the builder's consumer supplies; none in Home. */
+    around?: Around | undefined;
     /** Live, by panel, its string's share of peak; the modules' cells glow by it. */
     shares?: readonly (number | null)[];
     /** The connected cars; drawn again only when one comes, goes or changes body. */
@@ -97,6 +101,7 @@
     geometry: () => geometry,
     panels: () => panels,
     shares: () => shares,
+    around: () => around,
   };
 
   /** Fits the drawing buffer and the camera to the canvas whenever its size changes. */
