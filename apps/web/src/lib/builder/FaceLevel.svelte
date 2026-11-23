@@ -5,7 +5,7 @@
 <script lang="ts">
   import type { ModuleType } from "../api/core.ts";
   import FaceGrid from "./FaceGrid.svelte";
-  import { moduleOf, type Level } from "./levels.ts";
+  import { gridOn, moduleOf, type Level } from "./levels.ts";
   import ModuleLevel from "./ModuleLevel.svelte";
   import ModuleCatalogue from "./ModuleCatalogue.svelte";
   import { addGrid, type Draft, type TypeSource } from "./modules.ts";
@@ -37,9 +37,7 @@
 
   const draft = $derived(plan.draft);
 
-  const index = $derived(
-    (draft.scene.grids ?? []).findIndex((g) => g.block === roof.block && g.face === roof.face),
-  );
+  const index = $derived(gridOn(draft.scene, roof));
 
   /** What shows instead of the types: the module catalogue or the new module type's form. */
   let adding = $state<"catalogue" | "form">();
