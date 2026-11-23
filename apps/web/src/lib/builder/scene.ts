@@ -13,7 +13,7 @@ import {
 } from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import * as finish from "../scene/materials.ts";
-import { fence, ground } from "../scene/surroundings.ts";
+import { aerialGround, drape, fence, ground, photo, type Around } from "../scene/surroundings.ts";
 import { conifer, crown, level, triangles as cut } from "../scene/surfaces.ts";
 import { roofWindows } from "../scene/roof-windows.ts";
 import { openings } from "../scene/wall-openings.ts";
@@ -27,7 +27,7 @@ function triangles(faces: readonly Face[]): number[] {
 }
 
 function surface(
-  name: Face["surface"] | "flat",
+  name: Face["surface"] | "flat" | "neighbour",
   faces: readonly Face[],
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- set up, then drawn.
   material: MeshStandardMaterial,
@@ -148,8 +148,32 @@ function painted(faces: readonly Face[]): (readonly [string | undefined, readonl
   );
 }
 
+/** Roof faces, pitched and flat: in their blocks' colours, or under the aerial image. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the image is the DOM's own.
+function roofing(roofs: readonly Face[], aerial: Around["aerial"]): Mesh[] {
+  const pitched = roofs.filter((face) => !level(face));
+  const flat = roofs.filter((face) => level(face));
+
+  if (aerial === undefined) {
+    return [
+      ...painted(pitched).map(([colour, faces]) => surface("roof", faces, finish.roofing(colour))),
+      ...painted(flat).map(([colour, faces]) => surface("flat", faces, finish.roofing(colour))),
+    ];
+  }
+
+  const draped = (name: "roof" | "flat", faces: readonly Face[]): Mesh[] =>
+    faces.length === 0 ? [] : [drape(surface(name, faces, photo(aerial)), aerial.extent)];
+
+  return [...draped("roof", pitched), ...draped("flat", flat)];
+}
+
 /** The scene's sections in drawing order, each built on call. */
-function sections(geometry: Geometry, panels: readonly Panel[]): (() => Object3D[])[] {
+function sections(
+  geometry: Geometry,
+  panels: readonly Panel[],
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the image is the DOM's own.
+  around: Around,
+): (() => Object3D[])[] {
   const faces = (kind: string): Face[] => geometry.faces.filter((face) => face.surface === kind);
   const roofs = faces("roof");
 
@@ -158,16 +182,12 @@ function sections(geometry: Geometry, panels: readonly Panel[]): (() => Object3D
       painted(faces("wall")).map(([colour, walls]) =>
         behind(surface("wall", walls, finish.clay(colour))),
       ),
-    () => [
-      ...painted(roofs.filter((face) => !level(face))).map(([colour, pitched]) =>
-        surface("roof", pitched, finish.roofing(colour)),
-      ),
-      ...painted(roofs.filter((face) => level(face))).map(([colour, flat]) =>
-        surface("flat", flat, finish.roofing(colour)),
-      ),
-      ...trim(roofs),
-    ],
+    () => [...roofing(roofs, around.aerial), ...trim(roofs)],
     () => [surface("obstacle", faces("obstacle"), finish.clay())],
+    () =>
+      around.neighbours.length === 0
+        ? []
+        : [surface("neighbour", around.neighbours, finish.clay())],
     () => {
       const chimneys = faces("chimney");
 
@@ -175,6 +195,7 @@ function sections(geometry: Geometry, panels: readonly Panel[]): (() => Object3D
     },
     () => hedges(faces("hedge")),
     () => [
+      ...(around.aerial === undefined ? [] : [aerialGround(around.aerial)]),
       ...(geometry.ground ?? []).map((item, i) => ground(item, i)),
       ...(geometry.fences ?? []).map((item) => fence(item)),
     ],
@@ -188,6 +209,7 @@ function sections(geometry: Geometry, panels: readonly Panel[]): (() => Object3D
 
 /** What lies on a surface that casts the same shadow: its own would only cost a draw. */
 const FLAT: ReadonlySet<string> = new Set([
+  "aerial",
   "module",
   "ground",
   "trim",
@@ -214,12 +236,20 @@ function put(group: Group, parts: readonly Object3D[]): void {
   if (parts.length > 0) group.add(...parts);
 }
 
+/** Nothing supplied around the plant. */
+const ALONE: Around = { neighbours: [] };
+
 /** The scene's meshes: per surface kind, solid, ground, fence, placed module, marker, opening and
- * roof window. */
-export function buildScene(geometry: Geometry, panels: readonly Panel[] = []): Group {
+ * roof window, and what the consumer supplies around it. */
+export function buildScene(
+  geometry: Geometry,
+  panels: readonly Panel[] = [],
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the image is the DOM's own.
+  around: Around = ALONE,
+): Group {
   const group = new Group();
 
-  for (const section of sections(geometry, panels)) put(group, section());
+  for (const section of sections(geometry, panels, around)) put(group, section());
 
   return group;
 }
@@ -232,9 +262,11 @@ export async function buildSliced(
   geometry: Geometry,
   panels: readonly Panel[],
   pause: () => Promise<void>,
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the image is the DOM's own.
+  around: Around = ALONE,
 ): Promise<Group> {
   const group = new Group();
-  const [first, ...rest] = sections(geometry, panels);
+  const [first, ...rest] = sections(geometry, panels, around);
 
   put(group, first?.() ?? []);
 

@@ -11,8 +11,9 @@ import {
 import { mix } from "./colour.ts";
 import type { SceneWeather } from "./weather.ts";
 
-/** What rain and snow lie on: roof faces, pitched and flat, ground surfaces and the studio floor. */
-const LYING: ReadonlySet<string> = new Set(["roof", "flat", "ground", "floor"]);
+/** What rain and snow lie on: roof faces, pitched and flat, ground surfaces, the aerial image and
+ * the studio floor. */
+const LYING: ReadonlySet<string> = new Set(["roof", "flat", "ground", "aerial", "floor"]);
 
 /** Snow: a hair under white, as every finish is, so a sunlit face stays under the page's. */
 const SNOW = 0xf4f6f9;

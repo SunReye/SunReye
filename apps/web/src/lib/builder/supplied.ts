@@ -12,3 +12,18 @@ export interface Neighbour {
   /** Its top's height above the ground, in metres. */
   readonly height: number;
 }
+
+/** Metres east and north of the scene's origin to the edges of what an image shows. */
+export interface Extent {
+  readonly west: number;
+  readonly south: number;
+  readonly east: number;
+  readonly north: number;
+}
+
+/** An aerial image, north up, and the ground it shows. Decoded by the consumer: the builder never
+ * loads one. */
+export interface Aerial {
+  readonly image: TexImageSource;
+  readonly extent: Extent;
+}
