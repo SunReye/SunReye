@@ -356,6 +356,10 @@ _Avoid_: Extrude, lift
 A traced roof face whose corners lie more than 2 cm off its plane, as set heights can leave it. It is kept, drawn in the warning colour, and carries no modules until it is flat.
 _Avoid_: Warped face, invalid face
 
+**Ready roof**:
+A common German roof, such as a Satteldach or a Mansarddach, placed in one click as the lines a person could have traced and pulled up, then edited as any traced roof. German UI: Fertige Formen.
+_Avoid_: Template, preset, roof type
+
 **Covering**:
 What a roof face is covered with: tiles, slate, sheet metal or bitumen; unknown until someone says.
 _Avoid_: Roofing, material, Eindeckung
