@@ -245,6 +245,7 @@
     {geometry}
     panels={drawn}
     shares={live.shares}
+    halted={live.halted}
     cars={live.cars}
     {sun}
     {diffuse}

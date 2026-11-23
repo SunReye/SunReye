@@ -7,7 +7,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import { PerspectiveCamera } from "three";
-  import { OrbitControls } from "three/addons/controls/OrbitControls.js";
   import {
     openGarage,
     parkedKey,
@@ -19,6 +18,7 @@
   import PerfOverlay from "../scene/PerfOverlay.svelte";
   import { Ghost, lit, type Lit, type SceneFailure, type Sky } from "../scene/stage.svelte.ts";
   import { FOV, type View } from "./camera.ts";
+  import { fit, orbit } from "./orbit.svelte.ts";
   import type { Geometry, Point } from "./pv.ts";
   import {
     RoofTool,
@@ -40,6 +40,7 @@
     panels = [],
     around,
     shares,
+    halted = false,
     cars = [],
     sun = null,
     diffuse = null,
@@ -62,6 +63,8 @@
     around?: Around | undefined;
     /** Live, by panel, its string's share of peak; the modules' cells glow by it. */
     shares?: readonly (number | null)[];
+    /** The live values have stalled or are lost: the glow steps to each tick (ADR 21). */
+    halted?: boolean;
     /** The connected cars; drawn again only when one comes, goes or changes body. */
     cars?: readonly Parked[];
     /** Toward the sun, east, north, up: it lights and shadows the scene; null for a fixed sun. */
@@ -101,91 +104,11 @@
     geometry: () => geometry,
     panels: () => panels,
     shares: () => shares,
+    halted: () => halted,
     around: () => around,
   };
 
-  /** Fits the drawing buffer and the camera to the canvas whenever its size changes. */
-  function fit(
-    canvas: HTMLCanvasElement,
-    studio: Lit["studio"],
-    camera: PerspectiveCamera,
-    render: () => void,
-  ): ResizeObserver {
-    const resize = new ResizeObserver(() => {
-      studio.setSize(canvas.clientWidth, canvas.clientHeight);
-      camera.aspect = canvas.clientWidth / Math.max(canvas.clientHeight, 1);
-      camera.updateProjectionMatrix();
-      render();
-    });
-
-    resize.observe(canvas);
-
-    return resize;
-  }
-
-  /** Flies the camera to each `view` given, from wherever it is; places the first at once. */
-  function follow(
-    camera: PerspectiveCamera,
-    controls: OrbitControls,
-    flight: Lit["flight"],
-    render: () => void,
-  ): void {
-    const place = ({ position, target }: View): void => {
-      camera.position.set(...position);
-      controls.target.set(...target);
-      // Dispatches "change", which draws.
-      controls.update();
-    };
-
-    let placed = false;
-
-    $effect(() => {
-      const to = view;
-
-      untrack(() => {
-        const from = { position: camera.position.toArray(), target: controls.target.toArray() };
-
-        if (!placed) {
-          placed = true;
-          place(to);
-        } else if (JSON.stringify(from) !== JSON.stringify(to)) {
-          flight.fly(from, to, place);
-          render();
-        }
-      });
-    });
-  }
-
-  /** Orbits the camera on a drag and reports the view once let go. */
-  function orbit(
-    canvas: HTMLCanvasElement,
-    camera: PerspectiveCamera,
-    flight: Lit["flight"],
-    render: () => void,
-  ): OrbitControls {
-    const controls = new OrbitControls(camera, canvas);
-
-    controls.addEventListener("change", render);
-    // The admin's hand takes the camera from a flight.
-    controls.addEventListener("start", () => {
-      flight.stop();
-    });
-    controls.addEventListener("end", () => {
-      // A scroll the browser takes from a locked canvas cancels the pointer, which also ends here.
-      if (!controls.enabled) return;
-
-      onview({ position: camera.position.toArray(), target: controls.target.toArray() });
-    });
-    follow(camera, controls, flight, render);
-
-    $effect(() => {
-      controls.enabled = !locked;
-      // Over the controls' own inline "none".
-      canvas.style.touchAction = locked ? "pan-y" : "none";
-    });
-
-    return controls;
-  }
+  const orbiting = { view: () => view, locked: () => locked, onview: (to: View) => onview(to) };
 
   /** Parks the cars once `due`, each change after the last; the default body loaded and their
    * programs compiled first. No car is drawn when the body cannot be read. A live tick that moves
@@ -285,7 +208,7 @@
       ),
     );
 
-    const controls = orbit(canvas, camera, flight, render);
+    const controls = orbit(canvas, camera, flight, render, orbiting);
 
     opening
       .open(kept.built, () => onready?.(), parking.due)

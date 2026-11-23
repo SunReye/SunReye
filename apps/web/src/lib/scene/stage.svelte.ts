@@ -48,10 +48,12 @@ export interface Lit {
   readonly flight: Opening["flight"];
   /** The string glow now: read in an effect, it follows the sun and the theme. */
   readonly glow: () => Glow;
-  /** Relights `drawn` on each live tick, easing to the new `shares` (ADR 21). */
+  /** Relights `drawn` on each live tick, easing to the new `shares`; stepping while the live
+   * values have `halted` (ADR 21). */
   readonly ease: (
     drawn: () => Group | undefined,
     shares: () => readonly (number | null)[] | undefined,
+    halted?: () => boolean,
   ) => void;
   /** Draws `group` in place of the last, which it frees; the sun's shadow and the floor fit it. */
   readonly show: Staged["show"];
@@ -184,8 +186,8 @@ export function lit(
     studio,
     flight,
     glow,
-    ease: (group, shares) => {
-      easeGlow(group, shares, glow, opened);
+    ease: (group, shares, halted = () => false) => {
+      easeGlow(group, shares, halted, glow, opened);
     },
     opening: opened,
     show: shown.show,

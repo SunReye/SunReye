@@ -1,9 +1,8 @@
 // Eases the drawn modules' glow to each live tick, then stops drawing (ADR 20 Motion). A tick
 // that moves no glow visibly steps, and one that moves none draws nothing; the still tier and a
-// halted stream step (ADR 21).
+// halted stream step (ADR 21). Whether it halted is its consumer's word.
 import type { Group } from "three";
 import { glowShift, tint, type Glow } from "../builder/scene.ts";
-import { stream } from "../live/stream.svelte.ts";
 import { motion } from "../motion/tier.svelte.ts";
 import { GlowGlide } from "./glow-glide.ts";
 import type { Opening } from "./opening.svelte.ts";
@@ -27,12 +26,16 @@ const sameLight = (shown: Shown | null, next: Shown): boolean =>
 
 /** How long a glow that moves `moved` of its range glides: a step while still or halted, and
  * where the move would not show. */
-const glideMs = (moved: number): number =>
-  motion.still || stream.halted || moved < VISIBLE ? 0 : TINT_MS;
+const glideMs = (moved: number, halted: boolean): number =>
+  motion.still || halted || moved < VISIBLE ? 0 : TINT_MS;
 
 /** What lights a group toward a tick's shares, in the frames a studio's opening draws: the
  * release it returns ends a glide that still runs, if one began. */
-function relighter(glow: () => Glow, frames: Pick<Opening, "animate" | "render">) {
+function relighter(
+  glow: () => Glow,
+  halted: () => boolean,
+  frames: Pick<Opening, "animate" | "render">,
+) {
   const glide = new GlowGlide();
   let shown: Shown | null = null;
 
@@ -44,7 +47,7 @@ function relighter(glow: () => Glow, frames: Pick<Opening, "animate" | "render">
     const relit = !sameLight(shown, { group, ...light });
 
     shown = { group, ...light };
-    glide.to(next, now, glideMs(moved));
+    glide.to(next, now, glideMs(moved, halted()));
 
     // Nothing moved and nothing is lit anew: no frame is owed.
     if (moved === 0 && !relit) return null;
@@ -69,10 +72,11 @@ function relighter(glow: () => Glow, frames: Pick<Opening, "animate" | "render">
 export function easeGlow(
   drawn: () => Group | undefined,
   shares: () => readonly (number | null)[] | undefined,
+  halted: () => boolean,
   glow: () => Glow,
   frames: Pick<Opening, "animate" | "render">,
 ): void {
-  const relight = relighter(glow, frames);
+  const relight = relighter(glow, halted, frames);
 
   $effect(() => {
     const next = shares();

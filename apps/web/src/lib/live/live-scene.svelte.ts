@@ -4,11 +4,17 @@ import { stream } from "./stream.svelte.ts";
 
 export type { Chip } from "./labels.ts";
 
-/** The scene as the stream last read it; read in a derived, it follows the stream. */
-export function liveSceneNow(input: Omit<Live3d, "values" | "stale">): LiveScene {
-  return liveScene({
-    ...input,
-    values: stream.values?.devices ?? {},
-    stale: stream.values?.stale,
-  });
+/** The scene as the stream last read it, and whether the stream halted; read in a derived, it
+ * follows the stream. */
+export function liveSceneNow(
+  input: Omit<Live3d, "values" | "stale">,
+): LiveScene & { readonly halted: boolean } {
+  return {
+    ...liveScene({
+      ...input,
+      values: stream.values?.devices ?? {},
+      stale: stream.values?.stale,
+    }),
+    halted: stream.halted,
+  };
 }

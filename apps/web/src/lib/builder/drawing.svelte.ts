@@ -27,6 +27,8 @@ export interface Source {
   readonly geometry: () => Geometry;
   readonly panels: () => readonly Panel[];
   readonly shares: () => readonly (number | null)[] | undefined;
+  /** The live values have stalled or are lost: the shares step to each tick. */
+  readonly halted: () => boolean;
   /** What the builder's consumer supplies around the plant. */
   readonly around: () => Around | undefined;
 }
@@ -51,7 +53,7 @@ export function projector(canvas: HTMLCanvasElement, camera: PerspectiveCamera):
  * slices, behind the dashboard (ADR 20 Loading), each after it at once. */
 export function keep(
   { glow, show, ease }: Lit,
-  { geometry, panels, shares, around }: Source,
+  { geometry, panels, shares, halted, around }: Source,
   render: () => void,
 ): Kept {
   let drawn: Group | undefined;
@@ -88,7 +90,7 @@ export function keep(
   });
 
   // A live tick, a new sun or theme relights the modules it already drew: nothing rebuilt.
-  ease(() => drawn, shares);
+  ease(() => drawn, shares, halted);
 
   return { drawn: () => drawn, built: built.promise };
 }
