@@ -439,7 +439,7 @@ fn tree(foot: &Frame, radius: f64, height: f64, crown: Crown) -> Vec<Occluder> {
 }
 
 /// A flat polygon as triangles: a convex one sharing its first corner, any other by its ears.
-fn fan(corners: &[Point]) -> Vec<Occluder> {
+pub fn fan(corners: &[Point]) -> Vec<Occluder> {
     let Some((&first, rest)) = corners.split_first() else {
         return Vec::new();
     };
