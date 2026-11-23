@@ -6,11 +6,10 @@ import { bodyOf } from "./handles/body.ts";
 import { turnable } from "./handles/offered.ts";
 import { handled } from "./levels.ts";
 import { addGrid, fillGrid } from "./modules.ts";
-import type { Scene } from "./pv.ts";
+import type { Light, Scene } from "./pv.ts";
 import { removal } from "./removal.ts";
 import type { Session } from "./session.svelte.ts";
 import { duplicate, refit } from "./wall-openings.ts";
-import type { Light } from "./walls.ts";
 
 /** The grid on the roof face the session stands at, by its position in the scene; −1 for none. */
 export function gridAt({ level, draft }: Pick<Session, "level" | "draft">): number {

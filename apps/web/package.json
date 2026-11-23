@@ -36,6 +36,7 @@
     "@internationalized/date": "3.12.4",
     "@lucide/svelte": "1.71.0",
     "@sunreye/catalogue": "workspace:*",
+    "@sunreye/scene": "workspace:*",
     "@sunreye/tokens": "workspace:*",
     "@sveltejs/adapter-static": "4.0.1",
     "@sveltejs/kit": "3.1.1",

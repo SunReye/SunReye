@@ -3,7 +3,9 @@
 import type { Core, PvString } from "../api/core.ts";
 
 /** The layout's strings; none while it cannot be read. */
-export async function layoutStrings(core: Readonly<Pick<Core, "layout">>): Promise<PvString[]> {
+export async function layoutStrings(
+  core: Readonly<Pick<Core, "layout">>,
+): Promise<readonly PvString[]> {
   const layout = await core.layout().catch(() => null);
 
   return layout !== null && "strings" in layout ? layout.strings : [];

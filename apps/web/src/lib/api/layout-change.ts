@@ -1,21 +1,6 @@
 // A layout change as the builder makes it and as the core's client sends it (ADR 17, 20).
-import type { Scene } from "../builder/pv";
-import type { StringDraft } from "./core";
+import type { Scene, StringDraft, Types } from "@sunreye/scene";
 import type { components } from "./schema";
-
-/** The inverter and battery types the layout's devices carry, by device id (ADR 27); the builder
- * never writes them. */
-export interface Types {
-  readonly inverterTypes?: Readonly<
-    Record<
-      string,
-      Readonly<Omit<components["schemas"]["InverterType"], "inputs">> & {
-        readonly inputs: readonly Readonly<components["schemas"]["MpptInput"]>[];
-      }
-    >
-  >;
-  readonly batteryTypes?: Readonly<Record<string, Readonly<components["schemas"]["BatteryType"]>>>;
-}
 
 /** A layout change with its scene; its modules name their string by position in `strings`. */
 export interface LayoutChange {

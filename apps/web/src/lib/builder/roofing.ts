@@ -3,43 +3,12 @@
 
 import type { Point } from "./pv.ts";
 
-export interface Overhang {
-  readonly eave: number;
-  readonly verge: number;
-}
-
 /** What lies on a block's roof face by its centre: a chimney or a roof window. */
 export interface OnRoof {
   readonly block: number;
   readonly face: number;
   readonly across: number;
   readonly up: number;
-}
-
-/** An upright box on a block's roof face, placed in the face's outline like its module grid. */
-export interface Chimney {
-  readonly block: number;
-  readonly face: number;
-  /** Its centre: metres across the slope and up it from the face's lowest corner on the left. */
-  readonly across: number;
-  readonly up: number;
-  /** Level: across the slope, and along the fall line seen from above. */
-  readonly width: number;
-  readonly depth: number;
-  /** Over the roof where its upper side meets it. */
-  readonly height: number;
-}
-
-/** A window lying flush in a block's roof face, placed in the face's outline like a chimney. */
-export interface RoofWindow {
-  readonly block: number;
-  readonly face: number;
-  /** Its centre: metres across the slope and up it from the face's lowest corner on the left. */
-  readonly across: number;
-  readonly up: number;
-  /** Across the slope, and up it. */
-  readonly width: number;
-  readonly length: number;
 }
 
 /** A chimney's foot on its roof face as the pv crate lays it out: its corners from the lower

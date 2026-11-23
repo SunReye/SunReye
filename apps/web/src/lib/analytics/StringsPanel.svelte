@@ -17,7 +17,7 @@
     stringEnergy,
     stringFacts,
     type StringFacts,
-    type PvString,
+    type Compared,
     type StringsCore,
   } from "./string-energy.ts";
   import { correctionGrid, stringRows, type StringRow } from "./strings.ts";
@@ -30,7 +30,7 @@
   }: {
     core: StringsCore;
     route: RangeRoute;
-    strings: readonly PvString[];
+    strings: Compared;
     /** The string chosen first; else a weak one, else the first. */
     sid: number | null;
   } = $props();
