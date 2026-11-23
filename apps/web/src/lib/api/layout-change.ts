@@ -47,6 +47,9 @@ function blockOf({ freeForm, ...block }: LayoutChange["scene"]["blocks"][number]
 
 type Sent = components["schemas"]["Scene"];
 
+/** `list` copied; none for one stored without it. */
+const copied = <T>(list: readonly T[] | undefined): T[] => [...(list ?? [])];
+
 /** What stands on the roofs and the plot, each list copied. */
 function roofsAndPlot(
   scene: LayoutChange["scene"],
@@ -60,20 +63,22 @@ function roofsAndPlot(
   | "openings"
   | "roofWindows"
   | "faceDetails"
+  | "existingPv"
 > {
   return {
-    equipment: [...(scene.equipment ?? [])],
-    carPlaces: [...(scene.carPlaces ?? [])],
-    chimneys: [...(scene.chimneys ?? [])],
-    surfaces: [...(scene.surfaces ?? [])],
-    fences: (scene.fences ?? []).map(({ points, height, finish }) => ({
+    equipment: copied(scene.equipment),
+    carPlaces: copied(scene.carPlaces),
+    chimneys: copied(scene.chimneys),
+    surfaces: copied(scene.surfaces),
+    fences: copied(scene.fences).map(({ points, height, finish }) => ({
       points: [...points],
       height,
       finish,
     })),
-    openings: [...(scene.openings ?? [])],
-    roofWindows: [...(scene.roofWindows ?? [])],
-    faceDetails: [...(scene.faceDetails ?? [])],
+    openings: copied(scene.openings),
+    roofWindows: copied(scene.roofWindows),
+    faceDetails: copied(scene.faceDetails),
+    existingPv: copied(scene.existingPv),
   };
 }
 
