@@ -210,6 +210,11 @@ pub struct Face {
 }
 
 impl Block {
+    /// Whether it has the four walls openings name: not a carport, nor a free-form block.
+    pub(crate) const fn walled(&self) -> bool {
+        !self.open && self.free_form.is_none()
+    }
+
     /// The height of its roof's highest point.
     pub(crate) fn top(&self) -> f64 {
         sheltering(self)

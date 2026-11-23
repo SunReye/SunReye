@@ -485,3 +485,30 @@ fn an_open_free_form_block_stands_a_post_at_each_footprint_corner_up_to_the_face
         Vec::<Vec<Point>>::new()
     );
 }
+
+#[test]
+fn a_wall_opening_or_an_equipment_marker_on_a_free_form_block_is_refused() {
+    // Its unused corner, size and eave would hold both.
+    let mut block = gable();
+    for (key, value) in [("width", 10.0), ("depth", 8.0), ("eave", 3.0)] {
+        block[key] = json!(value);
+    }
+    let with = |rest: &Value| {
+        let mut scene = json!({ "north": 0.0, "blocks": [block.clone()], "obstacles": [] });
+        if let (Some(scene), Some(rest)) = (scene.as_object_mut(), rest.as_object()) {
+            scene.extend(rest.clone());
+        }
+        serde_json::from_value::<Scene>(scene).unwrap()
+    };
+    let opening = with(&json!({ "openings": [{
+        "kind": "window", "block": 0, "wall": "front", "along": 2.0, "width": 1.0,
+        "height": 1.2, "sill": 0.9,
+    }] }));
+    let marker = with(&json!({ "equipment": [{
+        "device": 1, "kind": "inverter", "block": 0, "wall": "front", "along": 2.0,
+        "inside": false,
+    }] }));
+
+    assert_eq!(opening.fitted(), Err(0));
+    assert_eq!(marker.mounts(), Err(0));
+}
