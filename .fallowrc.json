@@ -104,7 +104,7 @@
   "duplicates": {
     "minTokens": 40,
     "minLines": 5,
-    "ignore": ["apps/web/src/lib/api/schema.d.ts"]
+    "ignore": ["apps/web/src/lib/api/schema.d.ts", "packages/scene/schema.d.ts"]
   },
   "boundaries": {
     "zones": [
@@ -125,6 +125,10 @@
         "patterns": ["packages/catalogue/**"]
       },
       {
+        "name": "scene",
+        "patterns": ["packages/scene/**"]
+      },
+      {
         "name": "profiles",
         "patterns": ["profiles/**"]
       },
@@ -136,7 +140,7 @@
     "rules": [
       {
         "from": "web",
-        "allow": ["tokens", "catalogue"]
+        "allow": ["tokens", "catalogue", "scene"]
       },
       {
         "from": "sdk",
@@ -151,12 +155,16 @@
         "allow": []
       },
       {
+        "from": "scene",
+        "allow": []
+      },
+      {
         "from": "profiles",
         "allow": ["sdk"]
       },
       {
         "from": "tooling",
-        "allow": ["web", "sdk", "tokens", "catalogue", "profiles"]
+        "allow": ["web", "sdk", "tokens", "catalogue", "scene", "profiles"]
       }
     ],
     "coverage": {

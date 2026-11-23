@@ -1,4 +1,5 @@
 // The builder inspector's levels and what a click in 3D drills it to (ADR 20). Pure.
+import { roofFaceKey, type RoofFaceId } from "@sunreye/scene";
 import type {
   Block,
   FencePoint,
@@ -255,6 +256,11 @@ export function moduleOf(
   return laid === undefined ? undefined : { grid, module, laid };
 }
 
+/** The position in the scene of the grid on `face`; −1 for none. */
+export function gridOn(scene: Readonly<Scene>, face: RoofFaceId): number {
+  return (scene.grids ?? []).findIndex((grid) => roofFaceKey(grid) === roofFaceKey(face));
+}
+
 /** A selected face's or module's grid: its position in the scene, how the crate laid it out, and
  * the selected module's footprint; null for a face without a grid or its module type. */
 export function faceGrid(
@@ -266,9 +272,7 @@ export function faceGrid(
   readonly shade: LaidGrid;
   readonly selected: LaidGrid["modules"][number] | undefined;
 } | null {
-  const grid = (scene.grids ?? []).findIndex(
-    (item) => item.block === level.block && item.face === level.face,
-  );
+  const grid = gridOn(scene, level);
 
   const shade = grids[grid];
 
@@ -284,6 +288,6 @@ export function faceGrid(
 /** The roof face whose modules `level` lays, if it is a face's or a module's level. */
 export function laying(roofs: readonly RoofFace[], level: Level): RoofFace | undefined {
   return level.kind === "face" || level.kind === "module"
-    ? roofs.find((roof) => roof.block === level.block && roof.face === level.face)
+    ? roofs.find((roof) => roofFaceKey(roof) === roofFaceKey(level))
     : undefined;
 }

@@ -1,22 +1,19 @@
 // What the context toolbar's actions make of a session (ADR 20): each is also in the inspector,
 // through the same functions of the draft.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the session is edited through its own methods. */
+import type { Light, Scene } from "./pv.ts";
 import { refusedInline } from "../feedback.ts";
 import { bodyOf } from "./handles/body.ts";
 import { turnable } from "./handles/offered.ts";
-import { handled } from "./levels.ts";
+import { gridOn, handled } from "./levels.ts";
 import { addGrid, fillGrid } from "./modules.ts";
-import type { Scene } from "./pv.ts";
 import { removal } from "./removal.ts";
 import type { Session } from "./session.svelte.ts";
 import { duplicate, refit } from "./wall-openings.ts";
-import type { Light } from "./walls.ts";
 
 /** The grid on the roof face the session stands at, by its position in the scene; −1 for none. */
 export function gridAt({ level, draft }: Pick<Session, "level" | "draft">): number {
-  return level.kind === "face"
-    ? (draft.scene.grids ?? []).findIndex((g) => g.block === level.block && g.face === level.face)
-    : -1;
+  return level.kind === "face" ? gridOn(draft.scene, level) : -1;
 }
 
 /** The selected object's turn in degrees, where it has a ring to turn it by. */

@@ -1,5 +1,6 @@
 // A chimney's or a roof window's drag (ADR 20): in its roof face's plane, so it stays under the
 // pointer from every view. Pure; rays are in three.js's frame, as the crate's roofs lie in it.
+import { roofFaceKey } from "@sunreye/scene";
 import type { Point, RoofFace, Scene } from "../pv.ts";
 import { cross } from "../vector.ts";
 import type { Target } from "./body.ts";
@@ -34,7 +35,7 @@ export function onRoof(
 ): Dragged | null {
   const [chimneys, windows] = [scene.chimneys ?? [], scene.roofWindows ?? []];
   const item = (target.kind === "chimney" ? chimneys : windows)[target.index];
-  const roof = laid.roofs.find((r) => r.block === item?.block && r.face === item.face);
+  const roof = item && laid.roofs.find((r) => roofFaceKey(r) === roofFaceKey(item));
   const shift = roof === undefined ? null : travelled(roof, grab, now);
 
   if (shift === null) return null;
