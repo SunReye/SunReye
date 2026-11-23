@@ -91,7 +91,7 @@
 
   let open = $state(false);
 
-  const locale = getLocale();
+  const locale = $derived(getLocale());
   const thisYear = new Date().getFullYear();
 
   const look = $derived(LOOKS[variant]);

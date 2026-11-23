@@ -19,7 +19,7 @@
     source: Source | undefined;
   } = $props();
 
-  const format = new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 0 });
+  const format = $derived(new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 0 }));
 
   const sources: Readonly<Record<Source, () => string>> = {
     measured: m.builder_source_measured,

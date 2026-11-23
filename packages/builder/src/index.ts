@@ -21,6 +21,8 @@ export type { Limits } from "./builder/checks.ts";
 
 export { sunAt } from "./builder/pv.ts";
 
+export { speak, type Locale } from "./locale.svelte.ts";
+
 export type {
   Corrections,
   Device,

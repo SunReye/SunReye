@@ -9,7 +9,7 @@ This file is the package's public interface. A consumer imports the entries belo
 - Svelte and TypeScript sources: compile them with Svelte's Vite plugin, and point Tailwind's `@source` at the package beside `@sunreye/ui`'s sheet.
 - Peers: Svelte, three.js, `@lucide/svelte`, Bits UI, `@internationalized/date`, `@sunreye/scene`, `@sunreye/pv-wasm`, `@sunreye/ui`, `@sunreye/catalogue`.
 - Its words are its own Paraglide project, in German and English. A consumer that installs the package by path runs `bun run i18n` in it before building.
-- The locale is Paraglide's local-storage key, where Home keeps it.
+- The locale is Paraglide's local-storage key, where Home keeps it, unless the consumer sets it with `speak`.
 
 ## `@sunreye/builder`
 
@@ -32,6 +32,7 @@ Loads three.js: import it where a scene is drawn, or lazily.
   - Lifecycle: `onrender`, `onready`, `onerror`.
   - Editing: `editing` and `roofwork` carry the editing tools' handles and roof gestures.
 - Camera: `presetView` (a preset, turned to a compass heading), `headingOf` (the bearing a view looks toward, for a compass), `parseView`, and the types `View` and `Preset`.
+- Language: `speak` sets the locale of every entry's words, `Locale`; a change shows without a reload.
 - The draft: `emptyDraft`, `panels`, `Draft`; `sunAt`, the sun's direction at an instant.
 - Types the props name: `Around`, `Aerial`, `Editing`, `Hit`, `Panel`, `Projector`, `Roofwork`, `Limits`.
 - The host's shapes: `Keeper`, `Records`, `Host`, `LayoutChange`, `Device`, `Corrections`, `Interval`, `Span`, `Problem`.

@@ -15,7 +15,7 @@
     devices: readonly Device[];
   } = $props();
 
-  const format = new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 0 });
+  const format = $derived(new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 0 }));
 
   /** A connected car's charge power and its vehicle's SOC, as the live screen words them. */
   function carState({ device, watts, soc }: Parked): string {

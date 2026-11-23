@@ -27,14 +27,13 @@
   // Read once: the learner runs twice a day.
   const loaded = $derived(records.corrections?.());
 
-  const locale = getLocale();
+  const locale = $derived(getLocale());
 
-  const factorFormat = new Intl.NumberFormat(locale, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  const factorFormat = $derived(
+    new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+  );
 
-  const energy = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 });
+  const energy = $derived(new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }));
 
   function line({ device, input, factors, recent }: Input): string {
     const name = devices.find(({ id }) => id === device)?.name ?? String(device);

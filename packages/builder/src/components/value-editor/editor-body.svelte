@@ -44,7 +44,7 @@
 
   haptics.nudge();
 
-  const nf = new Intl.NumberFormat(getLocale());
+  const nf = $derived(new Intl.NumberFormat(getLocale()));
 
   // Numbers.
   const numeric = orig.kind === "number" ? { edit: orig, rows: wheel(orig) } : undefined;

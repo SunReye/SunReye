@@ -25,7 +25,7 @@
   let row = $state<HTMLButtonElement | null>(null);
   let open = $state(false);
 
-  const format = new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 2 });
+  const format = $derived(new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 2 }));
 
   const text = $derived(
     edit.kind === "enum"
