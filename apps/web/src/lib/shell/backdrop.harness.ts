@@ -2,7 +2,7 @@
 // What the backdrop's tests share: a noon core, the plant's PV fed by hand and a beat stepped by hand.
 import { PLANT, type Live } from "../api/core.ts";
 import { stream } from "../live/stream.svelte.ts";
-import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
+import { motion } from "../../../../../packages/builder/src/motion/tier.svelte.ts";
 
 export const root = document.documentElement;
 

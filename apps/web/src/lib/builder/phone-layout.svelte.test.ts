@@ -2,11 +2,20 @@ import "../../app.css";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { connect } from "../api/core.ts";
 import { feed } from "../live/stream.harness.ts";
 import { setLocale } from "../paraglide/runtime.js";
-import Builder from "./Builder.svelte";
-import { DEVICES, house, MODULE, phone, pv, tap, testCore, undesk } from "./builder.harness.ts";
+import Builder from "../../../../../packages/builder/src/builder/Builder.svelte";
+import {
+  DEVICES,
+  hosted,
+  house,
+  MODULE,
+  phone,
+  pv,
+  tap,
+  testCore,
+  undesk,
+} from "./builder.harness.ts";
 import { unfaded } from "../scroll-fade.harness.ts";
 
 // The phone builder's zones (ADR 20): the time and the views along the top, one status strip and
@@ -62,16 +71,14 @@ function full() {
   // The stream says once: the wallbox's car is connected, at 43 %.
   feed()({ devices: { "3": { "ev.connected": 1, "ev.charge.power": 0, "ev.vehicle.soc": 43 } } });
 
-  const core = connect({
-    ...transport,
-    fetch: (request) =>
-      request.url.endsWith("/corrections")
-        ? Promise.resolve(Response.json({ inputs: [input(1), input(2)] }))
-        : transport.fetch(request),
-  });
-
   return {
-    core,
+    ...hosted({
+      ...transport,
+      fetch: (request) =>
+        request.url.endsWith("/corrections")
+          ? Promise.resolve(Response.json({ inputs: [input(1), input(2)] }))
+          : transport.fetch(request),
+    }),
     start: {
       scene: { ...draft.scene, carPlaces: [place] },
       strings: [string(1, "M1S"), string(2, "M1N"), string(3, "M2S")],

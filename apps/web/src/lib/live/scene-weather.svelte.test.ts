@@ -1,12 +1,11 @@
 import { expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import { MODULE, pv } from "../builder/builder.harness.ts";
-import { Studio } from "@sunreye/builder/scene/studio.ts";
-import { DRY, type Plant } from "@sunreye/builder/scene/weather.ts";
+import { Studio } from "../../../../../packages/builder/src/scene/studio.ts";
+import { DRY, type Plant } from "../../../../../packages/builder/src/scene/weather.ts";
 import { chip, frame, layout, scene } from "./live-scene.harness.ts";
 import { feed } from "./stream.harness.ts";
 import LiveScene from "./LiveScene.svelte";
-import { canvasWords } from "../builder/canvas-words.ts";
 
 test("the scene's weather is asked with the plant's share of its peak, and a tick that leaves it as it was lights nothing anew", async () => {
   const lit = vi.spyOn(Studio.prototype, "light");
@@ -14,7 +13,6 @@ test("the scene's weather is asked with the plant's share of its peak, and a tic
   const tick = feed();
 
   await render(LiveScene, {
-    words: canvasWords(),
     onselect: () => {},
     pv,
     layout,

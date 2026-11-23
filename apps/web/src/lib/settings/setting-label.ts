@@ -1,6 +1,6 @@
 // A setting's or quantity's name as Settings shows it: the role in the viewer's language, else the profile's
 // name, else its key spelled as words; never the key itself.
-import type { EditableSetting } from "@sunreye/builder/components/value-editor/editable.ts";
+import type { EditableSetting } from "@sunreye/builder/values";
 import { m } from "../paraglide/messages.js";
 
 const ROLES = new Map([

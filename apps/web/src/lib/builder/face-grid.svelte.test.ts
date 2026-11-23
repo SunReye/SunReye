@@ -1,14 +1,15 @@
 import "../../app.css";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { render } from "vitest-browser-svelte";
-import { connect } from "../api/core.ts";
-import Builder from "./Builder.svelte";
-import { addGrid, wire, type Draft } from "@sunreye/builder/builder/modules.ts";
+import Builder from "../../../../../packages/builder/src/builder/Builder.svelte";
+import { addGrid, wire, type Draft } from "../../../../../packages/builder/src/builder/modules.ts";
 import {
   desk,
   DEVICES,
   drill,
+  filledFace,
   gridOnTheSouthFace,
+  hosted,
   house,
   inspector,
   MODULE,
@@ -16,7 +17,6 @@ import {
   SOUTH,
   testCore,
   undesk,
-  filledFace,
 } from "./builder.harness.ts";
 
 beforeEach(desk);
@@ -77,7 +77,7 @@ function overVoltage(): Draft {
 test("a string over its inverter's voltage in the cold is warned of at its modules, before saving", async () => {
   await render(Builder, {
     pv,
-    core: connect(testCore()),
+    ...hosted(testCore()),
     start: overVoltage(),
     moduleTypes: [MODULE],
     devices: DEVICES,
@@ -98,7 +98,7 @@ test("a string over its inverter's voltage in the cold is warned of at its modul
 test("a string outside its MPPT input's window is warned of on its level, with figure and limit", async () => {
   await render(Builder, {
     pv,
-    core: connect(testCore()),
+    ...hosted(testCore()),
     start: overVoltage(),
     moduleTypes: [MODULE],
     devices: DEVICES,

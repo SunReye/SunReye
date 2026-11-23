@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { jitter, SAMPLES } from "@sunreye/builder/scene/refine.ts";
+import { jitter, SAMPLES } from "../../../../../packages/builder/src/scene/refine.ts";
 
 test("a burst's first frame lies on the settled picture, so nothing jumps as it starts", () => {
   expect(jitter(0)).toEqual([0, 0]);

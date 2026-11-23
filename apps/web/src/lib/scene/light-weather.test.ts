@@ -1,7 +1,7 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
 import { ambientOf, lightOf, luma, south } from "./light.harness.ts";
-import { daylight } from "@sunreye/builder/scene/light.ts";
+import { daylight } from "../../../../../packages/builder/src/scene/light.ts";
 
 // The light follows the weather (ADR 20 Look): the diffuse share of the global irradiance.
 

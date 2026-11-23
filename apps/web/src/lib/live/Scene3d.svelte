@@ -1,9 +1,8 @@
 <script lang="ts">
   // The glue crate's release build, which the SPA build makes first (ADR 2, 20).
   import type { Core } from "../api/core.ts";
-  import { canvasWords } from "../builder/canvas-words.ts";
-  import type { SceneFailure } from "@sunreye/builder/scene/stage.svelte.ts";
-  import { warm } from "@sunreye/builder/scene/warm.ts";
+  import type { SceneFailure } from "@sunreye/builder/canvas";
+  import { warm } from "@sunreye/builder/canvas";
   import type { SceneLayout } from "./dashboard.ts";
   import { LiveSky } from "./sky.svelte.ts";
 
@@ -73,7 +72,6 @@
       {@const { LiveScene, model, pv, moduleTypes, capabilities, location } = scene}
       <LiveScene
         {pv}
-        words={canvasWords()}
         {layout}
         scene={layout.scene}
         {moduleTypes}

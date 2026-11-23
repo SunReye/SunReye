@@ -1,7 +1,7 @@
 import { DataTexture } from "three";
 import { expect, test } from "vitest";
-import { GROUPS } from "@sunreye/builder/scene/pixels.ts";
-import { rememberedWebgl2, warm, warmed } from "@sunreye/builder/scene/warm.ts";
+import { GROUPS } from "../../../../../packages/builder/src/scene/pixels.ts";
+import { rememberedWebgl2, warm, warmed } from "../../../../../packages/builder/src/scene/warm.ts";
 
 test("the worker answers whether WebGL2 exists and hands over both groups' maps", async () => {
   const { webgl2, textures } = warm();
@@ -17,7 +17,7 @@ test("the worker answers whether WebGL2 exists and hands over both groups' maps"
 test("materials made after the worker answered take its pixels", async () => {
   await warm().textures;
 
-  const { module } = await import("@sunreye/builder/scene/materials.ts");
+  const { module } = await import("../../../../../packages/builder/src/scene/materials.ts");
 
   const { map } = module();
 

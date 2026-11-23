@@ -3,13 +3,13 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { connect } from "../api/core.ts";
-import Builder from "./Builder.svelte";
+import Builder from "../../../../../packages/builder/src/builder/Builder.svelte";
 import {
   atRest,
   cellsOnPage,
   DEVICES,
   filledFace,
+  hosted,
   house,
   MODULE,
   onCanvas,
@@ -24,8 +24,8 @@ import {
   testCore,
   undesk,
 } from "./builder.harness.ts";
-import { addGrid, emptyDraft } from "@sunreye/builder/builder/modules.ts";
-import { handles } from "@sunreye/builder/builder/handles/grips.ts";
+import { addGrid, emptyDraft } from "../../../../../packages/builder/src/builder/modules.ts";
+import { handles } from "../../../../../packages/builder/src/builder/handles/grips.ts";
 
 // The builder on a phone (ADR 20): the canvas fills the screen, the inspector is a bottom sheet,
 // "+" adds, and every step is a finger.
@@ -79,7 +79,7 @@ afterEach(async () => {
 test("on a phone the inspector is a bottom sheet a finger pulls up; nothing says view-only", async () => {
   await render(Builder, {
     pv,
-    core: connect(testCore()),
+    ...hosted(testCore()),
     start: house(),
     moduleTypes: [MODULE],
     devices: DEVICES,
@@ -100,7 +100,7 @@ test("a tap on the house drills the inspector to it, still peeking: the handles 
 
   await render(Builder, {
     pv,
-    core: connect(testCore()),
+    ...hosted(testCore()),
     start: house(),
     moduleTypes: [MODULE],
     devices: DEVICES,
@@ -118,7 +118,7 @@ test("by touch alone an admin builds a house from a template, lays modules on a 
 
   await render(Builder, {
     pv,
-    core: connect(testCore()),
+    ...hosted(testCore()),
     start: emptyDraft(),
     moduleTypes: [MODULE],
     devices: DEVICES,
@@ -164,7 +164,7 @@ test("opening a face for its modules flies the camera onto it: a tap lands in th
 
   await render(Builder, {
     pv,
-    core: connect(testCore()),
+    ...hosted(testCore()),
     start: { ...start, scene },
     moduleTypes: [MODULE],
     devices: DEVICES,
@@ -201,7 +201,7 @@ test("a finger picks a chimney and slides it along its roof, still peeking", asy
 
   await render(Builder, {
     pv,
-    core: connect(testCore()),
+    ...hosted(testCore()),
     start: { ...start, scene },
     moduleTypes: [MODULE],
     devices: DEVICES,
@@ -233,7 +233,7 @@ test("a finger drags a car place on the lawn", async () => {
   localStorage.setItem("sunreye.builder.view", JSON.stringify(above));
   await render(Builder, {
     pv,
-    core: connect(testCore()),
+    ...hosted(testCore()),
     start: { ...start, scene },
     moduleTypes: [MODULE],
     devices: DEVICES,

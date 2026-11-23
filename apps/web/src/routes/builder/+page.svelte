@@ -2,14 +2,16 @@
   import { useCore } from "../../lib/shell/core.ts";
   import { Button } from "@sunreye/ui/button";
   import { Skeleton } from "#lib/components/ui/skeleton/index.js";
-  import Builder, { BUILDER_SIZE } from "../../lib/builder/Builder.svelte";
+  import { Builder, BUILDER_SIZE, emptyDraft } from "@sunreye/builder";
   import { inputsOf, limitsOf } from "../../lib/builder/capabilities.ts";
-  import { emptyDraft } from "@sunreye/builder/builder/modules.ts";
   import { fetchPv } from "../../lib/builder/engine.ts";
+  import { homeBuilder } from "../../lib/builder/host.ts";
   import { typesOf } from "../../lib/api/layout-change";
   import { m } from "../../lib/paraglide/messages.js";
 
   const core = useCore();
+
+  const { records, host } = homeBuilder(core);
 
   const webgl2 = document.createElement("canvas").getContext("webgl2") !== null;
 
@@ -54,7 +56,19 @@
         aria-label={m.builder_loading()}
       />
     {:then { pv, start, types, moduleTypes, devices, location, limits, inputs }}
-      <Builder {pv} {core} {start} {types} {moduleTypes} {devices} {location} {limits} {inputs} />
+      <Builder
+        {pv}
+        {core}
+        {records}
+        {host}
+        {start}
+        {types}
+        {moduleTypes}
+        {devices}
+        {location}
+        {limits}
+        {inputs}
+      />
     {/await}
   {:else}
     <div class="flex flex-col items-start gap-3 p-6">

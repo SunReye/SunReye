@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { GlowGlide } from "@sunreye/builder/scene/glow-glide.ts";
+import { GlowGlide } from "../../../../../packages/builder/src/scene/glow-glide.ts";
 
 test("the first shares show at once", () => {
   const glide = new GlowGlide();

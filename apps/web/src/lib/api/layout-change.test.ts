@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import type { Block, Scene } from "@sunreye/builder/builder/pv.ts";
+import type { Block, Scene } from "../../../../../packages/builder/src/builder/pv.ts";
 import { body } from "./layout-change.ts";
 
 test("a change sends every part of its scene: surfaces, fences, chimneys and openings too", () => {

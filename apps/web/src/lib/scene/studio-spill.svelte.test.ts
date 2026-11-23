@@ -1,12 +1,12 @@
 import { Color, PerspectiveCamera, Vector3 } from "three";
 import { afterEach, expect, test } from "vitest";
-import type { Fitted } from "@sunreye/builder/builder/pv.ts";
-import { daylight, theme } from "@sunreye/builder/scene/light.ts";
+import type { Fitted } from "../../../../../packages/builder/src/builder/pv.ts";
+import { daylight, theme } from "../../../../../packages/builder/src/scene/light.ts";
 import { look } from "./probe.harness.ts";
 import { picture, SIDE } from "./studio-pixels.harness.ts";
-import { Studio } from "@sunreye/builder/scene/studio.ts";
-import { lamps, openings } from "@sunreye/builder/scene/wall-openings.ts";
-import { DRY } from "@sunreye/builder/scene/weather.ts";
+import { Studio } from "../../../../../packages/builder/src/scene/studio.ts";
+import { lamps, openings } from "../../../../../packages/builder/src/scene/wall-openings.ts";
+import { DRY } from "../../../../../packages/builder/src/scene/weather.ts";
 
 const WINDOW: Fitted = {
   kind: "window",

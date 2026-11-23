@@ -6,8 +6,8 @@ import {
   parseView,
   presetView,
   type View,
-} from "@sunreye/builder/builder/camera.ts";
-import type { Geometry, RoofFace } from "@sunreye/builder/builder/pv.ts";
+} from "../../../../../packages/builder/src/builder/camera.ts";
+import type { Geometry, RoofFace } from "../../../../../packages/builder/src/builder/pv.ts";
 
 // A 10 m × 8 m footprint, 4 m high, its corner at the origin: centred at (5, 2, 4) in three.js.
 const house: Geometry = {

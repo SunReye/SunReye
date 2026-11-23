@@ -5,11 +5,20 @@ import { Object3D } from "three";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
-import { connect } from "../api/core.ts";
-import { Studio } from "@sunreye/builder/scene/studio.ts";
-import Builder from "./Builder.svelte";
-import { desk, DEVICES, house, MODULE, pv, settle, testCore, undesk } from "./builder.harness.ts";
-import type { Aerial, Neighbour } from "@sunreye/builder/builder/pv.ts";
+import { Studio } from "../../../../../packages/builder/src/scene/studio.ts";
+import Builder from "../../../../../packages/builder/src/builder/Builder.svelte";
+import {
+  desk,
+  DEVICES,
+  hosted,
+  house,
+  MODULE,
+  pv,
+  settle,
+  testCore,
+  undesk,
+} from "./builder.harness.ts";
+import type { Aerial, Neighbour } from "../../../../../packages/builder/src/builder/pv.ts";
 
 beforeEach(async () => {
   localStorage.removeItem("sunreye.builder.view");
@@ -71,7 +80,7 @@ test("the consumer's image and neighbours are drawn, and the builder loads nothi
 
   await render(Builder, {
     pv,
-    core: connect(testCore()),
+    ...hosted(testCore()),
     start: house(),
     moduleTypes: [MODULE],
     devices: DEVICES,
@@ -89,7 +98,7 @@ test("without them the builder draws neither", async () => {
 
   await render(Builder, {
     pv,
-    core: connect(testCore()),
+    ...hosted(testCore()),
     start: house(),
     moduleTypes: [MODULE],
     devices: DEVICES,
@@ -110,7 +119,7 @@ test("the image does not widen the plot the sun's shadow and the floor are fitte
 
     const screen = await render(Builder, {
       pv,
-      core: connect(testCore()),
+      ...hosted(testCore()),
       start: house(),
       moduleTypes: [MODULE],
       devices: DEVICES,

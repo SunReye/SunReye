@@ -1,6 +1,4 @@
 <script lang="ts" module>
-  export type { CanvasWords } from "./words.ts";
-
   export type { Plant, SceneWeather } from "../scene/weather.ts";
 
   export type { Around, Editing, Roofwork, Projector } from "./drawing.svelte.ts";
@@ -20,7 +18,7 @@
   import { Ghost, lit, type Lit, type SceneFailure, type Sky } from "../scene/stage.svelte.ts";
   import { FOV, type View } from "./camera.ts";
   import { fit, orbit } from "./orbit.svelte.ts";
-  import type { CanvasWords } from "./words.ts";
+  import { m } from "../paraglide/messages.js";
   import type { Geometry, Point } from "./pv.ts";
   import {
     RoofTool,
@@ -49,7 +47,7 @@
     weather,
     model,
     view,
-    words,
+    label = m.builder_scene(),
     locked = false,
     onview,
     onrender,
@@ -79,7 +77,8 @@
     /** Reads an uploaded car body. */
     model?: ModelLoader | undefined;
     view: View;
-    words: CanvasWords;
+    /** The canvas's accessible name: two views of one scene tell themselves apart by it. */
+    label?: string;
     /** The camera stays put and a finger on the canvas scrolls the page (ADR 20). */
     locked?: boolean;
     /** The view the admin orbited to, once they let go. */
@@ -100,7 +99,7 @@
 
   const roofTool = new RoofTool();
 
-  const handled = new Handled(() => words.locale);
+  const handled = new Handled();
 
   const ghost = new Ghost();
 
@@ -234,14 +233,14 @@
 </script>
 
 <div class="scene">
-  <canvas aria-label={words.scene} {@attach stage}></canvas>
+  <canvas aria-label={label} {@attach stage}></canvas>
   <canvas
     bind:this={ghost.canvas}
     class={["ghost", ghost.phase, ghost.instant && "instant"]}
     ontransitionend={() => (ghost.phase = "off")}
     aria-hidden="true"
   ></canvas>
-  <PerfOverlay words={words.perf} />
+  <PerfOverlay />
   {#if handled.label !== undefined}
     {@const { text, left, top } = handled.label}
     <!-- The same canvas chip as the live scene's labels; it never takes the pointer. -->

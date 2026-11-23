@@ -121,3 +121,79 @@ test("its sibling packages are peers, never dependencies (ADR 25)", () => {
   expect("dependencies" in manifest).toBe(false);
   expect(siblings(Object.keys(manifest.devDependencies))).toEqual([]);
 });
+
+/** The package's entries, as `exports` names them. */
+const KEYS = Object.keys(manifest.exports);
+
+/** The file each entry points at, as shipped. */
+const FILES = new Map<string, string>();
+
+for (const [key, target] of Object.entries(manifest.exports)) {
+  FILES.set(key, target.default.replace(/^\.\//u, ""));
+}
+
+test("its README lists every entry the package exports, and no other (ADR 25)", async () => {
+  const readme = await Bun.file(join(installed, "README.md")).text();
+
+  const listed = readme
+    .split("\n")
+    .flatMap((line) => /^## `@sunreye\/builder([^`]*)`$/u.exec(line)?.slice(1) ?? [])
+    .map((sub) => `.${sub}`);
+
+  expect(listed).toEqual(KEYS);
+});
+
+/** What `file` imports: the shipped files by their path, and the packages. */
+async function importsOf(file: string): Promise<{ files: string[]; bare: string[] }> {
+  const files: string[] = [];
+  const bare: string[] = [];
+
+  for (const { path } of new Bun.Transpiler({ loader: "js" }).scanImports(await script(file))) {
+    if (path.startsWith(".")) files.push(normalize(join(dirname(file), path)));
+    else bare.push(path);
+  }
+
+  return { files, bare };
+}
+
+/** Every package `entry` imports, itself or through the files it imports. */
+function reached(entry: string): Promise<string[]> {
+  const seen = new Set<string>();
+
+  const walk = async (file: string): Promise<string[]> => {
+    if (seen.has(file)) return [];
+
+    seen.add(file);
+
+    const { files, bare } = await importsOf(file);
+    const deeper = await Promise.all(files.map((next) => walk(next)));
+
+    return [...new Set([...bare, ...deeper.flat()])];
+  };
+
+  return walk(normalize(entry));
+}
+
+test("only the root entry loads three.js: the others serve screens that draw no scene", async () => {
+  const others = KEYS.filter((key) => key !== ".");
+
+  const three = await Promise.all(
+    others.map(async (key) =>
+      (await reached(FILES.get(key) ?? "")).filter((p) => p.startsWith("three")),
+    ),
+  );
+
+  expect(three).toEqual(others.map(() => []));
+});
+
+test("the canvas and values entries load no Svelte either, so a unit test reaches them", async () => {
+  const svelte = await Promise.all(
+    ["./canvas", "./values"].map(async (key) =>
+      (await reached(FILES.get(key) ?? "")).filter((p) =>
+        /^(?:svelte|@sunreye\/ui)(?:\/|$)/u.test(p),
+      ),
+    ),
+  );
+
+  expect(svelte).toEqual([[], []]);
+});

@@ -88,14 +88,15 @@ export class Studio {
     return this.#passes.occlusion;
   }
 
+  /** What it draws now. */
+  // fallow-ignore-next-line unused-class-member -- read by the perf overlay's Svelte markup, which fallow does not read in this package.
+  get look(): Look {
+    return this.#look;
+  }
+
   /** Device pixels drawn per CSS pixel. */
   get pixelRatio(): number {
     return Math.min(window.devicePixelRatio, this.#look.pixelRatio);
-  }
-
-  /** What it draws now. */
-  get look(): Look {
-    return this.#look;
   }
 
   /** The sun's shadow map, in texels a side. */
@@ -207,6 +208,7 @@ export class Studio {
   }
 
   /** Counts no more, and draws as before `measure`. */
+  // fallow-ignore-next-line unused-class-member -- called through a value whose type fallow does not infer.
   unmeasure(): void {
     this.#passes.unmeasure();
   }

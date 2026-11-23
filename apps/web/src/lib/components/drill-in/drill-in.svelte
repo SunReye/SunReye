@@ -6,7 +6,7 @@
   hash route: `open` follows it, `onnavigate` asks to change it.
 -->
 <script lang="ts" module>
-  import type { DrillGroup } from "@sunreye/builder/components/drill-in/drill.ts";
+  import type { DrillGroup } from "@sunreye/builder/controls";
 
   export type { DrillGroup };
 
@@ -20,11 +20,10 @@
   import * as Card from "@sunreye/ui/card";
   import * as Item from "@sunreye/ui/item";
   import { haptics } from "@sunreye/ui/haptics";
-  import { Push } from "@sunreye/builder/components/drill-in/push.svelte.ts";
   import { carded } from "./drill-card.svelte";
-  import DrillHeader from "@sunreye/builder/components/drill-in/drill-header.svelte";
+  import { DrillHeader, Push } from "@sunreye/builder/controls";
   import DrillPanes from "./drill-panes.svelte";
-  import DrillRow from "@sunreye/builder/components/drill-in/drill-row.svelte";
+  import { DrillRow } from "@sunreye/builder/controls";
 
   let {
     groups,

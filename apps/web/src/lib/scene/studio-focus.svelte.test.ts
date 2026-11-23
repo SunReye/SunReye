@@ -1,10 +1,10 @@
 import { afterEach, expect, test } from "vitest";
 import { Color, Mesh, MeshBasicMaterial, PerspectiveCamera, PlaneGeometry, Vector3 } from "three";
-import { daylight, theme } from "@sunreye/builder/scene/light.ts";
+import { daylight, theme } from "../../../../../packages/builder/src/scene/light.ts";
 import { look } from "./probe.harness.ts";
 import { apart, mean, picture, post, SIDE } from "./studio-pixels.harness.ts";
-import { Studio } from "@sunreye/builder/scene/studio.ts";
-import { DRY } from "@sunreye/builder/scene/weather.ts";
+import { Studio } from "../../../../../packages/builder/src/scene/studio.ts";
+import { DRY } from "../../../../../packages/builder/src/scene/weather.ts";
 
 let studio: Studio | undefined;
 

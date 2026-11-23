@@ -7,7 +7,7 @@
   import DrillCard from "../components/drill-in/drill-card.svelte";
   import { onMount } from "svelte";
   import type { Connection, Core, Device, Listing, Problem } from "../api/core";
-  import DrillPush from "@sunreye/builder/components/drill-in/drill-push.svelte";
+  import { DrillPush } from "@sunreye/builder/controls";
   import LoadingRows from "../components/loading-rows.svelte";
   import Refusal from "../setup/Refusal.svelte";
   import DevicesLevel from "./DevicesLevel.svelte";

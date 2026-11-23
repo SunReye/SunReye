@@ -3,12 +3,12 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { cdp, page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { connect } from "../api/core.ts";
-import Builder from "./Builder.svelte";
+import Builder from "../../../../../packages/builder/src/builder/Builder.svelte";
 import {
   desk,
   DEVICES,
   drill,
+  hosted,
   house,
   inspector,
   MODULE,
@@ -23,7 +23,7 @@ import {
   testCore,
   undesk,
 } from "./builder.harness.ts";
-import { addGrid } from "@sunreye/builder/builder/modules.ts";
+import { addGrid } from "../../../../../packages/builder/src/builder/modules.ts";
 
 /** The context toolbar on the canvas. */
 const bar = () => page.getByRole("toolbar", { name: "Aktionen" });
@@ -45,7 +45,7 @@ async function built(start = house()) {
 
   await render(Builder, {
     pv,
-    core: connect(testCore()),
+    ...hosted(testCore()),
     start,
     moduleTypes: [MODULE],
     devices: DEVICES,

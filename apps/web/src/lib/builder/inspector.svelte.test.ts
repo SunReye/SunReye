@@ -3,8 +3,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { frames, realTimers } from "../motion/clock.harness.ts";
-import { connect } from "../api/core.ts";
-import Builder from "./Builder.svelte";
+import Builder from "../../../../../packages/builder/src/builder/Builder.svelte";
 import { uncovered } from "./pointer.harness.ts";
 import {
   desk,
@@ -12,6 +11,7 @@ import {
   drill,
   enter,
   gridOnTheSouthFace,
+  hosted,
   house,
   inspector,
   MODULE,
@@ -30,7 +30,7 @@ afterEach(undesk);
 test("a click on the house in 3D drills the inspector to its block", async () => {
   await render(Builder, {
     pv,
-    core: connect(testCore()),
+    ...hosted(testCore()),
     start: house(),
     moduleTypes: [MODULE],
     devices: DEVICES,
@@ -49,7 +49,7 @@ test("on a portrait tablet the inspector is a sheet that a tap or a pick pulls u
   await page.viewport(820, 1180);
   await render(Builder, {
     pv,
-    core: connect(testCore()),
+    ...hosted(testCore()),
     start: house(),
     moduleTypes: [MODULE],
     devices: DEVICES,
@@ -81,7 +81,7 @@ test("on a portrait tablet the inspector is a sheet that a tap or a pick pulls u
 test("surroundings add a hedge, a ground surface and a fence, each opening its own level", async () => {
   await render(Builder, {
     pv,
-    core: connect(testCore()),
+    ...hosted(testCore()),
     start: house(),
     moduleTypes: [MODULE],
     devices: DEVICES,
@@ -117,7 +117,7 @@ test("surroundings add a hedge, a ground surface and a fence, each opening its o
 test("a deeper level is the drill-in's push, under the drill-in's header", async () => {
   await render(Builder, {
     pv,
-    core: connect(testCore()),
+    ...hosted(testCore()),
     start: house(),
     moduleTypes: [MODULE],
     devices: DEVICES,
@@ -149,7 +149,7 @@ const length = () =>
 test("a removed object's level slides away as it was, not as the object after it", async () => {
   await render(Builder, {
     pv,
-    core: connect(testCore()),
+    ...hosted(testCore()),
     start: house(),
     moduleTypes: [MODULE],
     devices: DEVICES,

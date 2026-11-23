@@ -1,30 +1,23 @@
 <script lang="ts" module>
-  export type { Around, Editing, Roofwork, Projector } from "@sunreye/builder";
+  export type { Around, Editing, Roofwork, Projector } from "./drawing.svelte.ts";
 
-  export type { Hit, Panel } from "@sunreye/builder/builder/scene.ts";
+  export type { Hit, Panel } from "./scene.ts";
 </script>
 
 <script lang="ts">
-  import { canvasWords } from "./canvas-words.ts";
-  import type { Core } from "../api/core.ts";
-  import { modelLoader } from "../cars/models.ts";
-  import type { Parked } from "@sunreye/builder/cars/parked.ts";
-  import { faceView, parseView, presetView, type View } from "@sunreye/builder/builder/camera.ts";
-  import type { Geometry, Point, RoofFace } from "@sunreye/builder/builder/pv.ts";
-  import {
-    SceneCanvas,
-    type Around,
-    type Editing,
-    type Roofwork,
-    type Projector,
-    type SceneWeather,
-  } from "@sunreye/builder";
-  import type { Hit, Panel } from "@sunreye/builder/builder/scene.ts";
+  import type { ModelLoader } from "../cars/garage.ts";
+  import type { Parked } from "../cars/parked.ts";
+  import { faceView, parseView, presetView, type View } from "./camera.ts";
+  import type { Geometry, Point, RoofFace } from "./pv.ts";
+  import SceneCanvas from "./SceneCanvas.svelte";
+  import type { Around, Editing, Roofwork, Projector } from "./drawing.svelte.ts";
+  import type { SceneWeather } from "../scene/weather.ts";
+  import type { Hit, Panel } from "./scene.ts";
   import ViewMenu from "./ViewMenu.svelte";
   import WeatherMenu, { type Trial } from "./WeatherMenu.svelte";
 
   let {
-    core,
+    model,
     geometry,
     panels,
     around,
@@ -40,7 +33,8 @@
     aspect = 1,
     trial = $bindable(null),
   }: {
-    core: Core;
+    /** Reads an uploaded car body. */
+    model?: ModelLoader | undefined;
     geometry: Geometry;
     panels: readonly Panel[];
     /** The aerial image and the neighbours the builder's consumer supplies. */
@@ -81,8 +75,6 @@
     parseView(facing === "" ? null : facing) ?? kept ?? presetView("isometric", geometry, aspect),
   );
 
-  const model = $derived(modelLoader(core));
-
   function keep(next: View): void {
     kept = next;
     view = next;
@@ -91,7 +83,6 @@
 </script>
 
 <SceneCanvas
-  words={canvasWords()}
   {geometry}
   {panels}
   {around}

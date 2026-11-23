@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { untone } from "@sunreye/builder/scene/tone.ts";
+import { untone } from "../../../../../packages/builder/src/scene/tone.ts";
 
 // Khronos PBR Neutral: a colour loses 0.04 a channel at its toe, is left as it is up to a peak
 // of 0.76, and is compressed toward 1 above it.

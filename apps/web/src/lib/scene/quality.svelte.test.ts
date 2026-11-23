@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "vitest";
 import { cdp } from "vitest/browser";
-import { QUALITY, QualityStore } from "@sunreye/builder/scene/quality.svelte.ts";
+import { QUALITY, QualityStore } from "../../../../../packages/builder/src/scene/quality.svelte.ts";
 
 const RTX = "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)";
 

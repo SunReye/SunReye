@@ -4,17 +4,17 @@ import { flushSync } from "svelte";
 import { vi } from "vitest";
 import { PerspectiveCamera } from "three";
 import { frames, framesUntil, stepUntil } from "../motion/clock.harness.ts";
-import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
-import { weatherEffects } from "@sunreye/builder/scene/weather-effects.svelte.ts";
-import { quality } from "@sunreye/builder/scene/quality.svelte.ts";
-import { lit, type Lit, type Sky } from "@sunreye/builder/scene/stage.svelte.ts";
-import { Studio } from "@sunreye/builder/scene/studio.ts";
+import { motion } from "../../../../../packages/builder/src/motion/tier.svelte.ts";
+import { weatherEffects } from "../../../../../packages/builder/src/scene/weather-effects.svelte.ts";
+import { quality } from "../../../../../packages/builder/src/scene/quality.svelte.ts";
+import { lit, type Lit, type Sky } from "../../../../../packages/builder/src/scene/stage.svelte.ts";
+import { Studio } from "../../../../../packages/builder/src/scene/studio.ts";
 import {
   DRY,
   type Falling,
   type Glass,
   type SceneWeather,
-} from "@sunreye/builder/scene/weather.ts";
+} from "../../../../../packages/builder/src/scene/weather.ts";
 
 export const RAIN: Falling = { kind: "rain", density: 1, wind: [2, 0] };
 

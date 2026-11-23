@@ -2,11 +2,7 @@
 <script lang="ts">
   import Clock from "@lucide/svelte/icons/clock";
   import { Button } from "@sunreye/ui/button";
-  import {
-    clock,
-    type Editable,
-    type Outcome,
-  } from "@sunreye/builder/components/value-editor/editable.ts";
+  import { clock, type Editable, type Outcome } from "@sunreye/builder/values";
   import ValueEditor from "../components/value-editor/value-editor.svelte";
 
   let {

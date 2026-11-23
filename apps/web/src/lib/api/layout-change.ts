@@ -1,5 +1,5 @@
 // A layout change as the builder makes it and as the core's client sends it (ADR 17, 20).
-import type { LayoutChange } from "@sunreye/builder/builder/host.ts";
+import type { LayoutChange } from "@sunreye/builder";
 import type { Types } from "@sunreye/scene";
 import type { components } from "./schema";
 

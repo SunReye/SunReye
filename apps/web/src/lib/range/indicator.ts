@@ -3,7 +3,7 @@
 // its transform puts it over the active item, and a CSS transition carries it between items, so a
 // second click mid-slide continues from where it is.
 import type { Attachment } from "svelte/attachments";
-import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
+import { motion } from "@sunreye/builder/motion";
 
 const GLIDE =
   "transform var(--motion-move) var(--motion-ease-in-out), opacity var(--motion-fast) var(--motion-ease)";

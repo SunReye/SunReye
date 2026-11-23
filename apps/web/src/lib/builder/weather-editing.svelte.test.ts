@@ -2,12 +2,12 @@ import "../../app.css";
 import { beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { connect, type Transport } from "../api/core.ts";
+import { type Transport } from "../api/core.ts";
 import { eachSeries } from "../api/core.harness.ts";
-import { Studio } from "@sunreye/builder/scene/studio.ts";
-import type { Falling, SceneWeather } from "@sunreye/builder/scene/weather.ts";
-import Builder from "./Builder.svelte";
-import { DEVICES, house, inspector, MODULE, pv, settle } from "./builder.harness.ts";
+import { Studio } from "../../../../../packages/builder/src/scene/studio.ts";
+import type { Falling, SceneWeather } from "../../../../../packages/builder/src/scene/weather.ts";
+import Builder from "../../../../../packages/builder/src/builder/Builder.svelte";
+import { DEVICES, hosted, house, inspector, MODULE, pv, settle } from "./builder.harness.ts";
 import { closed } from "../motion/animations.harness.ts";
 
 // The builder's weather (ADR 23 "Builder"): the dashboard's until the admin edits.
@@ -77,7 +77,7 @@ test("the builder shows the instant's fog until a block is picked to edit, and l
 
   await render(Builder, {
     pv,
-    core: connect(snowedIn),
+    ...hosted(snowedIn),
     start: house(),
     moduleTypes: [MODULE],
     devices: DEVICES,
@@ -99,7 +99,7 @@ test("a trial weather from the weather button stands in for the stored one until
 
   await render(Builder, {
     pv,
-    core: connect(snowedIn),
+    ...hosted(snowedIn),
     start: house(),
     moduleTypes: [MODULE],
     devices: DEVICES,

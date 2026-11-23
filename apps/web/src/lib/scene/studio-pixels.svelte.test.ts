@@ -1,12 +1,12 @@
 import { afterEach, expect, test } from "vitest";
 import { BoxGeometry, Color, Mesh, PerspectiveCamera, PlaneGeometry, Vector3 } from "three";
-import type { Face, Point } from "@sunreye/builder/builder/pv.ts";
-import { buildScene } from "@sunreye/builder/builder/scene.ts";
-import { daylight, theme } from "@sunreye/builder/scene/light.ts";
-import * as finish from "@sunreye/builder/scene/materials.ts";
+import type { Face, Point } from "../../../../../packages/builder/src/builder/pv.ts";
+import { buildScene } from "../../../../../packages/builder/src/builder/scene.ts";
+import { daylight, theme } from "../../../../../packages/builder/src/scene/light.ts";
+import * as finish from "../../../../../packages/builder/src/scene/materials.ts";
 import { look } from "./probe.harness.ts";
-import type { Level } from "@sunreye/builder/scene/quality.ts";
-import { Studio } from "@sunreye/builder/scene/studio.ts";
+import type { Level } from "../../../../../packages/builder/src/scene/quality.ts";
+import { Studio } from "../../../../../packages/builder/src/scene/studio.ts";
 import { apart, mean, picture, post, SIDE } from "./studio-pixels.harness.ts";
 
 let studio: Studio | undefined;

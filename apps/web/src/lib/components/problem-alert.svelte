@@ -3,7 +3,7 @@
   or a text of the app's own. Nothing without either.
 -->
 <script lang="ts">
-  import Alert from "@sunreye/builder/components/problem-alert.svelte";
+  import { ProblemAlert as Alert } from "@sunreye/builder/controls";
   import { problemText } from "../i18n/problems.ts";
 
   let {

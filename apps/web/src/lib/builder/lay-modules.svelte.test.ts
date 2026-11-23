@@ -3,8 +3,8 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { connect, type Transport } from "../api/core.ts";
-import Builder from "./Builder.svelte";
+import { type Transport } from "../api/core.ts";
+import Builder from "../../../../../packages/builder/src/builder/Builder.svelte";
 import {
   cellsOnPage,
   choose,
@@ -13,6 +13,7 @@ import {
   drill,
   faceOnPage,
   filledFace,
+  hosted,
   house,
   inspector,
   MODULE,
@@ -24,8 +25,8 @@ import {
   undesk,
 } from "./builder.harness.ts";
 import { saveFrom } from "./moment.harness.ts";
-import { addGrid, type Draft } from "@sunreye/builder/builder/modules.ts";
-import type { Scene } from "@sunreye/builder/builder/pv.ts";
+import { addGrid, type Draft } from "../../../../../packages/builder/src/builder/modules.ts";
+import type { Scene } from "../../../../../packages/builder/src/builder/pv.ts";
 
 // Modules laid on the roof in 3D (ADR 20): a press on the selected face lays a module where the
 // pointer holds its middle, a drag a row, and a drag from a module moves it.
@@ -67,7 +68,7 @@ async function opened(draft: Draft, transport: Readonly<Transport> = testCore())
 
   await render(Builder, {
     pv,
-    core: connect(transport),
+    ...hosted(transport),
     start: draft,
     moduleTypes: [MODULE],
     devices: DEVICES,

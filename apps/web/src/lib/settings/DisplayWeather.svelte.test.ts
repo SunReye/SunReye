@@ -2,7 +2,10 @@ import { afterEach, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
-import { WEATHER_EFFECTS, weatherEffects } from "@sunreye/builder/scene/weather-effects.svelte.ts";
+import {
+  WEATHER_EFFECTS,
+  weatherEffects,
+} from "../../../../../packages/builder/src/scene/weather-effects.svelte.ts";
 import DisplaySettings from "./DisplaySettings.svelte";
 
 // Settings › Display's Wettereffekte switch (ADR 23 "Off switch").

@@ -1,7 +1,7 @@
 // ADR 21's movement between two resting places, shared by the route slide and a detail's days.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
 import type { TransitionConfig } from "svelte/transition";
-import { motionMs } from "@sunreye/builder/motion.ts";
+import { motionMs } from "@sunreye/builder/motion";
 import { easeInOut } from "@sunreye/ui/motion/ease";
 
 const SLIDE_MS = 300;

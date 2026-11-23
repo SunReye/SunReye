@@ -112,6 +112,7 @@ export class Opening {
 
   /** Steps `step` in each frame drawn, the loop's or its own, until it returns false: a tint's
    * glide (ADR 20 Motion). The release ends it early. */
+  // fallow-ignore-next-line unused-class-member -- called through a value whose type fallow does not infer.
   animate(step: (now: number) => boolean): () => void {
     this.#moving.add(step);
     this.render();
@@ -123,6 +124,7 @@ export class Opening {
 
   /** What casts a shadow changed, as when a car parks: draws in the next frame, the sun's shadow
    * map with it (ADR 20 Rendering). */
+  // fallow-ignore-next-line unused-class-member -- called through a value whose type fallow does not infer.
   readonly recast = (): void => {
     this.#studio.recast();
     this.render();
@@ -170,6 +172,7 @@ export class Opening {
 
   /** Runs `park`, its programs compiled first; on screen, the change fades in. */
   /* oxlint-disable typescript/prefer-readonly-parameter-types -- the canvas is drawn on. */
+  // fallow-ignore-next-line unused-class-member -- called through a value whose type fallow does not infer.
   async arrive(canvas: HTMLCanvasElement, ghost: Ghost, park: () => void): Promise<void> {
     const fade = !motion.still && !this.flight.flying && ghost.canvas !== undefined;
 

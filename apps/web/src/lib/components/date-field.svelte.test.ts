@@ -3,7 +3,7 @@ import { expect, test } from "vitest";
 import { page, type Locator } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
-import DateField from "@sunreye/builder/components/date-field.svelte";
+import DateField from "../../../../../packages/builder/src/components/date-field.svelte";
 import { closed } from "../motion/animations.harness.ts";
 
 const YEAR = new Date().getFullYear();

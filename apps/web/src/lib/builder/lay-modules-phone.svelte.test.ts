@@ -3,11 +3,11 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { cdp, page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { connect } from "../api/core.ts";
-import Builder from "./Builder.svelte";
+import Builder from "../../../../../packages/builder/src/builder/Builder.svelte";
 import {
   DEVICES,
   faceOnPage,
+  hosted,
   house,
   MODULE,
   ontoFace,
@@ -21,7 +21,7 @@ import {
   testCore,
   undesk,
 } from "./builder.harness.ts";
-import { addGrid, type Draft } from "@sunreye/builder/builder/modules.ts";
+import { addGrid, type Draft } from "../../../../../packages/builder/src/builder/modules.ts";
 
 // Modules laid on the roof with a finger (ADR 20 Touch): a gesture that starts on the selected face
 // lays, a second finger hands both to the camera.
@@ -91,7 +91,7 @@ test("on a phone a finger lays a row on the selected face and a tap selects one;
 
   await render(Builder, {
     pv,
-    core: connect(testCore()),
+    ...hosted(testCore()),
     start: draft,
     moduleTypes: [MODULE],
     devices: DEVICES,

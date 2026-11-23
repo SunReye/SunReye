@@ -1,6 +1,6 @@
 // The builder's trial weathers (ADR 23 "Builder"): whole instants to see the plant in, each
 // stated as the core would read it so the scene draws it as it would the real one.
-import type { Weather } from "../weather/weather.ts";
+import type { Weather } from "../scene/scene-weather.ts";
 
 export const TRIALS = ["clear", "cloudy", "rain", "thunder", "snow", "fog"] as const;
 

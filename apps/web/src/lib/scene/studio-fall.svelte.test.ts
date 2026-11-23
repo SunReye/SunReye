@@ -1,11 +1,11 @@
 import { afterEach, expect, test } from "vitest";
 import { Color, Mesh, MeshBasicMaterial, PerspectiveCamera, PlaneGeometry, Vector3 } from "three";
-import { TRIAL_WEATHER } from "../builder/trials.ts";
-import { daylight, theme } from "@sunreye/builder/scene/light.ts";
-import { drawn } from "@sunreye/builder/scene/quality.ts";
-import { Studio } from "@sunreye/builder/scene/studio.ts";
-import { sceneWeather } from "../weather/scene-weather.ts";
-import type { Falling } from "@sunreye/builder/scene/weather.ts";
+import { TRIAL_WEATHER } from "../../../../../packages/builder/src/builder/trials.ts";
+import { daylight, theme } from "../../../../../packages/builder/src/scene/light.ts";
+import { drawn } from "../../../../../packages/builder/src/scene/quality.ts";
+import { Studio } from "../../../../../packages/builder/src/scene/studio.ts";
+import { sceneWeather } from "../../../../../packages/builder/src/scene/scene-weather.ts";
+import type { Falling } from "../../../../../packages/builder/src/scene/weather.ts";
 
 let studio: Studio | undefined;
 

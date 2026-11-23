@@ -5,12 +5,19 @@
 
 import { PerspectiveCamera, Vector3 } from "three";
 import type { Page } from "playwright";
-import { presetView } from "@sunreye/builder/builder/camera.ts";
-import { chimney } from "@sunreye/builder/builder/draft.ts";
-import { handles, type Handle, type Target } from "@sunreye/builder/builder/handles/grips.ts";
+import { presetView } from "@sunreye/builder";
+// The bench aims where the builder draws its handles, which no consumer needs: the one reader of
+// the package's files by their path (ADR 25).
+import { chimney } from "../../../packages/builder/src/builder/draft.ts";
+import {
+  handles,
+  type Handle,
+  type Target,
+} from "../../../packages/builder/src/builder/handles/grips.ts";
 import { loadPv } from "@sunreye/pv-wasm";
-import type { Pv, Scene } from "@sunreye/builder/builder/pv.ts";
-import { fresh } from "@sunreye/builder/builder/wall-openings.ts";
+import type { Pv } from "@sunreye/pv-wasm";
+import type { Scene } from "@sunreye/scene";
+import { fresh } from "../../../packages/builder/src/builder/wall-openings.ts";
 import { SCENE } from "./fixtures.ts";
 import type { Pixel } from "./gestures.ts";
 

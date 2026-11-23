@@ -1,14 +1,13 @@
 import "../../app.css";
 import { afterEach, expect, test } from "vitest";
 import { render } from "vitest-browser-svelte";
-import { perf } from "@sunreye/builder/scene/perf.svelte.ts";
+import { perf } from "../../../../../packages/builder/src/scene/perf.svelte.ts";
 import { screen as emulate } from "../scene/probe.harness.ts";
-import { quality } from "@sunreye/builder/scene/quality.svelte.ts";
-import { presetView } from "@sunreye/builder/builder/camera.ts";
-import type { Geometry } from "@sunreye/builder/builder/pv.ts";
+import { quality } from "../../../../../packages/builder/src/scene/quality.svelte.ts";
+import { presetView } from "../../../../../packages/builder/src/builder/camera.ts";
+import type { Geometry } from "../../../../../packages/builder/src/builder/pv.ts";
 import { SceneCanvas } from "@sunreye/builder";
 import { settle } from "../motion/clock.harness.ts";
-import { canvasWords } from "./canvas-words.ts";
 
 // The scene's readout (ADR 21 "Measuring"): asked for with `?perf` on the URL. Asked for once,
 // it stays for the page's life, so the scene that shows none is the first here.
@@ -33,7 +32,6 @@ const shown = () =>
     geometry: house,
     view: presetView("isometric", house),
     onview: () => {},
-    words: canvasWords(),
   });
 
 afterEach(async () => {

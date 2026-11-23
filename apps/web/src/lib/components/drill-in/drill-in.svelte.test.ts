@@ -3,7 +3,7 @@ import { tick } from "svelte";
 import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { HAPTICS } from "@sunreye/ui/haptics";
-import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
+import { motion } from "../../../../../../packages/builder/src/motion/tier.svelte.ts";
 import Harness from "./drill-in.harness.svelte";
 import { browserBack, child, frame, offset, rect, until } from "./drill-in.probe.ts";
 import { realTimers } from "../../motion/clock.harness.ts";

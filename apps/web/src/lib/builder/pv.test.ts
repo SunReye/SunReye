@@ -1,7 +1,8 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
 import { loadPv } from "@sunreye/pv-wasm";
-import { sunAt, sunward, type GridModule, type Scene } from "@sunreye/builder/builder/pv.ts";
+import type { GridModule, Scene } from "@sunreye/scene";
+import { sunAt, sunward } from "../../../../../packages/builder/src/builder/pv.ts";
 
 // The engine as @sunreye/pv-wasm ships it.
 const wasm = new URL(import.meta.resolve("@sunreye/pv-wasm/pv.wasm"));

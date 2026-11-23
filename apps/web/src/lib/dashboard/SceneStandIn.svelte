@@ -7,7 +7,7 @@
 <script lang="ts">
   import { mode } from "mode-watcher";
   import { m } from "../paraglide/messages.js";
-  import { backdropAt, type Linear } from "@sunreye/builder/scene/vignette.ts";
+  import { backdropAt, type Linear } from "@sunreye/builder/canvas";
 
   let { slow = false }: { slow?: boolean } = $props();
 

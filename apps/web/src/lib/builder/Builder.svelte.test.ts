@@ -3,10 +3,10 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { connect, type Transport } from "../api/core.ts";
-import Builder from "./Builder.svelte";
+import { type Transport } from "../api/core.ts";
+import Builder from "../../../../../packages/builder/src/builder/Builder.svelte";
 import { feed } from "../live/stream.harness.ts";
-import { addGrid } from "@sunreye/builder/builder/modules.ts";
+import { addGrid } from "../../../../../packages/builder/src/builder/modules.ts";
 import {
   cellsOnPage,
   choose,
@@ -15,6 +15,7 @@ import {
   drill,
   enter,
   gridOnTheSouthFace,
+  hosted,
   house,
   inspector,
   MODULE,
@@ -217,7 +218,7 @@ test("a connected car shows its charge power and SOC in the builder; none while 
 
     return render(Builder, {
       pv,
-      core: connect({
+      ...hosted({
         base: "http://core.test/",
         fetch: () => Promise.withResolvers<Response>().promise,
       }),

@@ -74,6 +74,7 @@ export class WiringMode {
 
   /** Proposes grid `grid`'s modules in no string as new strings on the first inverter that lists
    * its inputs, else the first string's. */
+  // fallow-ignore-next-line unused-class-member -- called from the inspector's Svelte markup, which fallow does not read in this package.
   auto(grid: number): void {
     const { draft, present } = this.#session;
 
@@ -177,6 +178,7 @@ export class WiringMode {
 
   /** The roof face a phone's camera flies onto: a selected face's while its modules are laid, and
    * while wiring the face a tap named, else the one with the most modules in no string. */
+  // fallow-ignore-next-line unused-class-member -- read in the builder's Svelte markup, which fallow does not read in this package.
   get onto(): RoofFace | undefined {
     const { level, laid, draft } = this.#session;
     const face = this.active ? (this.#face ?? mostUnwired(draft.scene)) : undefined;

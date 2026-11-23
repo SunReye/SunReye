@@ -4,18 +4,26 @@ import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect, type ModuleType, type Transport } from "../api/core.ts";
 import { finish } from "../motion/animations.harness.ts";
-import Builder from "./Builder.svelte";
-import { emptyDraft, fillGrid } from "@sunreye/builder/builder/modules.ts";
+import { Builder, emptyDraft, type Draft } from "@sunreye/builder";
+import { fillGrid } from "../../../../../packages/builder/src/builder/modules.ts";
 import { faceView, onView, presetView, type View } from "./projection.harness.ts";
 import { fetchPv } from "./engine.ts";
-import type { Scene } from "@sunreye/builder/builder/pv.ts";
-import { fill } from "./templates.ts";
+import { homeBuilder } from "./host.ts";
+import { fill } from "../../../../../packages/builder/src/builder/templates.ts";
 
 export { press, tap, type Pointer } from "./pointer.harness.ts";
 
 export { settle, stepUntil } from "../motion/clock.harness.ts";
 
 export const pv = await fetchPv();
+
+/** The builder's core, records and host as Home's builder route makes them of its core, here over
+ * `transport`. */
+export function hosted(transport: Transport) {
+  const core = connect(transport);
+
+  return { core, ...homeBuilder(core) };
+}
 
 export const MODULE: ModuleType = {
   id: 7,
@@ -150,7 +158,7 @@ export function atRest(draws: {
 export async function gridOnTheSouthFace(transport: Transport) {
   const screen = await render(Builder, {
     pv,
-    core: connect(transport),
+    ...hosted(transport),
     start: house(),
     moduleTypes: [MODULE],
     devices: DEVICES,
@@ -177,7 +185,7 @@ export async function undesk(): Promise<void> {
 /** Where a point lands on the builder's canvas, seen from `kept` or else its first view: the
  * isometric preset. */
 export function onCanvas(
-  start: Scene,
+  start: Draft["scene"],
   kept?: View,
 ): (at: readonly [number, number, number]) => [number, number] {
   const canvas = page.getByLabelText("3D-Szene des Hauses").element().getBoundingClientRect();
@@ -198,7 +206,7 @@ export async function phone(): Promise<void> {
 export const SIZES = { [MODULE.id]: { width: MODULE.width, height: MODULE.height } };
 
 /** The view a phone flies to when grid `grid`'s face is opened for its modules. */
-export function ontoFace(start: Scene, grid: number): View {
+export function ontoFace(start: Draft["scene"], grid: number): View {
   const at = start.grids?.[grid];
 
   const roof = pv
@@ -215,7 +223,7 @@ export function ontoFace(start: Scene, grid: number): View {
 /** Where the point `across` and `up` the face of grid `grid` of `start` lands on the page, seen
  * from `kept` or else its first view. */
 export function faceOnPage(
-  start: Scene,
+  start: Draft["scene"],
   grid: number,
   kept?: View,
 ): (across: number, up: number) => [number, number] {
@@ -241,7 +249,7 @@ export function faceOnPage(
 /** Where the middle of a portrait module in row `row` and column `column` of a filled face lands on
  * the page, by the key `row.column`: a tap there lays a module at that place. */
 export function cellsOnPage(
-  start: Scene,
+  start: Draft["scene"],
   grid: number,
   kept?: View,
 ): (key: string) => [number, number] {
@@ -259,6 +267,6 @@ export function cellsOnPage(
 }
 
 /** The scene with grid `grid` filled, as "Fläche füllen" fills it. */
-export function filledFace(scene: Scene, grid: number): Scene {
+export function filledFace(scene: Draft["scene"], grid: number): Draft["scene"] {
   return fillGrid(scene, grid, pv.fillFace({ scene, sizes: SIZES, grid }));
 }

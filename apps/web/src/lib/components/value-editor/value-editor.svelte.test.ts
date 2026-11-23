@@ -4,8 +4,8 @@ import { render } from "vitest-browser-svelte";
 import "../../../app.css";
 import { HAPTICS } from "@sunreye/ui/haptics";
 import { framesUntil, realTimers } from "../../motion/clock.harness.ts";
-import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
-import { editable, type Outcome } from "@sunreye/builder/components/value-editor/editable.ts";
+import { editable, type Outcome } from "@sunreye/builder/values";
+import { motion } from "@sunreye/builder/motion";
 import ValueEditor from "./value-editor.svelte";
 import { closed } from "../../motion/animations.harness.ts";
 

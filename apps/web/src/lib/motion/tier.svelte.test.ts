@@ -1,9 +1,9 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { cdp } from "vitest/browser";
 import { jank, settled } from "./frames.harness.ts";
-import { LOW_POWER } from "@sunreye/builder/motion/tier.ts";
-import { MotionStore } from "@sunreye/builder/motion/tier.svelte.ts";
-import { QualityStore } from "@sunreye/builder/scene/quality.svelte.ts";
+import { LOW_POWER } from "../../../../../packages/builder/src/motion/tier.ts";
+import { MotionStore } from "../../../../../packages/builder/src/motion/tier.svelte.ts";
+import { QualityStore } from "../../../../../packages/builder/src/scene/quality.svelte.ts";
 
 afterEach(async () => {
   vi.useRealTimers();

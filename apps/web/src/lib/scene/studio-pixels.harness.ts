@@ -1,8 +1,8 @@
 import { BoxGeometry, Color, Mesh, MeshStandardMaterial, PerspectiveCamera, Vector3 } from "three";
-import { daylight, theme } from "@sunreye/builder/scene/light.ts";
+import { daylight, theme } from "../../../../../packages/builder/src/scene/light.ts";
 import { look } from "./probe.harness.ts";
-import type { Level } from "@sunreye/builder/scene/quality.ts";
-import { Studio } from "@sunreye/builder/scene/studio.ts";
+import type { Level } from "../../../../../packages/builder/src/scene/quality.ts";
+import { Studio } from "../../../../../packages/builder/src/scene/studio.ts";
 
 export const mean = (some: readonly number[]): number =>
   some.reduce((sum, v) => sum + v, 0) / some.length;

@@ -6,8 +6,8 @@ import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect, type Transport } from "../api/core.ts";
 import type { SceneLayout } from "../live/dashboard.ts";
-import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
-import { warm } from "@sunreye/builder/scene/warm.ts";
+import { motion } from "../../../../../packages/builder/src/motion/tier.svelte.ts";
+import { warm } from "../../../../../packages/builder/src/scene/warm.ts";
 import Hero from "./Hero.svelte";
 import { realTimers } from "../motion/clock.harness.ts";
 

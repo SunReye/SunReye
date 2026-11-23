@@ -1,7 +1,7 @@
 // The live stream's state, app-wide: the shell's connection chip shows it and every live number
 // stops gliding while it is halted (ADR 21). Every live consumer reads it, never `core.live` (#831).
 import { PLANT, type Core, type Live, type Values } from "../api/core.ts";
-import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
+import { motion } from "@sunreye/builder/motion";
 import { glideDurationMs, TICK_MS } from "./glide.ts";
 import { streamState, type StreamState } from "./stream.ts";
 

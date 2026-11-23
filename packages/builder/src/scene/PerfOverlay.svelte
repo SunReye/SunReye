@@ -8,13 +8,11 @@
   import { Toggle } from "@sunreye/ui/toggle";
   import * as ToggleGroup from "@sunreye/ui/toggle-group";
   import { motion } from "../motion/tier.svelte.ts";
-  import type { PerfWords } from "../builder/words.ts";
+  import { m } from "../paraglide/messages.js";
   import { readout } from "./perf-lines.ts";
   import { perf, strains } from "./perf.svelte.ts";
   import { quality } from "./quality.svelte.ts";
   import { gpuOf } from "./quality.ts";
-
-  let { words }: { words: PerfWords } = $props();
 
   const RATIOS = ["1", "1.5", "2", "3"] as const;
 
@@ -87,13 +85,13 @@
   <div
     class="pointer-events-none absolute top-14 left-2 z-20 flex max-w-[calc(100%-1rem)] flex-col gap-1.5 rounded-md canvas-chip p-2 font-mono text-[10px] leading-tight text-card-foreground ring-1 ring-border/60"
   >
-    <output aria-label={words.readout} class="whitespace-pre-wrap">{lines.join("\n")}</output>
+    <output aria-label={m.perf_readout()} class="whitespace-pre-wrap">{lines.join("\n")}</output>
     <div class="pointer-events-auto flex flex-wrap items-center gap-1">
       <Toggle
         size="sm"
         variant="outline"
         class="h-6 px-1.5 text-[10px]"
-        aria-label={words.occlusion}
+        aria-label={m.perf_occlusion()}
         bind:pressed={() => perf.trial.occlusion !== false, (on) => turn("occlusion", on)}
       >
         AO
@@ -102,7 +100,7 @@
         size="sm"
         variant="outline"
         class="h-6 px-1.5 text-[10px]"
-        aria-label={words.contact}
+        aria-label={m.perf_contact()}
         bind:pressed={() => perf.trial.contact !== false, (on) => turn("contact", on)}
       >
         PCSS
@@ -111,7 +109,7 @@
         type="single"
         size="sm"
         variant="outline"
-        aria-label={words.ratio}
+        aria-label={m.perf_ratio()}
         bind:value={() => String(perf.trial.pixelRatio ?? ""), (value) => pick("pixelRatio", value)}
       >
         {#each RATIOS as ratio (ratio)}
@@ -122,7 +120,7 @@
         type="single"
         size="sm"
         variant="outline"
-        aria-label={words.shadowMap}
+        aria-label={m.perf_shadow_map()}
         bind:value={() => String(perf.trial.shadowMap ?? ""), (value) => pick("shadowMap", value)}
       >
         {#each MAPS as map (map)}

@@ -2,11 +2,12 @@ import "../../app.css";
 import { beforeEach, expect, test } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { connect, type Corrections, type ModuleType, type Transport } from "../api/core.ts";
-import Builder from "./Builder.svelte";
-import { emptyDraft } from "@sunreye/builder/builder/modules.ts";
+import { type Corrections, type ModuleType, type Transport } from "../api/core.ts";
+import Builder from "../../../../../packages/builder/src/builder/Builder.svelte";
+import { emptyDraft } from "../../../../../packages/builder/src/builder/modules.ts";
 import { fetchPv } from "./engine.ts";
-import { fill } from "./templates.ts";
+import { fill } from "../../../../../packages/builder/src/builder/templates.ts";
+import { hosted } from "./builder.harness.ts";
 import { pickDay, savedFrom, scrub } from "./moment.harness.ts";
 
 // The builder's time slider (ADR 20): it reads history, forecasts and a clear sky, and never
@@ -135,7 +136,7 @@ test("the slider shows a past day's measured string power and changes nothing in
 
   const screen = await render(Builder, {
     pv,
-    core: connect(transport),
+    ...hosted(transport),
     start: SAVED,
     types: TYPES,
     moduleTypes: [MODULE],
@@ -161,7 +162,7 @@ test("the slider shows a past day's measured string power and changes nothing in
 test("a far day runs a clear sky in the browser", async () => {
   const screen = await render(Builder, {
     pv,
-    core: connect(readingCore(() => ({ inputs: [] }))),
+    ...hosted(readingCore(() => ({ inputs: [] }))),
     start: SAVED,
     moduleTypes: [MODULE],
     devices: DEVICES,
@@ -183,7 +184,7 @@ test("the scene's sky is the weather of the slider's day", async () => {
 
   await render(Builder, {
     pv,
-    core: connect({
+    ...hosted({
       ...reading,
       fetch: (request) => {
         asked.push(request.url);
@@ -224,7 +225,7 @@ test("the scene's sky is the weather of the slider's day", async () => {
 test("each MPPT input shows its learned correction at the slider's hour and its last 30 days", async () => {
   const screen = await render(Builder, {
     pv,
-    core: connect(
+    ...hosted(
       readingCore(() => ({
         inputs: [
           {

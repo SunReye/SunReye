@@ -3,26 +3,30 @@
   inspector sits on the right. On a portrait tablet or a phone the inspector is a sheet pulled up
   over the canvas. A click on an object in 3D drills the inspector to it.
 -->
-<script lang="ts" module>
-  /** The builder's height, which its placeholder takes while it loads (ADR 21). */
-  export const BUILDER_SIZE = "h-[calc(100dvh-var(--bar-clear,0px))] min-h-[480px]";
-</script>
-
 <script lang="ts">
   import { MediaQuery } from "svelte/reactivity";
-  import type { Core, Device, ModuleType } from "../api/core.ts";
-  import { hostIn } from "./host.ts";
+  import {
+    provideHost,
+    type Device,
+    type Host,
+    type Keeper,
+    type ModuleType,
+    type Records,
+  } from "./host.ts";
   import InspectorPane, { PEEK } from "./InspectorPane.svelte";
   import { Moment } from "./moment.svelte.ts";
-  import type { Aerial, Location, Neighbour, Pv } from "@sunreye/builder/builder/pv.ts";
-  import PhoneTools from "@sunreye/builder/builder/PhoneTools.svelte";
-  import { Session, type Reads } from "@sunreye/builder/builder/session.svelte.ts";
+  import type { Aerial, Location, Neighbour, Pv } from "./pv.ts";
+  import PhoneTools from "./PhoneTools.svelte";
+  import { Session, type Reads } from "./session.svelte.ts";
+  import { BUILDER_SIZE } from "./size.ts";
   import Templates from "./Templates.svelte";
   import View from "./View.svelte";
 
   let {
     pv,
     core,
+    records = {},
+    host,
     start,
     types,
     moduleTypes,
@@ -34,7 +38,12 @@
     neighbours = [],
   }: {
     pv: Pv;
-    core: Core;
+    /** Takes the session's writes: Home's core. */
+    core: Keeper;
+    /** What the frame reads besides the scene; each optional (ADR 25). */
+    records?: Records;
+    /** What the builder asks of the app that hosts it. */
+    host: Host;
     /** The layout in force, or an empty one: nothing to undo before it. */
     start: Reads["start"];
     /** The layout in force's inverter and battery types, which a save keeps. */
@@ -73,7 +82,7 @@
   /** The time slider's instant: it reads the draft, never writes it. */
   const moment = new Moment(
     () => ({
-      core,
+      core: records,
       pv,
       location,
       neighbours,
@@ -84,7 +93,8 @@
     () => session.editing !== undefined || session.roofwork !== undefined,
   );
 
-  hostIn(() => core);
+  // svelte-ignore state_referenced_locally -- the host is the app's, fixed for the builder's life.
+  provideHost(host);
 
   const sheet = $derived(phone.current || portrait.current);
 
@@ -106,7 +116,7 @@
 >
   <div class="relative min-h-0">
     <View
-      {core}
+      {records}
       draft={session.draft}
       geometry={session.geometry}
       panels={session.panels}
@@ -136,7 +146,7 @@
       />
     {/if}
   </div>
-  <InspectorPane {session} {sheet} {core} {devices} at={moment.at} />
+  <InspectorPane {session} {sheet} {records} {devices} at={moment.at} />
 </div>
 
 {#snippet tools()}

@@ -3,7 +3,7 @@ import { tick } from "svelte";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { cdp } from "vitest/browser";
 import { finish, hold } from "../motion/animations.harness.ts";
-import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
+import { motion } from "../../../../../packages/builder/src/motion/tier.svelte.ts";
 import { DRY, show } from "./weather-detail.harness.ts";
 
 beforeEach(hold);

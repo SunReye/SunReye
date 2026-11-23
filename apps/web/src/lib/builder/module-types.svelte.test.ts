@@ -3,14 +3,15 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { connect, type Transport } from "../api/core.ts";
-import Builder from "./Builder.svelte";
+import { type Transport } from "../api/core.ts";
+import Builder from "../../../../../packages/builder/src/builder/Builder.svelte";
 import {
   cellsOnPage,
   desk,
   DEVICES,
   drill,
   enter,
+  hosted,
   house,
   inspector,
   MODULE,
@@ -20,7 +21,7 @@ import {
   SOUTH,
   undesk,
 } from "./builder.harness.ts";
-import { addGrid, emptyDraft } from "@sunreye/builder/builder/modules.ts";
+import { addGrid, emptyDraft } from "../../../../../packages/builder/src/builder/modules.ts";
 
 // Module types in the builder (ADR 17, 20): a face's modules start from a type the admin picks or
 // enters from its datasheet; the core keeps it.
@@ -83,7 +84,7 @@ function emptyCore(refusal?: string, pointer?: string): Transport & { readonly p
 function opened(transport: Transport) {
   return render(Builder, {
     pv,
-    core: connect(transport),
+    ...hosted(transport),
     start: emptyDraft(),
     moduleTypes: [],
     devices: DEVICES,
@@ -138,7 +139,7 @@ test("a face filled with a module type the core just added wires into a string",
 
   await render(Builder, {
     pv,
-    core: connect(emptyCore()),
+    ...hosted(emptyCore()),
     start: emptyDraft(),
     moduleTypes: [added],
     devices: DEVICES,
@@ -165,7 +166,7 @@ test("a face filled with a module type the core just added wires into a string",
 test("an existing module type is offered on the face, and picking it lays the grid", async () => {
   await render(Builder, {
     pv,
-    core: connect(emptyCore()),
+    ...hosted(emptyCore()),
     start: emptyDraft(),
     moduleTypes: [MODULE],
     devices: DEVICES,

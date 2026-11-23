@@ -2,8 +2,7 @@ import "../../app.css";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { connect } from "../api/core.ts";
-import Builder from "./Builder.svelte";
+import Builder from "../../../../../packages/builder/src/builder/Builder.svelte";
 import { unfaded } from "../scroll-fade.harness.ts";
 import {
   choose,
@@ -11,6 +10,7 @@ import {
   DEVICES,
   drill,
   enter,
+  hosted,
   house,
   inspector,
   MODULE,
@@ -22,7 +22,7 @@ import {
   undesk,
 } from "./builder.harness.ts";
 import { saveFrom } from "./moment.harness.ts";
-import type { Scene } from "@sunreye/builder/builder/pv.ts";
+import type { Scene } from "../../../../../packages/builder/src/builder/pv.ts";
 
 // A block's overhang and colours, and chimneys on its roof (ADR 20), from the inspector.
 
@@ -49,7 +49,7 @@ test("roof and wall colours are saved with the block, and the crate paints its f
 
   await render(Builder, {
     pv,
-    core: connect(core),
+    ...hosted(core),
     start: house(),
     moduleTypes: [MODULE],
     devices: DEVICES,
@@ -95,7 +95,7 @@ test("a block's overhang is edited in metres; a flat roof has eaves only", async
 
   await render(Builder, {
     pv,
-    core: connect(core),
+    ...hosted(core),
     start: house(),
     moduleTypes: [MODULE],
     devices: DEVICES,
@@ -125,7 +125,7 @@ test("a chimney is added on a roof face, sized and saved, and the crate draws it
 
   await render(Builder, {
     pv,
-    core: connect(core),
+    ...hosted(core),
     start: house(),
     moduleTypes: [MODULE],
     devices: DEVICES,
@@ -150,7 +150,7 @@ test("on a phone, + adds a chimney and the sheet opens on it", async () => {
   await phone();
   await render(Builder, {
     pv,
-    core: connect(testCore()),
+    ...hosted(testCore()),
     start: house(),
     moduleTypes: [MODULE],
     devices: DEVICES,

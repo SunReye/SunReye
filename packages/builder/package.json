@@ -14,7 +14,31 @@
       "svelte": "./src/index.ts",
       "default": "./src/index.ts"
     },
-    "./*": "./src/*"
+    "./canvas": {
+      "types": "./src/entries/canvas.ts",
+      "svelte": "./src/entries/canvas.ts",
+      "default": "./src/entries/canvas.ts"
+    },
+    "./motion": {
+      "types": "./src/entries/motion.ts",
+      "svelte": "./src/entries/motion.ts",
+      "default": "./src/entries/motion.ts"
+    },
+    "./settings": {
+      "types": "./src/entries/settings.ts",
+      "svelte": "./src/entries/settings.ts",
+      "default": "./src/entries/settings.ts"
+    },
+    "./controls": {
+      "types": "./src/entries/controls.ts",
+      "svelte": "./src/entries/controls.ts",
+      "default": "./src/entries/controls.ts"
+    },
+    "./values": {
+      "types": "./src/entries/values.ts",
+      "svelte": "./src/entries/values.ts",
+      "default": "./src/entries/values.ts"
+    }
   },
   "scripts": {
     "i18n": "bun scripts/i18n.ts"

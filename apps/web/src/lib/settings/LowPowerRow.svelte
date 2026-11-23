@@ -1,7 +1,7 @@
 <!-- Settings › Display: this browser's low-power switch (ADR 21 "Off switches"). -->
 <script lang="ts">
   import ToggleRow from "./ToggleRow.svelte";
-  import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
+  import { motion } from "@sunreye/builder/motion";
   import { m } from "../paraglide/messages.js";
 </script>
 

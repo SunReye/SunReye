@@ -2,13 +2,14 @@ import "../../app.css";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { connect, type StringDraft } from "../api/core.ts";
-import Builder from "./Builder.svelte";
+import { type StringDraft } from "../api/core.ts";
+import Builder from "../../../../../packages/builder/src/builder/Builder.svelte";
 import {
   desk,
   DEVICES,
   drill,
   filledFace,
+  hosted,
   house,
   inspector,
   MODULE,
@@ -16,7 +17,7 @@ import {
   testCore,
   undesk,
 } from "./builder.harness.ts";
-import { addGrid, type Draft } from "@sunreye/builder/builder/modules.ts";
+import { addGrid, type Draft } from "../../../../../packages/builder/src/builder/modules.ts";
 
 beforeEach(desk);
 
@@ -50,7 +51,7 @@ const INPUT = { maxCurrent: 36, minVoltage: 160, maxVoltage: 650, startVoltage: 
 test("the Strings group lists each inverter's MPPT inputs with their strings, and wires the unwired modules", async () => {
   await render(Builder, {
     pv,
-    core: connect(testCore()),
+    ...hosted(testCore()),
     start: unwiredHouse(),
     moduleTypes: [MODULE],
     devices: DEVICES,

@@ -1,7 +1,7 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { sceneWeather } from "../weather/scene-weather.ts";
-import { TRIAL_WEATHER } from "./trials.ts";
+import { sceneWeather } from "../../../../../packages/builder/src/scene/scene-weather.ts";
+import { TRIAL_WEATHER } from "../../../../../packages/builder/src/builder/trials.ts";
 
 // Each trial weather draws what its name says (ADR 23 "Builder").
 

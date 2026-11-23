@@ -8,7 +8,7 @@
   import type { Core } from "../api/core";
   import DrillIn from "../components/drill-in/drill-in.svelte";
   import { endonym, language } from "../i18n/language.svelte.ts";
-  import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
+  import { motion } from "@sunreye/builder/motion";
   import { m } from "../paraglide/messages.js";
   import { DISPLAY, settingsGroups } from "./groups.ts";
   import SettingsPage from "./SettingsPage.svelte";

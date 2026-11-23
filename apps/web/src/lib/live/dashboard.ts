@@ -1,6 +1,6 @@
 // Which dashboard a browser opens on (ADR 11, 20).
 import type { Core, Layout } from "../api/core.ts";
-import type { Scene } from "@sunreye/builder/builder/pv.ts";
+import type { Scene } from "@sunreye/scene";
 
 export type View = "3d" | "2d";
 

@@ -1,8 +1,8 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { emptyDraft } from "@sunreye/builder/builder/modules.ts";
+import { emptyDraft } from "../../../../../packages/builder/src/builder/modules.ts";
 import { loadPv } from "@sunreye/pv-wasm";
-import { fill, TEMPLATES } from "./templates.ts";
+import { fill, TEMPLATES } from "../../../../../packages/builder/src/builder/templates.ts";
 
 const wasm = new URL(import.meta.resolve("@sunreye/pv-wasm/pv.wasm"));
 

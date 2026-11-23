@@ -10,12 +10,12 @@ import {
   PlaneGeometry,
   Texture,
 } from "three";
-import type { Geometry } from "@sunreye/builder/builder/pv.ts";
-import { buildScene } from "@sunreye/builder/builder/scene.ts";
+import type { Geometry } from "../../../../../packages/builder/src/builder/pv.ts";
+import { buildScene } from "../../../../../packages/builder/src/builder/scene.ts";
 import { luma } from "./light.harness.ts";
-import { Plot } from "@sunreye/builder/scene/plot.ts";
-import { DRY } from "@sunreye/builder/scene/weather.ts";
-import { weathered } from "@sunreye/builder/scene/weathered.ts";
+import { Plot } from "../../../../../packages/builder/src/scene/plot.ts";
+import { DRY } from "../../../../../packages/builder/src/scene/weather.ts";
+import { weathered } from "../../../../../packages/builder/src/scene/weathered.ts";
 
 const CORNERS = [
   [0, 0, 3],

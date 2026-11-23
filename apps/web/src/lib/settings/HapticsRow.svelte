@@ -3,7 +3,7 @@
   import { MediaQuery } from "svelte/reactivity";
   import ToggleRow from "./ToggleRow.svelte";
   import { HAPTICS, hapticsOn } from "@sunreye/ui/haptics";
-  import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
+  import { motion } from "@sunreye/builder/motion";
   import { m } from "../paraglide/messages.js";
 
   const touch = new MediaQuery("(pointer: coarse)");

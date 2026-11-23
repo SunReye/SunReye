@@ -2,7 +2,7 @@
 <script lang="ts">
   import { Pressable } from "@sunreye/ui/pressable";
   import type { Core, Problem } from "../api/core";
-  import type { Outcome } from "@sunreye/builder/components/value-editor/editable.ts";
+  import type { Outcome } from "@sunreye/builder/values";
   import ValueEditor from "../components/value-editor/value-editor.svelte";
   import * as Item from "@sunreye/ui/item";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";

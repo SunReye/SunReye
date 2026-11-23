@@ -3,14 +3,14 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { connect } from "../../api/core.ts";
 import { haptics } from "@sunreye/ui/haptics";
-import Builder from "../Builder.svelte";
-import type { View } from "@sunreye/builder/builder/camera.ts";
+import Builder from "../../../../../../packages/builder/src/builder/Builder.svelte";
+import type { View } from "../../../../../../packages/builder/src/builder/camera.ts";
 import {
   desk,
   DEVICES,
   drill,
+  hosted,
   house,
   inspector,
   MODULE,
@@ -22,7 +22,7 @@ import {
   testCore,
   undesk,
 } from "../builder.harness.ts";
-import { offered } from "@sunreye/builder/builder/handles/offered.ts";
+import { offered } from "../../../../../../packages/builder/src/builder/handles/offered.ts";
 
 const VIEW = "sunreye.builder.view";
 
@@ -59,7 +59,7 @@ async function picked(turn = 0, view?: View) {
 
   await render(Builder, {
     pv,
-    core: connect(testCore()),
+    ...hosted(testCore()),
     start,
     moduleTypes: [MODULE],
     devices: DEVICES,

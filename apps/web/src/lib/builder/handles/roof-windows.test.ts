@@ -1,14 +1,23 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { additions } from "@sunreye/builder/builder/additions.ts";
-import { misplacedText } from "@sunreye/builder/builder/checks.ts";
-import { picked } from "@sunreye/builder/builder/levels.ts";
-import { addGrid, withoutBlock } from "@sunreye/builder/builder/modules.ts";
-import { place } from "@sunreye/builder/builder/placing.ts";
+import { additions } from "../../../../../../packages/builder/src/builder/additions.ts";
+import { misplacedText } from "../../../../../../packages/builder/src/builder/checks.ts";
+import { picked } from "../../../../../../packages/builder/src/builder/levels.ts";
+import { addGrid, withoutBlock } from "../../../../../../packages/builder/src/builder/modules.ts";
+import { place } from "../../../../../../packages/builder/src/builder/placing.ts";
 import { loadPv } from "@sunreye/pv-wasm";
-import type { Point, RoofWindow, Scene } from "@sunreye/builder/builder/pv.ts";
-import { buildScene } from "@sunreye/builder/builder/scene.ts";
-import { drag, handles, type Ray, type Target } from "@sunreye/builder/builder/handles/grips.ts";
+import type {
+  Point,
+  RoofWindow,
+  Scene,
+} from "../../../../../../packages/builder/src/builder/pv.ts";
+import { buildScene } from "../../../../../../packages/builder/src/builder/scene.ts";
+import {
+  drag,
+  handles,
+  type Ray,
+  type Target,
+} from "../../../../../../packages/builder/src/builder/handles/grips.ts";
 
 const wasm = new URL(import.meta.resolve("@sunreye/pv-wasm/pv.wasm"));
 

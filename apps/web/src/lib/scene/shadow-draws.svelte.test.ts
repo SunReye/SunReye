@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "vitest";
 import { BoxGeometry, Color, Mesh, MeshStandardMaterial, Vector3 } from "three";
-import { daylight, theme } from "@sunreye/builder/scene/light.ts";
+import { daylight, theme } from "../../../../../packages/builder/src/scene/light.ts";
 import { look, measured, unmeasure } from "./probe.harness.ts";
 import { draws, open, shut as close } from "./stage.harness.svelte.ts";
 

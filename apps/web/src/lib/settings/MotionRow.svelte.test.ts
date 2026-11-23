@@ -2,9 +2,9 @@ import { afterEach, expect, test } from "vitest";
 import { cdp, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
-import { MOTION_SETTING } from "@sunreye/builder/motion/tier.ts";
-import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
-import { quality } from "@sunreye/builder/scene/quality.svelte.ts";
+import { MOTION_SETTING } from "../../../../../packages/builder/src/motion/tier.ts";
+import { motion } from "../../../../../packages/builder/src/motion/tier.svelte.ts";
+import { quality } from "../../../../../packages/builder/src/scene/quality.svelte.ts";
 import DisplaySettings from "./DisplaySettings.svelte";
 
 // Settings › Display's Bewegung row (ADR 21 "Motion setting").

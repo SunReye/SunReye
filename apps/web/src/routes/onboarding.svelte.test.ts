@@ -2,7 +2,7 @@ import { tick } from "svelte";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
+import { motion } from "../../../../packages/builder/src/motion/tier.svelte.ts";
 import "../app.css";
 import Page from "./+page.svelte";
 import { homeCore, restoreCore, serveCore, served } from "./home.harness.ts";

@@ -5,10 +5,10 @@
 <script lang="ts">
   import * as Card from "@sunreye/ui/card";
   import { Skeleton } from "#lib/components/ui/skeleton/index.js";
-  import DrillHeader from "@sunreye/builder/components/drill-in/drill-header.svelte";
+  import { DrillHeader } from "@sunreye/builder/controls";
   // The glue crate's release build, which the SPA build makes first (ADR 2, 20).
   import type { Core, Device } from "../api/core.ts";
-  import { emptyDraft } from "@sunreye/builder/builder/modules.ts";
+  import { homeBuilder } from "../builder/host.ts";
   import { fetchPv } from "../builder/engine.ts";
   import { stream } from "../live/stream.svelte.ts";
   import { Button } from "@sunreye/ui/button";
@@ -37,14 +37,19 @@
 
   /** The builder, its crate and the module types; the first run starts from an empty layout. */
   async function load() {
-    const [{ default: Builder }, pv, moduleTypes] = await Promise.all([
+    const [{ Builder, emptyDraft }, pv, moduleTypes] = await Promise.all([
       // Lazy, so three.js loads up front only on the builder route (ADR 20).
-      import("../builder/Builder.svelte"),
+      import("@sunreye/builder"),
       fetchPv(),
       core.moduleTypes(),
     ]);
 
-    return { Builder, pv, moduleTypes: "problem" in moduleTypes ? [] : moduleTypes };
+    return {
+      Builder,
+      start: emptyDraft(),
+      pv,
+      moduleTypes: "problem" in moduleTypes ? [] : moduleTypes,
+    };
   }
 </script>
 
@@ -65,8 +70,8 @@
     {#if webgl2}
       {#await load()}
         <Skeleton class="rounded-none" role="status" aria-label={m.builder_loading()} />
-      {:then { Builder, pv, moduleTypes }}
-        <Builder {pv} {core} start={emptyDraft()} {moduleTypes} {devices} />
+      {:then { Builder, start, pv, moduleTypes }}
+        <Builder {pv} {core} {...homeBuilder(core)} {start} {moduleTypes} {devices} />
       {/await}
     {:else}
       <div class="grid h-full place-items-center p-4">
