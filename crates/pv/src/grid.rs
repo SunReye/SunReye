@@ -352,7 +352,7 @@ impl Scene {
     /// Every module the grids hold, grid by grid.
     ///
     /// # Errors
-    /// A grid names no roof face or module type, or a module crosses the setback or overlaps a
+    /// A grid names no roof face, or a bent one, or no module type, or a module crosses the setback or overlaps a
     /// roof chimney, a roof window or an earlier module on its face.
     pub fn modules(&self, size: impl Fn(u32) -> Option<Size>) -> Result<Vec<Placed>, Misplaced> {
         let roofs = self.roofs();
@@ -360,9 +360,14 @@ impl Scene {
         // Each face's footprints so far, whichever grid laid them.
         let mut taken: Vec<((usize, usize), Area)> = Vec::new();
         for (index, grid) in self.grids.iter().enumerate() {
+            let bent = self
+                .blocks
+                .get(grid.block)
+                .and_then(|block| block.free_form.as_ref())
+                .is_some_and(|free| free.bent(grid.face));
             let face = roofs
                 .iter()
-                .find(|r| (r.block, r.face) == (grid.block, grid.face))
+                .find(|r| !bent && (r.block, r.face) == (grid.block, grid.face))
                 .ok_or(Misplaced::Face { grid: index })?;
             let size = size(grid.module_type).ok_or(Misplaced::ModuleType { grid: index })?;
             for (module, laid) in grid.modules.iter().enumerate() {

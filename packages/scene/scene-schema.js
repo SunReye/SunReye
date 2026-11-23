@@ -932,6 +932,14 @@ export const SCENE_SCHEMA = {
       "additionalProperties": false,
       "description": "A traced roof's source (ADR 20): its points and lines, and the points each face's corners are.",
       "properties": {
+        "eaves": {
+          "description": "The points the person made eaves: a pull of the eaves raises them.",
+          "items": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
         "faces": {
           "description": "For each face, in the order of the faces, the points its corners are.",
           "items": {
@@ -961,6 +969,14 @@ export const SCENE_SCHEMA = {
               "type": "number"
             },
             "type": "array"
+          },
+          "type": "array"
+        },
+        "ridges": {
+          "description": "The points the person made ridges: a pull of the ridges raises them.",
+          "items": {
+            "minimum": 0,
+            "type": "integer"
           },
           "type": "array"
         },

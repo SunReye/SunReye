@@ -2822,12 +2822,16 @@ export interface components {
         };
         /** @description A traced roof's source (ADR 20): its points and lines, and the points each face's corners are. */
         Traced: {
+            /** @description The points the person made eaves: a pull of the eaves raises them. */
+            eaves?: number[];
             /** @description For each face, in the order of the faces, the points its corners are. */
             faces: number[][];
             /** @description Each line's two points. */
             lines: number[][];
             /** @description Each point as x, y and z, in metres; y is its height now. */
             points: number[][];
+            /** @description The points the person made ridges: a pull of the ridges raises them. */
+            ridges?: number[];
             /** @description The points whose height was set, by the person or by a surface: no pull changes it. */
             set?: number[];
         };
