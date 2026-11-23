@@ -77,7 +77,6 @@ The scene canvas. Loads three.js: import it where a scene is drawn, or lazily.
     - `scene`: the scene traced on. Each click joins the last and snaps within `reach` pixels (12 without) to a traced point, else a traced line; the snap is named, and the line being drawn shows its length, in a chip beside the pointer. A click back on the chain's first point closes the loop; one on its last point, or Escape, ends the chain.
     - `ontrace(scene, edit)`: each edit's next scene, made by `@sunreye/scene`'s operations, and the `TraceEdit` itself (`{ kind: "add", from, to }` or `{ kind: "move", block, line, by }`), so a consumer that keeps the scene elsewhere may run the same operation there. The consumer keeps the scene and hands it back; the canvas changes nothing itself.
     - `line` and `onpickline`: a tap on a traced line with no chain picks it (a `LineRef`, or undefined off every line); the consumer holds it and may remove it with `removeLine`. A press on a traced line dragged moves it.
-    - `height(x, z)`: when what is traced on carries heights, the height under a click; the click lands there and sets its point's height.
 - Camera: `presetView` (a preset, turned to a compass heading), `headingOf` (the bearing a view looks toward, for a compass), `parseView`, and the types `View` and `Preset`.
 - Language: `speak` sets the locale of every entry's words, `Locale`; a change shows without a reload.
 - `panels`, the modules a layout draws; `sunAt`, the sun's direction at an instant.

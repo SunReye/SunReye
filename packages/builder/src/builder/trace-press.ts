@@ -58,10 +58,7 @@ export class TracePress {
   }
 
   #aim(event: PointerEvent, tracing: Tracing): Aimed | null {
-    return aim(this.#canvas, this.#camera, tracing.scene.north, event, {
-      pixels: tracing.reach ?? REACH,
-      height: tracing.height,
-    });
+    return aim(this.#canvas, this.#camera, tracing.scene.north, event, tracing.reach ?? REACH);
   }
 
   readonly #press = (event: PointerEvent): void => {

@@ -46,20 +46,15 @@ function ground(
   return on && [on[0], on[1], on[2]];
 }
 
-/** Where `event` lands, at the height `height` gives there if any, and the metres `pixels`
- * reach there; null off the ground. */
+/** Where `event` lands on the plain ground, and the metres `pixels` reach there; null off the
+ * ground. A surface that carries heights comes with tracing on it (ADR 20): a click then lands on
+ * it, and snaps by the pixels between it and the points it may take. */
 export function aim(
   canvas: HTMLCanvasElement,
   camera: PerspectiveCamera,
   north: number,
   event: PointerEvent,
-  {
-    pixels,
-    height,
-  }: {
-    readonly pixels: number;
-    readonly height?: ((x: number, z: number) => number | undefined) | undefined;
-  },
+  pixels: number,
 ): Aimed | null {
   const at = ground(canvas, camera, north, event, [0, 0]);
   const beside = ground(canvas, camera, north, event, [pixels, 0]);
@@ -67,9 +62,8 @@ export function aim(
   if (at === null) return null;
 
   const reach = beside === null ? FALLBACK : Math.hypot(beside[0] - at[0], beside[2] - at[2]);
-  const up = height?.(at[0], at[2]);
 
-  return { at: up === undefined ? at : [at[0], up, at[2]], reach };
+  return { at, reach };
 }
 
 /** A spot as a click: its height only when a surface gave one. */

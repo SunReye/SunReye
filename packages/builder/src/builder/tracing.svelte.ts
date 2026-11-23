@@ -39,9 +39,6 @@ export interface Tracing {
   readonly scene: Scene;
   /** Pixels a click snaps within; 12 without. */
   readonly reach?: number;
-  /** The height of what is traced on under a place seen from above, when it carries heights: a
-   * click there lands at it and sets its point's height. */
-  readonly height?: ((x: number, z: number) => number | undefined) | undefined;
   /** The picked line: a tap on a line picks it, a tap elsewhere drops it. */
   readonly line?: LineRef | undefined;
   readonly onpickline?: ((line: LineRef | undefined) => void) | undefined;
