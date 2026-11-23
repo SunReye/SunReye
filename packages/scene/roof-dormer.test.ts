@@ -3,7 +3,7 @@
 
 import { expect, test } from "bun:test";
 import { dormers, pullDormer, pullEaves, pullRidges, type Scene } from "./index.js";
-import { EMPTY, made, outlines, trace } from "./roof.harness.ts";
+import { EMPTY, grid, made, outlines, trace } from "./roof.harness.ts";
 
 /** A 10 m square house, one face. */
 const HOUSE = [
@@ -164,4 +164,17 @@ test("a dormer's ridge is pulled apart from its eaves: a gable dormer", () => {
     ]),
   ).toEqual([4.25, 4.25, 4.5, 4.5, 4.25, 4.25]);
   expect(pullDormer(traced, 0, 0, "eave", 4)).toEqual({ refused: "missing" });
+});
+
+test("the edit that cuts a face drops its grid; its existing PV and the other face's grid stay", () => {
+  const field = { block: 0, face: 0, across: 0.5, up: 0.5, width: 1, length: 1 };
+  const placed: Scene = { ...PULLED, grids: [grid(0), grid(1)], existingPv: [field] };
+  const cut = trace(placed, ...CORNERS, [4, 1]);
+
+  expect(cut.grids).toEqual([grid(1)]);
+  expect(cut.existingPv).toEqual([field]);
+
+  const regridded: Scene = { ...cut, grids: [grid(0), grid(1)] };
+
+  expect(made(pullDormer(regridded, 0, 2, "eave", 4)).grids).toEqual([grid(0), grid(1)]);
 });
