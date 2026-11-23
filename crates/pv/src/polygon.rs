@@ -41,6 +41,17 @@ fn touch((a, b): (Plan, Plan), (c, d): (Plan, Plan)) -> bool {
         && sides(c, d, a, b)
 }
 
+/// Whether no corner turns against the others.
+pub fn convex(polygon: &[Plan]) -> bool {
+    let before = polygon.iter().cycle().skip(polygon.len().saturating_sub(1));
+    let turns: Vec<f64> = before
+        .zip(polygon)
+        .zip(polygon.iter().cycle().skip(1))
+        .map(|((a, b), c)| turn(*a, *b, *c))
+        .collect();
+    turns.iter().all(|t| *t >= -EPSILON) || turns.iter().all(|t| *t <= EPSILON)
+}
+
 /// Whether the polygon has at least three corners, an area, and no edge that meets another but
 /// its neighbours at their shared corner.
 pub fn simple(polygon: &[Plan]) -> bool {
@@ -63,9 +74,9 @@ pub fn simple(polygon: &[Plan]) -> bool {
         && !crossing
 }
 
-/// A simple polygon as counter-clockwise triangles, by clipping ears.
-pub fn triangles(polygon: &[Plan]) -> Vec<[Plan; 3]> {
-    let mut left = polygon.to_vec();
+/// A simple polygon as counter-clockwise triangles of its corners' indices, by clipping ears.
+pub fn triangles(polygon: &[Plan]) -> Vec<[usize; 3]> {
+    let mut left: Vec<(usize, Plan)> = polygon.iter().copied().enumerate().collect();
     if area(polygon) < 0.0 {
         left.reverse();
     }
@@ -73,9 +84,9 @@ pub fn triangles(polygon: &[Plan]) -> Vec<[Plan; 3]> {
     while left.len() >= 3 {
         let Some((at, triangle)) = ear(&left) else {
             // Rounding left no ear: what is left goes as a fan.
-            if let Some((&first, rest)) = left.split_first() {
+            if let Some((&(first, _), rest)) = left.split_first() {
                 out.extend(rest.windows(2).filter_map(|w| match *w {
-                    [b, c] => Some([first, b, c]),
+                    [(b, _), (c, _)] => Some([first, b, c]),
                     _ => None,
                 }));
             }
@@ -89,31 +100,42 @@ pub fn triangles(polygon: &[Plan]) -> Vec<[Plan; 3]> {
 
 /// A corner of a counter-clockwise polygon that can be cut off, with its triangle; none for one
 /// in line with its neighbours, which goes without.
-fn ear(polygon: &[Plan]) -> Option<(usize, Option<[Plan; 3]>)> {
+fn ear(polygon: &[(usize, Plan)]) -> Option<(usize, Option<[usize; 3]>)> {
     let count = polygon.len();
-    let before = polygon.iter().cycle().skip(count - 1);
+    let before = polygon.iter().cycle().skip(count.saturating_sub(1));
     let after = polygon.iter().cycle().skip(1);
     let corners = before.zip(polygon).zip(after).take(count);
-    corners.enumerate().find_map(|(at, ((&a, &b), &c))| {
-        let spun = turn(a, b, c);
-        if spun.abs() <= EPSILON {
-            return Some((at, None));
-        }
-        let blocked = polygon.iter().any(|&p| {
-            ![a, b, c].contains(&p)
-                && turn(a, b, p) >= -EPSILON
-                && turn(b, c, p) >= -EPSILON
-                && turn(c, a, p) >= -EPSILON
-        });
-        (spun > 0.0 && !blocked).then_some((at, Some([a, b, c])))
-    })
+    corners
+        .enumerate()
+        .find_map(|(at, ((&(i, a), &(j, b)), &(k, c)))| {
+            let spun = turn(a, b, c);
+            if spun.abs() <= EPSILON {
+                return Some((at, None));
+            }
+            let blocked = polygon.iter().any(|&(index, p)| {
+                ![i, j, k].contains(&index)
+                    && turn(a, b, p) >= -EPSILON
+                    && turn(b, c, p) >= -EPSILON
+                    && turn(c, a, p) >= -EPSILON
+            });
+            (spun > 0.0 && !blocked).then_some((at, Some([i, j, k])))
+        })
 }
 
 /// Whether two simple polygons share more than a line or a point.
 pub fn overlap(a: &[Plan], b: &[Plan]) -> bool {
-    let theirs = triangles(b);
-    triangles(a)
-        .iter()
+    let corners = |polygon: &[Plan], [i, j, k]: [usize; 3]| {
+        Some([*polygon.get(i)?, *polygon.get(j)?, *polygon.get(k)?])
+    };
+    let ours: Vec<[Plan; 3]> = triangles(a)
+        .into_iter()
+        .filter_map(|t| corners(a, t))
+        .collect();
+    let theirs: Vec<[Plan; 3]> = triangles(b)
+        .into_iter()
+        .filter_map(|t| corners(b, t))
+        .collect();
+    ours.iter()
         .any(|t| theirs.iter().any(|u| triangles_overlap(*t, *u)))
 }
 

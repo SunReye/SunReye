@@ -108,7 +108,7 @@ export interface Scene {
 
 export interface Face {
   readonly surface: "wall" | "roof" | "obstacle" | "hedge" | "chimney";
-  /** A flat convex polygon. */
+  /** A flat polygon: convex, but for a free-form roof face or its wall. */
   readonly corners: readonly Point[];
   /** Its block's wall or roof colour, `#rrggbb`. */
   readonly colour?: string;

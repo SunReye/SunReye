@@ -7,6 +7,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::parking::colour;
+use crate::polygon::{self, Plan};
+use crate::shade::cross;
 use crate::{
     CarPlace, Chimney, Equipment, Fence, FreeForm, GroundSurface, ModuleGrid, Occluder, Opening,
     Point, RoofWindow,
@@ -198,7 +200,7 @@ pub enum Surface {
     Chimney,
 }
 
-/// A flat convex polygon in the shading frame.
+/// A flat polygon in the shading frame: convex, but for a free-form roof face or its wall.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Face {
     pub surface: Surface,
@@ -420,11 +422,39 @@ fn tree(foot: &Frame, radius: f64, height: f64, crown: Crown) -> Vec<Occluder> {
     }
 }
 
-/// A convex polygon as triangles sharing its first corner.
+/// A flat polygon as triangles: a convex one sharing its first corner, any other by its ears.
 fn fan(corners: &[Point]) -> Vec<Occluder> {
     let Some((&first, rest)) = corners.split_first() else {
         return Vec::new();
     };
+    // Seen along the normal's largest part, so the polygon keeps its shape.
+    let normal = corners
+        .iter()
+        .zip(corners.iter().cycle().skip(1))
+        .fold([0.0; 3], |n, (a, b)| {
+            let [x, y, z] = cross(*a, *b);
+            [n[0] + x, n[1] + y, n[2] + z]
+        })
+        .map(f64::abs);
+    let plan: Vec<Plan> = corners
+        .iter()
+        .map(|&[x, y, z]| {
+            if normal[2] >= normal[0].max(normal[1]) {
+                [x, y]
+            } else if normal[1] >= normal[0] {
+                [z, x]
+            } else {
+                [y, z]
+            }
+        })
+        .collect();
+    if !polygon::convex(&plan) {
+        let at = |i: usize| corners.get(i).copied();
+        return polygon::triangles(&plan)
+            .into_iter()
+            .filter_map(|[a, b, c]| Some(Occluder::Triangle([at(a)?, at(b)?, at(c)?])))
+            .collect();
+    }
     rest.windows(2)
         .filter_map(|pair| match *pair {
             [b, c] => Some(Occluder::Triangle([first, b, c])),

@@ -3,7 +3,8 @@
 
 use serde_json::{Value, json};
 
-use crate::{Misplaced, RoofFace, Scene, Size};
+use super::fixtures::{MODULE, shaded_substrings};
+use crate::{Misplaced, ModuleType, Place, Plane, RoofFace, Scene, Size, Sun};
 
 fn scene(north: f64, blocks: &Value) -> Scene {
     serde_json::from_value(json!({ "north": north, "blocks": blocks, "obstacles": [] })).unwrap()
@@ -342,4 +343,61 @@ fn roof_chimneys_and_roof_windows_stand_on_a_non_convex_face_but_not_across_its_
     assert_eq!(ell(&chimney(4.1, 5.0)).check_chimneys(), Err(0));
     assert!(ell(&window(8.0, 8.0)).panes().is_ok());
     assert_eq!(ell(&window(4.1, 5.0)).panes(), Err(0));
+}
+
+/// The L-shaped roof listed from a corner a fan of triangles would wrongly close over the notch.
+fn ell_from_its_far_corner() -> Scene {
+    let block = free(
+        &json!([
+            [0.0, 0.0],
+            [10.0, 0.0],
+            [10.0, 4.0],
+            [4.0, 4.0],
+            [4.0, 10.0],
+            [0.0, 10.0]
+        ]),
+        &json!([[
+            [0.0, 3.0, 10.0],
+            [4.0, 3.0, 10.0],
+            [4.0, 3.0, 4.0],
+            [10.0, 3.0, 4.0],
+            [10.0, 3.0, 0.0],
+            [0.0, 3.0, 0.0],
+        ]]),
+    );
+    scene(0.0, &json!([block]))
+}
+
+/// How many substrings of a small level module on the ground at `east` and `north` the scene
+/// shades under a high southern sun.
+fn ground_shade(scene: &Scene, east: f64, north: f64) -> u8 {
+    let small = ModuleType {
+        width: 0.4,
+        height: 0.4,
+        ..MODULE
+    };
+    shaded_substrings(
+        &small,
+        Plane {
+            tilt: 0.0,
+            azimuth: 0.0,
+        },
+        Place {
+            centre: [east, north, 0.1],
+            landscape: false,
+        },
+        Sun {
+            zenith: 5.0,
+            azimuth: 0.0,
+        },
+        &scene.occluders(),
+    )
+}
+
+#[test]
+fn a_non_convex_face_shades_under_itself_and_not_under_its_notch() {
+    let scene = ell_from_its_far_corner();
+
+    assert_eq!(ground_shade(&scene, 2.0, -2.0), MODULE.bypass_diodes);
+    assert_eq!(ground_shade(&scene, 7.0, -4.6), 0);
 }
