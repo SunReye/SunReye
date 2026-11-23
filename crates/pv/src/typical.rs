@@ -1,4 +1,4 @@
-//! A site's typical year (ADR 17): for each calendar month, the past year's month closest to all
+//! A rounded location's typical year (ADR 17): for each calendar month, the past year's month closest to all
 //! of them, by Sandia's Finkelstein–Schafer statistic, restamped into one year.
 
 use crate::Weather;
@@ -150,19 +150,20 @@ fn closest(days: &[Vec<[f64; 3]>]) -> usize {
 }
 
 /// The mean distance between a year's distribution, `own`, and the long term's, `all`, at each
-/// of the year's values; both sorted.
+/// day of the long term; both sorted. Both are taken by value, so days alike count as one value,
+/// and taken at every day of all years, so a year above the middle scores as one as far below.
 #[expect(clippy::cast_precision_loss, reason = "counts of days, far below 2^52")]
 fn statistic(own: &[f64], all: &[f64]) -> f64 {
     let n = own.len() as f64;
     let total = all.len() as f64;
-    own.iter()
-        .enumerate()
-        .map(|(i, &x)| {
+    all.iter()
+        .map(|&x| {
+            let ours = own.partition_point(|&v| v <= x) as f64 / n;
             let theirs = all.partition_point(|&v| v <= x) as f64 / total;
-            ((i + 1) as f64 / n - theirs).abs()
+            (ours - theirs).abs()
         })
         .sum::<f64>()
-        / n
+        / total
 }
 
 fn month_of(unix: i64) -> usize {

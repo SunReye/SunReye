@@ -19,7 +19,7 @@ const QUARTER: i64 = 900;
 const DAY: i64 = 86_400;
 
 #[test]
-fn a_site_is_its_location_to_a_hundredth_of_a_degree() {
+fn a_rounded_location_is_to_a_hundredth_of_a_degree() {
     let at = Location {
         latitude: 52.516_6,
         longitude: -13.374_9,
@@ -143,6 +143,59 @@ fn a_leap_year_gives_its_february_without_the_29th() {
         typical.weather.get((31 + 28) * 96).map(|w| w.unix),
         Some(march(2001))
     );
+}
+
+/// Twenty-one years alike but for their overcast days, the first `overcast(i)` of each month for
+/// year index `i`, on which no direct beam arrives. Every other day is the same sunny day.
+fn overcast(days: impl Fn(i64) -> i64) -> Vec<Vec<Weather>> {
+    (0..21)
+        .map(|i| {
+            let year = 2000 + i;
+            let start = midnight(year, 1, 1);
+            let steps = (midnight(year + 1, 1, 1) - start) / QUARTER;
+            (0..steps)
+                .map(|q| {
+                    let unix = start + q * QUARTER + QUARTER / 2;
+                    let first = (1..=12)
+                        .rev()
+                        .map(|m| midnight(year, m, 1))
+                        .find(|&first| first <= unix)
+                        .unwrap_or(start);
+                    let sun = (((real(unix % DAY) / 3600.0 - 12.0) / 24.0) * TAU)
+                        .cos()
+                        .max(0.0);
+                    let beam = if (unix - first) / DAY < days(i) {
+                        0.0
+                    } else {
+                        600.0
+                    };
+                    Weather {
+                        unix,
+                        ghi: 800.0 * sun,
+                        dni: beam * sun,
+                        dhi: 200.0 * sun,
+                        temperature: 10.0,
+                        wind: None,
+                    }
+                })
+                .collect()
+        })
+        .collect()
+}
+
+#[test]
+fn days_alike_count_as_one_value_in_each_years_distribution() {
+    // Ten years without overcast days, ten with ten of them, 2020 with five: the long term has
+    // five a month, as 2020 has.
+    let years = overcast(|i| match i {
+        0..10 => 0,
+        10..20 => 10,
+        _ => 5,
+    });
+
+    let typical = typical_year(&years, QUARTER).expect("twenty-one whole years");
+
+    assert_eq!(typical.sources, [2020; 12]);
 }
 
 #[test]

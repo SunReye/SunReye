@@ -93,7 +93,7 @@ pub struct Location {
 
 impl Location {
     /// To 0.01° (about 1 km): what a plant's location is stored at and leaves the home at, and
-    /// the site a typical year belongs to (ADR 17).
+    /// the rounded location a typical year belongs to (ADR 17).
     #[must_use]
     pub fn rounded(self) -> Self {
         let round = |degrees: f64| (degrees * 100.0).round() / 100.0;
