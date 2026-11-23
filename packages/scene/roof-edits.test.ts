@@ -2,7 +2,7 @@
 // the face does.
 
 import { expect, test } from "bun:test";
-import { moveLine, removeLine, type Scene } from "./index.js";
+import { addLine, moveLine, removeLine, type Scene } from "./index.js";
 import { EMPTY, SQUARE, grid, made, outlines, trace } from "./roof.harness.ts";
 
 test("moving a line changes its faces, and a module grid stays on a face that still exists", () => {
@@ -138,4 +138,25 @@ test("a move that makes two lines cross is refused", () => {
   const scene = trace(EMPTY, [0, 0], [0, 4], [4, 4], [4, 0], [2, 0]);
 
   expect(moveLine(scene, 0, 3, { x: -3, z: 0 })).toEqual({ refused: "crosses" });
+});
+
+test("splitting the first face leaves every later face its place, and each edit says where faces went", () => {
+  const two: Scene = {
+    ...trace(trace(EMPTY, ...SQUARE), [4, 0], [8, 0], [8, 4], [4, 4]),
+    grids: [grid(1)],
+  };
+
+  // A ridge across the first square, edge to edge: it ends face 0 and makes two new faces.
+  const edited = addLine(two, { x: 0, z: 2 }, { x: 4, z: 2 }, 0.3);
+  const split = made(edited);
+
+  expect(outlines(split)[1]).toEqual([
+    [4, 0],
+    [4, 2],
+    [4, 4],
+    [8, 4],
+    [8, 0],
+  ]);
+  expect(split.grids).toEqual([grid(1)]);
+  expect("faces" in edited && edited.faces).toEqual([-1, 1]);
 });

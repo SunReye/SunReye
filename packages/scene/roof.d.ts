@@ -37,7 +37,10 @@ export type Refusal = "short" | "joins" | "crosses" | "missing";
 export type Edited =
   | {
       readonly scene: Scene;
-      /** The block the line is in now; -1 when its block went. */
+      /** For each face the block had before, its place now, or -1 where it went with what stood
+       * on it. An unchanged face keeps its place unless more faces went than came. */
+      readonly faces: readonly number[];
+      /** The block the line is in now; -1 when its block went, and the blocks after it moved up. */
       readonly block: number;
       /** The line's two points in the next scene's block; -1 when the line went. */
       readonly from: number;

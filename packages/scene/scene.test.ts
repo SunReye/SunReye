@@ -134,7 +134,7 @@ export const edited: Edited = addLine(empty, { x: 0, z: 0 }, { x: 0, z: 4 }, 0.3
   expect(Object.prototype.hasOwnProperty.call(module, "addLine")).toBe(true);
 });
 
-test("a consumer validates a stored scene against the shipped JSON Schema, of the package's version", async () => {
+test("a consumer reads the scene's JSON Schema and the version it was made at from the package", async () => {
   const module: unknown = await import(Bun.resolveSync("@sunreye/scene", out));
   const schema: unknown = Object.getOwnPropertyDescriptor(module, "SCENE_SCHEMA")?.value;
   const version: unknown = Object.getOwnPropertyDescriptor(module, "SCENE_SCHEMA_VERSION")?.value;

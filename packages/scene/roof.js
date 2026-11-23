@@ -162,7 +162,7 @@ export function addLine(scene, from, to, reach) {
   const last = withPoint(first.lines, end.at, end.set);
   const lines = joined(last.lines, first.point, last.point);
 
-  return { scene: rebuild(scene, block, lines), block, from: first.point, to: last.point };
+  return { ...rebuild(scene, block, lines), block, from: first.point, to: last.point };
 }
 
 /**
@@ -190,7 +190,7 @@ export function moveLine(scene, block, line, by) {
 
   if (tangled) return { refused: "crosses" };
 
-  return { scene: rebuild(scene, block, moved), block, from: a, to: b };
+  return { ...rebuild(scene, block, moved), block, from: a, to: b };
 }
 
 /**
@@ -206,7 +206,11 @@ export function removeLine(scene, block, line) {
 
   const left = lines.lines.filter((_, i) => i !== line);
 
-  if (left.length === 0) return { scene: withoutBlock(scene, block), block: -1, from: -1, to: -1 };
+  if (left.length === 0) {
+    const faces = lines.faces.map(() => -1);
+
+    return { scene: withoutBlock(scene, block), faces, block: -1, from: -1, to: -1 };
+  }
 
   const used = [...lines.points.keys()].filter((p) => left.some((l) => l.includes(p)));
   const renamed = new Map(used.map((p, i) => [p, i]));
@@ -225,5 +229,5 @@ export function removeLine(scene, block, line) {
     faces: lines.faces.map((f) => f.flatMap((p) => rename(p))),
   };
 
-  return { scene: rebuild(scene, block, kept), block, from: -1, to: -1 };
+  return { ...rebuild(scene, block, kept), block, from: -1, to: -1 };
 }

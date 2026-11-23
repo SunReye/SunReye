@@ -125,30 +125,44 @@ function matched(lines, found) {
 }
 
 /**
- * Block `index` of `scene` traced as `lines`, its faces derived again from their loops; the loops
- * that stay an old face keep its place, the rest follow. A face that went takes what stood on it.
- * `lines.faces` are the old faces, by `lines`' points.
+ * The loops' places: a loop that stays an old face takes its place; a new loop takes a place an
+ * old face left, the first first, else one after the others; places still empty close up. For each
+ * place, the loop in it.
+ * @param {readonly number[]} stays
+ * @param {number} old
+ * @returns {number[]}
+ */
+function places(stays, old) {
+  /** @type {number[]} */
+  const slots = Array.from({ length: old }, () => -1);
+
+  for (const [k, was] of stays.entries()) if (was >= 0) slots[was] = k;
+
+  for (const [k, was] of stays.entries())
+    if (was < 0) {
+      const free = slots.indexOf(-1);
+
+      if (free >= 0) slots[free] = k;
+      else slots.push(k);
+    }
+
+  return slots.filter((k) => k >= 0);
+}
+
+/**
+ * Block `index` of `scene` traced as `lines`, its faces derived again from their loops, and for
+ * each old face its place now, or -1 where it went, taking what stood on it. `lines.faces` are the
+ * old faces, by `lines`' points.
  * @param {Scene} scene
  * @param {number} index
  * @param {Lines} lines
- * @returns {Scene}
+ * @returns {{ readonly scene: Scene, readonly faces: readonly number[] }}
  */
 export function rebuild(scene, index, lines) {
   const found = loops(lines.points, lines.lines);
   const stays = matched(lines, found);
-
-  /** @param {number} k */
-  const rank = (k) => {
-    const was = stays[k] ?? -1;
-
-    return was < 0 ? Infinity : was;
-  };
-
-  const order = [...found.keys()].toSorted((a, b) => rank(a) - rank(b));
-
-  const moved = new Map(
-    order.flatMap((k, now) => ((stays[k] ?? -1) >= 0 ? [[stays[k] ?? -1, now]] : [])),
-  );
+  const order = places(stays, lines.faces.length);
+  const moved = lines.faces.map((_, face) => order.indexOf(stays.indexOf(face)));
 
   /** @type {readonly (readonly number[])[]} */
   const faces = order.map((k) => found[k] ?? []);
@@ -163,16 +177,16 @@ export function rebuild(scene, index, lines) {
 
   /** @type {<T extends { readonly block: number, readonly face: number }>(item: T) => T | undefined} */
   const change = (item) => {
+    const face = moved[item.face] ?? -1;
+
     if (item.block !== index) return item;
 
-    const face = moved.get(item.face);
-
-    return face === undefined ? undefined : { ...item, face };
+    return face < 0 ? undefined : { ...item, face };
   };
 
   const block = scene.blocks[index] ?? FRESH;
 
-  return {
+  const next = {
     ...onFaces(scene, change),
     blocks: [
       ...scene.blocks.slice(0, index),
@@ -180,4 +194,6 @@ export function rebuild(scene, index, lines) {
       ...scene.blocks.slice(index + 1),
     ],
   };
+
+  return { scene: next, faces: moved };
 }

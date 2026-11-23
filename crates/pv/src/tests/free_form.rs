@@ -659,5 +659,8 @@ fn a_roof_being_traced_has_no_footprint_until_its_lines_close() {
 
     assert_eq!(scene(0.0, &json!([open])).check_blocks(), Ok(()));
     assert_eq!(scene(0.0, &json!([untraced])).check_blocks(), Err(0));
-    assert!(surfaces(&scene(0.0, &json!([open])), Surface::Wall).is_empty());
+    assert_eq!(
+        surfaces(&scene(0.0, &json!([open])), Surface::Wall).len(),
+        0
+    );
 }
