@@ -9,6 +9,7 @@
 
 @source "./lib/components/ui";
 @source "../node_modules/@sunreye/ui/src";
+@source "../node_modules/@sunreye/builder/src";
 
 /* Inside a drill-in level on the phone, where each section is a card of its own (ADR 21). */
 @custom-variant drill (&:where([data-drill="level"] *));
@@ -139,30 +140,6 @@
   background-image: var(--noise);
   -webkit-backdrop-filter: var(--glass-filter-strong) saturate(140%);
   backdrop-filter: var(--glass-filter-strong) saturate(140%);
-}
-
-/* A canvas chip (ADR 21): what lies over the 3D canvas, from a live label to the builder's
-   sheets. No backdrop blur: the browser would make it again for every frame the canvas draws.
-   The card colour, nearly opaque instead; shape, ring and elevation come from what it sits on.
-   On a sheet that brings a glass of its own it takes that glass's blur off. A refusal's red
-   leans to the foreground as on the kit's glass: alone it falls short of AA over a dark scene. */
-@utility canvas-chip {
-  background-color: color-mix(in oklab, var(--card) var(--chip-opacity), transparent) !important;
-  background-image: var(--noise);
-  -webkit-backdrop-filter: none !important;
-  backdrop-filter: none !important;
-  --glass-destructive-base: var(--destructive);
-  /* On a sheet's own ambient glass, whose colour is as important and may be written later. */
-  &.glass-ambient {
-    background-color: color-mix(in oklab, var(--card) var(--chip-opacity), transparent) !important;
-  }
-  & > * {
-    --destructive: color-mix(
-      in oklab,
-      var(--foreground) var(--glass-destructive-mix),
-      var(--glass-destructive-base)
-    );
-  }
 }
 
 /* The scroll fade (ADR 21) repaints its mask on each scrolled frame: the still tier and the

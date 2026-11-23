@@ -205,6 +205,30 @@
   }
 }
 
+/* A canvas chip (ADR 21): what lies over the 3D canvas, from a live label to the builder's
+   sheets. No backdrop blur: the browser would make it again for every frame the canvas draws.
+   The card colour, nearly opaque instead; shape, ring and elevation come from what it sits on.
+   On a sheet that brings a glass of its own it takes that glass's blur off. A refusal's red
+   leans to the foreground as on the kit's glass: alone it falls short of AA over a dark scene. */
+@utility canvas-chip {
+  background-color: color-mix(in oklab, var(--card) var(--chip-opacity), transparent) !important;
+  background-image: var(--noise);
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  --glass-destructive-base: var(--destructive);
+  /* On a sheet's own ambient glass, whose colour is as important and may be written later. */
+  &.glass-ambient {
+    background-color: color-mix(in oklab, var(--card) var(--chip-opacity), transparent) !important;
+  }
+  & > * {
+    --destructive: color-mix(
+      in oklab,
+      var(--foreground) var(--glass-destructive-mix),
+      var(--glass-destructive-base)
+    );
+  }
+}
+
 @utility glow-hover {
   --glow-rest: 0 0 var(--glow-blur) var(--glow-spread) transparent;
   --glow-lit: 0 0 var(--glow-blur) var(--glow-spread)

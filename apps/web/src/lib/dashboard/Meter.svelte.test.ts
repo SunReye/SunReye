@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "vitest";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
-import { motion } from "../motion/tier.svelte.ts";
+import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
 import Meter from "./Meter.svelte";
 
 afterEach(() => {

@@ -1,11 +1,11 @@
 // What each inspector group can add, and the level the new object opens at (ADR 20).
 import { m } from "../paraglide/messages.js";
 import { chimney, fence, nextBlock, obstacle, surface } from "./draft.ts";
-import type { Level, Section } from "./levels.ts";
-import { addString, type Draft } from "./modules.ts";
+import type { Level, Section } from "@sunreye/builder/builder/levels.ts";
+import { addString, type Draft } from "@sunreye/builder/builder/modules.ts";
 import type { Plan } from "./outline.ts";
-import type { Equipment, Obstacle, OpeningKind } from "./pv.ts";
-import { fresh } from "./wall-openings.ts";
+import type { Equipment, Obstacle, OpeningKind } from "@sunreye/builder/builder/pv.ts";
+import { fresh } from "@sunreye/builder/builder/wall-openings.ts";
 
 /** One add button: the draft with the new object, and its level. */
 export interface Addition {
@@ -124,11 +124,14 @@ const MARKERS: readonly (readonly [Equipment["kind"], () => string])[] = [
   ["battery", m.builder_place_battery],
 ];
 
-/** Markers name the first device, places the first EVCC loadpoint (ADR 10); none, none added. */
+/** Markers name the first device and hang on the first block with four walls, places the first
+ * EVCC loadpoint (ADR 10); without them, none added. A free-form block's walls take no marker
+ * (ADR 20). */
 function equipment({ draft, devices }: Plan): Addition[] {
   const markers = draft.scene.equipment ?? [];
   const places = draft.scene.carPlaces ?? [];
-  const device = devices[0]?.id;
+  const block = draft.scene.blocks.findIndex(({ freeForm }) => !freeForm);
+  const device = block < 0 ? undefined : devices[0]?.id;
   const loadpoint = devices.find(({ profile }) => profile === "evcc")?.id;
 
   const placements =
@@ -138,7 +141,7 @@ function equipment({ draft, devices }: Plan): Addition[] {
           const marker = {
             device,
             kind,
-            block: 0,
+            block,
             wall: "front",
             along: 1,
             inside: false,

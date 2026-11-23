@@ -19,7 +19,7 @@
   import type { Snippet } from "svelte";
   import type { Attachment } from "svelte/attachments";
   import type { ClassValue } from "svelte/elements";
-  import { fade } from "../motion.ts";
+  import { fade } from "@sunreye/builder/motion.ts";
   import { tokenMs } from "@sunreye/ui/motion/token";
 
   let {

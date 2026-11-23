@@ -6,7 +6,7 @@ import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { haptics } from "@sunreye/ui/haptics";
 import { closed, finish } from "../motion/animations.harness.ts";
-import { motion } from "../motion/tier.svelte.ts";
+import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
 import DrawerSheet from "./drawer-sheet.svelte";
 import { held, press } from "./drawer.harness.ts";
 

@@ -11,8 +11,8 @@ import {
   MeshStandardMaterial,
   type Object3D,
 } from "three";
-import type { Geometry } from "./pv.ts";
-import { buildScene, buildSliced, stringColour } from "./scene.ts";
+import type { Geometry } from "@sunreye/builder/builder/pv.ts";
+import { buildScene, buildSliced, stringColour } from "@sunreye/builder/builder/scene.ts";
 
 const house: Geometry = {
   faces: [

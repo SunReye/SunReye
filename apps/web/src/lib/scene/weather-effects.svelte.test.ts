@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "vitest";
-import { WEATHER_EFFECTS, WeatherEffects } from "./weather-effects.svelte.ts";
+import { WEATHER_EFFECTS, WeatherEffects } from "@sunreye/builder/scene/weather-effects.svelte.ts";
 
 afterEach(() => {
   localStorage.clear();

@@ -1,4 +1,5 @@
-<!-- A block's level in the inspector: its footprint, eave, roof, overhang, colours and whether it is a carport. -->
+<!-- A block's level in the inspector: its footprint, eave, roof, overhang, colours and whether it is a carport;
+  a free-form block's colours and carport only, its rectangle going unused (ADR 20). -->
 <script lang="ts">
   import * as Item from "@sunreye/ui/item";
   import { m } from "../paraglide/messages.js";
@@ -6,7 +7,7 @@
   import { withRoof } from "./draft.ts";
   import { choices, degrees, metres, REACH } from "./fields.ts";
   import { ROOFS } from "./outline.ts";
-  import type { Block } from "./pv.ts";
+  import type { Block } from "@sunreye/builder/builder/pv.ts";
   import RemoveButton from "./RemoveButton.svelte";
   import SwitchRow from "./SwitchRow.svelte";
   import ValueRow from "./ValueRow.svelte";
@@ -50,49 +51,51 @@
 </script>
 
 <Item.Group class="gap-0 divide-y divide-border/60">
-  {#each fields as [key, edit] (key)}
+  {#if !block.freeForm}
+    {#each fields as [key, edit] (key)}
+      <ValueRow
+        {edit}
+        value={block[key]}
+        onchange={(value) => {
+          onchange({ ...block, [key]: value });
+        }}
+      />
+    {/each}
     <ValueRow
-      {edit}
-      value={block[key]}
-      onchange={(value) => {
-        onchange({ ...block, [key]: value });
-      }}
-    />
-  {/each}
-  <ValueRow
-    edit={roof}
-    value={ROOFS.findIndex(([kind]) => kind === block.roof.kind)}
-    onchange={(index) => {
-      const kind = ROOFS[index]?.[0];
+      edit={roof}
+      value={ROOFS.findIndex(([kind]) => kind === block.roof.kind)}
+      onchange={(index) => {
+        const kind = ROOFS[index]?.[0];
 
-      if (kind !== undefined) onchange({ ...block, roof: withRoof(block.roof, kind) });
-    }}
-  />
-  {#if block.roof.kind !== "flat"}
-    {@const pitched = block.roof}
-    <ValueRow
-      edit={pitch}
-      value={pitched.pitch}
-      onchange={(value) => {
-        onchange({ ...block, roof: { ...pitched, pitch: value } });
+        if (kind !== undefined) onchange({ ...block, roof: withRoof(block.roof, kind) });
       }}
     />
-  {/if}
-  <ValueRow
-    edit={eave}
-    value={overhang.eave}
-    onchange={(value) => {
-      onchange({ ...block, overhang: { ...overhang, eave: value } });
-    }}
-  />
-  {#if verged}
+    {#if block.roof.kind !== "flat"}
+      {@const pitched = block.roof}
+      <ValueRow
+        edit={pitch}
+        value={pitched.pitch}
+        onchange={(value) => {
+          onchange({ ...block, roof: { ...pitched, pitch: value } });
+        }}
+      />
+    {/if}
     <ValueRow
-      edit={verge}
-      value={overhang.verge}
+      edit={eave}
+      value={overhang.eave}
       onchange={(value) => {
-        onchange({ ...block, overhang: { ...overhang, verge: value } });
+        onchange({ ...block, overhang: { ...overhang, eave: value } });
       }}
     />
+    {#if verged}
+      <ValueRow
+        edit={verge}
+        value={overhang.verge}
+        onchange={(value) => {
+          onchange({ ...block, overhang: { ...overhang, verge: value } });
+        }}
+      />
+    {/if}
   {/if}
   <BlockColours {block} {onchange} />
   <SwitchRow

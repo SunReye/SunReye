@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { valueText } from "./value.ts";
+import { valueText } from "@sunreye/builder/builder/handles/value.ts";
 
 test("lengths show to the decimetre, angles whole, a move as x and z", () => {
   expect(valueText({ value: [12], unit: "m" }, "de")).toBe("12,0 m");

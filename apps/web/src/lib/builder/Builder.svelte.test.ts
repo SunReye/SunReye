@@ -6,7 +6,7 @@ import { render } from "vitest-browser-svelte";
 import { connect, type Transport } from "../api/core.ts";
 import Builder from "./Builder.svelte";
 import { feed } from "../live/stream.harness.ts";
-import { addGrid } from "./modules.ts";
+import { addGrid } from "@sunreye/builder/builder/modules.ts";
 import {
   cellsOnPage,
   choose,

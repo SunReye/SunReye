@@ -1,10 +1,11 @@
 import "../../app.css";
 import { test } from "vitest";
 import { render } from "vitest-browser-svelte";
-import { DRY, type SceneWeather } from "../scene/weather.ts";
-import type { Geometry } from "./pv.ts";
-import SceneCanvas from "./SceneCanvas.svelte";
+import { DRY, type SceneWeather } from "@sunreye/builder/scene/weather.ts";
+import type { Geometry } from "@sunreye/builder/builder/pv.ts";
+import { SceneCanvas } from "@sunreye/builder";
 import { settle } from "../motion/clock.harness.ts";
+import { canvasWords } from "./canvas-words.ts";
 
 // The weather on the drawn scene (ADR 23 "Scene weather"), read off the canvas's middle.
 
@@ -36,6 +37,7 @@ async function fromAbove(covered: boolean, at: number) {
   let brightness = 0;
 
   const screen = await render(SceneCanvas, {
+    words: canvasWords(),
     geometry: flat,
     panels: covered ? [{ ...module, string: 0 }] : [],
     shares: covered ? [0] : [],

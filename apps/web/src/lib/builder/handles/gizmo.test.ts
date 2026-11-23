@@ -2,9 +2,9 @@
 import { expect, test } from "bun:test";
 import { Color, PerspectiveCamera, Vector3 } from "three";
 import { nextBlock } from "../draft.ts";
-import type { Scene } from "../pv.ts";
-import { gizmo, handleOf } from "./gizmo.ts";
-import { handles, type Target } from "./grips.ts";
+import type { Scene } from "@sunreye/builder/builder/pv.ts";
+import { gizmo, handleOf } from "@sunreye/builder/builder/handles/gizmo.ts";
+import { handles, type Target } from "@sunreye/builder/builder/handles/grips.ts";
 
 // A handle's touch target is at least 44 px across, however far off the camera stands (ADR 20).
 

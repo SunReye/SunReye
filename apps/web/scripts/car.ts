@@ -1,7 +1,7 @@
 // Cuts the default car body (ADR 20) from "2024 Tesla Model 3 + Interior" by tonielpro520, CC BY 4.0,
 // https://sketchfab.com/3d-models/61ddcbdbd3854c239e0c95bf60b00022: the outside only, without
 // badges, plate, damage decals, textures or normals, simplified and meshopt-compressed.
-// Usage: bun run car <downloaded.glb> [src/lib/cars/car.glb]
+// Usage: bun run car <downloaded.glb> [../../packages/builder/src/cars/car.glb]
 import { NodeIO, type Document, type Primitive } from "@gltf-transform/core";
 import { ALL_EXTENSIONS, EXTMeshoptCompression } from "@gltf-transform/extensions";
 import { dedup, prune, quantize, simplify, weld } from "@gltf-transform/functions";
@@ -61,7 +61,7 @@ function cut(document: Document): void {
   for (const texture of root.listTextures()) texture.dispose();
 }
 
-const [source, target = "src/lib/cars/car.glb"] = process.argv.slice(2);
+const [source, target = "../../packages/builder/src/cars/car.glb"] = process.argv.slice(2);
 
 if (source === undefined) throw new Error("usage: bun scripts/car.ts <downloaded.glb> [out.glb]");
 

@@ -1,7 +1,7 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { frameInterval, Pace, type FrameLimit } from "./frame-limit.ts";
-import { Loop, type Frames } from "./loop.ts";
+import { frameInterval, Pace, type FrameLimit } from "@sunreye/builder/scene/frame-limit.ts";
+import { Loop, type Frames } from "@sunreye/builder/scene/loop.ts";
 
 /** A display at 60 Hz, each frame run by hand. */
 function display() {

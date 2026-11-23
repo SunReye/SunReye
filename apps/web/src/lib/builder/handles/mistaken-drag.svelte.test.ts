@@ -22,8 +22,8 @@ import {
   testCore,
   undesk,
 } from "../builder.harness.ts";
-import { handles } from "./grips.ts";
-import { offered } from "./offered.ts";
+import { handles } from "@sunreye/builder/builder/handles/grips.ts";
+import { offered } from "@sunreye/builder/builder/handles/offered.ts";
 
 const VIEW = "sunreye.builder.view";
 

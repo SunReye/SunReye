@@ -105,9 +105,9 @@ impl Scene {
     /// Each opening on its wall, in the order of `openings`.
     ///
     /// # Errors
-    /// The index of the first opening that names no walled block, has no positive size, lies
-    /// past its wall's ends or above the eave, is a door off the ground, or overlaps an earlier
-    /// opening on its wall.
+    /// The index of the first opening that names no block with its four walls, has no positive
+    /// size, lies past its wall's ends or above the eave, is a door off the ground, or overlaps an
+    /// earlier opening on its wall.
     pub fn fitted(&self) -> Result<Vec<Fitted>, usize> {
         self.openings
             .iter()
@@ -122,7 +122,10 @@ impl Scene {
     }
 
     fn fit(&self, opening: &Opening) -> Option<Fitted> {
-        let block = self.blocks.get(opening.block).filter(|block| !block.open)?;
+        let block = self
+            .blocks
+            .get(opening.block)
+            .filter(|block| block.walled())?;
         let Opening {
             along,
             width,

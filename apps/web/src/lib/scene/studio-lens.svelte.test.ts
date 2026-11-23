@@ -1,9 +1,9 @@
 import { afterEach, expect, test } from "vitest";
 import { Color, PerspectiveCamera, Vector3 } from "three";
-import { daylight, theme } from "./light.ts";
-import { drawn, type Level } from "./quality.ts";
-import { Studio } from "./studio.ts";
-import type { Glass } from "./weather.ts";
+import { daylight, theme } from "@sunreye/builder/scene/light.ts";
+import { drawn, type Level } from "@sunreye/builder/scene/quality.ts";
+import { Studio } from "@sunreye/builder/scene/studio.ts";
+import type { Glass } from "@sunreye/builder/scene/weather.ts";
 
 let studio: Studio | undefined;
 

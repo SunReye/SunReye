@@ -2,7 +2,8 @@
 import { expect, test } from "bun:test";
 import type { Weather } from "../weather/weather.ts";
 import { south } from "./light.harness.ts";
-import { DRY, exact, fogColour, lightAlone, sceneWeather } from "./weather.ts";
+import { sceneWeather } from "../weather/scene-weather.ts";
+import { DRY, exact, fogColour, lightAlone } from "@sunreye/builder/scene/weather.ts";
 
 const MINUTE = 60_000;
 

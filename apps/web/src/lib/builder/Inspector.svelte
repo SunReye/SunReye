@@ -7,7 +7,7 @@
   import DrillHeader from "../components/drill-in/drill-header.svelte";
   import DrillPush from "../components/drill-in/drill-push.svelte";
   import Editor from "./Editor.svelte";
-  import { depth, parent, type Level } from "./levels.ts";
+  import { depth, parent, type Level } from "@sunreye/builder/builder/levels.ts";
   import { title, type Plan } from "./outline.ts";
   import DraftSaveBar from "./DraftSaveBar.svelte";
   import StringsLevel from "./StringsLevel.svelte";

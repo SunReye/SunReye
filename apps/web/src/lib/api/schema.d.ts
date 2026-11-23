@@ -1175,6 +1175,7 @@ export interface components {
              * @description The walls' height under the roof.
              */
             eave: number;
+            freeForm?: components["schemas"]["FreeForm"] | null;
             /** @description A carport: a post at each corner instead of walls. */
             open?: boolean;
             /** @description How far the roof reaches past the walls; none when stored without it. */
@@ -1745,6 +1746,13 @@ export interface components {
                     [key: string]: number;
                 };
             };
+        };
+        /** @description A footprint and the faces over it, in the scene's frame before the compass turns it. */
+        FreeForm: {
+            /** @description Each face's corners as x, y and z, in metres, counter-clockwise seen from above. */
+            faces: number[][][];
+            /** @description Corners as x and z, in metres. */
+            footprint: number[][];
         };
         /** @description A module on a roof face. */
         GridModule: {

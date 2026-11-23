@@ -8,10 +8,9 @@
   import { modules } from "@sunreye/catalogue";
   import { Button } from "@sunreye/ui/button";
   import { Input } from "@sunreye/ui/input";
-  import type { Datasheet, ModuleType, Problem } from "../api/core.ts";
+  import type { Core, Datasheet, ModuleType, Problem } from "../api/core.ts";
   import { m } from "../paraglide/messages.js";
   import Refusal, { answered } from "../setup/Refusal.svelte";
-  import type { TypeSource } from "./modules.ts";
   import CatalogueList from "./CatalogueList.svelte";
 
   let {
@@ -19,7 +18,7 @@
     onadded,
     oncancel,
   }: {
-    types: TypeSource;
+    types: Pick<Core, "addModuleType">;
     onadded: (added: ModuleType) => void;
     oncancel: () => void;
   } = $props();

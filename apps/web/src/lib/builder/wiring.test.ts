@@ -1,9 +1,9 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { addGrid, wire, withoutString } from "./modules.ts";
-import { place } from "./placing.ts";
-import type { Scene } from "./pv.ts";
-import { wiring } from "./wiring.ts";
+import { addGrid, wire, withoutString } from "@sunreye/builder/builder/modules.ts";
+import { place } from "@sunreye/builder/builder/placing.ts";
+import type { Scene } from "@sunreye/builder/builder/pv.ts";
+import { wiring } from "@sunreye/builder/builder/wiring.ts";
 
 const block = {
   x: 0,

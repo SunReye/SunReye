@@ -11,10 +11,10 @@ import {
   wiredIn,
   withoutBlock,
   withoutString,
-} from "./modules.ts";
-import { place } from "./placing.ts";
+} from "@sunreye/builder/builder/modules.ts";
+import { place } from "@sunreye/builder/builder/placing.ts";
 import { loadPv } from "@sunreye/pv-wasm";
-import type { Scene } from "./pv.ts";
+import type { Scene } from "@sunreye/builder/builder/pv.ts";
 
 const wasm = new URL(import.meta.resolve("@sunreye/pv-wasm/pv.wasm"));
 

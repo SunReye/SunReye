@@ -5,10 +5,10 @@ import { render } from "vitest-browser-svelte";
 import { connect, type ModuleType, type Transport } from "../api/core.ts";
 import { finish } from "../motion/animations.harness.ts";
 import Builder from "./Builder.svelte";
-import { emptyDraft, fillGrid } from "./modules.ts";
+import { emptyDraft, fillGrid } from "@sunreye/builder/builder/modules.ts";
 import { faceView, onView, presetView, type View } from "./projection.harness.ts";
 import { fetchPv } from "./engine.ts";
-import type { Scene } from "./pv.ts";
+import type { Scene } from "@sunreye/builder/builder/pv.ts";
 import { fill } from "./templates.ts";
 
 export { press, tap, type Pointer } from "./pointer.harness.ts";

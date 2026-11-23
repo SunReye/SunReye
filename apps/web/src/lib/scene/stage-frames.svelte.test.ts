@@ -1,8 +1,8 @@
 import { flushSync } from "svelte";
 import { afterEach, expect, test, vi } from "vitest";
-import { buildScene, type Panel } from "../builder/scene.ts";
-import type { Geometry } from "../builder/pv.ts";
-import { frameLimit } from "./frame-limit.svelte.ts";
+import { buildScene, type Panel } from "@sunreye/builder/builder/scene.ts";
+import type { Geometry } from "@sunreye/builder/builder/pv.ts";
+import { frameLimit } from "@sunreye/builder/scene/frame-limit.svelte.ts";
 import { open, RAIN, shut } from "./stage.harness.svelte.ts";
 
 // Every frame the scene draws is held to this browser's frame limit (ADR 21 "Frame limit"):
@@ -213,5 +213,41 @@ test("a tick's tint glides in drawn frames under the limit, steps when it barely
   expect(tick([0.901, 0.2])).toBe(1);
   // The same shares again: no frame at all.
   expect(tick([0.901, 0.2])).toBe(0);
+  stop();
+});
+
+test("while its consumer says the live values halted, a tick's tint steps in one frame", async () => {
+  const { scene, screen, drew } = await staged();
+  const group = buildScene(roof, panels);
+  let shares = $state.raw<readonly (number | null)[]>([0.5, 0.5]);
+  let halted = $state(true);
+
+  scene.show(group);
+
+  const stop = $effect.root(() => {
+    scene.ease(
+      () => group,
+      () => shares,
+      () => halted,
+    );
+  });
+
+  const tick = (next: readonly (number | null)[]): number => {
+    shares = next;
+    flushSync();
+    screen.run(60);
+
+    return drew();
+  };
+
+  flushSync();
+  screen.run(4);
+  expect(drew()).toBe(1);
+
+  expect(tick([0.9, 0.2])).toBe(1);
+
+  // Back: it glides again.
+  halted = false;
+  expect(tick([0.2, 0.9])).toBeGreaterThanOrEqual(23);
   stop();
 });

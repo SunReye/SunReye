@@ -16,7 +16,7 @@ import {
   testCore,
   undesk,
 } from "./builder.harness.ts";
-import { addGrid, type Draft } from "./modules.ts";
+import { addGrid, type Draft } from "@sunreye/builder/builder/modules.ts";
 
 beforeEach(desk);
 

@@ -44,6 +44,11 @@ The builder moves out of `apps/web` into `packages/builder` before the first rel
 - *How it ships.* As Svelte and TypeScript sources, which a consumer compiles with Svelte's Vite plugin. A consumer imports Tailwind, `@sunreye/tokens` and the package's sheet, and points Tailwind's `@source` at the package. Svelte is a peer dependency, so one runtime serves the package and its consumer.
 - *What stays the app's.* Components that carry the app's messages or API types (the value editor, drill-in, the date field) are not the kit; they move with the builder.
 
+**The builder package (2026-11-23).** `@sunreye/builder` ships as `@sunreye/ui` does: Svelte and TypeScript sources a consumer compiles with Svelte's Vite plugin, its Tailwind `@source` pointed at the package. Svelte, three.js and the other `@sunreye` packages it reads are peers. It moves in three batches, each leaving the app working: the scene canvas, then the editing tools, inspector and state, then the rest.
+- *The scene canvas.* The first batch: the canvas and all it draws and answers on it (the lit studio, the scene and its modules, the cars, the handles, the roof press and the picking), the scene model they read, and the motion tier and 3D quality the studio steps down. The app reads the motion tier from the package, so one store measures the whole page.
+- *What the consumer hands it.* The canvas reads nothing of the core: it takes the weather as a scene weather, already read from the core's series, whether the live values have halted, and its words. The words are a prop for now: how the moved inspector carries its many messages is decided with the editing tools.
+- *Two views on one scene.* Each canvas is its own studio, so a consumer can show one scene twice, as from above and in 3D. Selecting a roof face across both by `@sunreye/scene`'s key, and setting the views from outside, come with the builder's public interface.
+
 **Imagery stays out of Home.** Plan loads aerial imagery and building models by address; Home fetches no map data (ADR 20). A plant document carries finished geometry and never imagery.
 
 ## Open before build

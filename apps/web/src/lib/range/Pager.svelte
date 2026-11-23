@@ -14,7 +14,7 @@
   import { untrack, type Snippet } from "svelte";
   import { spring, tween } from "../animate.ts";
   import { slideTiming } from "../motion/slide.ts";
-  import { motion } from "../motion/tier.svelte.ts";
+  import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
   import { EXIT_MS, SPRINGS } from "../motion/values.ts";
   import Pane from "./Pane.svelte";
   import type { Travel } from "./travel.svelte.ts";

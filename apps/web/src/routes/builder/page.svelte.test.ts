@@ -2,7 +2,7 @@ import "../../app.css";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { parseView } from "../../lib/builder/camera.ts";
+import { parseView } from "@sunreye/builder/builder/camera.ts";
 import { emptyCore, keepOffline } from "../route.harness.ts";
 import Page from "./+page.svelte";
 

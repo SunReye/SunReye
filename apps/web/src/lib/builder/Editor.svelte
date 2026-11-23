@@ -1,8 +1,8 @@
 <!-- The inspector's body at one level (ADR 20): the root groups, a group's rows, or one object. -->
 <script lang="ts">
-  import type { ModuleType } from "../api/core.ts";
-  import type { Level } from "./levels.ts";
-  import type { Draft, TypeSource } from "./modules.ts";
+  import type { Core, ModuleType } from "../api/core.ts";
+  import type { Level } from "@sunreye/builder/builder/levels.ts";
+  import type { Draft } from "@sunreye/builder/builder/modules.ts";
   import ObjectLevel from "./ObjectLevel.svelte";
   import type { Plan } from "./outline.ts";
   import { removal } from "./removal.ts";
@@ -20,7 +20,7 @@
     plan: Plan;
     moduleTypes: readonly ModuleType[];
     /** Adds module types to the core, and its catalogue to add them from. */
-    types: TypeSource;
+    types: Pick<Core, "addModuleType">;
     level: Level;
     onlevel: (level: Level) => void;
     onchange: (draft: Draft) => void;

@@ -2,13 +2,13 @@
 import { expect, test } from "bun:test";
 import { additions } from "../additions.ts";
 import { misplacedText } from "../checks.ts";
-import { picked } from "../levels.ts";
-import { addGrid, withoutBlock } from "../modules.ts";
-import { place } from "../placing.ts";
+import { picked } from "@sunreye/builder/builder/levels.ts";
+import { addGrid, withoutBlock } from "@sunreye/builder/builder/modules.ts";
+import { place } from "@sunreye/builder/builder/placing.ts";
 import { loadPv } from "@sunreye/pv-wasm";
-import type { Point, RoofWindow, Scene } from "../pv.ts";
-import { buildScene } from "../scene.ts";
-import { drag, handles, type Ray, type Target } from "./grips.ts";
+import type { Point, RoofWindow, Scene } from "@sunreye/builder/builder/pv.ts";
+import { buildScene } from "@sunreye/builder/builder/scene.ts";
+import { drag, handles, type Ray, type Target } from "@sunreye/builder/builder/handles/grips.ts";
 
 const wasm = new URL(import.meta.resolve("@sunreye/pv-wasm/pv.wasm"));
 

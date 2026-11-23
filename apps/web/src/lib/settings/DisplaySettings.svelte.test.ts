@@ -5,9 +5,9 @@ import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { HAPTICS } from "@sunreye/ui/haptics";
 import { language } from "../i18n/language.svelte.ts";
-import { LOW_POWER } from "../motion/tier.ts";
-import { motion } from "../motion/tier.svelte.ts";
-import { QUALITY, quality } from "../scene/quality.svelte.ts";
+import { LOW_POWER } from "@sunreye/builder/motion/tier.ts";
+import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
+import { QUALITY, quality } from "@sunreye/builder/scene/quality.svelte.ts";
 import DisplaySettings from "./DisplaySettings.svelte";
 
 afterEach(async () => {

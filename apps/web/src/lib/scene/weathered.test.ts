@@ -2,18 +2,20 @@
 import { expect, test } from "bun:test";
 import {
   Color,
-  type Group,
+  Group,
   Mesh,
   MeshPhysicalMaterial,
   MeshStandardMaterial,
   type Object3D,
+  PlaneGeometry,
+  Texture,
 } from "three";
-import type { Geometry } from "../builder/pv.ts";
-import { buildScene } from "../builder/scene.ts";
+import type { Geometry } from "@sunreye/builder/builder/pv.ts";
+import { buildScene } from "@sunreye/builder/builder/scene.ts";
 import { luma } from "./light.harness.ts";
-import { Plot } from "./plot.ts";
-import { DRY } from "./weather.ts";
-import { weathered } from "./weathered.ts";
+import { Plot } from "@sunreye/builder/scene/plot.ts";
+import { DRY } from "@sunreye/builder/scene/weather.ts";
+import { weathered } from "@sunreye/builder/scene/weathered.ts";
 
 const CORNERS = [
   [0, 0, 3],
@@ -168,4 +170,27 @@ test("the studio floor takes the weather as the ground does", () => {
   expect(light(material)).toBeLessThan(0.8 * dry);
   weathered(floor, { ...DRY, snow: true });
   expect(light(material)).toBeGreaterThan(0.85);
+});
+
+test("lying snow covers the aerial image on the ground and the roofs; once gone, the image is back", () => {
+  const image = new Texture();
+  const group = new Group();
+
+  for (const name of ["aerial", "roof", "flat"]) {
+    const part = new Mesh(new PlaneGeometry(), new MeshStandardMaterial({ map: image }));
+
+    part.name = name;
+    group.add(part);
+  }
+
+  weathered(group, { ...DRY, snow: true });
+
+  for (const name of ["aerial", "roof", "flat"]) {
+    expect(finish(group, name).map).toBeNull();
+    expect(light(finish(group, name))).toBeGreaterThan(0.9);
+  }
+
+  weathered(group, { ...DRY, wet: 0.5 });
+
+  for (const name of ["aerial", "roof", "flat"]) expect(finish(group, name).map).toBe(image);
 });

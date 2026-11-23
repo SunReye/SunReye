@@ -8,8 +8,8 @@
   import { OPENING_KINDS, UNFIT, WALL_NAMES } from "./outline.ts";
   import RemoveButton from "./RemoveButton.svelte";
   import ValueRow from "./ValueRow.svelte";
-  import type { Opening, Unfit } from "./pv.ts";
-  import { USUAL } from "./wall-openings.ts";
+  import type { Opening, Unfit } from "@sunreye/builder/builder/pv.ts";
+  import { USUAL } from "@sunreye/builder/builder/wall-openings.ts";
 
   let {
     item,

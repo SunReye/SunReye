@@ -5,7 +5,7 @@
   import { m } from "../paraglide/messages.js";
   import { choices, metres } from "./fields.ts";
   import ModuleTypeSelect from "./ModuleTypeSelect.svelte";
-  import type { ModuleGrid } from "./pv.ts";
+  import type { ModuleGrid } from "@sunreye/builder/builder/pv.ts";
   import ValueRow from "./ValueRow.svelte";
 
   let {

@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import type { Face } from "./pv.ts";
+import type { Face } from "@sunreye/builder/builder/pv.ts";
 import { thumbnail } from "./thumbnail.ts";
 
 const roof = (north: number): Face => ({

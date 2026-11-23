@@ -22,7 +22,7 @@ import {
   undesk,
 } from "./builder.harness.ts";
 import { saveFrom } from "./moment.harness.ts";
-import type { Scene } from "./pv.ts";
+import type { Scene } from "@sunreye/builder/builder/pv.ts";
 
 // A block's overhang and colours, and chimneys on its roof (ADR 20), from the inspector.
 

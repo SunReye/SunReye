@@ -10,8 +10,8 @@ import {
   MeshPhysicalMaterial,
   type Object3D,
 } from "three";
-import type { Face, Fitted, OpeningKind } from "../builder/pv.ts";
-import { lamps, openings } from "./wall-openings.ts";
+import type { Face, Fitted, OpeningKind } from "@sunreye/builder/builder/pv.ts";
+import { lamps, openings } from "@sunreye/builder/scene/wall-openings.ts";
 
 /** An opening on a wall facing south at north 0, `east` metres along it; a window's sill is
  * `sill` metres up. */

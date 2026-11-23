@@ -4,12 +4,16 @@ import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { PLANT, type Layout, type Values } from "../api/core.ts";
 import { MODULE, pv } from "../builder/builder.harness.ts";
-import type { Scene } from "../builder/pv.ts";
+import type { Scene } from "@sunreye/builder/builder/pv.ts";
 import "../../app.css";
 import { finish } from "../motion/animations.harness.ts";
 import LiveScene from "./LiveScene.svelte";
+import { canvasWords } from "../builder/canvas-words.ts";
 
 export { finish };
+
+/** The canvas's words in the app's language. */
+export const words = canvasWords();
 
 /** A 10 m × 8 m gable house: two modules of string 0 on the south face, an inverter marker. */
 export const scene = {
@@ -69,6 +73,7 @@ export function show(
   onready?: () => void,
 ) {
   return render(LiveScene, {
+    words,
     onselect,
     onready,
     pv,

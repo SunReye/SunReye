@@ -1,6 +1,11 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { frameInterval, Pace, parseFrameLimit, type FrameLimit } from "./frame-limit.ts";
+import {
+  frameInterval,
+  Pace,
+  parseFrameLimit,
+  type FrameLimit,
+} from "@sunreye/builder/scene/frame-limit.ts";
 
 // The frame limit (ADR 21 "Frame limit"): the most frames a second the 3D scene draws.
 

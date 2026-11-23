@@ -7,7 +7,7 @@
 <script lang="ts">
   import type { Core, Live } from "../api/core.ts";
   import { estimatedSeries, layoutStrings } from "../live/plant-facts.ts";
-  import { motion } from "../motion/tier.svelte.ts";
+  import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
   import { pulseShare, railPulse, throughputWatts } from "./flow-pulse.ts";
   import FlowHub from "./FlowHub.svelte";
   import FlowNode from "./FlowNode.svelte";

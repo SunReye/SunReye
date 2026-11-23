@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import { render } from "vitest-browser-svelte";
 import { connect } from "../api/core.ts";
 import Builder from "./Builder.svelte";
-import { addGrid, wire, type Draft } from "./modules.ts";
+import { addGrid, wire, type Draft } from "@sunreye/builder/builder/modules.ts";
 import {
   desk,
   DEVICES,

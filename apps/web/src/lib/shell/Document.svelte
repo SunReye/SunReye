@@ -7,7 +7,7 @@
   import { ModeWatcher } from "mode-watcher";
   import type { PvModel } from "../api/model.ts";
   import { language } from "../i18n/language.svelte.ts";
-  import { motion } from "../motion/tier.svelte.ts";
+  import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
   import Backdrop from "./Backdrop.svelte";
 
   // The graphite --background tokens in app.css, as hex for the browser chrome; the manifest repeats dark.

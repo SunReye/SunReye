@@ -3,8 +3,8 @@ import { expect, test } from "vitest";
 import { connect } from "../api/core.ts";
 import { eachSeries } from "../api/core.harness.ts";
 import { pv } from "./builder.harness.ts";
-import { emptyDraft } from "./modules.ts";
-import type { SceneWeather } from "../scene/weather.ts";
+import { emptyDraft } from "@sunreye/builder/builder/modules.ts";
+import type { SceneWeather } from "@sunreye/builder/scene/weather.ts";
 import { Moment } from "./moment.svelte.ts";
 
 const QUARTER = 15 * 60_000;

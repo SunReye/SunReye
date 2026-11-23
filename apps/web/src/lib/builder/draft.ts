@@ -9,7 +9,7 @@ import type {
   Overhang,
   Roof,
   RoofFace,
-} from "./pv.ts";
+} from "@sunreye/builder/builder/pv.ts";
 
 /** Metres between a new block and the last one. */
 const GAP = 2;
@@ -20,13 +20,27 @@ const PITCH = 35;
 /** Metres: a common overhang at the eaves and at the verges. */
 const OVERHANG: Overhang = { eave: 0.5, verge: 0.3 };
 
+/** Where a block's east side and its north side stand: a free-form block's by its footprint, its
+ * rectangle going unused (ADR 20). */
+function reach({ x, z, width, freeForm }: Block): readonly [number, number] {
+  const footprint = freeForm?.footprint ?? [];
+
+  return footprint.length === 0
+    ? [x + width, z]
+    : [
+        Math.max(...footprint.map(([east = 0]) => east)),
+        Math.min(...footprint.map(([, north = 0]) => north)),
+      ];
+}
+
 /** A 10 m × 8 m gable house, at the origin or beside the last block. */
 export function nextBlock(blocks: readonly Block[]): Block {
   const last = blocks.at(-1);
+  const [east, north] = last === undefined ? [-GAP, 0] : reach(last);
 
   return {
-    x: last === undefined ? 0 : last.x + last.width + GAP,
-    z: last?.z ?? 0,
+    x: east + GAP,
+    z: north,
     width: 10,
     depth: 8,
     eave: 3,

@@ -6,6 +6,7 @@
 
 import {
   isChimney,
+  isFaces,
   isGeometry,
   isGhost,
   isGhosts,
@@ -34,6 +35,7 @@ import {
  * @property {Answer} modules
  * @property {Answer} sun
  * @property {Answer} clear_sky
+ * @property {Answer} neighbours
  * @property {Answer} cold_voltages
  * @property {Answer} sizing
  * @property {Answer} longest
@@ -69,6 +71,7 @@ const functions = [
   "modules",
   "sun",
   "clear_sky",
+  "neighbours",
   "cold_voltages",
   "sizing",
   "longest",
@@ -176,6 +179,7 @@ export async function loadPv(bytes) {
     modules: (scene, sizes) => unwrap(call("modules", JSON.stringify({ scene, sizes })), isModules),
     sun: (unix, location) => unwrap(call("sun", JSON.stringify({ unix, location })), isSun),
     clearSky: (run) => unwrap(call("clear_sky", JSON.stringify(run)), isWatts),
+    neighbours: (neighbours) => unwrap(call("neighbours", JSON.stringify(neighbours)), isFaces),
     refit: (scene, index, opening) =>
       unwrap(call("refit", JSON.stringify({ scene, index, opening })), isRefit),
     place: (scene, kind, usual) =>

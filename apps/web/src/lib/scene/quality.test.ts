@@ -1,5 +1,12 @@
 import { expect, test } from "bun:test";
-import { capable, drawn, parseQuality, parseSteps, relief, type Device } from "./quality.ts";
+import {
+  capable,
+  drawn,
+  parseQuality,
+  parseSteps,
+  relief,
+  type Device,
+} from "@sunreye/builder/scene/quality.ts";
 
 const strong: Device = { capable: true, touch: false, steps: 0, tier: "full" };
 const weak: Device = { capable: false, touch: false, steps: 0, tier: "full" };

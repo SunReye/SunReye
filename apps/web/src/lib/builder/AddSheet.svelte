@@ -9,7 +9,7 @@
   import * as Item from "@sunreye/ui/item";
   import { m } from "../paraglide/messages.js";
   import { additions, type Addition } from "./additions.ts";
-  import type { Section } from "./levels.ts";
+  import type { Section } from "@sunreye/builder/builder/levels.ts";
   import { SECTIONS, type Plan } from "./outline.ts";
 
   let {

@@ -17,7 +17,7 @@ import {
   testCore,
   undesk,
 } from "./builder.harness.ts";
-import { addGrid } from "./modules.ts";
+import { addGrid } from "@sunreye/builder/builder/modules.ts";
 import { saveFrom } from "./moment.harness.ts";
 
 beforeEach(desk);

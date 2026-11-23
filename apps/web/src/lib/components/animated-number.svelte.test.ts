@@ -3,7 +3,7 @@ import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import type { Live } from "../api/core.ts";
 import { stream } from "../live/stream.svelte.ts";
-import { motion } from "../motion/tier.svelte.ts";
+import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
 import AnimatedNumber from "./animated-number.svelte";
 
 // Time is injected: frames and the clock move only when the test says so.

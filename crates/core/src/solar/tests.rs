@@ -630,6 +630,7 @@ fn walled_house(module_type: u32) -> Scene {
             overhang: Overhang::default(),
             roof_colour: None,
             wall_colour: None,
+            free_form: None,
         }],
         obstacles: vec![Obstacle::Box {
             x: -3.0,

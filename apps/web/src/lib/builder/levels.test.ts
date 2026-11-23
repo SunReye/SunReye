@@ -1,8 +1,8 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
 import { nextBlock } from "./draft.ts";
-import { parent, picked } from "./levels.ts";
-import type { Scene } from "./pv.ts";
+import { parent, picked } from "@sunreye/builder/builder/levels.ts";
+import type { Scene } from "@sunreye/builder/builder/pv.ts";
 
 const HOUSE = nextBlock([]);
 
@@ -167,4 +167,36 @@ test("a car place drills to its place, a strike above a car to the roof over it"
     kind: "surface",
     index: 0,
   });
+});
+
+test("a point on a free-form block's roof or wall drills to it, one in its notch does not", () => {
+  const L: readonly (readonly [number, number])[] = [
+    [10, 0],
+    [0, 0],
+    [0, 8],
+    [4, 8],
+    [4, 4],
+    [10, 4],
+  ];
+
+  // Its rectangle is unused: none at all.
+  const free: Scene = {
+    north: 0,
+    blocks: [
+      {
+        ...HOUSE,
+        width: 0,
+        depth: 0,
+        freeForm: { footprint: L, faces: [L.map(([x, z]) => [x, 4, z])] },
+      },
+    ],
+    obstacles: [],
+  };
+
+  const block = { kind: "block", index: 0 } as const;
+
+  // On the arm's roof, on its south wall, and in the notch.
+  expect(picked(free, { kind: "point", point: [2, -6, 4] })).toEqual(block);
+  expect(picked(free, { kind: "point", point: [2, -8, 1.5] })).toEqual(block);
+  expect(picked(free, { kind: "point", point: [7, -6, 0] })).toBeNull();
 });

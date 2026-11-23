@@ -40,6 +40,7 @@ export interface components {
              * @description The walls' height under the roof.
              */
             readonly eave: number;
+            readonly freeForm?: components["schemas"]["FreeForm"] | null;
             /** @description A carport: a post at each corner instead of walls. */
             readonly open?: boolean;
             /** @description How far the roof reaches past the walls; none when stored without it. */
@@ -164,6 +165,13 @@ export interface components {
             readonly x: number;
             /** Format: double */
             readonly z: number;
+        };
+        /** @description A footprint and the faces over it, in the scene's frame before the compass turns it. */
+        readonly FreeForm: {
+            /** @description Each face's corners as x, y and z, in metres, counter-clockwise seen from above. */
+            readonly faces: readonly (readonly (readonly number[])[])[];
+            /** @description Corners as x and z, in metres. */
+            readonly footprint: readonly (readonly number[])[];
         };
         /** @description A module on a roof face. */
         readonly GridModule: {
@@ -581,6 +589,7 @@ export type EquipmentKind = components['schemas']['EquipmentKind'];
 export type Fence = components['schemas']['Fence'];
 export type FenceFinish = components['schemas']['FenceFinish'];
 export type FencePoint = components['schemas']['FencePoint'];
+export type FreeForm = components['schemas']['FreeForm'];
 export type GridModule = components['schemas']['GridModule'];
 export type GroundFinish = components['schemas']['GroundFinish'];
 export type GroundSurface = components['schemas']['GroundSurface'];

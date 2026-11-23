@@ -5,7 +5,7 @@ import { cdp, page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect } from "../../api/core.ts";
 import Builder from "../Builder.svelte";
-import type { View } from "../camera.ts";
+import type { View } from "@sunreye/builder/builder/camera.ts";
 import {
   atRest,
   desk,
@@ -22,7 +22,7 @@ import {
   testCore,
   undesk,
 } from "../builder.harness.ts";
-import { handles, type Target, type Triple } from "./grips.ts";
+import { handles, type Target, type Triple } from "@sunreye/builder/builder/handles/grips.ts";
 
 type Scene = ReturnType<typeof house>["scene"];
 

@@ -24,8 +24,8 @@ import {
 } from "./builder.harness.ts";
 import { saveFrom } from "./moment.harness.ts";
 import { connect, type Transport } from "../api/core.ts";
-import { addGrid, panels, type Draft } from "./modules.ts";
-import { toThree } from "./scene.ts";
+import { addGrid, panels, type Draft } from "@sunreye/builder/builder/modules.ts";
+import { toThree } from "@sunreye/builder/builder/scene.ts";
 
 const OTHER = { ...MODULE, id: 8, name: "Other 300" };
 

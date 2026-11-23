@@ -1,8 +1,8 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
 import { PerspectiveCamera } from "three";
-import { onPlane } from "./aim.ts";
-import type { RoofFace } from "./pv.ts";
+import { onPlane } from "@sunreye/builder/builder/aim.ts";
+import type { RoofFace } from "@sunreye/builder/builder/pv.ts";
 
 /** A face pitched 45° to the south, its lower left corner 3 m up at the origin. */
 const ROOF: RoofFace = {

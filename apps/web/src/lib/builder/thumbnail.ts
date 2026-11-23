@@ -1,7 +1,7 @@
 // A template's still picture: the crate's faces projected as the isometric preset sees them and
 // painted far to near, so six thumbnails need no WebGL context (ADR 20).
-import type { Face } from "./pv.ts";
-import { cross, dot, normal, unit } from "./vector.ts";
+import type { Face } from "@sunreye/builder/builder/pv.ts";
+import { cross, dot, normal, unit } from "@sunreye/builder/builder/vector.ts";
 
 /** One face on screen: SVG points, its finish, how much light it catches (0 to 1) and its paint. */
 export interface Polygon {

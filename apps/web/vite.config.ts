@@ -61,6 +61,7 @@ export default defineConfig({
       "three/addons/postprocessing/OutputPass.js",
       "three/addons/postprocessing/Pass.js",
       "three/addons/postprocessing/RenderPass.js",
+      "three/src/extras/Earcut.js",
       ...icons(),
       "svelte-sonner",
       "vaul-svelte",

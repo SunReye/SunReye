@@ -1,8 +1,8 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
 import { Color, Mesh, MeshStandardMaterial, type Object3D } from "three";
-import type { Face, Geometry } from "./pv.ts";
-import { buildScene } from "./scene.ts";
+import type { Face, Geometry } from "@sunreye/builder/builder/pv.ts";
+import { buildScene } from "@sunreye/builder/builder/scene.ts";
 
 // A block's colours and its roof chimneys as the scene draws them (ADR 20 Colours, Roof chimneys).
 

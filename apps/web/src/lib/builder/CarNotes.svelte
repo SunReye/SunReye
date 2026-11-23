@@ -2,7 +2,7 @@
 <script lang="ts">
   import Car from "@lucide/svelte/icons/car";
   import type { Device } from "../api/core.ts";
-  import type { Parked } from "../cars/parked.ts";
+  import type { Parked } from "@sunreye/builder/cars/parked.ts";
   import { m } from "../paraglide/messages.js";
   import { getLocale } from "../paraglide/runtime.js";
 

@@ -16,7 +16,7 @@ import {
   testCore,
   undesk,
 } from "./builder.harness.ts";
-import { emptyDraft, type Draft } from "./modules.ts";
+import { emptyDraft, type Draft } from "@sunreye/builder/builder/modules.ts";
 
 // Templates for an empty scene (ADR 20).
 

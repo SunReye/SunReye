@@ -4,7 +4,7 @@
   import { Skeleton } from "#lib/components/ui/skeleton/index.js";
   import Builder, { BUILDER_SIZE } from "../../lib/builder/Builder.svelte";
   import { inputsOf, limitsOf } from "../../lib/builder/checks";
-  import { emptyDraft } from "../../lib/builder/modules";
+  import { emptyDraft } from "@sunreye/builder/builder/modules.ts";
   import { fetchPv } from "../../lib/builder/engine.ts";
   import { typesOf } from "../../lib/api/layout-change";
   import { m } from "../../lib/paraglide/messages.js";

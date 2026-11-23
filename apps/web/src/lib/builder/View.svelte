@@ -8,10 +8,11 @@
   import type { Core, Device, ModuleType } from "../api/core.ts";
   import { parkedNow } from "../cars/parked.svelte.ts";
   import type { Moment } from "./moment.svelte.ts";
-  import type { Draft } from "./modules.ts";
-  import type { Geometry, Location, RoofFace } from "./pv.ts";
+  import type { Draft } from "@sunreye/builder/builder/modules.ts";
+  import type { Geometry, Location, RoofFace } from "@sunreye/builder/builder/pv.ts";
   import ContextBar, { type Selected } from "./ContextBar.svelte";
   import Stage, {
+    type Around,
     type Editing,
     type Hit,
     type Roofwork,
@@ -26,6 +27,7 @@
     draft,
     geometry,
     panels,
+    around,
     devices,
     location,
     moment,
@@ -43,6 +45,8 @@
     draft: Draft;
     geometry: Geometry;
     panels: readonly Panel[];
+    /** The aerial image and the neighbours the builder's consumer supplies. */
+    around?: Around | undefined;
     devices: readonly Device[];
     location: Location | undefined;
     /** The slider's instant. */
@@ -100,6 +104,7 @@
       {core}
       {geometry}
       {panels}
+      {around}
       sun={moment.sun}
       diffuse={moment.weather.cloud}
       weather={moment.scene}

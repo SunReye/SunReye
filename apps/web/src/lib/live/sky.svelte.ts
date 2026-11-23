@@ -1,6 +1,7 @@
 // The dashboard scene's sky (ADR 20 Look, ADR 23): the weather now, read again as it moves on.
 import type { Core } from "../api/core.ts";
-import { sceneWeather, type Plant, type SceneWeather } from "../scene/weather.ts";
+import type { Plant, SceneWeather } from "@sunreye/builder/scene/weather.ts";
+import { sceneWeather } from "../weather/scene-weather.ts";
 import { weatherNow } from "../weather/now.ts";
 import { weatherAt, type WeatherRead } from "../weather/weather.ts";
 

@@ -2,9 +2,10 @@
 import { expect, test } from "bun:test";
 import type { Core, ModuleType } from "../api/core.ts";
 import { perSeries } from "../api/core.harness.ts";
-import { emptyDraft, type Draft } from "./modules.ts";
+import { emptyDraft, type Draft } from "@sunreye/builder/builder/modules.ts";
 import { load, shareAt, sourceOf, wattsAt } from "./moment.ts";
 import { loadPv } from "@sunreye/pv-wasm";
+import type { Neighbour } from "@sunreye/builder/builder/pv.ts";
 
 const wasm = new URL(import.meta.resolve("@sunreye/pv-wasm/pv.wasm"));
 
@@ -149,6 +150,74 @@ test("a past day before any reading and a far day run a clear sky over every str
     expect(day.source).toBe("clearSky");
     expect(day.strings.map((s) => (wattsAt(s, noon) ?? 0) > 1000)).toEqual([true, true]);
   }
+});
+
+// Four modules low on the south face of a 10 m × 8 m gable house, wired as one string.
+const painted: Draft = {
+  scene: {
+    north: 0,
+    blocks: [
+      {
+        x: 0,
+        z: 0,
+        width: 10,
+        depth: 8,
+        eave: 3,
+        rotation: 0,
+        roof: { kind: "gable", pitch: 35 },
+      },
+    ],
+    obstacles: [],
+    grids: [
+      {
+        block: 0,
+        face: 1,
+        moduleType: 7,
+        landscape: false,
+        setback: 0.3,
+        modules: [0, 1, 2, 3].map((column) => ({
+          across: 0.3 + column * 1.154,
+          up: 0.3,
+          landscape: false,
+          string: 0,
+          optimized: false,
+        })),
+      },
+    ],
+  },
+  strings: [{ ...wiring, modules: 4, name: "Süd" }],
+};
+
+// A 30 m wall 2 m south of the front eave.
+const wall: Neighbour = {
+  footprint: [
+    [-5, -10],
+    [15, -10],
+    [15, -10.3],
+    [-5, -10.3],
+  ],
+  height: 30,
+};
+
+test("a far day's clear sky is shaded by the neighbours the builder's consumer supplies", async () => {
+  const { core } = reading(false);
+
+  const noon = new Date("2027-06-21T13:00").getTime();
+
+  const at = async (neighbours: readonly Neighbour[]): Promise<number> => {
+    const day = await load({
+      ...context,
+      core,
+      draft: painted,
+      neighbours,
+      day: "2027-06-21",
+      today: "2026-11-09",
+    });
+
+    return wattsAt(day.strings[0] ?? [], noon) ?? 0;
+  };
+
+  expect(await at([wall])).toBeLessThan((await at([])) / 2);
 });
 
 test("without the plant's location a clear sky has nothing to show", async () => {

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { ShaderChunk } from "three";
-import { faced, penumbra, softened } from "./soft-shadow.ts";
+import { faced, penumbra, softened } from "@sunreye/builder/scene/soft-shadow.ts";
 
 const OPENS = "float getShadow( sampler2D shadowMap,";
 

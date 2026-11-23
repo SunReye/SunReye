@@ -1,10 +1,10 @@
 <!-- Settings › Display: this browser's 3D quality (ADR 20 Look), and what it draws here and now. -->
 <script lang="ts">
   import SegmentRow from "./SegmentRow.svelte";
-  import { motion } from "../motion/tier.svelte.ts";
+  import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
   import { m } from "../paraglide/messages.js";
-  import { quality } from "../scene/quality.svelte.ts";
-  import { QUALITIES, type Quality } from "../scene/quality.ts";
+  import { quality } from "@sunreye/builder/scene/quality.svelte.ts";
+  import { QUALITIES, type Quality } from "@sunreye/builder/scene/quality.ts";
 
   const LEVELS: Readonly<Record<Quality, () => string>> = {
     auto: m.display_quality_auto,

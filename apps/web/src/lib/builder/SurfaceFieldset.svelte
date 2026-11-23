@@ -4,7 +4,7 @@
   import { m } from "../paraglide/messages.js";
   import { choices, degrees, metres, REACH } from "./fields.ts";
   import { GROUND_FINISHES } from "./outline.ts";
-  import type { GroundSurface } from "./pv.ts";
+  import type { GroundSurface } from "@sunreye/builder/builder/pv.ts";
   import RemoveButton from "./RemoveButton.svelte";
   import ValueRow from "./ValueRow.svelte";
 

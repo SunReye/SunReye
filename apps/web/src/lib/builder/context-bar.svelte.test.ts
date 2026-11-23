@@ -23,7 +23,7 @@ import {
   testCore,
   undesk,
 } from "./builder.harness.ts";
-import { addGrid } from "./modules.ts";
+import { addGrid } from "@sunreye/builder/builder/modules.ts";
 
 /** The context toolbar on the canvas. */
 const bar = () => page.getByRole("toolbar", { name: "Aktionen" });

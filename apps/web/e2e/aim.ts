@@ -5,12 +5,12 @@
 
 import { PerspectiveCamera, Vector3 } from "three";
 import type { Page } from "playwright";
-import { presetView } from "../src/lib/builder/camera.ts";
+import { presetView } from "@sunreye/builder/builder/camera.ts";
 import { chimney } from "../src/lib/builder/draft.ts";
-import { handles, type Handle, type Target } from "../src/lib/builder/handles/grips.ts";
+import { handles, type Handle, type Target } from "@sunreye/builder/builder/handles/grips.ts";
 import { loadPv } from "@sunreye/pv-wasm";
-import type { Pv, Scene } from "../src/lib/builder/pv.ts";
-import { fresh } from "../src/lib/builder/wall-openings.ts";
+import type { Pv, Scene } from "@sunreye/builder/builder/pv.ts";
+import { fresh } from "@sunreye/builder/builder/wall-openings.ts";
 import { SCENE } from "./fixtures.ts";
 import type { Pixel } from "./gestures.ts";
 

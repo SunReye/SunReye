@@ -3,10 +3,11 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, expect, test, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { presetView, type View } from "./camera.ts";
-import type { Hit } from "./scene.ts";
-import type { Geometry } from "./pv.ts";
-import SceneCanvas from "./SceneCanvas.svelte";
+import { presetView, type View } from "@sunreye/builder/builder/camera.ts";
+import type { Hit } from "@sunreye/builder/builder/scene.ts";
+import type { Geometry } from "@sunreye/builder/builder/pv.ts";
+import { canvasWords } from "./canvas-words.ts";
+import { SceneCanvas } from "@sunreye/builder";
 import { settle } from "../motion/clock.harness.ts";
 
 const house: Geometry = {
@@ -24,14 +25,15 @@ const house: Geometry = {
   solids: [{ kind: "sphere", centre: [-4, 0, 8], radius: 2 }],
 };
 
-test("the scene is drawn on a labelled canvas", async () => {
+test("the scene is drawn on a canvas named in its consumer's words", async () => {
   const screen = await render(SceneCanvas, {
     geometry: house,
     view: presetView("isometric", house),
     onview: () => {},
+    words: { ...canvasWords(), scene: "The roof from above" },
   });
 
-  await expect.element(screen.getByLabelText("3D-Szene des Hauses")).toBeVisible();
+  await expect.element(screen.getByLabelText("The roof from above")).toBeVisible();
 });
 
 afterEach(() => {
@@ -43,6 +45,7 @@ test("ready is reported once, after the first frame is drawn", async () => {
   const ready = vi.fn(() => draws.mock.calls.length);
 
   await render(SceneCanvas, {
+    words: canvasWords(),
     geometry: house,
     view: presetView("isometric", house),
     onview: () => {},
@@ -59,6 +62,7 @@ test("dragging the canvas orbits the camera and reports the new view", async () 
   const views: View[] = [];
 
   const screen = await render(SceneCanvas, {
+    words: canvasWords(),
     geometry: house,
     view: start,
     onview: (view: View) => {
@@ -142,6 +146,7 @@ async function closeUp(
   let pixel: [number, number, number] | undefined;
 
   const screen = await render(SceneCanvas, {
+    words: canvasWords(),
     geometry:
       colour === undefined
         ? roof

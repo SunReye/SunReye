@@ -5,9 +5,9 @@
 import type { Capabilities, ModuleType, Problem } from "../api/core.ts";
 import { m } from "../paraglide/messages.js";
 import { getLocale } from "../paraglide/runtime.js";
-import { wiredIn, type Draft } from "./modules.ts";
-import type { Misplaced, Pv } from "./pv.ts";
-import type { InputLimits, Inverters, Sizing } from "./pv.ts";
+import { wiredIn, type Draft } from "@sunreye/builder/builder/modules.ts";
+import type { Misplaced, Pv } from "@sunreye/builder/builder/pv.ts";
+import type { InputLimits, Inverters, Sizing } from "@sunreye/builder/builder/pv.ts";
 
 /** Maximum DC input voltage in volts, by inverter device id. */
 export type Limits = Readonly<Record<number, number>>;

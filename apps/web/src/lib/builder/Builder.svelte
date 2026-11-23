@@ -13,7 +13,7 @@
   import type { Core, Device, ModuleType } from "../api/core.ts";
   import InspectorPane, { PEEK } from "./InspectorPane.svelte";
   import { Moment } from "./moment.svelte.ts";
-  import type { Location, Pv } from "./pv.ts";
+  import type { Aerial, Location, Neighbour, Pv } from "@sunreye/builder/builder/pv.ts";
   import PhoneTools from "./PhoneTools.svelte";
   import { Session, type Reads } from "./session.svelte.ts";
   import Templates from "./Templates.svelte";
@@ -30,6 +30,8 @@
     location,
     limits = {},
     inputs = {},
+    aerial,
+    neighbours = [],
   }: {
     pv: Pv;
     core: Core;
@@ -46,6 +48,11 @@
     limits?: Reads["limits"];
     /** Each inverter's MPPT inputs' limits, by device id; a viewer knows none. */
     inputs?: Reads["inputs"];
+    /** An aerial image, north up, draped on the ground and the roof faces; Home supplies none
+     * (ADR 20, 25). Decoded by the consumer: the builder loads nothing. */
+    aerial?: Aerial | undefined;
+    /** Bodies around the plant that shade as its obstacles do; never saved. */
+    neighbours?: readonly Neighbour[];
   } = $props();
 
   // Every width edits (ADR 20): a phone with the inspector as a sheet and "+" on the canvas.
@@ -65,7 +72,14 @@
 
   /** The time slider's instant: it reads the draft, never writes it. */
   const moment = new Moment(
-    () => ({ core, pv, location, draft: session.draft, moduleTypes: session.moduleTypes }),
+    () => ({
+      core,
+      pv,
+      location,
+      neighbours,
+      draft: session.draft,
+      moduleTypes: session.moduleTypes,
+    }),
     // Handles to drag, or a face to lay and wire: faces and edges stay exact (ADR 23).
     () => session.editing !== undefined || session.roofwork !== undefined,
   );
@@ -73,6 +87,11 @@
   provideUploader((glb) => core.uploadCarBody(glb));
 
   const sheet = $derived(phone.current || portrait.current);
+
+  const around = $derived({
+    aerial,
+    neighbours: neighbours.length === 0 ? [] : pv.neighbours(neighbours),
+  });
 </script>
 
 <!-- A phone's canvas runs edge to edge; the shell's bottom bar, if any, sets `--bar-clear`. Clipped:
@@ -91,6 +110,7 @@
       draft={session.draft}
       geometry={session.geometry}
       panels={session.panels}
+      {around}
       {devices}
       {location}
       {moment}

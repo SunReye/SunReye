@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "vitest";
-import { buildScene, tint, type Panel } from "./scene.ts";
-import type { Geometry } from "./pv.ts";
+import { buildScene, tint, type Panel } from "@sunreye/builder/builder/scene.ts";
+import type { Geometry } from "@sunreye/builder/builder/pv.ts";
 import { measured, unmeasure } from "../scene/probe.harness.ts";
 
 // The modules as drawn (ADR 20 Rendering): one instanced draw, each with its own glow.

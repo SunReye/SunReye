@@ -4,7 +4,7 @@ import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect, type Corrections, type ModuleType, type Transport } from "../api/core.ts";
 import Builder from "./Builder.svelte";
-import { emptyDraft } from "./modules.ts";
+import { emptyDraft } from "@sunreye/builder/builder/modules.ts";
 import { fetchPv } from "./engine.ts";
 import { fill } from "./templates.ts";
 import { pickDay, savedFrom, scrub } from "./moment.harness.ts";

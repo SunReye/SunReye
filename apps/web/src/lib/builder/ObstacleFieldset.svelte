@@ -4,7 +4,7 @@
   import type { Editable } from "../components/value-editor/editable.ts";
   import { m } from "../paraglide/messages.js";
   import { choices, degrees, metres, REACH } from "./fields.ts";
-  import type { Obstacle } from "./pv.ts";
+  import type { Obstacle } from "@sunreye/builder/builder/pv.ts";
   import RemoveButton from "./RemoveButton.svelte";
   import ValueRow from "./ValueRow.svelte";
 

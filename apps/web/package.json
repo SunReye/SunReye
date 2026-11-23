@@ -35,6 +35,7 @@
     "@inlang/plugin-message-format": "4.6.0",
     "@internationalized/date": "3.12.4",
     "@lucide/svelte": "1.71.0",
+    "@sunreye/builder": "workspace:*",
     "@sunreye/catalogue": "workspace:*",
     "@sunreye/pv-wasm": "workspace:*",
     "@sunreye/scene": "workspace:*",

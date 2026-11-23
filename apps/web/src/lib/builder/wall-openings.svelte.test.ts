@@ -21,9 +21,9 @@ import {
   testCore,
   undesk,
 } from "./builder.harness.ts";
-import { handles } from "./handles/grips.ts";
-import type { Scene } from "./pv.ts";
-import { fresh } from "./wall-openings.ts";
+import { handles } from "@sunreye/builder/builder/handles/grips.ts";
+import type { Scene } from "@sunreye/builder/builder/pv.ts";
+import { fresh } from "@sunreye/builder/builder/wall-openings.ts";
 
 beforeEach(async () => {
   localStorage.removeItem("sunreye.builder.view");

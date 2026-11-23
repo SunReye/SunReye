@@ -8,7 +8,7 @@
   import Gauge from "@lucide/svelte/icons/gauge";
   import AnimatedNumber from "../components/animated-number.svelte";
   import PowerNumber from "../components/power-number.svelte";
-  import type { MotionTier } from "../motion/tier.ts";
+  import type { MotionTier } from "@sunreye/builder/motion/tier.ts";
   import { m } from "../paraglide/messages.js";
   import type { Hub } from "./reading.ts";
   import type { Pt } from "./schematic.ts";

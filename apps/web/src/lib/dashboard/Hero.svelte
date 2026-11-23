@@ -7,7 +7,7 @@
   import type { Core, Live } from "../api/core.ts";
   import { CHOICE, dashboard, keptChoice, type SceneLayout } from "../live/dashboard.ts";
   import Flow2d from "../flow/Flow2d.svelte";
-  import { motion } from "../motion/tier.svelte.ts";
+  import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
   import { m } from "../paraglide/messages.js";
   import CameraLock from "./CameraLock.svelte";
   import Headline from "./Headline.svelte";

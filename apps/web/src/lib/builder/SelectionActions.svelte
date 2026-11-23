@@ -9,7 +9,7 @@
   import * as DropdownMenu from "@sunreye/ui/dropdown-menu";
   import type { StringDraft } from "../api/core.ts";
   import { m } from "../paraglide/messages.js";
-  import { stringCss } from "./scene.ts";
+  import { stringCss } from "@sunreye/builder/builder/scene.ts";
   import ToolButton from "./ToolButton.svelte";
   import type { WiringMode } from "./wiring-mode.svelte.ts";
 

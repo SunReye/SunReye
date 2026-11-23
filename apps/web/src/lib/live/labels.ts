@@ -1,9 +1,9 @@
 // What the live scene shows (ADR 20): each string tinted by its share of its own peak, and a chip
 // per string, inverter, battery, car and plant flow. Pure: no three.js.
 import { PLANT, type PvString, type Values } from "../api/core.ts";
-import type { CarPlace, Equipment, Geometry, Mount, Point } from "../builder/pv.ts";
-import type { Panel } from "../builder/scene.ts";
-import { parked, type Parked } from "../cars/parked.ts";
+import type { CarPlace, Equipment, Geometry, Mount, Point } from "@sunreye/builder/builder/pv.ts";
+import type { Panel } from "@sunreye/builder/builder/scene.ts";
+import { parked, type Parked } from "@sunreye/builder/cars/parked.ts";
 import { formatFigure } from "../detail/figures.ts";
 import type { EquipmentKind } from "../equipment-kinds.ts";
 

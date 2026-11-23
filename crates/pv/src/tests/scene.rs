@@ -16,6 +16,7 @@ fn block(roof: Roof) -> Block {
         overhang: Overhang::default(),
         roof_colour: None,
         wall_colour: None,
+        free_form: None,
     }
 }
 

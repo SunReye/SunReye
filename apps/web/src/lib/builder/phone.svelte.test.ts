@@ -24,8 +24,8 @@ import {
   testCore,
   undesk,
 } from "./builder.harness.ts";
-import { addGrid, emptyDraft } from "./modules.ts";
-import { handles } from "./handles/grips.ts";
+import { addGrid, emptyDraft } from "@sunreye/builder/builder/modules.ts";
+import { handles } from "@sunreye/builder/builder/handles/grips.ts";
 
 // The builder on a phone (ADR 20): the canvas fills the screen, the inspector is a bottom sheet,
 // "+" adds, and every step is a finger.

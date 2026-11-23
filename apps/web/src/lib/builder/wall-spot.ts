@@ -1,8 +1,17 @@
 // A wall spot (ADR 20): where a tap struck a block's wall, and what is added there. The crate keeps
 // an opening on its wall and says where a marker hangs; nothing here knows a wall's length. Pure.
-import type { Equipment, Modules, OpeningKind, Point, Pv, Scene, Unfit, Wall } from "./pv.ts";
-import { snap, tidy } from "./handles/frame.ts";
-import { refit, USUAL } from "./wall-openings.ts";
+import type {
+  Equipment,
+  Modules,
+  OpeningKind,
+  Point,
+  Pv,
+  Scene,
+  Unfit,
+  Wall,
+} from "@sunreye/builder/builder/pv.ts";
+import { snap, tidy } from "@sunreye/builder/builder/handles/frame.ts";
+import { refit, USUAL } from "@sunreye/builder/builder/wall-openings.ts";
 
 export interface WallSpot {
   readonly block: number;
