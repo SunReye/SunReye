@@ -5,8 +5,8 @@ use std::collections::{BTreeMap, HashMap};
 
 use serde::Deserialize;
 use sunreye_pv::{
-    Input, Inverter, Layout, Module, ModuleType, Plane, PvString, Scene, Size, clear_weather,
-    estimate,
+    Input, Inverter, Layout, Module, ModuleType, Neighbour, NeighbourRefused, Plane, PvString,
+    Scene, Size, clear_weather, estimate,
 };
 
 use crate::Place;
@@ -57,12 +57,15 @@ pub struct Wiring {
     loss: f64,
 }
 
-/// The scene names its strings by position in `strings`.
+/// The scene names its strings by position in `strings`; the builder's consumer may stand neighbours
+/// around it, which shade as its obstacles do (ADR 20).
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Run {
     location: Place,
     scene: Scene,
+    #[serde(default)]
+    neighbours: Vec<Neighbour>,
     module_types: Vec<Datasheet>,
     strings: Vec<Wiring>,
     times: Vec<i64>,
@@ -70,14 +73,18 @@ pub struct Run {
 
 impl Run {
     /// By time, then string position; 0 W for a string of an unknown module type.
-    pub fn watts(&self) -> Vec<Vec<f64>> {
+    ///
+    /// # Errors
+    /// A supplied neighbour's [`NeighbourRefused`].
+    pub fn watts(&self) -> Result<Vec<Vec<f64>>, NeighbourRefused> {
         let types: HashMap<u32, ModuleType> = self
             .module_types
             .iter()
             .map(|d| (d.id, d.model()))
             .collect();
-        let (layout, order) = self.layout(&types);
-        self.times
+        let (layout, order) = self.layout(&types)?;
+        Ok(self
+            .times
             .iter()
             .map(|&unix| {
                 let estimated = estimate(&layout, &clear_weather(unix, layout.location));
@@ -92,11 +99,14 @@ impl Run {
                     .map(|i| by_position.get(&i).copied().unwrap_or(0.0))
                     .collect()
             })
-            .collect()
+            .collect())
     }
 
     /// The model's layout, and the string position of each of its strings in its order.
-    fn layout(&self, types: &HashMap<u32, ModuleType>) -> (Layout, Vec<usize>) {
+    fn layout(
+        &self,
+        types: &HashMap<u32, ModuleType>,
+    ) -> Result<(Layout, Vec<usize>), NeighbourRefused> {
         let placed = self.placed(types);
         // By inverter, then input.
         let mut wired: BTreeMap<u32, BTreeMap<u32, Vec<(usize, PvString)>>> = BTreeMap::new();
@@ -130,12 +140,14 @@ impl Run {
                     .collect(),
             })
             .collect();
+        let mut occluders = self.scene.occluders();
+        occluders.extend(Neighbour::occluders(&self.neighbours)?);
         let layout = Layout {
             location: self.location.into(),
             inverters,
-            occluders: self.scene.occluders(),
+            occluders,
         };
-        (layout, order)
+        Ok((layout, order))
     }
 
     /// The scene's modules by string position.
