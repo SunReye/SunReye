@@ -357,7 +357,7 @@ A traced roof face whose corners lie more than 2 cm off its plane, as set height
 _Avoid_: Warped face, invalid face
 
 **Ready roof**:
-A common German roof, such as a Satteldach or a Mansarddach, placed in one click as the lines a person could have traced and pulled up, then edited as any traced roof. German UI: Fertige Formen.
+A common German roof, such as a Satteldach or a Mansarddach, placed in one click as the lines a person could have traced and pulled up, then edited as any traced roof.
 _Avoid_: Template, preset, roof type
 
 **Covering**:
