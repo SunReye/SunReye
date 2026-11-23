@@ -5,7 +5,7 @@
 
 import { PerspectiveCamera, Vector3 } from "three";
 import type { Page } from "playwright";
-import { presetView } from "@sunreye/builder";
+import { presetView } from "../../../packages/builder/src/builder/camera.ts";
 // The bench aims where the builder draws its handles, which no consumer needs: the one reader of
 // the package's files by their path (ADR 25).
 import { chimney } from "../../../packages/builder/src/builder/draft.ts";
