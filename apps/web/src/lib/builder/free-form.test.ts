@@ -174,3 +174,66 @@ test("a non-convex face its setback leaves no roof on is shaded over its own are
 
   expect(covered(shown, "shade")).toBeCloseTo(56, 2);
 });
+
+/** The L under one face falling 1 m in 4 to the south, filled with one string's modules, and
+ * whatever else stands on the plot. */
+function sloped(...obstacles: Scene["obstacles"]): Scene {
+  const face = L.map(([x, z]) => [x, 5 - z / 4, z]);
+  const grid = { block: 0, face: 0, moduleType: 7, landscape: false, setback: 0.3 };
+  const bare = { ...scene({ footprint: L, faces: [face] }), grids: [{ ...grid, modules: [] }] };
+
+  const places = pv.fillFace({
+    scene: bare,
+    sizes: { 7: { width: 1.134, height: 1.722 } },
+    grid: 0,
+  });
+
+  const modules = places.map(([across, up]) => ({
+    across,
+    up,
+    landscape: false,
+    optimized: false,
+    string: 0,
+  }));
+
+  return { ...bare, obstacles, grids: [{ ...grid, modules }] };
+}
+
+test("modules laid on a non-convex free-form face are lit, and shaded as on any face", () => {
+  const modules = sloped().grids?.[0]?.modules.length ?? 0;
+
+  const datasheet = {
+    id: 7,
+    name: "Owner 400",
+    pmax: 400,
+    vmp: 34,
+    imp: 11.76,
+    voc: 41,
+    isc: 12.5,
+    powerCoefficient: -0.35,
+    voltageCoefficient: -0.27,
+    currentCoefficient: 0.05,
+    width: 1.134,
+    height: 1.722,
+    bypassDiodes: 3,
+  };
+
+  const wired = { name: "", moduleType: 7, device: 1, input: 1, modules, optimized: 0, loss: 2 };
+
+  // 2026-06-21 11:00 UTC over Berlin.
+  const lit = (on: Scene): number =>
+    pv.clearSky({
+      location: { latitude: 52.52, longitude: 13.38 },
+      scene: on,
+      moduleTypes: [datasheet],
+      strings: [{ ...wired, tilt: 14, azimuth: 180 }],
+      times: [1_782_039_600],
+    })[0]?.[0] ?? 0;
+
+  // A wall 20 m high just south of the house.
+  const wall = { kind: "box", x: -5, z: 10, width: 20, depth: 1, height: 20, rotation: 0 } as const;
+
+  expect(modules).toBeGreaterThan(10);
+  expect(lit(sloped())).toBeGreaterThan(modules * 200);
+  expect(lit(sloped(wall))).toBeLessThan(lit(sloped()) / 2);
+});
