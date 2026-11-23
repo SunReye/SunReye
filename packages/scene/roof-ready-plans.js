@@ -1,6 +1,8 @@
 // The ready roofs (ADR 20), each as a person traces it: the paths clicked, the lines marked, the
 // heights set. `roof-ready.js` makes them. Pure.
 
+import { PLACE } from "./roof-plan.js";
+
 /** @import { Kind, ReadyEntry, RoofSize } from "./roof.d.ts" */
 
 /** @typedef {readonly [number, number]} Flat A place seen from above, x and z. */
@@ -94,11 +96,8 @@ const marked = (w, z, kind) => ({ from: flat(0, z), to: flat(w, z), kind });
  */
 const raised = (xs, zs, height) => xs.flatMap((x) => zs.map((z) => ({ at: flat(x, z), height })));
 
-/**
- * A Mansard roof's break: two thirds of the way from its eaves to its top.
- * @param {number} eave
- * @param {number} ridge
- */
+/** A Mansard roof's break: two thirds of the way from its eaves to its top.
+ * @type {(eave: number, ridge: number) => number} */
 const broken = (eave, ridge) => eave + ((ridge - eave) * 2) / 3;
 
 /**
@@ -117,7 +116,7 @@ function hipped(w, d, inset) {
   const b = long ? flat(x1 - half, (z0 + z1) / 2) : flat((x0 + x1) / 2, z1 - half);
   const [n0, n1] = long ? [flat(x0, z0), flat(x0, z1)] : [flat(x0, z0), flat(x1, z0)];
   const [f0, f1] = long ? [flat(x1, z0), flat(x1, z1)] : [flat(x0, z1), flat(x1, z1)];
-  const ridge = Math.hypot(a[0] - b[0], a[1] - b[1]) > 0 ? [a, b] : [a];
+  const ridge = Math.hypot(a[0] - b[0], a[1] - b[1]) >= PLACE ? [a, b] : [a];
 
   // Each line is clicked from one the roof has, as a line touching none starts a block of its own.
   return [
@@ -262,25 +261,26 @@ const OTHERS = [
     de: "Tonnendach",
     en: "Barrel roof",
     plan: ({ width: w, depth: d, eave, ridge }) => {
-      // The arc through both eaves and the top, its radius from its chord and its rise.
+      // The arc through both eaves and the top, its radius from its chord and its rise; none, flat.
       const rise = ridge - eave;
       const radius = ((d / 2) ** 2 + rise ** 2) / (2 * rise);
       const zs = Array.from({ length: STRIPS - 1 }, (_, k) => ((k + 1) * d) / STRIPS);
 
+      /** @param {number} z */
+      const sag = (z) =>
+        rise === 0
+          ? 0
+          : Math.sign(rise) * (Math.abs(radius) - Math.sqrt(radius ** 2 - (z - d / 2) ** 2));
+
       return {
         paths: [box(w, d), ...zs.map((z) => across(w, z))],
-        heights: zs
-          .filter((z) => z !== d / 2)
-          .flatMap((z) =>
-            raised([0, w], [z], ridge - radius + Math.sqrt(radius ** 2 - (z - d / 2) ** 2)),
-          ),
+        heights: zs.flatMap((z) => raised([0, w], [z], ridge - sag(z))),
       };
     },
   },
 ];
 
-/** The ready roofs, in the order a menu lists them. */
-/** @type {readonly ReadyRoof[]} */
+/** The ready roofs, in the order a menu lists them. @type {readonly ReadyRoof[]} */
 export const ROOFS = [
   {
     id: "satteldach",

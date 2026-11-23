@@ -179,3 +179,27 @@ test("a ready roof is refused onto another traced roof, without a size, or by an
   });
   expect(placeRoof(EMPTY, "kuppel", { x: 0, z: 0 }, SIZE)).toEqual({ refused: "missing" });
 });
+
+test("every ready roof places flat at any size and corner: square, deep, and with no rise", () => {
+  const sizes = [
+    { width: 7, depth: 7, eave: 2.5, ridge: 6.1 },
+    { width: 10, depth: 10, eave: 3, ridge: 7 },
+    { width: 8, depth: 10, eave: 3, ridge: 7 },
+    { width: 12.3, depth: 9.7, eave: 3, ridge: 3 },
+  ];
+
+  for (const { id } of readyRoofs)
+    for (const size of sizes) {
+      const edited = placeRoof(EMPTY, id, { x: 3.5, z: -2 }, size);
+
+      expect([id, size, "refused" in edited ? edited.refused : bent(edited.scene, 0)]).toEqual([
+        id,
+        size,
+        [],
+      ]);
+    }
+
+  const away = made(placeRoof(EMPTY, "krueppelwalmdach", { x: 3.5, z: -2 }, SIZE));
+
+  expect(height(away, 3.5, 0)).toBe(5);
+});
