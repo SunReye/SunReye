@@ -5,8 +5,8 @@
   Tiers: full = comet chains, lite = one travelling dashed cable, still = a plain lit rail.
 -->
 <script lang="ts">
-  import { fade, MOTION_MS } from "../motion.ts";
-  import type { MotionTier } from "../motion/tier.ts";
+  import { fade, MOTION_MS } from "@sunreye/builder/motion.ts";
+  import type { MotionTier } from "@sunreye/builder/motion/tier.ts";
   import type { RailPulse } from "./flow-pulse.ts";
   import type { Direction, RailLine } from "./schematic.ts";
   import FlowCharge from "./FlowCharge.svelte";

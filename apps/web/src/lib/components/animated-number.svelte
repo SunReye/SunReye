@@ -2,8 +2,8 @@
   import { untrack, type Snippet } from "svelte";
   import { Tween } from "svelte/motion";
   import { tickGlideMs } from "../live/stream.svelte.ts";
-  import { ease } from "../motion.ts";
-  import { motion } from "../motion/tier.svelte.ts";
+  import { ease } from "@sunreye/builder/motion.ts";
+  import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
   import { COUNT_UP_MS } from "../motion/values.ts";
   import { getLocale } from "../paraglide/runtime.js";
 

@@ -4,10 +4,10 @@ import "../../app.css";
 import { expect, test } from "vitest";
 import { render } from "vitest-browser-svelte";
 import { settle } from "../motion/clock.harness.ts";
-import type { Geometry, Point } from "./pv.ts";
-import type { Projector } from "./drawing.svelte.ts";
-import SceneCanvas from "./SceneCanvas.svelte";
-import type { Aerial } from "./supplied.ts";
+import type { Geometry, Point } from "@sunreye/builder/builder/pv.ts";
+import type { Projector } from "@sunreye/builder/builder/drawing.svelte.ts";
+import { SceneCanvas } from "@sunreye/builder";
+import type { Aerial } from "@sunreye/builder/builder/supplied.ts";
 import { canvasWords } from "./canvas-words.ts";
 
 /** The image's quarters, each one colour: north-west red, north-east green, south-west blue,

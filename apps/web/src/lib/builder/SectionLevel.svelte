@@ -6,8 +6,8 @@
   import AddButtons from "./AddButtons.svelte";
   import { additions } from "./additions.ts";
   import { degrees } from "./fields.ts";
-  import type { Level, Section } from "./levels.ts";
-  import type { Draft } from "./modules.ts";
+  import type { Level, Section } from "@sunreye/builder/builder/levels.ts";
+  import type { Draft } from "@sunreye/builder/builder/modules.ts";
   import { entries, placed, type Plan } from "./outline.ts";
   import ValueRow from "./ValueRow.svelte";
 

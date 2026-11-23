@@ -1,9 +1,9 @@
 // The draft without one of its objects (ADR 20): what "Entfernen" makes of it, in the inspector
 // and in the context toolbar. Pure.
-import { gridOn, parent, type Level } from "./levels.ts";
-import { withoutBlock, withoutString, type Draft } from "./modules.ts";
-import { removeModule } from "./placing.ts";
-import type { Scene } from "./pv.ts";
+import { gridOn, parent, type Level } from "@sunreye/builder/builder/levels.ts";
+import { withoutBlock, withoutString, type Draft } from "@sunreye/builder/builder/modules.ts";
+import { removeModule } from "@sunreye/builder/builder/placing.ts";
+import type { Scene } from "@sunreye/builder/builder/pv.ts";
 
 type Splice = (scene: Scene, index: number) => Scene;
 

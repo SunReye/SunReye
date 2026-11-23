@@ -10,8 +10,14 @@
   import { Button } from "@sunreye/ui/button";
   import type { Checks } from "./checks.ts";
   import GridSettings from "./GridSettings.svelte";
-  import { clearGrid, editGrid, fillGrid, removeGrid, type Draft } from "./modules.ts";
-  import type { ModuleGrid } from "./pv.ts";
+  import {
+    clearGrid,
+    editGrid,
+    fillGrid,
+    removeGrid,
+    type Draft,
+  } from "@sunreye/builder/builder/modules.ts";
+  import type { ModuleGrid } from "@sunreye/builder/builder/pv.ts";
 
   let {
     draft,

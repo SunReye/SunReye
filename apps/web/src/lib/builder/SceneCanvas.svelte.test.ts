@@ -3,11 +3,11 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, expect, test, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { presetView, type View } from "./camera.ts";
-import type { Hit } from "./scene.ts";
-import type { Geometry } from "./pv.ts";
+import { presetView, type View } from "@sunreye/builder/builder/camera.ts";
+import type { Hit } from "@sunreye/builder/builder/scene.ts";
+import type { Geometry } from "@sunreye/builder/builder/pv.ts";
 import { canvasWords } from "./canvas-words.ts";
-import SceneCanvas from "./SceneCanvas.svelte";
+import { SceneCanvas } from "@sunreye/builder";
 import { settle } from "../motion/clock.harness.ts";
 
 const house: Geometry = {

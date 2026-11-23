@@ -1,24 +1,25 @@
 <script lang="ts" module>
-  export type { Around, Editing, Roofwork, Projector } from "./SceneCanvas.svelte";
+  export type { Around, Editing, Roofwork, Projector } from "@sunreye/builder";
 
-  export type { Hit, Panel } from "./scene.ts";
+  export type { Hit, Panel } from "@sunreye/builder/builder/scene.ts";
 </script>
 
 <script lang="ts">
   import { canvasWords } from "./canvas-words.ts";
   import type { Core } from "../api/core.ts";
   import { modelLoader } from "../cars/models.ts";
-  import type { Parked } from "../cars/parked.ts";
-  import { faceView, parseView, presetView, type View } from "./camera.ts";
-  import type { Geometry, Point, RoofFace } from "./pv.ts";
-  import SceneCanvas, {
+  import type { Parked } from "@sunreye/builder/cars/parked.ts";
+  import { faceView, parseView, presetView, type View } from "@sunreye/builder/builder/camera.ts";
+  import type { Geometry, Point, RoofFace } from "@sunreye/builder/builder/pv.ts";
+  import {
+    SceneCanvas,
     type Around,
     type Editing,
     type Roofwork,
     type Projector,
     type SceneWeather,
-  } from "./SceneCanvas.svelte";
-  import type { Hit, Panel } from "./scene.ts";
+  } from "@sunreye/builder";
+  import type { Hit, Panel } from "@sunreye/builder/builder/scene.ts";
   import ViewMenu from "./ViewMenu.svelte";
   import WeatherMenu, { type Trial } from "./WeatherMenu.svelte";
 

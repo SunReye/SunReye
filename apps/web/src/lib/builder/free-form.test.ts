@@ -10,10 +10,10 @@ import {
   type Object3D,
 } from "three";
 import { additions } from "./additions.ts";
-import { overlay } from "./overlay.ts";
+import { overlay } from "@sunreye/builder/builder/overlay.ts";
 import { loadPv } from "@sunreye/pv-wasm";
-import { type Block, type FreeForm, type Scene } from "./pv.ts";
-import { buildScene } from "./scene.ts";
+import { type Block, type FreeForm, type Scene } from "@sunreye/builder/builder/pv.ts";
+import { buildScene } from "@sunreye/builder/builder/scene.ts";
 
 // Free-form roofs drawn (ADR 20): the pv crate's faces and walls, convex or not, as the builder
 // draws them.

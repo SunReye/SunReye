@@ -11,10 +11,10 @@ import {
   Vector3,
   type Group,
 } from "three";
-import { carBody, fitModel, loadCar } from "./bodies.ts";
-import type { Parked } from "./parked.ts";
+import { carBody, fitModel, loadCar } from "@sunreye/builder/cars/bodies.ts";
+import type { Parked } from "@sunreye/builder/cars/parked.ts";
 
-const SHIPPED = new URL("car.glb", import.meta.url);
+const SHIPPED = new URL(import.meta.resolve("@sunreye/builder/cars/car.glb"));
 
 const loaded = loadCar(SHIPPED.href);
 

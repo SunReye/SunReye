@@ -1,9 +1,9 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
 import { BoxGeometry, Group, Mesh, type Object3D } from "three";
-import { loadCar } from "./bodies.ts";
-import { garage } from "./garage.ts";
-import type { Parked } from "./parked.ts";
+import { loadCar } from "@sunreye/builder/cars/bodies.ts";
+import { garage } from "@sunreye/builder/cars/garage.ts";
+import type { Parked } from "@sunreye/builder/cars/parked.ts";
 
 const car: Parked = {
   device: 7,
@@ -18,7 +18,7 @@ const car: Parked = {
   soc: 63,
 };
 
-const template = await loadCar(new URL("car.glb", import.meta.url).href);
+const template = await loadCar(new URL(import.meta.resolve("@sunreye/builder/cars/car.glb")).href);
 
 function counting() {
   let count = 0;

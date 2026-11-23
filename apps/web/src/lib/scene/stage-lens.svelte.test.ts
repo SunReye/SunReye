@@ -1,7 +1,7 @@
 import { flushSync } from "svelte";
 import { afterEach, expect, test } from "vitest";
-import { motion } from "../motion/tier.svelte.ts";
-import { quality } from "./quality.svelte.ts";
+import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
+import { quality } from "@sunreye/builder/scene/quality.svelte.ts";
 import {
   draws,
   DROPS,

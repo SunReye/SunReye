@@ -24,8 +24,8 @@ import {
   undesk,
 } from "./builder.harness.ts";
 import { saveFrom } from "./moment.harness.ts";
-import { addGrid, type Draft } from "./modules.ts";
-import type { Scene } from "./pv.ts";
+import { addGrid, type Draft } from "@sunreye/builder/builder/modules.ts";
+import type { Scene } from "@sunreye/builder/builder/pv.ts";
 
 // Modules laid on the roof in 3D (ADR 20): a press on the selected face lays a module where the
 // pointer holds its middle, a drag a row, and a drag from a module moves it.

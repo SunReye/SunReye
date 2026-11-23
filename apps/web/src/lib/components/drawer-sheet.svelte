@@ -6,7 +6,7 @@
   import type { Snippet } from "svelte";
   import * as Drawer from "@sunreye/ui/drawer";
   import { haptics } from "@sunreye/ui/haptics";
-  import { motion } from "../motion/tier.svelte.ts";
+  import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
 
   let {
     open = $bindable(false),

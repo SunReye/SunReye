@@ -1,0 +1,31 @@
+{
+  "name": "@sunreye/builder",
+  "version": "5.0.0",
+  "private": true,
+  "description": "SunReye's 3D house builder: the scene canvas and what it draws and answers on it (ADRs 20, 25).",
+  "license": "SEE LICENSE IN LICENSE",
+  "files": [
+    "src"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "svelte": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./*": "./src/*"
+  },
+  "devDependencies": {
+    "@types/three": "0.187.0",
+    "svelte": "5.57.3",
+    "three": "0.187.0"
+  },
+  "peerDependencies": {
+    "@sunreye/pv-wasm": "^5.0.0",
+    "@sunreye/scene": "^5.0.0",
+    "@sunreye/ui": "^5.0.0",
+    "svelte": "^5.57.3",
+    "three": "^0.187.0"
+  }
+}

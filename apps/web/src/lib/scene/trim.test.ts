@@ -1,7 +1,7 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import type { Face } from "../builder/pv.ts";
-import { edges } from "./trim.ts";
+import type { Face } from "@sunreye/builder/builder/pv.ts";
+import { edges } from "@sunreye/builder/scene/trim.ts";
 
 /** A gable roof over 10 × 8 m: eaves at 3 m along east–west, the ridge at 5 m. */
 const gable: Face[] = [

@@ -3,8 +3,8 @@
   import Plus from "@lucide/svelte/icons/plus";
   import { Button } from "@sunreye/ui/button";
   import type { Addition } from "./additions.ts";
-  import type { Level } from "./levels.ts";
-  import type { Draft } from "./modules.ts";
+  import type { Level } from "@sunreye/builder/builder/levels.ts";
+  import type { Draft } from "@sunreye/builder/builder/modules.ts";
 
   let {
     adds,

@@ -1,8 +1,8 @@
 import { flushSync } from "svelte";
 import { afterEach, expect, test } from "vitest";
-import { weatherEffects } from "./weather-effects.svelte.ts";
+import { weatherEffects } from "@sunreye/builder/scene/weather-effects.svelte.ts";
 import { DROPS, open, playedUntil, RAIN, shut } from "./stage.harness.svelte.ts";
-import { DRY } from "./weather.ts";
+import { DRY } from "@sunreye/builder/scene/weather.ts";
 
 // The Wettereffekte switch on a lit studio (ADR 23 "Off switch").
 

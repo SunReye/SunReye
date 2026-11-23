@@ -76,7 +76,6 @@ export class Flight {
   }
 
   /** Grounds the flight: the admin's hand took the camera. */
-  // fallow-ignore-next-line unused-class-member -- SceneCanvas calls it through `Lit["flight"]`.
   stop(): void {
     this.#step = undefined;
   }

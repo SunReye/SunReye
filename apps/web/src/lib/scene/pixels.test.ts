@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { GROUPS, type Maps, type Pixels } from "./pixels.ts";
+import { GROUPS, type Maps, type Pixels } from "@sunreye/builder/scene/pixels.ts";
 
 function map(key: string): Pixels {
   const maps: Maps = GROUPS.module();

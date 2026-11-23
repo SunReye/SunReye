@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { Color, PMREMGenerator } from "three";
-import { daylight, theme } from "./light.ts";
+import { daylight, theme } from "@sunreye/builder/scene/light.ts";
 import { measured, unmeasure } from "./probe.harness.ts";
 
 // The sky that lights the scene is made again only once the sun has moved far enough to show

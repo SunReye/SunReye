@@ -1,7 +1,7 @@
 <script lang="ts">
   import { cn, type WithElementRef } from "@sunreye/ui/utils";
   // Local: the still tier (ADR 21, #750).
-  import { motion } from "#lib/motion/tier.svelte.ts";
+  import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
   import {
     type CarouselAPI,
     type CarouselProps,

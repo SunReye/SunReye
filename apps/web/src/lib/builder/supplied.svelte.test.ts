@@ -6,10 +6,10 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import { connect } from "../api/core.ts";
-import { Studio } from "../scene/studio.ts";
+import { Studio } from "@sunreye/builder/scene/studio.ts";
 import Builder from "./Builder.svelte";
 import { desk, DEVICES, house, MODULE, pv, settle, testCore, undesk } from "./builder.harness.ts";
-import type { Aerial, Neighbour } from "./pv.ts";
+import type { Aerial, Neighbour } from "@sunreye/builder/builder/pv.ts";
 
 beforeEach(async () => {
   localStorage.removeItem("sunreye.builder.view");

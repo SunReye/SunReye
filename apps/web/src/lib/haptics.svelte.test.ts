@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { cdp } from "vitest/browser";
 import { WebHaptics } from "web-haptics";
 import { HAPTICS, haptics } from "@sunreye/ui/haptics";
-import { LOW_POWER } from "./motion/tier.ts";
+import { LOW_POWER } from "@sunreye/builder/motion/tier.ts";
 import { realTimers } from "./motion/clock.harness.ts";
 
 let vibrate: ReturnType<typeof vi.fn<() => boolean>>;

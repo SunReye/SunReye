@@ -3,7 +3,7 @@ import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { MODULE, pv } from "../builder/builder.harness.ts";
-import type { Scene } from "../builder/pv.ts";
+import type { Scene } from "@sunreye/builder/builder/pv.ts";
 import { chip, finish, frame, layout, scene, show, words } from "./live-scene.harness.ts";
 import { frames, framesUntil, realTimers, settle, stepUntil } from "../motion/clock.harness.ts";
 import { feed } from "./stream.harness.ts";

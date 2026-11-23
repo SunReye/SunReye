@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { skyStep } from "./sky-step.ts";
+import { skyStep } from "@sunreye/builder/scene/sky-step.ts";
 
 // When the sky that lights the scene is made again (ADR 20 Rendering): only once the sun has
 // moved far enough to show.

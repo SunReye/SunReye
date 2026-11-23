@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { Fade } from "./lens.ts";
+import { Fade } from "@sunreye/builder/scene/lens.ts";
 
 const RAIN = { rain: 1, snow: 0, frost: 0 };
 

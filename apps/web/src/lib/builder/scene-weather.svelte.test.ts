@@ -1,9 +1,9 @@
 import "../../app.css";
 import { test } from "vitest";
 import { render } from "vitest-browser-svelte";
-import { DRY, type SceneWeather } from "../scene/weather.ts";
-import type { Geometry } from "./pv.ts";
-import SceneCanvas from "./SceneCanvas.svelte";
+import { DRY, type SceneWeather } from "@sunreye/builder/scene/weather.ts";
+import type { Geometry } from "@sunreye/builder/builder/pv.ts";
+import { SceneCanvas } from "@sunreye/builder";
 import { settle } from "../motion/clock.harness.ts";
 import { canvasWords } from "./canvas-words.ts";
 

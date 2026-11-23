@@ -8,8 +8,8 @@
   import type { Core, Device, ModuleType } from "../api/core.ts";
   import { parkedNow } from "../cars/parked.svelte.ts";
   import type { Moment } from "./moment.svelte.ts";
-  import type { Draft } from "./modules.ts";
-  import type { Geometry, Location, RoofFace } from "./pv.ts";
+  import type { Draft } from "@sunreye/builder/builder/modules.ts";
+  import type { Geometry, Location, RoofFace } from "@sunreye/builder/builder/pv.ts";
   import ContextBar, { type Selected } from "./ContextBar.svelte";
   import Stage, {
     type Around,

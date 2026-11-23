@@ -1,8 +1,8 @@
 // Templates: the starting scenes an empty scene offers (ADR 20). Nothing remembers which one filled
 // it; the admin then edits as usual.
-import type { Draft } from "./modules.ts";
-import type { Block, Opening } from "./pv.ts";
-import { USUAL } from "./wall-openings.ts";
+import type { Draft } from "@sunreye/builder/builder/modules.ts";
+import type { Block, Opening } from "@sunreye/builder/builder/pv.ts";
+import { USUAL } from "@sunreye/builder/builder/wall-openings.ts";
 
 export const TEMPLATES = ["gable", "bungalow", "hip", "lHouse", "terraceEnd", "empty"] as const;
 

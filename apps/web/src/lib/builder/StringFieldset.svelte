@@ -5,10 +5,10 @@
   import type { Device, ModuleType, StringDraft } from "../api/core.ts";
   import { m } from "../paraglide/messages.js";
   import { amount, choices } from "./fields.ts";
-  import type { WiredIn } from "./modules.ts";
+  import type { WiredIn } from "@sunreye/builder/builder/modules.ts";
   import ModuleTypeSelect from "./ModuleTypeSelect.svelte";
   import RemoveButton from "./RemoveButton.svelte";
-  import { stringCss } from "./scene.ts";
+  import { stringCss } from "@sunreye/builder/builder/scene.ts";
   import ValueRow from "./ValueRow.svelte";
 
   let {

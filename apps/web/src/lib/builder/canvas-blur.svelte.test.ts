@@ -7,7 +7,7 @@ import { connect } from "../api/core.ts";
 import { least, still } from "../contrast.harness.ts";
 import Builder from "./Builder.svelte";
 import * as builder from "./builder.harness.ts";
-import { emptyDraft, type Draft } from "./modules.ts";
+import { emptyDraft, type Draft } from "@sunreye/builder/builder/modules.ts";
 import { blurred } from "./over-canvas.harness.ts";
 
 // Canvas chips (ADR 21 "Glass") in the builder: nothing that lies over the 3D canvas blurs what

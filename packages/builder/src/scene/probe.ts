@@ -79,13 +79,11 @@ export class Probe {
   }
 
   /** The last frame drawn. */
-  // fallow-ignore-next-line unused-class-member -- the readout reads it through `Studio["measure"]`.
   get last(): Frame | undefined {
     return this.#last;
   }
 
   /** Frames drawn in the last second. */
-  // fallow-ignore-next-line unused-class-member -- the readout reads it through `Studio["measure"]`.
   get fps(): number {
     const since = this.#clock() - 1000;
 
@@ -93,7 +91,6 @@ export class Probe {
   }
 
   /** Milliseconds the GPU took over a frame; null where the browser does not measure it. */
-  // fallow-ignore-next-line unused-class-member -- the readout reads it through `Studio["measure"]`.
   get gpu(): number | null {
     return this.#gpu.last;
   }

@@ -1,11 +1,11 @@
 // What each inspector group can add, and the level the new object opens at (ADR 20).
 import { m } from "../paraglide/messages.js";
 import { chimney, fence, nextBlock, obstacle, surface } from "./draft.ts";
-import type { Level, Section } from "./levels.ts";
-import { addString, type Draft } from "./modules.ts";
+import type { Level, Section } from "@sunreye/builder/builder/levels.ts";
+import { addString, type Draft } from "@sunreye/builder/builder/modules.ts";
 import type { Plan } from "./outline.ts";
-import type { Equipment, Obstacle, OpeningKind } from "./pv.ts";
-import { fresh } from "./wall-openings.ts";
+import type { Equipment, Obstacle, OpeningKind } from "@sunreye/builder/builder/pv.ts";
+import { fresh } from "@sunreye/builder/builder/wall-openings.ts";
 
 /** One add button: the draft with the new object, and its level. */
 export interface Addition {

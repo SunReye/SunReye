@@ -1,7 +1,7 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import type { View } from "../builder/camera.ts";
-import { course, Flight } from "./flight.ts";
+import type { View } from "@sunreye/builder/builder/camera.ts";
+import { course, Flight } from "@sunreye/builder/scene/flight.ts";
 
 const south = { position: [0, 0, 10], target: [0, 0, 0] } as const;
 const east = { position: [10, 0, 0], target: [0, 0, 0] } as const;

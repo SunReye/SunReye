@@ -5,7 +5,7 @@
 <script lang="ts">
   import MapPinOff from "@lucide/svelte/icons/map-pin-off";
   import type { Device, StringDraft } from "../api/core.ts";
-  import type { Parked } from "../cars/parked.ts";
+  import type { Parked } from "@sunreye/builder/cars/parked.ts";
   import { m } from "../paraglide/messages.js";
   import CarNotes from "./CarNotes.svelte";
   import type { Source } from "./moment.ts";

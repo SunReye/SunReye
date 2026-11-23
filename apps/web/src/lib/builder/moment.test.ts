@@ -2,10 +2,10 @@
 import { expect, test } from "bun:test";
 import type { Core, ModuleType } from "../api/core.ts";
 import { perSeries } from "../api/core.harness.ts";
-import { emptyDraft, type Draft } from "./modules.ts";
+import { emptyDraft, type Draft } from "@sunreye/builder/builder/modules.ts";
 import { load, shareAt, sourceOf, wattsAt } from "./moment.ts";
 import { loadPv } from "@sunreye/pv-wasm";
-import type { Neighbour } from "./pv.ts";
+import type { Neighbour } from "@sunreye/builder/builder/pv.ts";
 
 const wasm = new URL(import.meta.resolve("@sunreye/pv-wasm/pv.wasm"));
 

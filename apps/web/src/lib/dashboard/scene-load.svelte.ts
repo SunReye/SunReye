@@ -2,9 +2,9 @@
 // dashboard has painted and gone idle, never with 2D chosen, under the low-power switch or without
 // WebGL2. No three.js here: this decides when it is asked for.
 import { untrack } from "svelte";
-import { motion } from "../motion/tier.svelte.ts";
-import type { SceneFailure } from "../scene/stage.svelte.ts";
-import { idle, rememberedWebgl2, rememberWebgl2, warm } from "../scene/warm.ts";
+import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
+import type { SceneFailure } from "@sunreye/builder/scene/stage.svelte.ts";
+import { idle, rememberedWebgl2, rememberWebgl2, warm } from "@sunreye/builder/scene/warm.ts";
 
 export class SceneLoad {
   /** Whether this browser draws WebGL2: as the last visit found, until the worker answers. */

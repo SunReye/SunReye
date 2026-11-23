@@ -4,7 +4,7 @@ import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { PLANT, type Layout, type Values } from "../api/core.ts";
 import { MODULE, pv } from "../builder/builder.harness.ts";
-import type { Scene } from "../builder/pv.ts";
+import type { Scene } from "@sunreye/builder/builder/pv.ts";
 import "../../app.css";
 import { finish } from "../motion/animations.harness.ts";
 import LiveScene from "./LiveScene.svelte";

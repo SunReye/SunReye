@@ -2,10 +2,10 @@
 // ratio the test names, a house-sized box in it, and its probe.
 import { BoxGeometry, Color, Mesh, MeshStandardMaterial, PerspectiveCamera, Vector3 } from "three";
 import { cdp } from "vitest/browser";
-import { daylight, theme } from "./light.ts";
-import type { Frame } from "./probe.ts";
-import { drawn, type Level } from "./quality.ts";
-import { Studio } from "./studio.ts";
+import { daylight, theme } from "@sunreye/builder/scene/light.ts";
+import type { Frame } from "@sunreye/builder/scene/probe.ts";
+import { drawn, type Level } from "@sunreye/builder/scene/quality.ts";
+import { Studio } from "@sunreye/builder/scene/studio.ts";
 
 let studio: Studio | undefined;
 

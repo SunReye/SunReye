@@ -4,7 +4,7 @@ import { page, userEvent } from "vitest/browser";
 import { built } from "../chart-entrance/built.harness.ts";
 import { INPUTS, refusing, show, STRINGS } from "./forecast-detail.harness.ts";
 import { holdEntrances } from "../motion/animations.harness.ts";
-import { motion } from "../motion/tier.svelte.ts";
+import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
 
 // Still: a figure stands at its value at once, where it would roll up to it frame by frame.
 beforeEach(() => {

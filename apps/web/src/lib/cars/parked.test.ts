@@ -1,7 +1,7 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import type { CarPlace, Point } from "../builder/pv.ts";
-import { parked } from "./parked.ts";
+import type { CarPlace, Point } from "@sunreye/builder/builder/pv.ts";
+import { parked } from "@sunreye/builder/cars/parked.ts";
 
 const place: CarPlace = {
   device: 7,

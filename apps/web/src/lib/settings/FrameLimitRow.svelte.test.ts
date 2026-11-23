@@ -2,8 +2,8 @@ import { afterEach, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
-import { frameLimit } from "../scene/frame-limit.svelte.ts";
-import { FRAME_LIMIT } from "../scene/frame-limit.ts";
+import { frameLimit } from "@sunreye/builder/scene/frame-limit.svelte.ts";
+import { FRAME_LIMIT } from "@sunreye/builder/scene/frame-limit.ts";
 import DisplaySettings from "./DisplaySettings.svelte";
 
 // Settings › Display's Bildrate row (ADR 21 "Frame limit").

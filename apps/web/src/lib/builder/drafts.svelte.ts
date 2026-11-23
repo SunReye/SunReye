@@ -1,8 +1,8 @@
 // The drafts of one editing session (ADR 20): each recorded edit with undo and redo until save,
 // and a handle drag's steps, shown at once and recorded as one edit when let go.
 import { begin, record, redo, undo, type Edits } from "./history.ts";
-import { uncovered, type Draft } from "./modules.ts";
-import type { Scene } from "./pv.ts";
+import { uncovered, type Draft } from "@sunreye/builder/builder/modules.ts";
+import type { Scene } from "@sunreye/builder/builder/pv.ts";
 
 const same = (a: Scene, b: Scene): boolean => JSON.stringify(a) === JSON.stringify(b);
 

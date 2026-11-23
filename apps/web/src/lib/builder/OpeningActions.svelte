@@ -6,7 +6,7 @@
   import * as DropdownMenu from "@sunreye/ui/dropdown-menu";
   import { m } from "../paraglide/messages.js";
   import { duplicateAt, lightAt } from "./context-actions.ts";
-  import type { Opening } from "./pv.ts";
+  import type { Opening } from "@sunreye/builder/builder/pv.ts";
   import type { Session } from "./session.svelte.ts";
   import ToolButton from "./ToolButton.svelte";
 

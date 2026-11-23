@@ -2,12 +2,12 @@ import "../../../app.css";
 import { afterEach, expect, test } from "vitest";
 import { cdp, page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { presetView, type View } from "../camera.ts";
+import { presetView, type View } from "@sunreye/builder/builder/camera.ts";
 import { house, type Pointer, press, pv, settle } from "../builder.harness.ts";
-import type { Point, Scene } from "../pv.ts";
-import type { Projector } from "../drawing.svelte.ts";
-import SceneCanvas from "../SceneCanvas.svelte";
-import { handles, type Target, type Triple } from "./grips.ts";
+import type { Point, Scene } from "@sunreye/builder/builder/pv.ts";
+import type { Projector } from "@sunreye/builder/builder/drawing.svelte.ts";
+import { SceneCanvas } from "@sunreye/builder";
+import { handles, type Target, type Triple } from "@sunreye/builder/builder/handles/grips.ts";
 import { canvasWords } from "../canvas-words.ts";
 
 const BLOCK: Target = { kind: "block", index: 0 };

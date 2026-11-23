@@ -3,11 +3,11 @@ import { PerspectiveCamera } from "three";
 import { afterEach, expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import { canvasWords } from "../builder/canvas-words.ts";
-import PerfOverlay from "./PerfOverlay.svelte";
-import { perf } from "./perf.svelte.ts";
+import PerfOverlay from "@sunreye/builder/scene/PerfOverlay.svelte";
+import { perf } from "@sunreye/builder/scene/perf.svelte.ts";
 import { look } from "./probe.harness.ts";
-import { quality } from "./quality.svelte.ts";
-import { Studio } from "./studio.ts";
+import { quality } from "@sunreye/builder/scene/quality.svelte.ts";
+import { Studio } from "@sunreye/builder/scene/studio.ts";
 
 // The readout's own cost (ADR 21 "Measuring"): one probe on the studio it tells of, for as long
 // as it shows, and none after.

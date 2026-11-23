@@ -21,7 +21,7 @@ import {
   testCore,
   undesk,
 } from "./builder.harness.ts";
-import { addGrid, type Draft } from "./modules.ts";
+import { addGrid, type Draft } from "@sunreye/builder/builder/modules.ts";
 
 // Modules laid on the roof with a finger (ADR 20 Touch): a gesture that starts on the selected face
 // lays, a second finger hands both to the camera.

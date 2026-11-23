@@ -6,7 +6,7 @@ import { render } from "vitest-browser-svelte";
 import { connect } from "../../api/core.ts";
 import { haptics } from "@sunreye/ui/haptics";
 import Builder from "../Builder.svelte";
-import type { View } from "../camera.ts";
+import type { View } from "@sunreye/builder/builder/camera.ts";
 import {
   desk,
   DEVICES,
@@ -22,7 +22,7 @@ import {
   testCore,
   undesk,
 } from "../builder.harness.ts";
-import { offered } from "./offered.ts";
+import { offered } from "@sunreye/builder/builder/handles/offered.ts";
 
 const VIEW = "sunreye.builder.view";
 

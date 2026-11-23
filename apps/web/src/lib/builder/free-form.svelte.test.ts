@@ -19,8 +19,8 @@ import {
   undesk,
 } from "./builder.harness.ts";
 import { saveFrom } from "./moment.harness.ts";
-import { addGrid, type Draft } from "./modules.ts";
-import type { Block, Scene } from "./pv.ts";
+import { addGrid, type Draft } from "@sunreye/builder/builder/modules.ts";
+import type { Block, Scene } from "@sunreye/builder/builder/pv.ts";
 
 // A free-form roof in the builder (ADR 20): drawn, its faces taking modules like any other, and
 // its block's unused rectangle offered for no edit.

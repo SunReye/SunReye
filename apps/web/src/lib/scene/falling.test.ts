@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { velocityOf } from "./falling.ts";
+import { velocityOf } from "@sunreye/builder/scene/falling.ts";
 
 const speed = (v: readonly number[]) => Math.hypot(...v);
 

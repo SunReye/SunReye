@@ -20,7 +20,7 @@ import {
   SOUTH,
   undesk,
 } from "./builder.harness.ts";
-import { addGrid, emptyDraft } from "./modules.ts";
+import { addGrid, emptyDraft } from "@sunreye/builder/builder/modules.ts";
 
 // Module types in the builder (ADR 17, 20): a face's modules start from a type the admin picks or
 // enters from its datasheet; the core keeps it.

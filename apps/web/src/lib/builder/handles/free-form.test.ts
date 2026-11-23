@@ -1,10 +1,10 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
 import { nextBlock } from "../draft.ts";
-import type { Block, Scene } from "../pv.ts";
-import { handles, type Target } from "./grips.ts";
-import { offered } from "./offered.ts";
-import { edges } from "./snapping.ts";
+import type { Block, Scene } from "@sunreye/builder/builder/pv.ts";
+import { handles, type Target } from "@sunreye/builder/builder/handles/grips.ts";
+import { offered } from "@sunreye/builder/builder/handles/offered.ts";
+import { edges } from "@sunreye/builder/builder/handles/snapping.ts";
 
 // A free-form block's corner, size, eave, rotation and roof go unused (ADR 20): nothing is
 // handled or snapped by them.

@@ -2,8 +2,8 @@
 // and each string's production. It reads the draft and never writes it: nothing changes the scene.
 import { today } from "./day.ts";
 import { load, shareAt, spanOf, wattsAt, type Day, type Reading } from "./moment.ts";
-import { sunAt, type Point } from "./pv.ts";
-import { exact, type SceneWeather } from "../scene/weather.ts";
+import { sunAt, type Point } from "@sunreye/builder/builder/pv.ts";
+import { exact, type SceneWeather } from "@sunreye/builder/scene/weather.ts";
 import { sceneWeather } from "../weather/scene-weather.ts";
 import { readWeather, weatherAt, type Weather, type WeatherRead } from "../weather/weather.ts";
 import { TRIAL_WEATHER, type Trial } from "./trials.ts";

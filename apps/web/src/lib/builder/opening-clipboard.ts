@@ -2,9 +2,9 @@
 // V adds a copy of it as "Duplizieren" does. A text field keeps its own keys.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the session is edited through its own methods. */
 import { refusedInline } from "../feedback.ts";
-import type { Opening } from "./pv.ts";
+import type { Opening } from "@sunreye/builder/builder/pv.ts";
 import type { Session } from "./session.svelte.ts";
-import { pasted } from "./wall-openings.ts";
+import { pasted } from "@sunreye/builder/builder/wall-openings.ts";
 
 /** Whether the key was typed into a field, which copies and pastes its own text. */
 function typed({ target }: KeyboardEvent): boolean {

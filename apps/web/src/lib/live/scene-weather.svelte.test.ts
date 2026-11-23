@@ -1,8 +1,8 @@
 import { expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import { MODULE, pv } from "../builder/builder.harness.ts";
-import { Studio } from "../scene/studio.ts";
-import { DRY, type Plant } from "../scene/weather.ts";
+import { Studio } from "@sunreye/builder/scene/studio.ts";
+import { DRY, type Plant } from "@sunreye/builder/scene/weather.ts";
 import { chip, frame, layout, scene } from "./live-scene.harness.ts";
 import { feed } from "./stream.harness.ts";
 import LiveScene from "./LiveScene.svelte";

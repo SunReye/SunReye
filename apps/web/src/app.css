@@ -9,6 +9,7 @@
 
 @source "./lib/components/ui";
 @source "../node_modules/@sunreye/ui/src";
+@source "../node_modules/@sunreye/builder/src";
 
 /* Inside a drill-in level on the phone, where each section is a card of its own (ADR 21). */
 @custom-variant drill (&:where([data-drill="level"] *));

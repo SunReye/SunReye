@@ -21,7 +21,7 @@
     "packages/scene/schema.d.ts",
     "target/**",
     "apps/web/src/lib/components/ui/**",
-    "apps/web/src/lib/motion.ts",
+    "packages/builder/src/motion.ts",
     "packages/ui/src/alert/**",
     "packages/ui/src/button/**",
     "packages/ui/src/calendar/**",

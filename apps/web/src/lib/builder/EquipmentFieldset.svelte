@@ -4,7 +4,7 @@
   import type { Device } from "../api/core.ts";
   import { m } from "../paraglide/messages.js";
   import { choices, metres } from "./fields.ts";
-  import type { Equipment, Wall } from "./pv.ts";
+  import type { Equipment, Wall } from "@sunreye/builder/builder/pv.ts";
   import RemoveButton from "./RemoveButton.svelte";
   import SwitchRow from "./SwitchRow.svelte";
   import ValueRow from "./ValueRow.svelte";

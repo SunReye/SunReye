@@ -5,7 +5,7 @@ import "../../app.css";
 import { closed } from "../motion/animations.harness.ts";
 import { pv } from "./builder.harness.ts";
 import BuildingLevel from "./BuildingLevel.svelte";
-import type { Opening, Scene } from "./pv.ts";
+import type { Opening, Scene } from "@sunreye/builder/builder/pv.ts";
 
 /** The value editor lands at once. */
 beforeEach(async () => {

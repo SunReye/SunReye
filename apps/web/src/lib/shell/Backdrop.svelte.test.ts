@@ -2,7 +2,7 @@
 import { afterEach, expect, test } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { motion } from "../motion/tier.svelte.ts";
+import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
 import Backdrop from "./Backdrop.svelte";
 import {
   addressBar,

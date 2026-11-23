@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { page } from "vitest/browser";
 import { DRY, each, show, WEATHER } from "./weather-detail.harness.ts";
-import { motion } from "../motion/tier.svelte.ts";
+import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
 
 // Still: a figure stands at its value at once, where it would roll up to it frame by frame.
 beforeEach(() => {

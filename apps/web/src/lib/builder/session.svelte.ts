@@ -3,11 +3,17 @@
 import type { Core, Datasheet, Device, Layout, ModuleType, Problem, Types } from "../api/core.ts";
 import { checked, stringRefusal, type Checking, type StringRefusal } from "./checks.ts";
 import { Drafts } from "./drafts.svelte.ts";
-import { handled, parent, picked, type Level } from "./levels.ts";
-import { wiredIn, panels, type Draft } from "./modules.ts";
+import { handled, parent, picked, type Level } from "@sunreye/builder/builder/levels.ts";
+import { wiredIn, panels, type Draft } from "@sunreye/builder/builder/modules.ts";
 import { exists, type Plan } from "./outline.ts";
-import type { Geometry, Modules, Pv, Scene, Sizes } from "./pv.ts";
-import { layingOf, type Editing, type Hit, type Roofwork, type Panel } from "./drawing.svelte.ts";
+import type { Geometry, Modules, Pv, Scene, Sizes } from "@sunreye/builder/builder/pv.ts";
+import {
+  layingOf,
+  type Editing,
+  type Hit,
+  type Roofwork,
+  type Panel,
+} from "@sunreye/builder/builder/drawing.svelte.ts";
 import { Picking } from "./picking.svelte.ts";
 import { WiringMode } from "./wiring-mode.svelte.ts";
 

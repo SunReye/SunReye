@@ -3,7 +3,7 @@
 <script lang="ts">
   import * as DropdownMenu from "@sunreye/ui/dropdown-menu";
   import type { Device } from "../api/core.ts";
-  import type { Equipment } from "./pv.ts";
+  import type { Equipment } from "@sunreye/builder/builder/pv.ts";
   import type { WallAdd } from "./wall-actions.ts";
 
   let {

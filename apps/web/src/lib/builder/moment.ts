@@ -1,9 +1,9 @@
 // The time slider's day (ADR 20): where each string's production comes from, and its value at an
 // instant. Pure but for the reads it is handed; nothing here touches the scene.
 import { only, type Core, type ModuleType } from "../api/core.ts";
-import type { Draft } from "./modules.ts";
-import type { Location, Pv } from "./pv.ts";
-import type { Neighbour } from "./pv.ts";
+import type { Draft } from "@sunreye/builder/builder/modules.ts";
+import type { Location, Pv } from "@sunreye/builder/builder/pv.ts";
+import type { Neighbour } from "@sunreye/builder/builder/pv.ts";
 
 /** Measured or estimated history, the solar forecast, or a clear sky run in the browser. */
 export type Source = "measured" | "forecast" | "clearSky";

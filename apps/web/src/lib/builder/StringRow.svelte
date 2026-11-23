@@ -4,8 +4,8 @@
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import { Pressable } from "@sunreye/ui/pressable";
   import { m } from "../paraglide/messages.js";
-  import type { WiredIn } from "./modules.ts";
-  import { stringCss } from "./scene.ts";
+  import type { WiredIn } from "@sunreye/builder/builder/modules.ts";
+  import { stringCss } from "@sunreye/builder/builder/scene.ts";
 
   let {
     name,

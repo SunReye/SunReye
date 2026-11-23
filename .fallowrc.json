@@ -8,7 +8,7 @@
     "target/**",
     "**/.svelte-kit/**",
     "apps/web/src/lib/components/ui/**",
-    "apps/web/src/lib/motion.ts",
+    "packages/builder/src/motion.ts",
     "packages/ui/src/alert/**",
     "packages/ui/src/button/**",
     "packages/ui/src/calendar/**",
@@ -155,6 +155,10 @@
         "patterns": ["packages/pv-wasm/**"]
       },
       {
+        "name": "builder",
+        "patterns": ["packages/builder/**"]
+      },
+      {
         "name": "profiles",
         "patterns": ["profiles/**"]
       },
@@ -166,7 +170,7 @@
     "rules": [
       {
         "from": "web",
-        "allow": ["tokens", "catalogue", "scene", "ui", "pv-wasm"]
+        "allow": ["tokens", "catalogue", "scene", "ui", "pv-wasm", "builder"]
       },
       {
         "from": "sdk",
@@ -191,6 +195,10 @@
       {
         "from": "pv-wasm",
         "allow": ["scene"]
+      },
+      {
+        "from": "builder",
+        "allow": ["scene", "pv-wasm", "ui"]
       },
       {
         "from": "profiles",

@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { emptyDraft } from "./modules.ts";
+import { emptyDraft } from "@sunreye/builder/builder/modules.ts";
 import { loadPv } from "@sunreye/pv-wasm";
 import { fill, TEMPLATES } from "./templates.ts";
 

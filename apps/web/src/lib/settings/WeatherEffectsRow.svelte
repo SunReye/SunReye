@@ -2,7 +2,7 @@
 <script lang="ts">
   import ToggleRow from "./ToggleRow.svelte";
   import { m } from "../paraglide/messages.js";
-  import { weatherEffects } from "../scene/weather-effects.svelte.ts";
+  import { weatherEffects } from "@sunreye/builder/scene/weather-effects.svelte.ts";
 </script>
 
 <ToggleRow

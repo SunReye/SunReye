@@ -4,7 +4,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { finish } from "../motion/animations.harness.ts";
-import { motion } from "../motion/tier.svelte.ts";
+import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
 import Shell from "./Shell.svelte";
 import "../../app.css";
 

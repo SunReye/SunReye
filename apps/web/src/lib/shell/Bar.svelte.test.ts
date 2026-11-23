@@ -5,7 +5,7 @@ import { render } from "vitest-browser-svelte";
 import { haptics } from "@sunreye/ui/haptics";
 import { closed, finish } from "../motion/animations.harness.ts";
 import { settle } from "../motion/clock.harness.ts";
-import { motion } from "../motion/tier.svelte.ts";
+import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
 import { locales, setLocale } from "../paraglide/runtime.js";
 import Shell from "./Shell.svelte";
 import "../../app.css";

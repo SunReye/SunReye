@@ -3,10 +3,10 @@ import { afterEach, expect, test, vi } from "vitest";
 import { cdp } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
-import { motion } from "../motion/tier.svelte.ts";
-import { presetView } from "./camera.ts";
-import type { Geometry, Point } from "./pv.ts";
-import SceneCanvas from "./SceneCanvas.svelte";
+import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
+import { presetView } from "@sunreye/builder/builder/camera.ts";
+import type { Geometry, Point } from "@sunreye/builder/builder/pv.ts";
+import { SceneCanvas } from "@sunreye/builder";
 import { stepUntil } from "../motion/clock.harness.ts";
 import { canvasWords } from "./canvas-words.ts";
 

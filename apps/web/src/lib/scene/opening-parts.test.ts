@@ -1,8 +1,8 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
 import { BufferAttribute, BufferGeometry, Group, Mesh, type Object3D } from "three";
-import type { Fitted, OpeningKind } from "../builder/pv.ts";
-import { openings } from "./wall-openings.ts";
+import type { Fitted, OpeningKind } from "@sunreye/builder/builder/pv.ts";
+import { openings } from "@sunreye/builder/scene/wall-openings.ts";
 
 // What a window and a door are made of (ADR 20 Openings, Look): plain shapes, no maps.
 

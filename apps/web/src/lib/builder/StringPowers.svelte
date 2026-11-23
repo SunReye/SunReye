@@ -5,7 +5,7 @@
   import { m } from "../paraglide/messages.js";
   import { getLocale } from "../paraglide/runtime.js";
   import type { Source } from "./moment.ts";
-  import { stringCss } from "./scene.ts";
+  import { stringCss } from "@sunreye/builder/builder/scene.ts";
 
   let {
     strings,

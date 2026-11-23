@@ -1,7 +1,7 @@
 // The frame watch's frames for the motion store's tests: every one janky, or none at all.
 import { vi } from "vitest";
-import { JANK_FRAME_MS } from "./tier.ts";
-import { MotionStore } from "./tier.svelte.ts";
+import { JANK_FRAME_MS } from "@sunreye/builder/motion/tier.ts";
+import { MotionStore } from "@sunreye/builder/motion/tier.svelte.ts";
 
 /** Every frame janky, delivered as fast as the test can run them; returns the frames' clock. */
 export function jank(): () => number {

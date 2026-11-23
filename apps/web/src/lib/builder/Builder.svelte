@@ -13,7 +13,7 @@
   import type { Core, Device, ModuleType } from "../api/core.ts";
   import InspectorPane, { PEEK } from "./InspectorPane.svelte";
   import { Moment } from "./moment.svelte.ts";
-  import type { Aerial, Location, Neighbour, Pv } from "./pv.ts";
+  import type { Aerial, Location, Neighbour, Pv } from "@sunreye/builder/builder/pv.ts";
   import PhoneTools from "./PhoneTools.svelte";
   import { Session, type Reads } from "./session.svelte.ts";
   import Templates from "./Templates.svelte";

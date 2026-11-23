@@ -4,7 +4,7 @@
 import { refusedInline } from "../feedback.ts";
 import { m } from "../paraglide/messages.js";
 import { UNFIT } from "./names.ts";
-import type { Equipment, OpeningKind } from "./pv.ts";
+import type { Equipment, OpeningKind } from "@sunreye/builder/builder/pv.ts";
 import type { Session } from "./session.svelte.ts";
 import { markerAt, openingAt } from "./wall-spot.ts";
 

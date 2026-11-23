@@ -4,13 +4,19 @@
 import { roofFaceKey, type RoofFaceId } from "@sunreye/scene";
 import { m } from "../paraglide/messages.js";
 import { strungOn, type Stringing } from "./auto-string.ts";
-import type { Selecting } from "./gestures.ts";
-import { laying, type Level } from "./levels.ts";
-import { inNoString, type Draft } from "./modules.ts";
-import type { Modules, RoofFace } from "./pv.ts";
-import type { Panel } from "./scene.ts";
-import { mostUnwired, unwired, wiredInto, wiredNew, type Cell } from "./selecting.ts";
-import { wiring } from "./wiring.ts";
+import type { Selecting } from "@sunreye/builder/builder/gestures.ts";
+import { laying, type Level } from "@sunreye/builder/builder/levels.ts";
+import { inNoString, type Draft } from "@sunreye/builder/builder/modules.ts";
+import type { Modules, RoofFace } from "@sunreye/builder/builder/pv.ts";
+import type { Panel } from "@sunreye/builder/builder/scene.ts";
+import {
+  mostUnwired,
+  unwired,
+  wiredInto,
+  wiredNew,
+  type Cell,
+} from "@sunreye/builder/builder/selecting.ts";
+import { wiring } from "@sunreye/builder/builder/wiring.ts";
 
 /** The session the mode reads and edits. */
 export interface Wired {

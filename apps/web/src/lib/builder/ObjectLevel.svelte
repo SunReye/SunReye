@@ -5,8 +5,8 @@
   import CarPlaceFieldset from "./CarPlaceFieldset.svelte";
   import EquipmentFieldset from "./EquipmentFieldset.svelte";
   import FaceLevel from "./FaceLevel.svelte";
-  import { laying, type Level } from "./levels.ts";
-  import { wiredIn, type Draft } from "./modules.ts";
+  import { laying, type Level } from "@sunreye/builder/builder/levels.ts";
+  import { wiredIn, type Draft } from "@sunreye/builder/builder/modules.ts";
   import type { Plan } from "./outline.ts";
   import StringFieldset from "./StringFieldset.svelte";
   import SurroundingLevel from "./SurroundingLevel.svelte";

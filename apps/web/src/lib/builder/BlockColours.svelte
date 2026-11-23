@@ -3,7 +3,7 @@
   import { m } from "../paraglide/messages.js";
   import ColourRow from "./ColourRow.svelte";
   import { OWN_ROOF, OWN_WALL, ROOF_COLOURS, WALL_COLOURS } from "./colours.ts";
-  import type { Block } from "./pv.ts";
+  import type { Block } from "@sunreye/builder/builder/pv.ts";
 
   let {
     block,

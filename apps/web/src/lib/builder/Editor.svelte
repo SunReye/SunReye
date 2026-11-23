@@ -1,8 +1,8 @@
 <!-- The inspector's body at one level (ADR 20): the root groups, a group's rows, or one object. -->
 <script lang="ts">
   import type { Core, ModuleType } from "../api/core.ts";
-  import type { Level } from "./levels.ts";
-  import type { Draft } from "./modules.ts";
+  import type { Level } from "@sunreye/builder/builder/levels.ts";
+  import type { Draft } from "@sunreye/builder/builder/modules.ts";
   import ObjectLevel from "./ObjectLevel.svelte";
   import type { Plan } from "./outline.ts";
   import { removal } from "./removal.ts";

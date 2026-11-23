@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect } from "../api/core.ts";
-import { emptyDraft } from "./modules.ts";
+import { emptyDraft } from "@sunreye/builder/builder/modules.ts";
 import { fill } from "./templates.ts";
 import Builder from "./Builder.svelte";
 import {

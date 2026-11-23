@@ -1,9 +1,9 @@
 import "../../app.css";
 import { afterEach, expect, test } from "vitest";
 import { render } from "vitest-browser-svelte";
-import type { Fitted, Geometry, Point } from "../builder/pv.ts";
-import type { Projector } from "../builder/drawing.svelte.ts";
-import SceneCanvas from "../builder/SceneCanvas.svelte";
+import type { Fitted, Geometry, Point } from "@sunreye/builder/builder/pv.ts";
+import type { Projector } from "@sunreye/builder/builder/drawing.svelte.ts";
+import { SceneCanvas } from "@sunreye/builder";
 import { settle } from "../motion/clock.harness.ts";
 import { canvasWords } from "../builder/canvas-words.ts";
 

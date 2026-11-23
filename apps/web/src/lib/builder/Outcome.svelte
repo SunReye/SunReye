@@ -3,7 +3,7 @@
   import ProblemAlert from "../components/problem-alert.svelte";
   import { m } from "../paraglide/messages.js";
   import { misplacedText } from "./checks.ts";
-  import type { Misplaced } from "./pv.ts";
+  import type { Misplaced } from "@sunreye/builder/builder/pv.ts";
 
   let {
     misplaced,

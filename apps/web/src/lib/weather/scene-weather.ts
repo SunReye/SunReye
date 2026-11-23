@@ -1,13 +1,13 @@
 // The scene's weather (ADR 23 "Scene weather") read from the core's weather at an instant and
 // what the plant reads then. Pure.
-import { smoothstep } from "../scene/colour.ts";
+import { smoothstep } from "@sunreye/builder/scene/colour.ts";
 import {
   fogAt,
   type Falling,
   type Glass,
   type Plant,
   type SceneWeather,
-} from "../scene/weather.ts";
+} from "@sunreye/builder/scene/weather.ts";
 import { codeKind } from "../weather-code.ts";
 import { snowLies, type Weather } from "./weather.ts";
 

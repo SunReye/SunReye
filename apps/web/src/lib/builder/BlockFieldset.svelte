@@ -7,7 +7,7 @@
   import { withRoof } from "./draft.ts";
   import { choices, degrees, metres, REACH } from "./fields.ts";
   import { ROOFS } from "./outline.ts";
-  import type { Block } from "./pv.ts";
+  import type { Block } from "@sunreye/builder/builder/pv.ts";
   import RemoveButton from "./RemoveButton.svelte";
   import SwitchRow from "./SwitchRow.svelte";
   import ValueRow from "./ValueRow.svelte";
