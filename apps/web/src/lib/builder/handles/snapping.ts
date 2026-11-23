@@ -19,8 +19,11 @@ export function along(rotation: number, x: number, z: number): [number, number] 
   return turn(x, z, -rotation);
 }
 
+/** The other blocks; a free-form block's rectangle goes unused (ADR 20). */
 const others = (scene: Scene, target: Target) =>
-  scene.blocks.filter((_, i) => target.kind !== "block" || i !== target.index);
+  scene.blocks.filter(
+    (block, i) => !block.freeForm && (target.kind !== "block" || i !== target.index),
+  );
 
 /** The other blocks' edges parallel to `rotation`, as `along` places them: across, then deep. */
 export function edges(scene: Scene, target: Target, rotation: number): [number[], number[]] {
