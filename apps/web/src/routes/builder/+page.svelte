@@ -2,9 +2,9 @@
   import { useCore } from "../../lib/shell/core.ts";
   import { Button } from "@sunreye/ui/button";
   import { Skeleton } from "#lib/components/ui/skeleton/index.js";
-  import { Builder, BUILDER_SIZE, emptyDraft } from "@sunreye/builder";
+  import { Builder, BUILDER_SIZE, emptyDraft } from "@sunreye/builder/frame";
   import { inputsOf, limitsOf } from "../../lib/builder/capabilities.ts";
-  import { fetchPv } from "../../lib/builder/engine.ts";
+  import { fetchPv } from "@sunreye/builder/canvas";
   import { homeBuilder } from "../../lib/builder/host.ts";
   import { typesOf } from "../../lib/api/layout-change";
   import { m } from "../../lib/paraglide/messages.js";

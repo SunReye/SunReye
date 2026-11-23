@@ -1,6 +1,6 @@
 # @sunreye/builder
 
-SunReye's 3D house builder: its frame, the scene canvas, and the parts its consumer's other screens share with it (ADRs 20, 25). Home is its first consumer.
+SunReye's 3D house builder: the scene canvas, its frame, and the parts its consumer's other screens share with it (ADRs 20, 25). Home is its first consumer.
 
 This file is the package's public interface. A consumer imports the entries below and nothing else; a breaking change to one is a major version.
 
@@ -13,16 +13,8 @@ This file is the package's public interface. A consumer imports the entries belo
 
 ## `@sunreye/builder`
 
-Loads three.js: import it where a scene is drawn, or lazily.
+The scene canvas. Loads three.js: import it where a scene is drawn, or lazily.
 
-- `Builder`: the frame. A canvas, the time slider and the inspector of one editing session. Props:
-  - `pv`: the engine, from `@sunreye/pv-wasm`.
-  - `core: Keeper`: takes the session's two writes, a layout change and an added module type.
-  - `records?: Records`: what the frame reads besides the scene, each optional.
-  - `host: Host`: a refusal's code in the consumer's words, the toast that confirms a save, where an uploaded car body is stored.
-  - `start`, `types`, `moduleTypes`, `devices`, `location`, `limits`, `inputs`: the layout in force and what its checks read.
-  - `aerial`, `neighbours`: an aerial image and the bodies around the plant, supplied by the consumer; never saved.
-- `BUILDER_SIZE`: the frame's height classes, for a placeholder while it loads.
 - `SceneCanvas`: one studio showing one scene. Two canvases may show the same scene.
   - Scene: `geometry`, `panels`, `cars`, `around` (the aerial image and the neighbours).
   - Light: `sun` (`sunAt` gives it at an instant), `diffuse`, `weather`.
@@ -34,9 +26,23 @@ Loads three.js: import it where a scene is drawn, or lazily.
   - Editing: `editing` and `roofwork` carry the editing tools' handles and roof gestures.
 - Camera: `presetView` (a preset, turned to a compass heading), `headingOf` (the bearing a view looks toward, for a compass), `parseView`, and the types `View` and `Preset`.
 - Language: `speak` sets the locale of every entry's words, `Locale`; a change shows without a reload.
-- The draft: `emptyDraft`, `panels`, `Draft`; `sunAt`, the sun's direction at an instant.
-- Types the props name: `Around`, `Aerial`, `Editing`, `Hit`, `Panel`, `Projector`, `Roofwork`, `Limits`.
-- The host's shapes: `Keeper`, `Records`, `Host`, `LayoutChange`, `Device`, `Corrections`, `Interval`, `Span`, `Problem`.
+- `panels`, the modules a layout draws; `sunAt`, the sun's direction at an instant.
+- Types the props name: `Around`, `Aerial`, `Editing`, `Hit`, `Panel`, `Projector`, `Roofwork`.
+
+## `@sunreye/builder/frame`
+
+The frame around a canvas. Loads three.js, so a screen that only shows the scene imports the root instead.
+
+- `Builder`: a canvas, the time slider and the inspector of one editing session. Props:
+  - `pv`: the engine, from `@sunreye/pv-wasm`.
+  - `core: Keeper`: takes the session's two writes, a layout change and an added module type.
+  - `records?: Records`: what the frame reads besides the scene, each optional.
+  - `host: Host`: a refusal's code in the consumer's words, the toast that confirms a save, where an uploaded car body is stored.
+  - `start`, `types`, `moduleTypes`, `devices`, `location`, `limits`, `inputs`: the layout in force and what its checks read.
+  - `aerial`, `neighbours`: an aerial image and the bodies around the plant, supplied by the consumer; never saved.
+- `BUILDER_SIZE`: the frame's height classes, for a placeholder while it loads.
+- The draft: `emptyDraft`, `Draft`; `Limits`, what its checks hold it to.
+- The host's shapes: `Keeper`, `Records`, `Host`, `ModelLoader`, `LayoutChange`, `Device`, `Corrections`, `Interval`, `Span`, `Problem`.
 
 ## `@sunreye/builder/canvas`
 
@@ -44,6 +50,7 @@ What screens read of the canvas before it loads, or without it. Loads neither th
 
 - `sceneWeather`, `Weather`, `SceneWeather`, `Plant`, `snowLies`, `codeKind`: an instant's weather in the builder's shape, and the scene's weather drawn from it.
 - `parked`, `Parked`: the cars standing at the scene's car places, from the live values.
+- `fetchPv`: fetches the engine `@sunreye/pv-wasm` ships and instantiates it.
 - `warm`, `idle`, `rememberWebgl2`, `rememberedWebgl2`, `SceneFailure`: warming the studio up ahead of a scene, and remembering whether the browser draws one.
 - `backdropAt`, `Linear`: the stand-in's backdrop.
 

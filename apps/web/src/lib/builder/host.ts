@@ -1,6 +1,6 @@
 // The builder's host as Home answers it (ADR 25): the core's refusals in the app's words, its toast,
 // the core that stores a car body, and what the builder reads of the core and the live stream.
-import type { Host } from "@sunreye/builder";
+import type { Host } from "@sunreye/builder/frame";
 import type { Core } from "../api/core.ts";
 import { confirmed } from "../feedback.ts";
 import { problemText } from "../i18n/problems.ts";

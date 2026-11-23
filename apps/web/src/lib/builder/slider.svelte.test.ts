@@ -5,7 +5,7 @@ import { render } from "vitest-browser-svelte";
 import { type Corrections, type ModuleType, type Transport } from "../api/core.ts";
 import Builder from "../../../../../packages/builder/src/builder/Builder.svelte";
 import { emptyDraft } from "../../../../../packages/builder/src/builder/modules.ts";
-import { fetchPv } from "./engine.ts";
+import { fetchPv } from "@sunreye/builder/canvas";
 import { fill } from "../../../../../packages/builder/src/builder/templates.ts";
 import { hosted } from "./builder.harness.ts";
 import { pickDay, savedFrom, scrub } from "./moment.harness.ts";
@@ -254,4 +254,24 @@ test("each MPPT input shows its learned correction at the slider's hour and its 
     .toHaveTextContent(
       "Deye · MPPT 1: Korrektur 0,92 · letzte 30 Tage 120 kWh gemessen, 135 kWh berechnet (−11 %)",
     );
+});
+
+test("a host that keeps no records gets a clear sky, even on a day Home measured", async () => {
+  const { core, host } = hosted(readingCore(() => ({ inputs: [] })));
+
+  const screen = await render(Builder, {
+    pv,
+    core,
+    host,
+    start: SAVED,
+    moduleTypes: [MODULE],
+    devices: DEVICES,
+    location: BERLIN,
+  });
+
+  await pickDay("Tag", "2026-11-01");
+  await scrub(750);
+
+  await expect.element(screen.getByText("Klarer Himmel, berechnet")).toBeVisible();
+  expect(screen.getByText("Modell gegen Messung").query()).toBeNull();
 });

@@ -46,7 +46,7 @@
       await Promise.all([
         import("./LiveScene.svelte"),
         import("../cars/models.ts"),
-        import("../builder/engine.ts").then(({ fetchPv }) => fetchPv()),
+        import("@sunreye/builder/canvas").then(({ fetchPv }) => fetchPv()),
         core.moduleTypes(),
         core.capabilities(),
         // The admin's (ADR 9): for a viewer the sun stays put.

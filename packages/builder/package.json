@@ -14,6 +14,11 @@
       "svelte": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./frame": {
+      "types": "./src/entries/frame.ts",
+      "svelte": "./src/entries/frame.ts",
+      "default": "./src/entries/frame.ts"
+    },
     "./canvas": {
       "types": "./src/entries/canvas.ts",
       "svelte": "./src/entries/canvas.ts",

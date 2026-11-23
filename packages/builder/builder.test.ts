@@ -143,12 +143,50 @@ test("its README lists every entry the package exports, and no other (ADR 25)", 
   expect(listed).toEqual(KEYS);
 });
 
+/** The names an entry file exports, as a consumer imports them. */
+async function exported(file: string): Promise<string[]> {
+  const source = await Bun.file(join(installed, file)).text();
+  const names: string[] = [];
+
+  for (const [, list] of source.matchAll(/export (?:type )?\{([^}]*)\}/gu))
+    for (const spec of (list ?? "").split(",")) {
+      const name = spec
+        .replace(/^\s*(?:type\s+)?/u, "")
+        .split(/\s+as\s+/u)
+        .at(-1)
+        ?.trim();
+
+      if (name !== undefined && name !== "") names.push(name);
+    }
+
+  return names;
+}
+
+test("its README names every export under its entry's heading", async () => {
+  const readme = await Bun.file(join(installed, "README.md")).text();
+  const sections = readme.split(/^## /mu);
+  const missing: string[] = [];
+
+  for (const [key, file] of FILES) {
+    const section = sections.find((text) => text.startsWith(`\`@sunreye/builder${key.slice(1)}\``));
+
+    // oxlint-disable-next-line no-await-in-loop -- one entry at a time reads plainer.
+    for (const name of await exported(file))
+      if (!(section ?? "").includes(`\`${name}\``)) missing.push(`${key} ${name}`);
+  }
+
+  expect(missing).toEqual([]);
+});
+
 /** What `file` imports: the shipped files by their path, and the packages. */
 async function importsOf(file: string): Promise<{ files: string[]; bare: string[] }> {
   const files: string[] = [];
   const bare: string[] = [];
 
   for (const { path } of new Bun.Transpiler({ loader: "js" }).scanImports(await script(file))) {
+    // An asset's URL: no script.
+    if (path.includes("?")) continue;
+
     if (path.startsWith(".")) files.push(normalize(join(dirname(file), path)));
     else bare.push(path);
   }
@@ -156,7 +194,7 @@ async function importsOf(file: string): Promise<{ files: string[]; bare: string[
   return { files, bare };
 }
 
-/** Every package `entry` imports, itself or through the files it imports. */
+/** Every package and shipped file `entry` imports, itself or through the files it imports. */
 function reached(entry: string): Promise<string[]> {
   const seen = new Set<string>();
 
@@ -168,14 +206,14 @@ function reached(entry: string): Promise<string[]> {
     const { files, bare } = await importsOf(file);
     const deeper = await Promise.all(files.map((next) => walk(next)));
 
-    return [...new Set([...bare, ...deeper.flat()])];
+    return [...new Set([...bare, ...files, ...deeper.flat()])];
   };
 
   return walk(normalize(entry));
 }
 
-test("only the root entry loads three.js: the others serve screens that draw no scene", async () => {
-  const others = KEYS.filter((key) => key !== ".");
+test("only the canvas and its frame load three.js: the others serve screens that draw no scene", async () => {
+  const others = KEYS.filter((key) => key !== "." && key !== "./frame");
 
   const three = await Promise.all(
     others.map(async (key) =>
@@ -184,6 +222,14 @@ test("only the root entry loads three.js: the others serve screens that draw no 
   );
 
   expect(three).toEqual(others.map(() => []));
+});
+
+test("the root entry reaches none of the frame, so a screen that shows the scene leaves it out", async () => {
+  const files = await reached(FILES.get(".") ?? "");
+
+  expect(
+    files.filter((file) => /\/(Builder|View|Stage|InspectorPane|TimeSlider)\.svelte$/u.test(file)),
+  ).toEqual([]);
 });
 
 test("the canvas and values entries load no Svelte either, so a unit test reaches them", async () => {

@@ -2,7 +2,7 @@
 // device id. The builder takes them as numbers; reading them from the core is the app's.
 import type { Capabilities } from "../api/core.ts";
 import type { InputLimits, Inverters } from "@sunreye/pv-wasm";
-import type { Limits } from "@sunreye/builder";
+import type { Limits } from "@sunreye/builder/frame";
 
 /** The limits the core's capabilities list. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the API's generated type, read only.

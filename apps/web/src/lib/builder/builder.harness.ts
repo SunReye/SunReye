@@ -4,10 +4,10 @@ import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect, type ModuleType, type Transport } from "../api/core.ts";
 import { finish } from "../motion/animations.harness.ts";
-import { Builder, emptyDraft, type Draft } from "@sunreye/builder";
+import { Builder, emptyDraft, type Draft } from "@sunreye/builder/frame";
 import { fillGrid } from "../../../../../packages/builder/src/builder/modules.ts";
 import { faceView, onView, presetView, type View } from "./projection.harness.ts";
-import { fetchPv } from "./engine.ts";
+import { fetchPv } from "@sunreye/builder/canvas";
 import { homeBuilder } from "./host.ts";
 import { fill } from "../../../../../packages/builder/src/builder/templates.ts";
 

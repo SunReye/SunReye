@@ -1,13 +1,26 @@
 // What the builder reads of Home's core (ADR 25 "What the frame reads of its host"): each saved
 // string's stored series, the stored weather, the model check's corrections and the uploaded car
 // bodies. Pure but for the reads it is handed.
-import type { Records } from "@sunreye/builder";
+import type { ModelLoader, Records } from "@sunreye/builder/frame";
 import { only, type Core } from "../api/core.ts";
-import { modelLoader } from "../cars/models.ts";
 import { readWeather, weatherAt } from "../weather/weather.ts";
 
 /** A forecast's step. */
 const STEP = 15 * 60_000;
+
+/** The uploaded car bodies, read through three.js's loader, which loads with the first body asked for. */
+function bodies(core: Pick<Core, "carBody">): ModelLoader {
+  const load = async (): Promise<ModelLoader> =>
+    (await import("../cars/models.ts")).modelLoader(core);
+
+  let loader: Promise<ModelLoader> | undefined;
+
+  return async (id) => {
+    loader ??= load();
+
+    return (await loader)(id);
+  };
+}
 
 /** What the builder reads of `core`; a read it lacks, the builder goes without. */
 export function homeRecords(
@@ -49,6 +62,6 @@ export function homeRecords(
       return (at, asOf) => weatherAt(read, at, asOf);
     },
     ...(corrections && { corrections: () => corrections.call(core) }),
-    ...(carBody && { model: modelLoader({ carBody: (id) => carBody.call(core, id) }) }),
+    ...(carBody && { model: bodies({ carBody: (id) => carBody.call(core, id) }) }),
   };
 }
