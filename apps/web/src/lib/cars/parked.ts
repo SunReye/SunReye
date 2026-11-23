@@ -1,6 +1,5 @@
 // Which cars the scene draws (ADR 20): one per car place whose loadpoint reports a connected
 // vehicle, in the place's colour. Pure: no three.js.
-import type { Values } from "../api/core.ts";
 import type { CarPlace, Geometry, Point } from "../builder/pv.ts";
 
 /** The default body's paint without the admin's pick: Stealth Grey, quiet beside the energy colours. */
@@ -40,7 +39,8 @@ function car(place: CarPlace, stand: Stand, live: Readonly<Record<string, number
 export function parked(
   places: readonly CarPlace[],
   stands: Geometry["stands"],
-  values: Values["devices"],
+  /** Live values by device id, then by series name, as the core streams them. */
+  values: Readonly<Record<string, Readonly<Record<string, number>>>>,
 ): Parked[] {
   return places.flatMap((place, i): Parked[] => {
     const stand = stands?.[i];
