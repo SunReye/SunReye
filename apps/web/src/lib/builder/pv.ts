@@ -1,12 +1,12 @@
 // The `pv` crate in the browser through its glue crate, crates/pv-wasm (ADR 2, 20).
-import type { ModuleType, StringDraft } from "../api/core.ts";
-import type { Fence, Fencing, Ground, GroundSurface, Obstacle } from "./obstacles.ts";
+import type { Chimney, Opening, OpeningKind, RoofWindow, Scene, Wiring } from "@sunreye/scene";
+import type { ModuleType } from "../api/core.ts";
+import type { Fencing, Ground } from "./obstacles.ts";
 import { roofCalls } from "./roof-calls.ts";
-import type { Chimney, Overhang, RoofWindow } from "./roofing.ts";
 import { sizingCalls, type Sizer } from "./sizing.ts";
-import type { Equipment, Fitted, Opening, OpeningKind, Unfit } from "./walls.ts";
+import type { Fitted, Unfit } from "./walls.ts";
 
-export type { Equipment, Fitted, Opening, OpeningKind, Unfit, Wall, WallFrame } from "./walls.ts";
+export type { Fitted, Unfit, WallFrame } from "./walls.ts";
 
 import {
   isChimney,
@@ -23,85 +23,44 @@ import {
   type Exported,
 } from "./replies.ts";
 
-export type {
-  Fence,
-  FenceFinish,
-  FencePoint,
-  Fencing,
-  Ground,
-  GroundFinish,
-  GroundSurface,
-  Obstacle,
-} from "./obstacles.ts";
+export type { Fencing, Ground } from "./obstacles.ts";
 
-export type { Chimney, Footing, Overhang, RoofWindow } from "./roofing.ts";
+export type { Footing } from "./roofing.ts";
 
-import type { ModuleGrid, OnGrid, Sizes } from "./grids.ts";
+import type { OnGrid, Sizes } from "./grids.ts";
 import type { Ghost, Modules } from "./laid.ts";
 
-export type { GridModule, ModuleGrid, OnGrid, Sizes, Spot } from "./grids.ts";
+export type { OnGrid, Sizes, Spot } from "./grids.ts";
 
 export type { Footprint, Ghost, LaidGrid, Misplaced, Modules, RoofFace } from "./laid.ts";
 
-/** A string as the core's API wires it. */
-export type Wiring = Readonly<Omit<StringDraft, "id">>;
+// The scene's own types, as the builder and the views name them (ADR 25).
+export type {
+  Block,
+  CarPlace,
+  Chimney,
+  Equipment,
+  Fence,
+  FenceFinish,
+  FencePoint,
+  GridModule,
+  GroundFinish,
+  GroundSurface,
+  Light,
+  ModuleGrid,
+  Obstacle,
+  Opening,
+  OpeningKind,
+  Overhang,
+  Roof,
+  RoofWindow,
+  Scene,
+  Wall,
+  Wiring,
+} from "@sunreye/scene";
 
 /** Metres: east, north, up. */
 export type Point = readonly [number, number, number];
-
-export type Roof =
-  | { readonly kind: "flat" }
-  | { readonly kind: "monoPitch" | "gable" | "hip"; readonly pitch: number };
-
-/** A rectangular footprint with one roof; its width runs along x, its depth along z. */
-export interface Block {
-  readonly x: number;
-  readonly z: number;
-  readonly width: number;
-  readonly depth: number;
-  readonly eave: number;
-  /** Degrees clockwise about the corner, seen from above. */
-  readonly rotation: number;
-  readonly roof: Roof;
-  /** A carport: a post at each corner instead of walls. */
-  readonly open?: boolean;
-  /** Metres the roof reaches past the walls, level: at the eaves and at the verges. */
-  readonly overhang?: Overhang;
-  /** `#rrggbb`; the finish's own colour without one. */
-  readonly roofColour?: string | null;
-  readonly wallColour?: string | null;
-}
-
-/** A parking footprint linked to an EVCC loadpoint; width along x, length along z. */
-export interface CarPlace {
-  readonly device: number;
-  readonly x: number;
-  readonly z: number;
-  readonly width: number;
-  readonly length: number;
-  readonly rotation: number;
-  /** The default body's paint, `#rrggbb`, and the id of an uploaded GLB that replaces it. */
-  readonly colour?: string | null;
-  readonly model?: string | null;
-}
-
-/** The scene's frame: metres, y up, origin at the first block's corner (ADR 20). */
-export interface Scene {
-  /** The compass bearing of the scene's −z axis, in degrees. */
-  readonly north: number;
-  readonly blocks: readonly Block[];
-  readonly obstacles: readonly Obstacle[];
-  /** At most one per roof face. */
-  readonly grids?: readonly ModuleGrid[];
-  readonly equipment?: readonly Equipment[];
-  readonly carPlaces?: readonly CarPlace[];
-  readonly chimneys?: readonly Chimney[];
-  /** Each drawn over the last; without any the plot is the studio floor. */
-  readonly surfaces?: readonly GroundSurface[];
-  readonly fences?: readonly Fence[];
-  readonly openings?: readonly Opening[];
-  readonly roofWindows?: readonly RoofWindow[];
-}
 
 export interface Face {
   readonly surface: "wall" | "roof" | "obstacle" | "hedge" | "chimney";

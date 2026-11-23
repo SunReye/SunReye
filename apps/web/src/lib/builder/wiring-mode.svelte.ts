@@ -1,6 +1,7 @@
 // The builder's wiring mode (ADR 20): while the Strings group or a string is open, every string's
 // wiring is drawn, a drag across modules selects them, and the selection is wired or unwired. The
 // selection is held here, never stored, and is no undo step.
+import { roofFaceKey, type RoofFaceId } from "@sunreye/scene";
 import { m } from "../paraglide/messages.js";
 import { strungOn, type Stringing } from "./auto-string.ts";
 import type { Selecting } from "./gestures.ts";
@@ -31,8 +32,6 @@ export interface Proposal {
   readonly left: number;
 }
 
-type Face = Readonly<Pick<RoofFace, "block" | "face">>;
-
 /** Whether `level` is the wiring mode's: the Strings group or a string. */
 const wiringAt = (level: Level): boolean =>
   level.kind === "string" || (level.kind === "section" && level.section === "strings");
@@ -44,7 +43,7 @@ export class WiringMode {
   #selection = $state.raw<readonly Cell[]>([]);
 
   /** The roof face a tap named, which a phone's camera flies onto. */
-  #face = $state.raw<Face>();
+  #face = $state.raw<RoofFaceId>();
 
   /** Why the last wiring was refused, until the selection changes. */
   refused = $state<string>();
@@ -186,7 +185,7 @@ export class WiringMode {
 
     return face === undefined
       ? laying(laid.roofs, level)
-      : laid.roofs.find((roof) => roof.block === face.block && roof.face === face.face);
+      : laid.roofs.find((roof) => roofFaceKey(roof) === roofFaceKey(face));
   }
 
   /** The modules to draw: while wiring, each glows in its string's colour at full strength. */

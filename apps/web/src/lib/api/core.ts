@@ -22,10 +22,6 @@ export type CatalogDevice = components["schemas"]["CatalogDevice"];
 /** A UTC hour or a plant-local calendar period statistics are cut in (ADR 3, 9). */
 export type Period = components["schemas"]["Period"];
 
-export type StringDraft = components["schemas"]["StringDraft"];
-
-export type PvString = components["schemas"]["PvString"];
-
 export type Capabilities = components["schemas"]["Support"];
 
 export type Device = components["schemas"]["Device"];
@@ -45,7 +41,10 @@ export type WriteLog = components["schemas"]["WriteLog"];
 
 export { settleRead, type Problem, type Settled } from "./client";
 
-export type { Datasheet, Layout, ModuleType, Types } from "./layouts";
+export type { Datasheet, ModuleType } from "./layouts";
+
+// The layout as the core's API carries it (ADR 25).
+export type { Layout, PvString, StringDraft, Types } from "@sunreye/scene";
 
 export type { ImportStatus, SharedArchive } from "./imports";
 

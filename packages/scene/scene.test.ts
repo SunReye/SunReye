@@ -1,0 +1,110 @@
+// The package as npm would ship it (ADR 25), imported and type-checked by a consumer with no build
+// step.
+
+import { afterAll, beforeAll, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { roofFaceKey } from "./index.js";
+
+const here = new URL(".", import.meta.url).pathname;
+const tsrs = join(here, "../../node_modules/.bin/tsrs");
+
+let out = "";
+
+/** Packs the package and installs the tarball where a consumer's resolver finds it. */
+async function publish(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), "sunreye-scene-"));
+  const pack = Bun.spawnSync(["bun", "pm", "pack", "--quiet", "--destination", dir], { cwd: here });
+
+  if (pack.exitCode !== 0) throw new Error(pack.stderr.toString());
+
+  const tarball = join(dir, pack.stdout.toString().trim().split("/").pop() ?? "");
+  const installed = join(dir, "node_modules", "@sunreye", "scene");
+
+  await mkdir(installed, { recursive: true });
+  Bun.spawnSync(["tar", "-xzf", tarball, "-C", installed, "--strip-components=1"]);
+  await Bun.write(
+    join(dir, "tsconfig.json"),
+    JSON.stringify({
+      compilerOptions: { strict: true, noEmit: true, module: "nodenext", types: [] },
+      include: ["consumer.ts"],
+    }),
+  );
+
+  return dir;
+}
+
+beforeAll(async () => {
+  out = await publish();
+});
+
+afterAll(async () => {
+  await rm(out, { recursive: true, force: true });
+});
+
+/** What the type checker says of a consumer's module; empty when it checks. */
+async function check(consumer: string): Promise<string> {
+  await Bun.write(join(out, "consumer.ts"), consumer);
+
+  const run = Bun.spawnSync([tsrs, "-p", "tsconfig.json"], { cwd: out });
+
+  return run.stdout.toString() + run.stderr.toString();
+}
+
+const HOUSE = `
+import type { Scene } from "@sunreye/scene";
+
+export const house: Scene = {
+  north: 180,
+  blocks: [
+    { x: 0, z: 0, width: 10, depth: 8, eave: 6, rotation: 0, roof: { kind: "gable", pitch: 35 } },
+  ],
+  obstacles: [{ kind: "tree", x: 14, z: 3, radius: 2, height: 9 }],
+  grids: [
+    {
+      block: 0,
+      face: 1,
+      moduleType: 1,
+      landscape: false,
+      setback: 0.3,
+      modules: [{ across: 0, up: 0, landscape: false, string: 0 }],
+    },
+  ],
+};
+`;
+
+test("a consumer types a scene with the published types", async () => {
+  expect(await check(HOUSE)).toBe("");
+});
+
+test("the published types refuse what the core refuses", async () => {
+  const unknown = HOUSE.replace("north: 180,", "north: 180, south: 0,");
+  const dome = HOUSE.replace('"gable"', '"dome"');
+
+  expect(await check(unknown)).toContain("'south' does not exist in type");
+  expect(await check(dome)).toContain(`Type '"dome"' is not assignable`);
+});
+
+/** A module namespace has a null prototype, so `instanceof Object` cannot narrow it. */
+function isScene(module: unknown): module is { readonly roofFaceKey: typeof roofFaceKey } {
+  return Object.prototype.hasOwnProperty.call(module, "roofFaceKey");
+}
+
+/** The roof face key, as a consumer imports it. */
+async function shipped(): Promise<typeof roofFaceKey> {
+  const module: unknown = await import(Bun.resolveSync("@sunreye/scene", out));
+
+  if (!isScene(module)) throw new TypeError("@sunreye/scene exports no roofFaceKey");
+
+  return module.roofFaceKey;
+}
+
+test("a roof face has one key, whichever view selected it", async () => {
+  const key = await shipped();
+  const grid = { block: 0, face: 1, moduleType: 1, landscape: false, setback: 0.3, modules: [] };
+
+  expect(key({ block: 0, face: 1 })).toBe(roofFaceKey(grid));
+  expect(key({ block: 0, face: 1 })).not.toBe(key({ block: 1, face: 0 }));
+  expect(key({ block: 1, face: 10 })).not.toBe(key({ block: 11, face: 0 }));
+});

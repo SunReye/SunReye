@@ -11,28 +11,6 @@ export interface Spot {
   readonly landscape: boolean;
 }
 
-/** A module on a roof face. */
-export interface GridModule extends Spot {
-  /** The string it is wired into; in none, it produces nothing. */
-  readonly string?: number | null;
-  readonly optimized?: boolean;
-  /** Its place along its string's wiring, from the lowest; one without follows them. */
-  readonly order?: number | null;
-}
-
-/** The modules on one roof face, all of one module type. */
-export interface ModuleGrid {
-  readonly block: number;
-  /** The roof face's index in its block, as `roofs` lists them. */
-  readonly face: number;
-  readonly moduleType: number;
-  /** The orientation a new module takes: its long side across the slope. */
-  readonly landscape: boolean;
-  /** Metres kept free along every edge. */
-  readonly setback: number;
-  readonly modules: readonly GridModule[];
-}
-
 /** A module's outline in metres; `height` is its long side. */
 export interface Size {
   readonly width: number;

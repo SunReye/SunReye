@@ -1,6 +1,6 @@
 // The draft without one of its objects (ADR 20): what "Entfernen" makes of it, in the inspector
 // and in the context toolbar. Pure.
-import { parent, type Level } from "./levels.ts";
+import { gridOn, parent, type Level } from "./levels.ts";
 import { withoutBlock, withoutString, type Draft } from "./modules.ts";
 import { removeModule } from "./placing.ts";
 import type { Scene } from "./pv.ts";
@@ -35,9 +35,7 @@ function sceneWithout(scene: Scene, level: Level): Scene | null {
 
   if (level.kind !== "module") return null;
 
-  const grid = (scene.grids ?? []).findIndex(
-    (item) => item.block === level.block && item.face === level.face,
-  );
+  const grid = gridOn(scene, level);
 
   return grid < 0 ? null : removeModule(scene, grid, level.module);
 }

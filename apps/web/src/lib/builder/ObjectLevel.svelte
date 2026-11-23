@@ -5,7 +5,7 @@
   import CarPlaceFieldset from "./CarPlaceFieldset.svelte";
   import EquipmentFieldset from "./EquipmentFieldset.svelte";
   import FaceLevel from "./FaceLevel.svelte";
-  import type { Level } from "./levels.ts";
+  import { laying, type Level } from "./levels.ts";
   import { wiredIn, type Draft, type TypeSource } from "./modules.ts";
   import type { Plan } from "./outline.ts";
   import StringFieldset from "./StringFieldset.svelte";
@@ -51,11 +51,7 @@
 
   const inputs = $derived(string && plan.inputs[string.device]);
 
-  const roof = $derived(
-    level.kind === "face" || level.kind === "module"
-      ? plan.laid.roofs.find((r) => r.block === level.block && r.face === level.face)
-      : undefined,
-  );
+  const roof = $derived(laying(plan.laid.roofs, level));
 
   /** A module of the face, tapped in 3D. */
   const tapped = $derived(level.kind === "module" ? level : undefined);

@@ -4,11 +4,8 @@ import { carBodies, type CarBodies } from "./car-bodies";
 import { refusal, type Client, type Problem } from "./client";
 import { body, type LayoutChange } from "./layout-change";
 import { pvModel, type PvModel } from "./model";
+import type { Layout } from "@sunreye/scene";
 import type { components } from "./schema";
-
-export type Layout = components["schemas"]["Layout"];
-
-export type { Types } from "./layout-change";
 
 export type ModuleType = components["schemas"]["ModuleType"];
 

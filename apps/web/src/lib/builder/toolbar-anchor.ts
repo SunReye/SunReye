@@ -2,7 +2,7 @@
 // the canvas projects to a box. None, no toolbar. Pure.
 import type { Selecting } from "./gestures.ts";
 import { offered } from "./handles/offered.ts";
-import { handled, type Level } from "./levels.ts";
+import { gridOn, handled, laying, type Level } from "./levels.ts";
 import type { Draft } from "./modules.ts";
 import type { Geometry, Modules, Point, RoofFace } from "./pv.ts";
 
@@ -34,14 +34,12 @@ function cornersOf({ outline, origin, across, up }: RoofFace): Point[] {
 /** The outline of the grid on the face `level` names, or of its tapped module; of the roof face
  * itself while it holds no grid. */
 function onFace({ draft, laid }: Anchored, level: Extract<Level, { kind: "face" | "module" }>) {
-  const grid = (draft.scene.grids ?? []).findIndex(
-    (item) => item.block === level.block && item.face === level.face,
-  );
+  const grid = gridOn(draft.scene, level);
 
   const shade = laid.grids[grid];
 
   if (shade === undefined || shade === null) {
-    const roof = laid.roofs.find((face) => face.block === level.block && face.face === level.face);
+    const roof = laying(laid.roofs, level);
 
     return roof === undefined ? [] : cornersOf(roof);
   }
