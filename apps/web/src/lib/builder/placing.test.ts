@@ -2,12 +2,10 @@
 import { expect, test } from "bun:test";
 import { addGrid, editGrid, fillGrid, uncovered, wire } from "./modules.ts";
 import { move, place, removeModule } from "./placing.ts";
-import { loadPv, type Scene } from "./pv.ts";
+import { loadPv } from "@sunreye/pv-wasm";
+import type { Scene } from "./pv.ts";
 
-const wasm = new URL(
-  "../../../../../target/wasm32-unknown-unknown/release/sunreye_pv_wasm.wasm",
-  import.meta.url,
-);
+const wasm = new URL(import.meta.resolve("@sunreye/pv-wasm/pv.wasm"));
 
 const pv = await loadPv(await Bun.file(wasm).bytes());
 

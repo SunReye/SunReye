@@ -2,18 +2,17 @@ import "../../app.css";
 import { beforeEach, expect, test } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import wasm from "../../../../../target/wasm32-unknown-unknown/release/sunreye_pv_wasm.wasm?url";
 import { connect, type Corrections, type ModuleType, type Transport } from "../api/core.ts";
 import Builder from "./Builder.svelte";
 import { emptyDraft } from "./modules.ts";
-import { loadPv } from "./pv.ts";
+import { fetchPv } from "./engine.ts";
 import { fill } from "./templates.ts";
 import { pickDay, savedFrom, scrub } from "./moment.harness.ts";
 
 // The builder's time slider (ADR 20): it reads history, forecasts and a clear sky, and never
 // changes the scene.
 
-const pv = await loadPv(new Uint8Array(await (await fetch(wasm)).arrayBuffer()));
+const pv = await fetchPv();
 
 const MODULE: ModuleType = {
   id: 7,

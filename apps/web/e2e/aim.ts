@@ -8,15 +8,13 @@ import type { Page } from "playwright";
 import { presetView } from "../src/lib/builder/camera.ts";
 import { chimney } from "../src/lib/builder/draft.ts";
 import { handles, type Handle, type Target } from "../src/lib/builder/handles/grips.ts";
-import { loadPv, type Pv, type Scene } from "../src/lib/builder/pv.ts";
+import { loadPv } from "@sunreye/pv-wasm";
+import type { Pv, Scene } from "../src/lib/builder/pv.ts";
 import { fresh } from "../src/lib/builder/wall-openings.ts";
 import { SCENE } from "./fixtures.ts";
 import type { Pixel } from "./gestures.ts";
 
-const WASM = new URL(
-  "../../../target/wasm32-unknown-unknown/release/sunreye_pv_wasm.wasm",
-  import.meta.url,
-);
+const WASM = new URL(import.meta.resolve("@sunreye/pv-wasm/pv.wasm"));
 
 /** What a journey drags: the fixture's block, or what its `ready` added through the inspector. */
 export type Aimed = "block" | "window" | "chimney";

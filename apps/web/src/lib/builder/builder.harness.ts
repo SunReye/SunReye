@@ -2,20 +2,20 @@
 // that answers layout changes, and the inspector's moves.
 import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import wasm from "../../../../../target/wasm32-unknown-unknown/release/sunreye_pv_wasm.wasm?url";
 import { connect, type ModuleType, type Transport } from "../api/core.ts";
 import { finish } from "../motion/animations.harness.ts";
 import Builder from "./Builder.svelte";
 import { emptyDraft, fillGrid } from "./modules.ts";
 import { faceView, onView, presetView, type View } from "./projection.harness.ts";
-import { loadPv, type Scene } from "./pv.ts";
+import { fetchPv } from "./engine.ts";
+import type { Scene } from "./pv.ts";
 import { fill } from "./templates.ts";
 
 export { press, tap, type Pointer } from "./pointer.harness.ts";
 
 export { settle, stepUntil } from "../motion/clock.harness.ts";
 
-export const pv = await loadPv(new Uint8Array(await (await fetch(wasm)).arrayBuffer()));
+export const pv = await fetchPv();
 
 export const MODULE: ModuleType = {
   id: 7,

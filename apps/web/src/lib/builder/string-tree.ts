@@ -2,7 +2,7 @@
 // its strings, with the warnings that belong to each. Pure.
 import type { Device, StringDraft } from "../api/core.ts";
 import type { Sized } from "./checks.ts";
-import type { Inverters } from "./sizing.ts";
+import type { Inverters } from "./pv.ts";
 
 export interface StringRow {
   /** Its position in the layout. */

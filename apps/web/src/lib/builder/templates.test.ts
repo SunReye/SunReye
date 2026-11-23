@@ -1,13 +1,10 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
 import { emptyDraft } from "./modules.ts";
-import { loadPv } from "./pv.ts";
+import { loadPv } from "@sunreye/pv-wasm";
 import { fill, TEMPLATES } from "./templates.ts";
 
-const wasm = new URL(
-  "../../../../../target/wasm32-unknown-unknown/release/sunreye_pv_wasm.wasm",
-  import.meta.url,
-);
+const wasm = new URL(import.meta.resolve("@sunreye/pv-wasm/pv.wasm"));
 
 const pv = await loadPv(await Bun.file(wasm).bytes());
 

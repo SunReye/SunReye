@@ -5,6 +5,8 @@ import { carBody, loadCar, placedModel } from "./bodies.ts";
 import carUrl from "./car.glb?url";
 import type { Parked } from "./parked.ts";
 
+export type { Parked } from "./parked.ts";
+
 /** An uploaded body by id, shared between draws; null when it cannot be read. */
 export type ModelLoader = (id: string) => Promise<Object3D | null>;
 

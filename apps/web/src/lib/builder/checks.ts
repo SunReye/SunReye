@@ -7,9 +7,7 @@ import { m } from "../paraglide/messages.js";
 import { getLocale } from "../paraglide/runtime.js";
 import { wiredIn, type Draft } from "./modules.ts";
 import type { Misplaced, Pv } from "./pv.ts";
-import type { InputLimits, Inverters, Sizing } from "./sizing.ts";
-
-export type { Inverters } from "./sizing.ts";
+import type { InputLimits, Inverters, Sizing } from "./pv.ts";
 
 /** Maximum DC input voltage in volts, by inverter device id. */
 export type Limits = Readonly<Record<number, number>>;
