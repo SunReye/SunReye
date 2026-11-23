@@ -212,3 +212,18 @@ fn reach(p: Plan, (a, b): (Plan, Plan)) -> f64 {
     };
     (p[0] - along.mul_add(du, a[0])).hypot(p[1] - along.mul_add(dv, a[1]))
 }
+
+/// How far along the side from `a` to `b`, in its length, the edge meets it; none where they
+/// run alike or miss.
+pub fn crossing((a, b): (Plan, Plan), (c, d): (Plan, Plan)) -> Option<f64> {
+    let (su, sv) = (b[0] - a[0], b[1] - a[1]);
+    let (eu, ev) = (d[0] - c[0], d[1] - c[1]);
+    let spun = su.mul_add(ev, -(sv * eu));
+    if spun.abs() < EPSILON {
+        return None;
+    }
+    let (cu, cv) = (c[0] - a[0], c[1] - a[1]);
+    let along = cu.mul_add(ev, -(cv * eu)) / spun;
+    let onto = cu.mul_add(sv, -(cv * su)) / spun;
+    ((0.0..=1.0).contains(&along) && (-EPSILON..=1.0 + EPSILON).contains(&onto)).then_some(along)
+}

@@ -4,7 +4,9 @@
 use serde_json::{Value, json};
 
 use super::fixtures::{MODULE, shaded_substrings};
-use crate::{Misplaced, ModuleType, Place, Plane, RoofFace, Scene, Size, Sun};
+use crate::{
+    Misplaced, ModuleType, Occluder, Place, Plane, Point, RoofFace, Scene, Size, Sun, Surface,
+};
 
 fn scene(north: f64, blocks: &Value) -> Scene {
     serde_json::from_value(json!({ "north": north, "blocks": blocks, "obstacles": [] })).unwrap()
@@ -400,4 +402,86 @@ fn a_non_convex_face_shades_under_itself_and_not_under_its_notch() {
 
     assert_eq!(ground_shade(&scene, 2.0, -2.0), MODULE.bypass_diodes);
     assert_eq!(ground_shade(&scene, 7.0, -4.6), 0);
+}
+
+fn surfaces(scene: &Scene, surface: Surface) -> Vec<Vec<Point>> {
+    let faces = scene.faces().into_iter().filter(|f| f.surface == surface);
+    faces.map(|f| f.corners).collect()
+}
+
+#[test]
+fn the_walls_reach_up_to_the_faces_as_the_gable_it_copies_does() {
+    let walls = surfaces(&scene(30.0, &json!([gable()])), Surface::Wall);
+    let expected = surfaces(&scene(30.0, &json!([parametric()])), Surface::Wall);
+
+    assert_eq!(walls.len(), expected.len());
+    for (wall, parametric) in walls.iter().zip(&expected) {
+        assert_eq!(wall.len(), parametric.len(), "{wall:?}\n{parametric:?}");
+        assert!(
+            wall.iter().zip(parametric).all(|(a, b)| near(a, b)),
+            "{wall:?}\n{parametric:?}"
+        );
+    }
+}
+
+#[test]
+fn a_wall_steps_where_the_faces_over_it_step_and_stands_nowhere_without_one() {
+    // A level roof at 3 m over x 0 to 6 and at 5 m over x 6 to 10; nothing over x 10 to 12.
+    let level = |from: f64, to: f64, height: f64| {
+        json!([
+            [from, height, 4.0],
+            [to, height, 4.0],
+            [to, height, 0.0],
+            [from, height, 0.0]
+        ])
+    };
+    let block = free(
+        &json!([[0.0, 0.0], [12.0, 0.0], [12.0, 4.0], [0.0, 4.0]]),
+        &json!([level(0.0, 6.0, 3.0), level(6.0, 10.0, 5.0)]),
+    );
+
+    let walls = surfaces(&scene(0.0, &json!([block])), Surface::Wall);
+
+    // The back wall along z = 0, from x = 0 to 12, seen in the shading frame (north = −z).
+    let back = walls.first().unwrap();
+    let expected: [Point; 7] = [
+        [0.0, 0.0, 0.0],
+        [12.0, 0.0, 0.0],
+        [10.0, 0.0, 0.0],
+        [10.0, 0.0, 5.0],
+        [6.0, 0.0, 5.0],
+        [6.0, 0.0, 3.0],
+        [0.0, 0.0, 3.0],
+    ];
+    assert_eq!(back.len(), expected.len(), "{back:?}");
+    assert!(
+        back.iter().zip(&expected).all(|(a, b)| near(a, b)),
+        "{back:?}"
+    );
+}
+
+#[test]
+fn an_open_free_form_block_stands_a_post_at_each_footprint_corner_up_to_the_faces() {
+    let mut block = gable();
+    block["open"] = json!(true);
+
+    let posts = scene(0.0, &json!([block.clone()])).solids();
+
+    let tops: Vec<(Point, f64)> = posts
+        .iter()
+        .filter_map(|solid| match *solid {
+            Occluder::Cylinder { base, height, .. } => Some((base, height)),
+            Occluder::Triangle(_) | Occluder::Sphere { .. } | Occluder::Cone { .. } => None,
+        })
+        .collect();
+    assert_eq!(tops.len(), 4);
+    assert!(
+        tops.iter().all(|(_, height)| (height - 3.0).abs() < 1e-9),
+        "{tops:?}"
+    );
+    assert!(near(&tops[2].0, &[10.0, -8.0, 0.0]), "{tops:?}");
+    assert_eq!(
+        surfaces(&scene(0.0, &json!([block])), Surface::Wall),
+        Vec::<Vec<Point>>::new()
+    );
 }

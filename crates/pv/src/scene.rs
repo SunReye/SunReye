@@ -268,10 +268,10 @@ impl Scene {
     /// A block's walls, unless it is open, and its roof faces, in its colours.
     fn shell(&self, block: &Block) -> Vec<Face> {
         let frame = self.frame(block);
-        let walls = if block.open {
-            Vec::new()
-        } else {
-            walls(block.width, block.depth, &roof(block))
+        let walls = match (&block.free_form, block.open) {
+            (_, true) => Vec::new(),
+            (Some(free), false) => free.walls(),
+            (None, false) => walls(block.width, block.depth, &roof(block)),
         };
         let painted = |text: &Option<String>| text.clone().filter(|text| colour(text));
         let (wall, top) = (painted(&block.wall_colour), painted(&block.roof_colour));
@@ -335,7 +335,18 @@ impl Scene {
 
     /// A post at each corner of a carport, up to its roof's highest corner there.
     fn posts(&self, block: &Block) -> Vec<Occluder> {
-        let frame = self.prism(block.x, block.z, block.rotation);
+        let frame = self.frame(block);
+        if let Some(free) = &block.free_form {
+            return free
+                .footprint
+                .iter()
+                .map(|&[x, z]| Occluder::Cylinder {
+                    base: frame.place([x, 0.0, z]),
+                    radius: POST,
+                    height: free.height([x, z]),
+                })
+                .collect();
+        }
         let roofs = roof(block);
         footprint(block.width, block.depth)
             .into_iter()
