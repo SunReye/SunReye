@@ -8,8 +8,57 @@ This file is the package's public interface. A consumer imports the entries belo
 
 - Svelte and TypeScript sources: compile them with Svelte's Vite plugin, and point Tailwind's `@source` at the package beside `@sunreye/ui`'s sheet.
 - Peers: Svelte, three.js, `@lucide/svelte`, Bits UI, `@internationalized/date`, `@sunreye/scene`, `@sunreye/pv-wasm`, `@sunreye/ui`, `@sunreye/catalogue`.
-- Its words are its own Paraglide project, in German and English. A consumer that installs the package by path runs `bun run i18n` in it before building.
+- Its words are its own Paraglide project, in German and English, compiled by the package's `i18n` script ("Installing it by path").
 - The locale is Paraglide's local-storage key, where Home keeps it, unless the consumer sets it with `speak`.
+
+## Installing it by path
+
+Until the packages are published, a consumer beside this repository's checkout, at `../home`, installs them by path (ADR 25). `fixtures/consumer` is such a consumer, and the gate builds and runs it (`scripts/consumer.ts`); copy from it.
+
+1. In `../home`: `bun install`, then the builder's `i18n` and `@sunreye/pv-wasm`'s `wasm` scripts. Then install the consumer: Bun links each file it finds in a package folder at install, so a file generated later is missing. The fixture's `shared` script runs both.
+2. `package.json`: each package by path, and the same path as an override for each package another one names as a peer, since Bun fills a peer from the registry, never from a folder. Svelte, three.js, Bits UI, `@lucide/svelte`, `@internationalized/date` and Tailwind at versions the peers' ranges take.
+
+   ```json
+   "dependencies": {
+     "@sunreye/builder": "file:../home/packages/builder",
+     "@sunreye/catalogue": "file:../home/packages/catalogue",
+     "@sunreye/pv-wasm": "file:../home/packages/pv-wasm",
+     "@sunreye/scene": "file:../home/packages/scene",
+     "@sunreye/tokens": "file:../home/packages/tokens",
+     "@sunreye/ui": "file:../home/packages/ui"
+   },
+   "overrides": {
+     "@sunreye/catalogue": "file:../home/packages/catalogue",
+     "@sunreye/pv-wasm": "file:../home/packages/pv-wasm",
+     "@sunreye/scene": "file:../home/packages/scene",
+     "@sunreye/ui": "file:../home/packages/ui"
+   }
+   ```
+
+3. `tsconfig.json`: `"preserveSymlinks": true`, so the packages' imports resolve from the consumer's install, not this repository's.
+4. `vite.config.ts`: the same for the bundle, and one copy of each `@sunreye` package, as the builder's own folder links its siblings too. Without `preserveSymlinks` the builder reads three.js, Bits UI and the rest from this repository's install; without `dedupe` a second `@sunreye/scene` loads.
+
+   ```ts
+   optimizeDeps: { exclude: ["@sunreye/builder", "@sunreye/ui"] },
+   resolve: {
+     preserveSymlinks: true,
+     dedupe: ["@sunreye/catalogue", "@sunreye/pv-wasm", "@sunreye/scene", "@sunreye/ui"],
+   },
+   ```
+
+   The `exclude` keeps the dev server from pre-bundling the packages' Svelte and TypeScript sources.
+5. The sheet:
+
+   ```css
+   @import "tailwindcss";
+   @import "@sunreye/ui/theme.css";
+   @import "@sunreye/tokens/tokens.css";
+
+   @source "../node_modules/@sunreye/ui/src";
+   @source "../node_modules/@sunreye/builder/src";
+   ```
+
+Publishing to npm drops the overrides, `preserveSymlinks`, the `dedupe` and the first step.
 
 ## `@sunreye/builder`
 
