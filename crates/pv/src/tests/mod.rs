@@ -1,6 +1,7 @@
 mod clear_sky;
 mod device_types;
 mod diode;
+mod dormer;
 mod equipment;
 mod estimate;
 mod existing_pv;
