@@ -348,6 +348,14 @@ _Avoid_: Custom roof, polygon roof, LoD2 face
 A line traced along a roof seen from above: an eave, ridge, hip, valley or verge. A traced roof's lines are its source; every closed loop of them is a free-form roof face.
 _Avoid_: Edge, stroke, segment
 
+**Pulling up**:
+Giving a traced roof its heights: its eave points to one height, its ridge points to another; every other point follows, so faces stay flat. A point's height may also be set by number, and no pull changes it then. German UI: Traufhöhe, Firsthöhe.
+_Avoid_: Extrude, lift
+
+**Bent face**:
+A traced roof face whose corners lie more than 2 cm off its plane, as set heights can leave it. It is kept, drawn in the warning colour, and carries no modules until it is flat.
+_Avoid_: Warped face, invalid face
+
 **Covering**:
 What a roof face is covered with: tiles, slate, sheet metal or bitumen; unknown until someone says.
 _Avoid_: Roofing, material, Eindeckung
