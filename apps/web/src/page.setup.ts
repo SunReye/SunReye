@@ -23,6 +23,15 @@ beforeAll(async () => {
   await commands.frameKnown();
 });
 
+// Each file starts with the mouse Playwright gives the tab. A tab whose touch emulation was ever
+// set has none, for good: the file that set it belongs in a tab of its own (touch-tests.ts).
+beforeAll(() => {
+  if (!matchMedia("(hover: hover) and (pointer: fine)").matches)
+    throw new Error(
+      "This file starts without a mouse: a file before it in this tab emulated touch. touch-tests.ts gives such a file a tab of its own.",
+    );
+});
+
 // Outside the scene project nothing draws with WebGL: every page shares one software renderer.
 const drew = inject("scene")
   ? () => false
