@@ -57,7 +57,7 @@ flowchart LR
 
 `year_with(layout, table, weather, step)` does the same with a `ShadingTable` the caller keeps, which it traces again first only when what shading reads changed.
 
-`@sunreye/pv-wasm`'s `year` takes the plant as `clearSky` does, each inverter's inverter type for its MPPT limits, and the weather as columns at a fixed step from a start instant. It returns each string's energy by position and each inverter's by device id with its inputs by number.
+`@sunreye/pv-wasm`'s `year` takes the plant as `clearSky` does, each inverter's inverter type for its MPPT limits, and the weather as columns at a fixed step from a start instant. It returns each string's energy by position and each inverter's by device id with its inputs by number. It keeps the last plant's shading table, so a run that changes only the weather or the electrics traces no shade.
 
 ### Shading table
 

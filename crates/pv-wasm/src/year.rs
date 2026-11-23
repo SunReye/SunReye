@@ -1,12 +1,19 @@
 //! A plant's run over a year of weather (ADR 17): energy per string, MPPT input and inverter.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 
 use serde::Deserialize;
 use serde_json::{Value, json};
-use sunreye_pv::{Energy, InverterType, Weather, year};
+use sunreye_pv::{Energy, InverterType, ShadingTable, Weather, year_with};
 
 use crate::clear::{Plant, Wired};
+
+thread_local! {
+    /// The last plant's shading table: runs that change only the weather or the electrics reuse
+    /// it (ADR 17).
+    static TABLE: RefCell<ShadingTable> = RefCell::default();
+}
 
 /// Weather at a fixed step, as columns: sample `i` is at `start + i × step`.
 #[derive(Deserialize)]
@@ -102,7 +109,8 @@ impl YearRun {
             Ok(wired) => wired,
             Err(refused) => return json!({ "error": refused.to_string() }),
         };
-        let run = year(&layout, &samples, self.weather.step);
+        let run =
+            TABLE.with_borrow_mut(|table| year_with(&layout, table, &samples, self.weather.step));
         let mut strings = vec![energy(&Energy::default()); self.plant.strings.len()];
         let modelled = run
             .inverters
