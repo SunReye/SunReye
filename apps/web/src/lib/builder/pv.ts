@@ -1,6 +1,6 @@
 // The `pv` crate in the browser through its glue crate, crates/pv-wasm (ADR 2, 20).
 import type { ModuleType, StringDraft } from "../api/core.ts";
-import type { Neighbour } from "./supplied.ts";
+import { suppliedCalls, type Neighbour, type Supplier } from "./supplied.ts";
 import type { Fence, Fencing, Ground, GroundSurface, Obstacle } from "./obstacles.ts";
 import { roofCalls } from "./roof-calls.ts";
 import type { Chimney, FreeForm, Overhang, RoofWindow } from "./roofing.ts";
@@ -12,7 +12,6 @@ export type { Equipment, Fitted, Opening, OpeningKind, Unfit, Wall, WallFrame } 
 import {
   isChimney,
   isExports,
-  isFaces,
   isGeometry,
   isIndex,
   isModules,
@@ -43,6 +42,8 @@ import type { Ghost, Modules } from "./laid.ts";
 export type { GridModule, ModuleGrid, OnGrid, Sizes, Spot } from "./grids.ts";
 
 export type { Footprint, Ghost, LaidGrid, Misplaced, Modules, RoofFace } from "./laid.ts";
+
+export type { Aerial, Neighbour } from "./supplied.ts";
 
 /** A string as the core's API wires it. */
 export type Wiring = Readonly<Omit<StringDraft, "id">>;
@@ -177,15 +178,13 @@ export interface ClearRun {
   readonly times: readonly number[];
 }
 
-export interface Pv extends Sizer {
+export interface Pv extends Sizer, Supplier {
   /** The scene's faces and solids; throws the crate's reason for a scene it cannot read. */
   readonly geometry: (scene: Scene) => Geometry;
   /** The scene's module grids laid out, with module sizes by module type id. */
   readonly modules: (scene: Scene, sizes: Sizes) => Modules;
   /** Where the sun stands at `unix` seconds over `location`. */
   readonly sun: (unix: number, location: Location) => Sun;
-  /** The neighbours' walls and tops, east, north, up; throws the crate's reason for one refused. */
-  readonly neighbours: (neighbours: readonly Neighbour[]) => Face[];
   /** Each string's watts under a clear sky, by time, then string position (ADR 20). */
   readonly clearSky: (run: ClearRun) => number[][];
   /** Each string's open-circuit voltage at −10 °C, by position; null for an unknown module type. */
@@ -270,7 +269,6 @@ export async function loadPv(bytes: Uint8Array<ArrayBuffer>): Promise<Pv> {
     geometry: (scene) => unwrap(call("geometry", JSON.stringify(scene)), isGeometry),
     modules: (scene, sizes) => unwrap(call("modules", JSON.stringify({ scene, sizes })), isModules),
     sun: (unix, location) => unwrap(call("sun", JSON.stringify({ unix, location })), isSun),
-    neighbours: (neighbours) => unwrap(call("neighbours", JSON.stringify(neighbours)), isFaces),
     clearSky: (run) => unwrap(call("clear_sky", JSON.stringify(run)), isWatts),
     coldVoltages: (moduleTypes, strings) =>
       unwrap(call("cold_voltages", JSON.stringify({ moduleTypes, strings })), isVolts),
@@ -284,6 +282,7 @@ export async function loadPv(bytes: Uint8Array<ArrayBuffer>): Promise<Pv> {
       unwrap(call("chimney_at", JSON.stringify({ scene, point })), isIndex),
     ...roofCalls(call),
     ...sizingCalls(call),
+    ...suppliedCalls(call),
   };
 }
 

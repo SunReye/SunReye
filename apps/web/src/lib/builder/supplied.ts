@@ -1,5 +1,7 @@
 // What the builder's consumer supplies around the plant (ADR 20, 25). The builder fetches none
 // of it and saves none of it.
+import type { Face } from "./pv.ts";
+import { isFaces, unwrap, type Exported } from "./replies.ts";
 
 /**
  * An upright body around the plant: a footprint on the ground under a level top. It shades as
@@ -26,4 +28,16 @@ export interface Extent {
 export interface Aerial {
   readonly image: TexImageSource;
   readonly extent: Extent;
+}
+
+export interface Supplier {
+  /** The neighbours' walls and tops, east, north, up; throws the crate's reason for one refused. */
+  readonly neighbours: (neighbours: readonly Neighbour[]) => Face[];
+}
+
+/** The crate's answers through `call`. */
+export function suppliedCalls(call: (name: Exported, input: string) => string): Supplier {
+  return {
+    neighbours: (neighbours) => unwrap(call("neighbours", JSON.stringify(neighbours)), isFaces),
+  };
 }

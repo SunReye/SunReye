@@ -9,11 +9,14 @@ import type { Lit } from "../scene/stage.svelte.ts";
 import { freeOverlay, overlay, type Tints } from "./overlay.ts";
 import { RoofPress, type RoofSources, type Roofwork } from "./roof-press.ts";
 import type { Geometry, Ghost, Point } from "./pv.ts";
+import type { Around } from "../scene/surroundings.ts";
 import { buildScene, buildSliced, strike, tint, toThree, type Hit, type Panel } from "./scene.ts";
 
 export type { Hit, Panel } from "./scene.ts";
 
 export type { Geometry, Point } from "./pv.ts";
+
+export type { Around } from "../scene/surroundings.ts";
 
 export { Handled, type Editing } from "./handles/handled.svelte.ts";
 
@@ -27,6 +30,8 @@ export interface Source {
   readonly geometry: () => Geometry;
   readonly panels: () => readonly Panel[];
   readonly shares: () => readonly (number | null)[] | undefined;
+  /** What the builder's consumer supplies around the plant. */
+  readonly around: () => Around | undefined;
 }
 
 export interface Kept {
@@ -49,7 +54,7 @@ export function projector(canvas: HTMLCanvasElement, camera: PerspectiveCamera):
  * slices, behind the dashboard (ADR 20 Loading), each after it at once. */
 export function keep(
   { glow, show, ease }: Lit,
-  { geometry, panels, shares }: Source,
+  { geometry, panels, shares, around }: Source,
   render: () => void,
 ): Kept {
   let drawn: Group | undefined;
@@ -72,13 +77,13 @@ export function keep(
     const build = (builds += 1);
 
     if (drawn !== undefined) {
-      place(buildScene(geometry(), panels()));
+      place(buildScene(geometry(), panels(), around()));
 
       return;
     }
 
     void (async () => {
-      const next = await buildSliced(geometry(), panels(), pause);
+      const next = await buildSliced(geometry(), panels(), pause, around());
 
       // A newer geometry came meanwhile and is built after it.
       if (build === builds) place(next);

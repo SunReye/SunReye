@@ -73,7 +73,12 @@ export function stage(studio: Studio): Staged {
       studio.scene.add(group);
       drawn = group;
 
-      const bounds = new Box3().setFromObject(group).getBoundingSphere(new Sphere());
+      // The plant and what stands round it; an aerial image under it may reach far past both.
+      const box = new Box3();
+
+      for (const part of group.children) if (part.name !== "aerial") box.expandByObject(part);
+
+      const bounds = box.getBoundingSphere(new Sphere());
 
       if (bounds.isEmpty()) bounds.center.set(0, 0, 0);
 

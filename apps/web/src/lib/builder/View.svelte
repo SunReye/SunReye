@@ -12,6 +12,7 @@
   import type { Geometry, Location, RoofFace } from "./pv.ts";
   import ContextBar, { type Selected } from "./ContextBar.svelte";
   import Stage, {
+    type Around,
     type Editing,
     type Hit,
     type Roofwork,
@@ -26,6 +27,7 @@
     draft,
     geometry,
     panels,
+    around,
     devices,
     location,
     moment,
@@ -43,6 +45,8 @@
     draft: Draft;
     geometry: Geometry;
     panels: readonly Panel[];
+    /** The aerial image and the neighbours the builder's consumer supplies. */
+    around?: Around | undefined;
     devices: readonly Device[];
     location: Location | undefined;
     /** The slider's instant. */
@@ -100,6 +104,7 @@
       {core}
       {geometry}
       {panels}
+      {around}
       sun={moment.sun}
       diffuse={moment.weather.cloud}
       weather={moment.scene}
