@@ -22,6 +22,7 @@ mod polygon;
 mod roof_window;
 mod scene;
 mod shade;
+mod shading;
 mod sizing;
 mod string;
 mod sun;
@@ -45,13 +46,14 @@ pub use parking::{CarPlace, Stand};
 pub use perez::plane_irradiance;
 pub use roof_window::RoofWindow;
 pub use scene::{Block, Crown, Face, Obstacle, Overhang, Roof, Scene, Surface};
+pub use shading::ShadingTable;
 pub use sizing::{HOT, Sizing, Wired, longest_string, window_warnings};
 pub use sun::sun_position;
 pub use surroundings::{
     Fence, FenceFinish, FencePoint, Fencing, Ground, GroundFinish, GroundSurface,
 };
 pub use temperature::cell_temperature;
-pub use year::{Energy, InputYear, InverterYear, Year, year};
+pub use year::{Energy, InputYear, InverterYear, Year, year, year_with};
 
 /// The cell temperature in °C a string's open-circuit voltage is checked at (ADR 20).
 pub const COLD: f64 = -10.0;

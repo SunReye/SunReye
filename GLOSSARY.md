@@ -300,6 +300,10 @@ _Avoid_: Sizing error, string error
 The cells of one module behind one bypass diode. Shade bypasses a substring, not the whole module.
 _Avoid_: Cell string, diode group
 
+**Shading table**:
+Which substrings a scene shades at each sun position of a grid over the sky, traced once per scene and looked up by a year's run.
+_Avoid_: Shade map, shadow cache
+
 **Module type**:
 The datasheet values of one PV module model.
 _Avoid_: Panel model
