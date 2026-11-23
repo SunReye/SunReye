@@ -101,6 +101,51 @@ export interface YearRun {
   readonly weather: WeatherSteps;
 }
 
+/** Twenty or more whole UTC years at one step (ADR 17). A value that averages the step before its
+ * time is stamped at the step's middle; `start` is the first such stamp. */
+export interface PastYears {
+  readonly years: readonly WeatherSteps[];
+}
+
+/** A site's typical year, stamped in 2001 at its past years' step, and the past year each month,
+ * January first, comes from. */
+export interface TypicalYear {
+  readonly weather: WeatherSteps;
+  readonly sources: readonly number[];
+}
+
+/** A layout over a year of weather, for its irradiation on its planes. */
+export type Irradiated = Omit<YearRun, "inverterTypes">;
+
+/** A past year's irradiation on a layout's planes, in Wh/m². */
+export interface PastIrradiation {
+  readonly year: number;
+  readonly irradiation: number;
+}
+
+/** The simulated typical year's energy, its irradiation in Wh/m² and each past year's. */
+export interface Scaling {
+  readonly simulated: number;
+  readonly typical: number;
+  readonly years: readonly PastIrradiation[];
+}
+
+/** P50 and P90 in the simulated energy's unit, and how they were made: the simulated year scaled
+ * by each past year's irradiation over the typical year's, a normal distribution fitted to them,
+ * P90 exceeded in nine years of ten. */
+export interface Cautious {
+  readonly p50: number;
+  readonly p90: number;
+  readonly basis: {
+    readonly method: "irradiationScaling";
+    readonly typical: number;
+    readonly years: readonly PastIrradiation[];
+    /** The mean and the sample deviation of the ratios. */
+    readonly mean: number;
+    readonly deviation: number;
+  };
+}
+
 /** Watt-hours by UTC month, January first, and over the whole run. */
 export interface Energy {
   readonly months: readonly number[];
@@ -166,6 +211,14 @@ export interface Pv {
   readonly clearSky: (run: ClearRun) => number[][];
   /** The energy of every string, MPPT input and inverter over a year of weather (ADR 17). */
   readonly year: (run: YearRun) => YearEnergy;
+  /** `location` to 0.01°: the site a typical year belongs to, and the key to cache one by. */
+  readonly site: (location: Location) => Location;
+  /** A site's typical year from twenty or more past years (ADR 17). */
+  readonly typicalYear: (past: PastYears) => TypicalYear;
+  /** A layout's irradiation on its planes in Wh/m², without shade or electrics (ADR 17). */
+  readonly irradiation: (run: Irradiated) => number;
+  /** P50 and P90 of a simulated typical year (ADR 17). */
+  readonly cautious: (scaling: Scaling) => Cautious;
   /** Each string's open-circuit voltage at −10 °C, by position; null for an unknown module type. */
   readonly coldVoltages: (
     moduleTypes: readonly ModuleType[],

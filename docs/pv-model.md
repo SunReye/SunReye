@@ -57,6 +57,14 @@ flowchart LR
 
 `@sunreye/pv-wasm`'s `year` takes the plant as `clearSky` does, each inverter's inverter type for its MPPT limits, and the weather as columns at a fixed step from a start instant. It returns each string's energy by position and each inverter's by device id with its inputs by number.
 
+## A typical year and the cautious yield
+
+`sunreye_pv::typical_year(years, step)` takes twenty or more whole UTC years of weather and keeps each calendar month whole from the past year whose daily global and direct normal irradiation and mean temperature are closest to all years' (weighted Finkelstein–Schafer statistic, ½, ¼, ¼), restamped into 2001; 29 February is dropped. A sample that averages the step before its time is stamped at the step's middle, where the sun's mean position lies.
+
+`irradiation(layout, weather, step)` is Perez on the layout's planes in Wh/m², weighted by each module's Vmp × Imp, without shade or electrics. `cautious(simulated, typical, years)` scales the simulated typical year's energy by each past year's irradiation over the typical year's and fits a normal distribution: P50 is its mean, P90 the mean less 1.2816 deviations. Its `basis` says how the figure was made.
+
+`@sunreye/pv-wasm` exposes them as `typicalYear`, `irradiation` and `cautious`, and `Location::rounded` as `site`: a consumer caching a typical year per site keys it with `site`.
+
 ## How shade reaches the electrics
 
 - A module has one substring per bypass diode: strips along its long side, side by side across its short side.

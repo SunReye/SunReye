@@ -2,7 +2,10 @@
 // glue crate's own shape is trusted past the top level.
 
 /** @import { Chimney, Opening, RoofWindow } from "@sunreye/scene" */
-/** @import { Face, Geometry, Ghost, Modules, Sizing, Sun, Unfit, YearEnergy } from "./index.d.ts" */
+/**
+ * @import { Cautious, Face, Geometry, Ghost, Location, Modules, Sizing, Sun, TypicalYear, Unfit, YearEnergy }
+ *   from "./index.d.ts"
+ */
 
 /**
  * @template T
@@ -133,6 +136,57 @@ export const isYear = (value) =>
     Array.isArray(value.ok.strings) &&
     "inverters" in value.ok &&
     Array.isArray(value.ok.inverters));
+
+/**
+ * @param {unknown} value
+ * @returns {value is Reply<Location>}
+ */
+export const isLocation = (value) =>
+  isFailure(value) ||
+  (isRecord(value) &&
+    "ok" in value &&
+    isRecord(value.ok) &&
+    "latitude" in value.ok &&
+    Number.isFinite(value.ok.latitude) &&
+    "longitude" in value.ok &&
+    Number.isFinite(value.ok.longitude));
+
+/**
+ * @param {unknown} value
+ * @returns {value is Reply<TypicalYear>}
+ */
+export const isTypical = (value) =>
+  isFailure(value) ||
+  (isRecord(value) &&
+    "ok" in value &&
+    isRecord(value.ok) &&
+    "weather" in value.ok &&
+    isRecord(value.ok.weather) &&
+    "sources" in value.ok &&
+    Array.isArray(value.ok.sources));
+
+/**
+ * @param {unknown} value
+ * @returns {value is Reply<number>}
+ */
+export const isNumber = (value) =>
+  isFailure(value) || (isRecord(value) && "ok" in value && Number.isFinite(value.ok));
+
+/**
+ * @param {unknown} value
+ * @returns {value is Reply<Cautious>}
+ */
+export const isCautious = (value) =>
+  isFailure(value) ||
+  (isRecord(value) &&
+    "ok" in value &&
+    isRecord(value.ok) &&
+    "p50" in value.ok &&
+    Number.isFinite(value.ok.p50) &&
+    "p90" in value.ok &&
+    Number.isFinite(value.ok.p90) &&
+    "basis" in value.ok &&
+    isRecord(value.ok.basis));
 
 const KINDS = new Set(["start", "low", "high", "current", "uneven", "noInput"]);
 
