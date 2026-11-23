@@ -19,9 +19,10 @@ import {
   SphereGeometry,
   Vector3,
 } from "three";
-import { fan } from "../scene/surfaces.ts";
+import { triangles } from "../scene/surfaces.ts";
 import type { Footprint, Ghost, LaidGrid, Point } from "./pv.ts";
 import { stringColour, toThree } from "./scene.ts";
+import { normal } from "./vector.ts";
 
 /** What the overlay shows: a face's modules being laid, or a string's wiring. */
 export type Shown =
@@ -65,18 +66,10 @@ const SHADE = { color: 0x000000, opacity: 0.38 } as const;
 /** A flat polygon's corners in three.js's frame, lifted `by` metres off the roof along its
  * normal. */
 function lifted(corners: readonly Point[], by = LIFT): Vector3[] {
-  const points = corners.map((corner) => new Vector3(...toThree(corner)));
-  const [a, b] = points;
-  const d = points.at(-1);
-
-  if (a === undefined || b === undefined || d === undefined) return points;
-
-  const normal = new Vector3().subVectors(b, a).cross(new Vector3().subVectors(d, a)).normalize();
-
   // Up, whichever way the crate wound the corners.
-  if (normal.y < 0) normal.negate();
+  const up = new Vector3(...toThree(normal(corners)));
 
-  return points.map((point) => point.addScaledVector(normal, by));
+  return corners.map((corner) => new Vector3(...toThree(corner)).addScaledVector(up, by));
 }
 
 function outline(corners: readonly Point[], colour: Color, by = LIFT): LineLoop {
@@ -86,7 +79,7 @@ function outline(corners: readonly Point[], colour: Color, by = LIFT): LineLoop 
   );
 }
 
-/** Convex polygons filled in one colour; they never write depth, so what lies under them shows. */
+/** Flat polygons filled in one colour; they never write depth, so what lies under them shows. */
 function filled(
   polygons: readonly (readonly Vector3[])[],
   { color, opacity }: { readonly color: Color | number; readonly opacity: number },
@@ -96,7 +89,9 @@ function filled(
   geometry.setAttribute(
     "position",
     new Float32BufferAttribute(
-      polygons.flatMap((points) => fan(points.map(({ x, y, z }) => [x, y, z] as const)).flat()),
+      polygons.flatMap((points) =>
+        triangles(points.map(({ x, y, z }) => [x, y, z] as const)).flat(),
+      ),
       3,
     ),
   );

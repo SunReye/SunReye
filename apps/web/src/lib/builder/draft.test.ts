@@ -40,3 +40,20 @@ test("a fence grows by a point 3 m on along its last stretch, and gives one back
   ]);
   expect(shortened(shortened(fence)).points).toHaveLength(2);
 });
+
+test("a new block stands beside a free-form block's footprint, not its unused rectangle", () => {
+  const free = {
+    ...nextBlock([]),
+    width: 0,
+    freeForm: {
+      footprint: [
+        [2, 1],
+        [2, 5],
+        [12, 5],
+      ],
+      faces: [],
+    },
+  };
+
+  expect(nextBlock([free])).toMatchObject({ x: 14, z: 1 });
+});

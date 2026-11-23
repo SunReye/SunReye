@@ -14,16 +14,16 @@ import {
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import * as finish from "../scene/materials.ts";
 import { fence, ground } from "../scene/surroundings.ts";
-import { conifer, crown, fan, level } from "../scene/surfaces.ts";
+import { conifer, crown, level, triangles as cut } from "../scene/surfaces.ts";
 import { roofWindows } from "../scene/roof-windows.ts";
 import { openings } from "../scene/wall-openings.ts";
 import { trim } from "../scene/trim.ts";
 import { modules, toThree, type Panel } from "./panels.ts";
 import type { Face, Geometry, Mount, Solid } from "./pv.ts";
 
-/** Each convex face as a fan of triangles. */
+/** Each face as triangles, convex or not. */
 function triangles(faces: readonly Face[]): number[] {
-  return faces.flatMap(({ corners }) => fan(corners).flatMap((point) => toThree(point)));
+  return faces.flatMap(({ corners }) => cut(corners).flatMap((point) => toThree(point)));
 }
 
 function surface(
