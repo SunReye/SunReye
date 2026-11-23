@@ -87,6 +87,19 @@ pub struct Location {
     pub longitude: f64,
 }
 
+impl Location {
+    /// To 0.01° (about 1 km): what a plant's location is stored at and leaves the home at, and
+    /// the site a typical year belongs to (ADR 17).
+    #[must_use]
+    pub fn rounded(self) -> Self {
+        let round = |degrees: f64| (degrees * 100.0).round() / 100.0;
+        Self {
+            latitude: round(self.latitude),
+            longitude: round(self.longitude),
+        }
+    }
+}
+
 /// The weather at one instant, irradiance in W/m².
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Sky {
