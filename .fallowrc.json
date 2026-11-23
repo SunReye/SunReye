@@ -8,7 +8,6 @@
     "target/**",
     "**/.svelte-kit/**",
     "apps/web/src/lib/components/ui/**",
-    "packages/builder/src/motion.ts",
     "packages/ui/src/alert/**",
     "packages/ui/src/button/**",
     "packages/ui/src/calendar/**",
