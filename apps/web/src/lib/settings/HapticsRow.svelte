@@ -2,7 +2,7 @@
 <script lang="ts">
   import { MediaQuery } from "svelte/reactivity";
   import ToggleRow from "./ToggleRow.svelte";
-  import { HAPTICS, hapticsOn } from "../haptics.ts";
+  import { HAPTICS, hapticsOn } from "@sunreye/ui/haptics";
   import { motion } from "../motion/tier.svelte.ts";
   import { m } from "../paraglide/messages.js";
 

@@ -5,7 +5,7 @@
   import LayoutGrid from "@lucide/svelte/icons/layout-grid";
   import PlugZap from "@lucide/svelte/icons/plug-zap";
   import Trees from "@lucide/svelte/icons/trees";
-  import * as Item from "#lib/components/ui/item/index.js";
+  import * as Item from "@sunreye/ui/item";
   import DrillRow from "../components/drill-in/drill-row.svelte";
   import type { Level, Section } from "./levels.ts";
   import { SECTIONS, summary, type Plan } from "./outline.ts";

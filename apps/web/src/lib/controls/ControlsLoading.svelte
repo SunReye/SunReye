@@ -1,6 +1,6 @@
 <!-- While the capabilities come, the root's card stands in skeleton rows of its size. -->
 <script lang="ts">
-  import * as Card from "#lib/components/ui/card/index.js";
+  import * as Card from "@sunreye/ui/card";
   import LoadingRows from "../components/loading-rows.svelte";
   import PageTitle from "../components/page-title.svelte";
   import { m } from "../paraglide/messages.js";

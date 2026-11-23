@@ -3,7 +3,7 @@
   import LocateFixed from "@lucide/svelte/icons/locate-fixed";
   import type { Core, Problem } from "../api/core.ts";
   import type { Location } from "../api/setup.ts";
-  import { Button } from "#lib/components/ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
   import ComboboxField from "../components/combobox-field.svelte";
   import FormField from "../components/form-field.svelte";
   import TextField from "../components/text-field.svelte";

@@ -1,8 +1,8 @@
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
 // A card's height glides when its content changes it (ADR 21 "One behaviour, one component").
 import type { Attachment } from "svelte/attachments";
-import { easeInOut } from "../../../motion/ease.ts";
-import { tokenMs } from "../../../motion/token.ts";
+import { easeInOut } from "../motion/ease.ts";
+import { tokenMs } from "../motion/token.ts";
 
 const px = (value: string) => Number(value.replace(/px$/u, "")) || 0;
 

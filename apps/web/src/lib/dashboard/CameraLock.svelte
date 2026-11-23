@@ -2,7 +2,7 @@
 <script lang="ts">
   import Lock from "@lucide/svelte/icons/lock";
   import LockOpen from "@lucide/svelte/icons/lock-open";
-  import { Toggle } from "#lib/components/ui/toggle/index.js";
+  import { Toggle } from "@sunreye/ui/toggle";
   import { m } from "../paraglide/messages.js";
 
   let { locked = $bindable() }: { locked: boolean } = $props();

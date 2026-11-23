@@ -1,8 +1,8 @@
 <!-- One group row of the drill-in's root list: icon, label and value summary. -->
 <script lang="ts">
-  import { Pressable } from "../ui/pressable/index.js";
+  import { Pressable } from "@sunreye/ui/pressable";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
-  import * as Item from "../ui/item/index.js";
+  import * as Item from "@sunreye/ui/item";
   import type { DrillGroup } from "./drill-in.svelte";
 
   let {

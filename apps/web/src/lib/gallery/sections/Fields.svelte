@@ -5,7 +5,7 @@
   import FormField from "../../components/form-field.svelte";
   import SelectField from "../../components/select-field.svelte";
   import TextField from "../../components/text-field.svelte";
-  import { Input } from "../../components/ui/input/index.js";
+  import { Input } from "@sunreye/ui/input";
   import Demo from "../Demo.svelte";
 
   let hour = $state("8");

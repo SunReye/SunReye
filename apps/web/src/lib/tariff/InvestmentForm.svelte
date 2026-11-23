@@ -1,10 +1,10 @@
 <!-- The investment payback counts against, as a row that opens the value editor; applying saves it. -->
 <script lang="ts">
-  import { Pressable } from "../components/ui/pressable/index.js";
+  import { Pressable } from "@sunreye/ui/pressable";
   import type { Core, Problem } from "../api/core";
   import type { Outcome } from "../components/value-editor/editable.ts";
   import ValueEditor from "../components/value-editor/value-editor.svelte";
-  import * as Item from "#lib/components/ui/item/index.js";
+  import * as Item from "@sunreye/ui/item";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import { problemText } from "../i18n/problems";
   import { m } from "../paraglide/messages.js";

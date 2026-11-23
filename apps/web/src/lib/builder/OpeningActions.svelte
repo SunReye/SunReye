@@ -3,7 +3,7 @@
 <script lang="ts">
   import Copy from "@lucide/svelte/icons/copy";
   import Lightbulb from "@lucide/svelte/icons/lightbulb";
-  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
+  import * as DropdownMenu from "@sunreye/ui/dropdown-menu";
   import { m } from "../paraglide/messages.js";
   import { duplicateAt, lightAt } from "./context-actions.ts";
   import type { Opening } from "./pv.ts";

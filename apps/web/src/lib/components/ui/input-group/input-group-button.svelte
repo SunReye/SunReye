@@ -20,8 +20,8 @@
 </script>
 
 <script lang="ts">
-  import { Button } from "#lib/components/ui/button/index.js";
-  import { cn } from "#lib/utils.js";
+  import { Button } from "@sunreye/ui/button";
+  import { cn } from "@sunreye/ui/utils";
   import type { ComponentProps } from "svelte";
 
   let {

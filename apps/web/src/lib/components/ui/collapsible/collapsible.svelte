@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Collapsible as CollapsiblePrimitive } from "bits-ui";
-  import { haptics } from "#lib/haptics.ts";
+  import { haptics } from "@sunreye/ui/haptics";
 
   let {
     ref = $bindable(null),

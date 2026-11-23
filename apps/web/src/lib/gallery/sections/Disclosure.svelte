@@ -1,7 +1,7 @@
 <script lang="ts">
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import * as Accordion from "../../components/ui/accordion/index.js";
-  import { buttonVariants } from "../../components/ui/button/index.js";
+  import { buttonVariants } from "@sunreye/ui/button";
   import * as Collapsible from "../../components/ui/collapsible/index.js";
   import Demo from "../Demo.svelte";
 </script>

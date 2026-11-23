@@ -1,8 +1,8 @@
 <!-- One setting and its current value; a writable row opens the value editor (ADR 21). -->
 <script lang="ts">
-  import { Pressable } from "../components/ui/pressable/index.js";
+  import { Pressable } from "@sunreye/ui/pressable";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
-  import * as Item from "#lib/components/ui/item/index.js";
+  import * as Item from "@sunreye/ui/item";
   import type { Control } from "./groups.ts";
 
   let {

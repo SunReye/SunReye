@@ -6,7 +6,7 @@ import { cdp, page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import type { Problem } from "../api/core.ts";
-import { haptics } from "../haptics.ts";
+import { haptics } from "@sunreye/ui/haptics";
 import ConfirmSheet from "./confirm-sheet.svelte";
 import { closed } from "../motion/animations.harness.ts";
 

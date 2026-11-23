@@ -1,8 +1,8 @@
 <!-- An inspector row that turns a yes-or-no part of the scene on or off. -->
 <script lang="ts">
-  import { Checkbox } from "#lib/components/ui/checkbox/index.js";
-  import * as Item from "#lib/components/ui/item/index.js";
-  import { FEEDBACK } from "#lib/components/ui/pressable/index.js";
+  import { Checkbox } from "@sunreye/ui/checkbox";
+  import * as Item from "@sunreye/ui/item";
+  import { FEEDBACK } from "@sunreye/ui/pressable";
 
   let {
     label,

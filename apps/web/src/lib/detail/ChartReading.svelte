@@ -7,7 +7,7 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import type { ClassValue, HTMLAttributes } from "svelte/elements";
-  import { cn } from "#lib/utils.js";
+  import { cn } from "@sunreye/ui/utils";
   import { ChartReader } from "../chart-reading/reader.svelte.ts";
   import ReadingRule from "../chart-reading/ReadingRule.svelte";
 

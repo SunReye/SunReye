@@ -3,7 +3,7 @@
   import UserPlus from "@lucide/svelte/icons/user-plus";
   import { onMount } from "svelte";
   import type { Core, Problem, Viewer } from "../api/core";
-  import { Input } from "#lib/components/ui/input/index.js";
+  import { Input } from "@sunreye/ui/input";
   import { m } from "../paraglide/messages.js";
   import AccessForm from "./AccessForm.svelte";
   import AccessRow from "./AccessRow.svelte";

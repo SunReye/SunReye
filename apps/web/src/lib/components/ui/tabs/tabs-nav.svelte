@@ -5,7 +5,7 @@
 -->
 <script lang="ts">
   import type { HTMLAttributes } from "svelte/elements";
-  import { cn, type WithElementRef } from "#lib/utils.js";
+  import { cn, type WithElementRef } from "@sunreye/ui/utils";
   import { tabsListVariants } from "./tabs-list.svelte";
   import { trackIndicator } from "./tabs-motion.js";
 

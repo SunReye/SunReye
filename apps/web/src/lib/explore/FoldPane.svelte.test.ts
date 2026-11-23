@@ -2,7 +2,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 // The pane is laid out by the SPA's utilities.
 import "../../app.css";
-import { haptics } from "../haptics.ts";
+import { haptics } from "@sunreye/ui/haptics";
 import { fold, plant, reset } from "./fold.harness.ts";
 
 afterEach(reset);

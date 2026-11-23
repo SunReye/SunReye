@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { cn, type WithElementRef } from "#lib/utils.js";
+  import { cn, type WithElementRef } from "../utils.ts";
   import type { HTMLAttributes } from "svelte/elements";
   // Local: sliding selection indicator for `list` rows (#46).
-  import { trackActive } from "#lib/motion.js";
+  import { trackActive } from "../track-active.ts";
 
   // Local: the accent and the primary bar of the current `list` row, drawn here from trackActive's
   // box so they slide and resize from row to row on the motion tokens (#46). `before` is the

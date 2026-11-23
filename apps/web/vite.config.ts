@@ -7,20 +7,22 @@ import { defineConfig } from "vitest/config";
 import { frameKnown } from "./browser-commands.ts";
 import { SCENE } from "./scene-tests.ts";
 
-/** Every lucide icon the sources import, so each new icon is pre-bundled without a list to keep. */
+/** Every lucide icon the sources and the kit's package import, so each new icon is pre-bundled
+ * without a list to keep. */
 function icons(): string[] {
-  const src = `${import.meta.dirname}/src`;
-  const found = new Set<string>();
+  const roots = [`${import.meta.dirname}/src`, `${import.meta.dirname}/../../packages/ui/src`];
 
-  for (const file of readdirSync(src, { recursive: true, encoding: "utf8" })) {
-    if (/\.(?:svelte|ts)$/u.test(file)) {
-      const source = readFileSync(`${src}/${file}`, "utf8");
+  const sources = roots.flatMap((src) =>
+    readdirSync(src, { recursive: true, encoding: "utf8" })
+      .filter((file) => /\.(?:svelte|ts)$/u.test(file))
+      .map((file) => readFileSync(`${src}/${file}`, "utf8")),
+  );
 
-      for (const [name] of source.matchAll(/@lucide\/svelte\/icons\/[a-z0-9-]+/gu)) found.add(name);
-    }
-  }
+  const found = sources.flatMap(
+    (source) => source.match(/@lucide\/svelte\/icons\/[a-z0-9-]+/gu) ?? [],
+  );
 
-  return [...found].toSorted();
+  return [...new Set(found)].toSorted();
 }
 
 function release(): string {

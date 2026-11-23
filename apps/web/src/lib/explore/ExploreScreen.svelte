@@ -5,7 +5,7 @@
 -->
 <script lang="ts">
   import { MediaQuery } from "svelte/reactivity";
-  import * as Card from "#lib/components/ui/card/index.js";
+  import * as Card from "@sunreye/ui/card";
   import type { Go } from "../range/route.svelte.ts";
   import ChartArea from "./ChartArea.svelte";
   import type { Table } from "./csv.ts";

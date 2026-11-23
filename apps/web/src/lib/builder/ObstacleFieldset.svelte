@@ -1,6 +1,6 @@
 <!-- An obstacle's level in the inspector: where it stands, how big it is, and a tree's crown. -->
 <script lang="ts">
-  import * as Item from "#lib/components/ui/item/index.js";
+  import * as Item from "@sunreye/ui/item";
   import type { Editable } from "../components/value-editor/editable.ts";
   import { m } from "../paraglide/messages.js";
   import { choices, degrees, metres, REACH } from "./fields.ts";

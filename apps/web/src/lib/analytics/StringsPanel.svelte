@@ -4,7 +4,7 @@
   hour. A table, because strings are compared across the same attributes.
 -->
 <script lang="ts">
-  import { Pressable } from "../components/ui/pressable/index.js";
+  import { Pressable } from "@sunreye/ui/pressable";
   import LoadFailed from "../components/load-failed.svelte";
   import ChartEntrance from "../chart-entrance/ChartEntrance.svelte";
   import { m } from "../paraglide/messages.js";

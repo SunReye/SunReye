@@ -1,6 +1,6 @@
 <!-- What the range's flows were, for the chosen question. -->
 <script lang="ts">
-  import * as Card from "#lib/components/ui/card/index.js";
+  import * as Card from "@sunreye/ui/card";
   import LoadingRows from "../components/loading-rows.svelte";
   import { m } from "../paraglide/messages.js";
   import type { Row } from "./breakdown.ts";

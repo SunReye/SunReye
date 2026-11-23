@@ -4,7 +4,7 @@
 -->
 <script lang="ts">
   import * as Empty from "#lib/components/ui/empty/index.js";
-  import * as Item from "#lib/components/ui/item/index.js";
+  import * as Item from "@sunreye/ui/item";
   import * as Table from "#lib/components/ui/table/index.js";
   import type { Attempt, Problem, WriteLog } from "../api/core";
   import { m } from "../paraglide/messages.js";

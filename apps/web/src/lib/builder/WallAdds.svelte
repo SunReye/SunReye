@@ -11,7 +11,7 @@
 
 <script lang="ts">
   import Plus from "@lucide/svelte/icons/plus";
-  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
+  import * as DropdownMenu from "@sunreye/ui/dropdown-menu";
   import { OPENING_KINDS } from "./names.ts";
   import type { Session } from "./session.svelte.ts";
   import ToolButton from "./ToolButton.svelte";

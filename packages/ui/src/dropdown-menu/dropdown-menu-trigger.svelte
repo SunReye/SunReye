@@ -1,7 +1,7 @@
 <script lang="ts">
   import { DropdownMenu as DropdownMenuPrimitive } from "bits-ui";
   // Local: chevron turn on the open state (#38).
-  import { cn } from "#lib/utils.js";
+  import { cn } from "../utils.ts";
 
   // Local: `class` is merged with the chevron turn below.
   let {

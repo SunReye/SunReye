@@ -35,8 +35,8 @@
 
 <script lang="ts">
   import { Toggle as TogglePrimitive } from "bits-ui";
-  import { cn } from "#lib/utils.js";
-  import { haptics } from "#lib/haptics.ts";
+  import { cn } from "../utils.ts";
+  import { haptics } from "../haptics.ts";
 
   let {
     ref = $bindable(null),

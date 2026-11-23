@@ -3,7 +3,7 @@ import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { connect, type Transport } from "../api/core.ts";
-import { haptics } from "../haptics.ts";
+import { haptics } from "@sunreye/ui/haptics";
 import { feed } from "../live/stream.harness.ts";
 import TopologyStep from "./TopologyStep.svelte";
 import { closed } from "../motion/animations.harness.ts";

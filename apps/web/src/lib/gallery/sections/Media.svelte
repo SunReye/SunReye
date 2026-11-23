@@ -2,7 +2,7 @@
   import { AspectRatio } from "../../components/ui/aspect-ratio/index.js";
   import * as Avatar from "../../components/ui/avatar/index.js";
   import * as Carousel from "../../components/ui/carousel/index.js";
-  import * as Item from "../../components/ui/item/index.js";
+  import * as Item from "@sunreye/ui/item";
   import * as Resizable from "../../components/ui/resizable/index.js";
   import { ScrollArea } from "../../components/ui/scroll-area/index.js";
   import { Badge } from "../../components/ui/badge/index.js";

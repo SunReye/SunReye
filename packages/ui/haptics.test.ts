@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { hapticsOn } from "./haptics.ts";
+import { hapticsOn } from "./src/haptics.ts";
 
 const free = { lowPower: false, reducedMotion: false } as const;
 

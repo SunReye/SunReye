@@ -1,6 +1,6 @@
 <script lang="ts">
   import { DropdownMenu as DropdownMenuPrimitive } from "bits-ui";
-  import { haptics } from "#lib/haptics.ts";
+  import { haptics } from "../haptics.ts";
 
   let {
     ref = $bindable(null),

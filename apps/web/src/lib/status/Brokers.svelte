@@ -2,8 +2,8 @@
   import Section from "../components/section.svelte";
   import { settleRead } from "../api/client.ts";
   import type { Connection, Core } from "../api/core";
-  import { Presence } from "#lib/components/ui/card/index.js";
-  import * as Item from "#lib/components/ui/item/index.js";
+  import { Presence } from "@sunreye/ui/card";
+  import * as Item from "@sunreye/ui/item";
   import { m } from "../paraglide/messages.js";
 
   /** Every connection, once the core answers; a viewer's is refused. Only brokers report a state. */

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Collapsible as CollapsiblePrimitive } from "bits-ui";
   // Local: height transition on --motion-base (#8, ADR 0003).
-  import { cn } from "#lib/utils.js";
+  import { cn } from "@sunreye/ui/utils";
 
   // Local: `class` is merged with the height transition below.
   let {

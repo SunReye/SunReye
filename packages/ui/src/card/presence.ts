@@ -1,8 +1,8 @@
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
 // A card that appears or leaves opens or closes its height (ADR 21 "One behaviour, one component").
 import type { TransitionConfig } from "svelte/transition";
-import { easeInOut } from "../../../motion/ease.ts";
-import { tokenMs } from "../../../motion/token.ts";
+import { easeInOut } from "../motion/ease.ts";
+import { tokenMs } from "../motion/token.ts";
 import { undrawn } from "./undrawn.ts";
 
 const px = (value: string) => Number.parseFloat(value) || 0;

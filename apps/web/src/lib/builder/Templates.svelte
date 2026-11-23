@@ -3,7 +3,7 @@
   what it places. The nearest shape is one tap; "start empty" leaves the scene to the inspector.
 -->
 <script lang="ts">
-  import * as Card from "#lib/components/ui/card/index.js";
+  import * as Card from "@sunreye/ui/card";
   import Plus from "@lucide/svelte/icons/plus";
   import { m } from "../paraglide/messages.js";
   import type { Pv } from "./pv.ts";

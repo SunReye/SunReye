@@ -6,7 +6,7 @@ import Eyebrow from "./eyebrow.svelte";
 import PageTitle from "./page-title.svelte";
 import Section from "./section.svelte";
 import StatStrip from "./stat-strip.svelte";
-import * as Card from "./ui/card/index.js";
+import * as Card from "@sunreye/ui/card";
 
 const body = createRawSnippet(() => ({ render: () => `<p>Inhalt</p>` }));
 const action = createRawSnippet(() => ({ render: () => `<a href="#/x">Mehr</a>` }));

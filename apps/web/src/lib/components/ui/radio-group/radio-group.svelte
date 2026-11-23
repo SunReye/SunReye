@@ -1,7 +1,7 @@
 <script lang="ts">
   import { RadioGroup as RadioGroupPrimitive } from "bits-ui";
-  import { cn } from "#lib/utils.js";
-  import { haptics } from "#lib/haptics.ts";
+  import { cn } from "@sunreye/ui/utils";
+  import { haptics } from "@sunreye/ui/haptics";
 
   let {
     ref = $bindable(null),

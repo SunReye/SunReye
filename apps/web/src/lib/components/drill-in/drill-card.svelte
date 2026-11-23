@@ -16,7 +16,7 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import type { HTMLAttributes } from "svelte/elements";
-  import * as Card from "#lib/components/ui/card/index.js";
+  import * as Card from "@sunreye/ui/card";
 
   let {
     element = "div",

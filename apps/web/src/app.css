@@ -1,30 +1,20 @@
-/* ADR 21 look and feel. Colour, type, spacing, radius, icon and glass tokens come from @sunreye/tokens
-   (ADR 25); the motion tokens and the Tailwind utilities that read them live here. */
+/* ADR 21 look and feel. Colour, type, spacing, radius, icon and glass tokens come from @sunreye/tokens,
+   the kit's variants, theme mapping, motion tokens and utilities from @sunreye/ui (ADR 25); the app's
+   own live here. */
 @import "tailwindcss";
-@import "tw-animate-css";
-@import "shadcn-svelte/tailwind.css";
-@import "./lib/components/ui/theme.css";
+@import "@sunreye/ui/theme.css";
 @import "@sunreye/tokens/tokens.css";
 @import "@fontsource-variable/jetbrains-mono";
 @import "@fontsource-variable/inter";
 
 @source "./lib/components/ui";
+@source "../node_modules/@sunreye/ui/src";
 
-@custom-variant dark (&:is(.dark *));
-@custom-variant mouse (@media (hover: hover) and (pointer: fine));
-@custom-variant touch (@media not ((hover: hover) and (pointer: fine)));
 /* Inside a drill-in level on the phone, where each section is a card of its own (ADR 21). */
 @custom-variant drill (&:where([data-drill="level"] *));
 
 /* ADR 21 motion tokens. */
 :root {
-  /* ADR 21: movement between two resting places. */
-  --motion-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
-  --motion-move: 300ms;
-  /* A large surface (a sheet) enters in about 350 ms; exits ease in, shorter than any entrance. */
-  --motion-enter: 350ms;
-  --motion-exit: 150ms;
-  --motion-ease-exit: cubic-bezier(0.55, 0.055, 0.675, 0.19);
   /* How long the last of a row of arrivals waits after the first (a chart's bars). */
   --motion-stagger: 120ms;
   /* The 2D flow's glides between live samples, on the full tier alone: a tile's glow and gauge,
@@ -73,9 +63,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   :root {
-    --motion-move: 0ms;
-    --motion-enter: 0ms;
-    --motion-exit: 0ms;
     --motion-stagger: 0ms;
     --motion-flow-tile: 0ms;
     --motion-flow-glow: 0ms;
@@ -90,13 +77,6 @@
 
 /* The still tier (ADR 21): every motion is instant. */
 :root[data-motion="still"] {
-  --motion-fast: 0ms;
-  --motion-base: 0ms;
-  --motion-slow: 0ms;
-  --motion-press: 0ms;
-  --motion-move: 0ms;
-  --motion-enter: 0ms;
-  --motion-exit: 0ms;
   --motion-stagger: 0ms;
   --motion-flow-tile: 0ms;
   --motion-flow-glow: 0ms;
@@ -108,69 +88,7 @@
   --motion-light-drift: 0ms;
 }
 
-/* A drawer enters like a sheet and leaves faster, easing in (ADR 21). Unlayered, as vaul's own 0.5 s. */
-[data-slot="drawer-content"][data-state="open"],
-[data-slot="drawer-overlay"][data-state="open"] {
-  animation-duration: var(--motion-enter);
-  animation-timing-function: var(--motion-ease);
-}
-[data-slot="drawer-content"][data-state="closed"],
-[data-slot="drawer-overlay"][data-state="closed"] {
-  animation-duration: var(--motion-exit);
-  animation-timing-function: var(--motion-ease-exit);
-  /* vaul's 0.5 s settle after a drag (a tap's finger slop) outlasts this exit: still running, it
-     held the drawer open after the exit until it ended. */
-  transition: none !important;
-}
-
-/* An overlay on the still tier: no keyframes, and no transition left inline by a drag (vaul). */
-[data-still] {
-  animation: none !important;
-  transition: none !important;
-}
-
 @theme inline {
-  --font-mono: var(--type-mono);
-  --font-sans: var(--type-sans);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
-  --color-ring: var(--ring);
-  --color-input: var(--input);
-  --color-border: var(--border);
-  --color-destructive: var(--destructive);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
-  --color-card: var(--card);
-  --color-foreground: var(--foreground);
-  --color-background: var(--background);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
-
   --color-brand: var(--brand);
   --color-brand-soft: var(--brand-soft);
   --color-success: var(--success);
@@ -212,21 +130,6 @@
       box-shadow: 0 0 0 4px transparent;
     }
   }
-
-  --default-transition-duration: var(--motion-fast);
-  --default-transition-timing-function: var(--motion-ease);
-  --animate-spring-in:
-    enter var(--tw-animation-duration, var(--tw-duration, 0.15s)) var(--tw-ease, ease)
-      var(--tw-animation-delay, 0s) var(--tw-animation-iteration-count, 1)
-      var(--tw-animation-direction, normal) var(--tw-animation-fill-mode, none),
-    motion-spring-in var(--tw-animation-duration, var(--tw-duration, 0.15s)) var(--motion-spring)
-      var(--tw-animation-delay, 0s) var(--tw-animation-iteration-count, 1)
-      var(--tw-animation-direction, normal) var(--tw-animation-fill-mode, none);
-  @keyframes motion-spring-in {
-    from {
-      scale: var(--spring-in-scale);
-    }
-  }
 }
 
 /* Ambient glass (ADR 21): rail, bottom bar, dashboard cards; ~64 % light / 58 % dark with the strong blur.
@@ -259,25 +162,6 @@
       var(--foreground) var(--glass-destructive-mix),
       var(--glass-destructive-base)
     );
-  }
-}
-
-/* 44 px targets on touch (ADR 21) without resizing the control: the hit area grows, the look stays.
-   `:where` keeps the position below any utility, so an absolute or fixed control stays where it is. */
-@utility touch-hit {
-  @media not ((hover: hover) and (pointer: fine)) {
-    :where(&) {
-      position: relative;
-    }
-    &::after {
-      content: "";
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      width: max(100%, var(--touch-target));
-      height: max(100%, var(--touch-target));
-      translate: -50% -50%;
-    }
   }
 }
 
@@ -334,12 +218,4 @@
 ::view-transition-new(page) {
   animation-duration: 160ms;
   animation-timing-function: ease-out;
-}
-
-/* On ambient glass and a canvas chip the registry's muted pressed box disappears; lift it a step. */
-:is(.glass-ambient, .glass-ambient *, .canvas-chip, .canvas-chip *):is(
-    [data-slot="toggle-group"],
-    [data-slot="tabs-list"][data-variant="segmented"]
-  )::before {
-  background-color: color-mix(in oklab, var(--foreground) 13%, transparent);
 }

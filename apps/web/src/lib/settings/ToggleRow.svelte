@@ -1,7 +1,7 @@
 <!-- A settings row that turns one thing on or off: its name, a line of status or range, and a switch. -->
 <script lang="ts">
-  import * as Item from "#lib/components/ui/item/index.js";
-  import { FEEDBACK } from "#lib/components/ui/pressable/index.js";
+  import * as Item from "@sunreye/ui/item";
+  import { FEEDBACK } from "@sunreye/ui/pressable";
   import { Switch } from "#lib/components/ui/switch/index.js";
 
   let {

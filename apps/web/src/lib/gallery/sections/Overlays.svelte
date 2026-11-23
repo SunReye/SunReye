@@ -1,11 +1,11 @@
 <script lang="ts">
   import { toast } from "svelte-sonner";
   import * as AlertDialog from "../../components/ui/alert-dialog/index.js";
-  import { Button, buttonVariants } from "../../components/ui/button/index.js";
-  import * as Dialog from "../../components/ui/dialog/index.js";
-  import * as Drawer from "../../components/ui/drawer/index.js";
+  import { Button, buttonVariants } from "@sunreye/ui/button";
+  import * as Dialog from "@sunreye/ui/dialog";
+  import * as Drawer from "@sunreye/ui/drawer";
   import * as HoverCard from "../../components/ui/hover-card/index.js";
-  import * as Popover from "../../components/ui/popover/index.js";
+  import * as Popover from "@sunreye/ui/popover";
   import * as Sheet from "../../components/ui/sheet/index.js";
   import { Toaster } from "../../components/ui/sonner/index.js";
   import Demo from "../Demo.svelte";

@@ -1,6 +1,6 @@
 <!-- One value of a time-of-use slot: its field above, its value below; it opens the value editor. -->
 <script lang="ts">
-  import { Pressable } from "../components/ui/pressable/index.js";
+  import { Pressable } from "@sunreye/ui/pressable";
   import type { Control } from "./groups.ts";
 
   let {

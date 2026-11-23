@@ -1,10 +1,10 @@
 <!-- An enumerated setting's values as the registry's list rows (ADR 21). -->
 <script lang="ts">
-  import { Pressable } from "../ui/pressable/index.js";
+  import { Pressable } from "@sunreye/ui/pressable";
   import Check from "@lucide/svelte/icons/check";
-  import * as Item from "#lib/components/ui/item/index.js";
-  import { cn } from "#lib/utils.js";
-  import { haptics } from "../../haptics.ts";
+  import * as Item from "@sunreye/ui/item";
+  import { cn } from "@sunreye/ui/utils";
+  import { haptics } from "@sunreye/ui/haptics";
   import { m } from "../../paraglide/messages.js";
 
   let {

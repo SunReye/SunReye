@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, buttonVariants } from "../../components/ui/button/index.js";
+  import { Button, buttonVariants } from "@sunreye/ui/button";
   import * as Tooltip from "../../components/ui/tooltip/index.js";
   import Demo from "../Demo.svelte";
 </script>

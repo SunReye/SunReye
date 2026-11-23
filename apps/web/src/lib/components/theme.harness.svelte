@@ -2,15 +2,15 @@
 <script lang="ts">
   import "../../app.css";
   import { Badge } from "./ui/badge/index.js";
-  import { Button } from "./ui/button/index.js";
-  import * as Card from "./ui/card/index.js";
-  import { Checkbox } from "./ui/checkbox/index.js";
-  import { Input } from "./ui/input/index.js";
-  import * as Item from "./ui/item/index.js";
+  import { Button } from "@sunreye/ui/button";
+  import * as Card from "@sunreye/ui/card";
+  import { Checkbox } from "@sunreye/ui/checkbox";
+  import { Input } from "@sunreye/ui/input";
+  import * as Item from "@sunreye/ui/item";
   import { Kbd } from "./ui/kbd/index.js";
   import { Progress } from "./ui/progress/index.js";
   import { Skeleton } from "./ui/skeleton/index.js";
-  import { Toggle } from "./ui/toggle/index.js";
+  import { Toggle } from "@sunreye/ui/toggle";
 </script>
 
 <div data-testid="controls">

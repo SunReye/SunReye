@@ -4,7 +4,7 @@
 // controls, which pan and zoom.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- three.js and the DOM, used in place. */
 import { type Group, type PerspectiveCamera, Raycaster, Vector2, Vector3 } from "three";
-import { haptics } from "../../haptics.ts";
+import { haptics } from "@sunreye/ui/haptics";
 import { picked } from "../levels.ts";
 import type { Pv, Scene } from "../pv.ts";
 import { strike, toThree, type Panel } from "../scene.ts";

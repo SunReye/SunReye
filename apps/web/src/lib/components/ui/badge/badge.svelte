@@ -32,7 +32,7 @@
 </script>
 
 <script lang="ts">
-  import { cn, type WithElementRef } from "#lib/utils.js";
+  import { cn, type WithElementRef } from "@sunreye/ui/utils";
   import type { HTMLAnchorAttributes } from "svelte/elements";
 
   let {

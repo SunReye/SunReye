@@ -1,7 +1,7 @@
 <!-- A group's add buttons: each adds its object and opens it. -->
 <script lang="ts">
   import Plus from "@lucide/svelte/icons/plus";
-  import { Button } from "#lib/components/ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
   import type { Addition } from "./additions.ts";
   import type { Level } from "./levels.ts";
   import type { Draft } from "./modules.ts";

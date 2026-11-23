@@ -5,8 +5,8 @@
 -->
 <script lang="ts">
   import RotateCw from "@lucide/svelte/icons/rotate-cw";
-  import * as Card from "#lib/components/ui/card/index.js";
-  import { Button } from "../components/ui/button/index.js";
+  import * as Card from "@sunreye/ui/card";
+  import { Button } from "@sunreye/ui/button";
   import * as Empty from "../components/ui/empty/index.js";
   import { m } from "../paraglide/messages.js";
   import ErrorMark from "./ErrorMark.svelte";

@@ -1,6 +1,7 @@
 // Local: tabs motion (#8): the sliding active indicator and the content crossfade. Durations
 // come from the motion item; under reduced motion both happen at once (ADR 0003).
-import { MOTION_EASE, MOTION_MS, motionMs, trackActive } from "#lib/motion.js";
+import { trackActive } from "@sunreye/ui/track-active";
+import { MOTION_EASE, MOTION_MS, motionMs } from "#lib/motion.js";
 
 const ACTIVE_TAB = ':scope > [data-state="active"], :scope > [data-active]';
 

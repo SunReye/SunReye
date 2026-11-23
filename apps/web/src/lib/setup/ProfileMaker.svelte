@@ -1,7 +1,7 @@
 <!-- One manufacturer in the picker: its name, then each family as a group of rows. -->
 <script lang="ts">
   import Eyebrow from "../components/eyebrow.svelte";
-  import * as Card from "#lib/components/ui/card/index.js";
+  import * as Card from "@sunreye/ui/card";
   import type { Manufacturer } from "./catalogue.ts";
   import ProfileRow from "./ProfileRow.svelte";
 

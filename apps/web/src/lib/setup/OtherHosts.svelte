@@ -1,7 +1,7 @@
 <!-- Hosts that answer but match no profile: folded away under one row, as a network may hold many. -->
 <script lang="ts">
   import * as Collapsible from "#lib/components/ui/collapsible/index.js";
-  import { FEEDBACK } from "#lib/components/ui/pressable/index.js";
+  import { FEEDBACK } from "@sunreye/ui/pressable";
   import ChevronDown from "@lucide/svelte/icons/chevron-down";
   import type { Snippet } from "svelte";
   import { m } from "../paraglide/messages.js";

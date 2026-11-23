@@ -3,10 +3,10 @@
   one bottom sheet, the More sheet's look. A tap adds the object and opens it in the inspector.
 -->
 <script lang="ts">
-  import { Pressable } from "../components/ui/pressable/index.js";
+  import { Pressable } from "@sunreye/ui/pressable";
   import Plus from "@lucide/svelte/icons/plus";
   import ResponsiveSheet from "#lib/components/responsive-sheet.svelte";
-  import * as Item from "#lib/components/ui/item/index.js";
+  import * as Item from "@sunreye/ui/item";
   import { m } from "../paraglide/messages.js";
   import { additions, type Addition } from "./additions.ts";
   import type { Section } from "./levels.ts";

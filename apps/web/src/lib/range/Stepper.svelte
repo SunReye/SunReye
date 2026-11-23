@@ -5,8 +5,8 @@
 <script lang="ts">
   import ChevronLeft from "@lucide/svelte/icons/chevron-left";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
-  import { Button } from "#lib/components/ui/button/index.js";
-  import { haptics } from "../haptics.ts";
+  import { Button } from "@sunreye/ui/button";
+  import { haptics } from "@sunreye/ui/haptics";
   import { m } from "../paraglide/messages.js";
   import { cardOf } from "./card-surface.ts";
   import Pager from "./Pager.svelte";

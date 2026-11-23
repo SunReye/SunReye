@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, onTestFinished, test, vi } from "vitest"
 import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../../app.css";
-import { HAPTICS } from "../../haptics.ts";
+import { HAPTICS } from "@sunreye/ui/haptics";
 import { framesUntil, realTimers } from "../../motion/clock.harness.ts";
 import { motion } from "../../motion/tier.svelte.ts";
 import { editable, type Outcome } from "./editable.ts";

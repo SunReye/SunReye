@@ -1,8 +1,8 @@
 <!-- The editor's apply, "Apply 100 A → 80 A", and the problem an apply left (ADR 21). -->
 <script lang="ts">
   import ArrowRight from "@lucide/svelte/icons/arrow-right";
-  import { Button } from "#lib/components/ui/button/index.js";
-  import { Spinner } from "#lib/components/ui/spinner/index.js";
+  import { Button } from "@sunreye/ui/button";
+  import { Spinner } from "@sunreye/ui/spinner";
   import { m } from "../../paraglide/messages.js";
   import type { Outcome } from "./editable.ts";
   import WriteProblem from "./write-problem.svelte";

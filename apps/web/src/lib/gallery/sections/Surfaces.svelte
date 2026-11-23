@@ -2,12 +2,12 @@
   import InboxIcon from "@lucide/svelte/icons/inbox";
   import TriangleAlertIcon from "@lucide/svelte/icons/triangle-alert";
   import ZapIcon from "@lucide/svelte/icons/zap";
-  import * as Alert from "../../components/ui/alert/index.js";
-  import { Button } from "../../components/ui/button/index.js";
-  import * as Card from "../../components/ui/card/index.js";
+  import * as Alert from "@sunreye/ui/alert";
+  import { Button } from "@sunreye/ui/button";
+  import * as Card from "@sunreye/ui/card";
   import * as Empty from "../../components/ui/empty/index.js";
-  import * as Item from "../../components/ui/item/index.js";
-  import { Pressable } from "../../components/ui/pressable/index.js";
+  import * as Item from "@sunreye/ui/item";
+  import { Pressable } from "@sunreye/ui/pressable";
   import Demo from "../Demo.svelte";
 </script>
 

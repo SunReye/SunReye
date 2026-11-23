@@ -4,8 +4,8 @@
 	its hover; the type, the keyboard focus ring and the disabled state come from here (ADR 21).
 -->
 <script lang="ts">
-  import { cn, type WithElementRef } from "#lib/utils.js";
-  import { haptics } from "#lib/haptics.ts";
+  import { cn, type WithElementRef } from "../utils.ts";
+  import { haptics } from "../haptics.ts";
   import type { HTMLButtonAttributes } from "svelte/elements";
   import { FEEDBACK, SELECTED } from "./tint.ts";
 

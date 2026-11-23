@@ -1,7 +1,7 @@
 <!-- The hero's corner (ADR 21): the 3D/2D toggle, or for the admin without a scene the way to build one. -->
 <script lang="ts">
   import Box from "@lucide/svelte/icons/box";
-  import { Button } from "#lib/components/ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
   import Segmented from "../components/segmented.svelte";
   import type { View } from "../live/dashboard.ts";
   import { m } from "../paraglide/messages.js";

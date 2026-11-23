@@ -2,9 +2,9 @@
 <script lang="ts">
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import { Badge } from "#lib/components/ui/badge/index.js";
-  import * as Card from "#lib/components/ui/card/index.js";
-  import * as Item from "#lib/components/ui/item/index.js";
-  import { FEEDBACK } from "#lib/components/ui/pressable/index.js";
+  import * as Card from "@sunreye/ui/card";
+  import * as Item from "@sunreye/ui/item";
+  import { FEEDBACK } from "@sunreye/ui/pressable";
   import NavLink from "#lib/components/nav-link.svelte";
   import { m } from "../paraglide/messages.js";
   import { href, type NavItem } from "./nav.ts";

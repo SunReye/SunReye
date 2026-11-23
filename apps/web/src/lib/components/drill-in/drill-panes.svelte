@@ -1,8 +1,8 @@
 <!-- The drill-in from 1024 px: the groups on the left, the chosen group's page on the right; nothing slides. -->
 <script lang="ts">
-  import * as Card from "#lib/components/ui/card/index.js";
+  import * as Card from "@sunreye/ui/card";
   import type { Snippet } from "svelte";
-  import * as Item from "../ui/item/index.js";
+  import * as Item from "@sunreye/ui/item";
   import type { DrillGroup, DrillLevel } from "./drill-in.svelte";
   import DrillRow from "./drill-row.svelte";
 

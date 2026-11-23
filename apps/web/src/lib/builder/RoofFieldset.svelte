@@ -1,7 +1,7 @@
 <!-- A roof chimney's or a roof window's level in the inspector: the face it is on, where, and how
   big. -->
 <script lang="ts" generics="T extends OnRoof">
-  import * as Item from "#lib/components/ui/item/index.js";
+  import * as Item from "@sunreye/ui/item";
   import type { Editable } from "../components/value-editor/editable.ts";
   import { m } from "../paraglide/messages.js";
   import { centred } from "./draft.ts";

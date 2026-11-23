@@ -3,7 +3,7 @@ import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import type { Bounds, Kind, Ranged } from "./range.ts";
-import { haptics } from "../haptics.ts";
+import { haptics } from "@sunreye/ui/haptics";
 import { dragBy } from "./drag.harness.ts";
 import RangeControl from "./RangeControl.svelte";
 import { realTimers } from "../motion/clock.harness.ts";

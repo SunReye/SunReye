@@ -1,8 +1,8 @@
 <!-- The last row of a settings list: adds one more, in the list's own place rather than as a page-wide button. -->
 <script lang="ts">
-  import { Pressable } from "../components/ui/pressable/index.js";
+  import { Pressable } from "@sunreye/ui/pressable";
   import Plus from "@lucide/svelte/icons/plus";
-  import * as Item from "#lib/components/ui/item/index.js";
+  import * as Item from "@sunreye/ui/item";
 
   let { label, onclick }: { label: string; onclick: () => void } = $props();
 </script>

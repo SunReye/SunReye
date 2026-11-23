@@ -2,7 +2,7 @@ import { expect, test, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect, type Transport } from "../api/core.ts";
-import { haptics } from "../haptics.ts";
+import { haptics } from "@sunreye/ui/haptics";
 import PasswordStep from "./PasswordStep.svelte";
 
 /** A fresh core: it takes the password, then signs the admin in with it. */

@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { cn, type WithElementRef } from "#lib/utils.js";
+  import { cn, type WithElementRef } from "../utils.ts";
   import type { HTMLAttributes } from "svelte/elements";
   // Local: the interactive card is the app's one pressed surface (#836).
-  import { Pressable } from "../pressable/index.js";
+  import { Pressable } from "../pressable/index.ts";
   // Local: a card's height glides when its content changes it (ADR 21, #837).
   import { glideHeight } from "./glide-height.ts";
 

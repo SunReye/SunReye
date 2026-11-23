@@ -4,8 +4,8 @@
 -->
 <script lang="ts">
   import Ellipsis from "@lucide/svelte/icons/ellipsis";
-  import { Button } from "#lib/components/ui/button/index.js";
-  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
+  import { Button } from "@sunreye/ui/button";
+  import * as DropdownMenu from "@sunreye/ui/dropdown-menu";
   import { m } from "../paraglide/messages.js";
   import type { Table } from "./csv.ts";
   import { save } from "./save.ts";

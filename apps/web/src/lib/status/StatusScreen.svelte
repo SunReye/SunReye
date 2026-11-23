@@ -1,7 +1,7 @@
 <script lang="ts">
   import PageTitle from "../components/page-title.svelte";
   import RefreshCw from "@lucide/svelte/icons/refresh-cw";
-  import { Button } from "#lib/components/ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
   import type { Core } from "../api/core";
   import { m } from "../paraglide/messages.js";
   import Brokers from "./Brokers.svelte";

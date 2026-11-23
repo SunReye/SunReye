@@ -7,7 +7,7 @@
   import Eyebrow from "../components/eyebrow.svelte";
   import type { Snippet } from "svelte";
   import type { Problem } from "../api/core";
-  import * as Item from "#lib/components/ui/item/index.js";
+  import * as Item from "@sunreye/ui/item";
   import LoadingRows from "../components/loading-rows.svelte";
   import ResponsiveSheet from "../components/responsive-sheet.svelte";
   import AddRow from "./AddRow.svelte";

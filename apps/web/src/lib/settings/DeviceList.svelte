@@ -6,8 +6,8 @@
 <script lang="ts">
   import DrillCard from "../components/drill-in/drill-card.svelte";
   import type { Connection, Core, Device, Listing } from "../api/core";
-  import { Button } from "#lib/components/ui/button/index.js";
-  import * as Item from "#lib/components/ui/item/index.js";
+  import { Button } from "@sunreye/ui/button";
+  import * as Item from "@sunreye/ui/item";
   import DrillRow from "../components/drill-in/drill-row.svelte";
   import { m } from "../paraglide/messages.js";
   import { readAs } from "../setup/catalogue.ts";

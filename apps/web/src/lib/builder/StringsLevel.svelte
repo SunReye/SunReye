@@ -1,7 +1,7 @@
 <!-- The Strings group (ADR 20): each inverter, its MPPT inputs and the strings on each, every
   warning beside what it judges; the modules in no string, one tap from a selection. -->
 <script lang="ts">
-  import { Button } from "#lib/components/ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
   import { m } from "../paraglide/messages.js";
   import AddButtons from "./AddButtons.svelte";
   import { additions } from "./additions.ts";

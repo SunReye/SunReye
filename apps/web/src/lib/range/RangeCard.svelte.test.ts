@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
-import { haptics } from "../haptics.ts";
+import { haptics } from "@sunreye/ui/haptics";
 import { framesUntil, realTimers } from "../motion/clock.harness.ts";
 import Harness from "./card.harness.svelte";
 import { dragBy } from "./drag.harness.ts";

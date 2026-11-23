@@ -1,6 +1,6 @@
 <script lang="ts" module>
   import { getContext, setContext } from "svelte";
-  import { toggleVariants } from "#lib/components/ui/toggle/index.js";
+  import { toggleVariants } from "../toggle/index.ts";
   import type { VariantProps } from "tailwind-variants";
 
   type ToggleVariants = VariantProps<typeof toggleVariants>;
@@ -21,10 +21,10 @@
 
 <script lang="ts">
   import { ToggleGroup as ToggleGroupPrimitive } from "bits-ui";
-  import { cn } from "#lib/utils.js";
+  import { cn } from "../utils.ts";
   // Local: sliding pressed box of a `single` group (#49).
-  import { trackActive } from "#lib/motion.js";
-  import { haptics } from "#lib/haptics.ts";
+  import { trackActive } from "../track-active.ts";
+  import { haptics } from "../haptics.ts";
 
   // Local: the pressed look of a `single` group, drawn here from trackActive's box so it slides and
   // resizes from item to item on the motion tokens (#49). It is `before`, under the items (they are

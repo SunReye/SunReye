@@ -2,8 +2,8 @@ import { createRawSnippet } from "svelte";
 import { expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
-import { haptics } from "../haptics.ts";
-import { Pressable } from "./ui/pressable/index.js";
+import { haptics } from "@sunreye/ui/haptics";
+import { Pressable } from "@sunreye/ui/pressable";
 
 const children = createRawSnippet(() => ({ render: () => `<span>Batterie</span>` }));
 

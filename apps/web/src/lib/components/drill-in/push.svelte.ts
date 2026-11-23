@@ -6,7 +6,7 @@
 import { getContext, hasContext, onDestroy, setContext } from "svelte";
 import { createAttachmentKey } from "svelte/attachments";
 import { spring, tween, VelocityTracker } from "../../animate.ts";
-import { haptics } from "../../haptics.ts";
+import { haptics } from "@sunreye/ui/haptics";
 import { released, settle, slideMs } from "./drill.ts";
 
 /** How near the box's left edge a finger starts a swipe back, in px. */

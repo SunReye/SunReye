@@ -1,6 +1,6 @@
 <!-- One measurement point: its tile, name and device, and its live power with what it means. -->
 <script lang="ts">
-  import { Pressable } from "../components/ui/pressable/index.js";
+  import { Pressable } from "@sunreye/ui/pressable";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import PowerNumber from "../components/power-number.svelte";
   import { STATES } from "../flow/node-words.ts";

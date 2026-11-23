@@ -1,6 +1,6 @@
 <!-- A marker's level in the inspector: its device, block, wall and place along it. -->
 <script lang="ts">
-  import * as Item from "#lib/components/ui/item/index.js";
+  import * as Item from "@sunreye/ui/item";
   import type { Device } from "../api/core.ts";
   import { m } from "../paraglide/messages.js";
   import { choices, metres } from "./fields.ts";

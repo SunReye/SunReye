@@ -1,9 +1,9 @@
 <!-- Test harness: the kit's controls that choose, each over three options, its value set from outside. -->
 <script lang="ts">
   import * as Collapsible from "./ui/collapsible/index.js";
-  import * as DropdownMenu from "./ui/dropdown-menu/index.js";
+  import * as DropdownMenu from "@sunreye/ui/dropdown-menu";
   import * as RadioGroup from "./ui/radio-group/index.js";
-  import * as ToggleGroup from "./ui/toggle-group/index.js";
+  import * as ToggleGroup from "@sunreye/ui/toggle-group";
 
   let {
     kind,

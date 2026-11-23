@@ -4,9 +4,9 @@
   everything entered stays for a fix.
 -->
 <script lang="ts">
-  import { Button } from "#lib/components/ui/button/index.js";
-  import * as Item from "#lib/components/ui/item/index.js";
-  import { Input } from "#lib/components/ui/input/index.js";
+  import { Button } from "@sunreye/ui/button";
+  import * as Item from "@sunreye/ui/item";
+  import { Input } from "@sunreye/ui/input";
   import type { Datasheet, ModuleType, Problem } from "../api/core.ts";
   import { m } from "../paraglide/messages.js";
   import Refusal, { answered } from "../setup/Refusal.svelte";

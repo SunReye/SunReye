@@ -2,8 +2,8 @@
   import { Checkbox as CheckboxPrimitive } from "bits-ui";
   import CheckIcon from "@lucide/svelte/icons/check";
   import MinusIcon from "@lucide/svelte/icons/minus";
-  import { cn, type WithoutChildrenOrChild } from "#lib/utils.js";
-  import { haptics } from "#lib/haptics.ts";
+  import { cn, type WithoutChildrenOrChild } from "../utils.ts";
+  import { haptics } from "../haptics.ts";
 
   let {
     ref = $bindable(null),

@@ -1,7 +1,7 @@
 // Transient feedback (ADR 21): a toast and its haptic, always together.
 import { toast } from "svelte-sonner";
 import type { Problem } from "./api/client.ts";
-import { haptics } from "./haptics.ts";
+import { haptics } from "@sunreye/ui/haptics";
 import { problemText } from "./i18n/problems.ts";
 
 /** What an action did and needs no answer: "Gespeichert", "Entfernt", a confirmed write. */
