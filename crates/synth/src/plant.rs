@@ -414,7 +414,7 @@ fn wiring(layouts: &Layouts) -> Result<Wiring, Error> {
                     .collect(),
             })
             .collect();
-        inverters.push(pv::Inverter { inputs });
+        inverters.push(pv::Inverter { inputs, ac: None });
     }
     Ok(Wiring {
         layout: pv::Layout {

@@ -55,6 +55,8 @@ flowchart LR
 
 `sunreye_pv::year(layout, weather, step)` runs `estimate` at each weather sample and holds its watts for `step` seconds: energy in Wh for every string, MPPT input and inverter, by UTC month and over the run. Months are UTC because the crate knows no time zone; at a quarter-hour step the plant-local boundary moves only night hours. A sample with no irradiance is skipped. Strings sum to their input and inputs to their inverter, as each instant's estimate does.
 
+An inverter with an AC side, its inverter type's AC rating and European weighted efficiency, also gets its AC energy and the energy its rating clipped. Each sample's DC watts pass pvlib's `inverter.pvwatts`: the type's efficiency is the nominal one and its rating over that efficiency the DC rating, so efficiency falls at part load; AC watts above the rating are clipped. AC and clipped energy sum to the curve's output. Without an AC side an inverter reports neither, and nothing on the DC side changes with one (ADR 17).
+
 `@sunreye/pv-wasm`'s `year` takes the plant as `clearSky` does, each inverter's inverter type for its MPPT limits, and the weather as columns at a fixed step from a start instant. It returns each string's energy by position and each inverter's by device id with its inputs by number.
 
 ## How shade reaches the electrics

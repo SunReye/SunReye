@@ -146,6 +146,7 @@ impl Plant {
                         strings: strings.into_iter().map(|(_, s)| s).collect(),
                     })
                     .collect(),
+                ac: None,
             })
             .collect();
         let mut occluders = self.scene.occluders();

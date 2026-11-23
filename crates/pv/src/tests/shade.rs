@@ -193,6 +193,7 @@ fn layout(strings: Vec<PvString>) -> Layout {
                 limits: None,
                 strings,
             }],
+            ac: None,
         }],
         occluders: Vec::new(),
     }

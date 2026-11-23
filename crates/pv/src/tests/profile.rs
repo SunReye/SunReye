@@ -131,6 +131,7 @@ fn plant(optimized: impl Fn(usize) -> bool, max_current: f64) -> Layout {
                     strings: vec![string(2)],
                 },
             ],
+            ac: None,
         }],
         occluders: scene.occluders(),
     }

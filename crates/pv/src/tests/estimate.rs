@@ -32,6 +32,7 @@ fn owner(limits: [Option<MpptLimits>; 2]) -> Layout {
                     strings: vec![string(0.0, 14)],
                 },
             ],
+            ac: None,
         }],
         occluders: Vec::new(),
     }
