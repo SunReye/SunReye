@@ -1,18 +1,18 @@
 <!-- The inspector beside the canvas, or pulled up over it as a sheet (ADR 20); it takes the
   builder's editing keys. -->
 <script lang="ts" module>
-  export { PEEK } from "./InspectorSheet.svelte";
+  export { PEEK } from "@sunreye/builder/builder/InspectorSheet.svelte";
 </script>
 
 <script lang="ts">
   import * as Card from "@sunreye/ui/card";
   import type { Core, Device } from "../api/core.ts";
   import { m } from "../paraglide/messages.js";
-  import Inspector from "./Inspector.svelte";
-  import InspectorSheet from "./InspectorSheet.svelte";
+  import Inspector from "@sunreye/builder/builder/Inspector.svelte";
+  import InspectorSheet from "@sunreye/builder/builder/InspectorSheet.svelte";
   import ModelCheck from "./ModelCheck.svelte";
-  import { OpeningClipboard } from "./opening-clipboard.ts";
-  import type { Session } from "./session.svelte.ts";
+  import { OpeningClipboard } from "@sunreye/builder/builder/opening-clipboard.ts";
+  import type { Session } from "@sunreye/builder/builder/session.svelte.ts";
 
   let {
     session,

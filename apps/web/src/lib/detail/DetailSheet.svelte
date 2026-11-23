@@ -9,7 +9,7 @@
 <script lang="ts">
   import * as Sheet from "#lib/components/ui/sheet/index.js";
   import { SPOT, TARIFF, type Core, type Live, type PvString } from "../api/core.ts";
-  import DrawerSheet from "../components/drawer-sheet.svelte";
+  import DrawerSheet from "@sunreye/builder/components/drawer-sheet.svelte";
   import {
     estimatedSeries,
     layoutStrings,
@@ -17,7 +17,7 @@
     type Stored,
   } from "../live/plant-facts.ts";
   import { RangeRoute, type Go } from "../range/route.svelte.ts";
-  import { input } from "../shell/input.svelte.ts";
+  import { input } from "@sunreye/builder/shell/input.svelte.ts";
   import DetailBody from "./DetailBody.svelte";
   import { markSheet } from "./in-sheet.ts";
   import { exploreLinks, nodeReadings, type Source } from "./readings.ts";

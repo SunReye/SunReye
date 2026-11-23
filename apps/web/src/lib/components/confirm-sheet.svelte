@@ -8,7 +8,7 @@
   import { confirmed } from "../feedback.ts";
   import { m } from "../paraglide/messages.js";
   import Refusal, { answered } from "../setup/Refusal.svelte";
-  import ResponsiveSheet from "./responsive-sheet.svelte";
+  import ResponsiveSheet from "@sunreye/builder/components/responsive-sheet.svelte";
 
   let {
     open = $bindable(false),

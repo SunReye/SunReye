@@ -4,7 +4,15 @@
   import { m } from "../../paraglide/messages.js";
   import { getLocale } from "../../paraglide/runtime.js";
   import ApplyBar from "./apply-bar.svelte";
-  import { clock, fits, wheel, type Editable, type Outcome } from "./editable.ts";
+  import {
+    clock,
+    fits,
+    wheel,
+    type Editable,
+    type Outcome,
+    type Refusal,
+    type Refused,
+  } from "./editable.ts";
   import EnumList from "./enum-list.svelte";
   import NumberDigits from "./number-digits.svelte";
   import RollingNumber from "./rolling-number.svelte";
@@ -15,12 +23,14 @@
     edit,
     current,
     onapply,
+    refusal,
     compact = false,
   }: {
     edit: Editable;
     /** The device's value; `null` when unknown. */
     current: number | null;
     onapply: (value: number) => Promise<Outcome>;
+    refusal?: Refusal | undefined;
     compact?: boolean;
   } = $props();
 
@@ -96,7 +106,7 @@
   let done = $state(false);
 
   /** A refusal or a mismatch stays beside its cause until the value changes (never a toast). */
-  let problem = $state.raw<{ at: number; outcome: Exclude<Outcome, { kind: "confirmed" }> }>();
+  let problem = $state.raw<{ at: number; outcome: Refused }>();
   const shownProblem = $derived(problem?.at === next ? problem.outcome : undefined);
 
   async function apply(): Promise<void> {
@@ -171,6 +181,7 @@
     {pending}
     {done}
     problem={shownProblem}
+    {refusal}
     allowed={fits(orig, next)}
     onapply={apply}
   />

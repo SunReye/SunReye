@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { layout, overlayKind } from "./input.svelte.ts";
+import { layout, overlayKind } from "@sunreye/builder/shell/input.svelte.ts";
 
 test("a mouse gets the hover rail at any width", () => {
   expect(layout({ fine: true, wide: false })).toBe("rail");

@@ -5,11 +5,11 @@
 <script lang="ts">
   import { Pressable } from "@sunreye/ui/pressable";
   import Plus from "@lucide/svelte/icons/plus";
-  import ResponsiveSheet from "#lib/components/responsive-sheet.svelte";
+  import ResponsiveSheet from "../components/responsive-sheet.svelte";
   import * as Item from "@sunreye/ui/item";
   import { m } from "../paraglide/messages.js";
   import { additions, type Addition } from "./additions.ts";
-  import type { Section } from "@sunreye/builder/builder/levels.ts";
+  import type { Section } from "./levels.ts";
   import { SECTIONS, type Plan } from "./outline.ts";
 
   let {

@@ -1,29 +1,24 @@
 // One editing session of the builder (ADR 20): the draft with undo and redo until save, what the
 // crate makes of it, and the inspector's level.
-import type { Core, Datasheet, Device, Layout, ModuleType, Problem, Types } from "../api/core.ts";
+import type { Datasheet, Device, Keeper, Layout, ModuleType, Problem, Types } from "./host.ts";
 import { checked, stringRefusal, type Checking, type StringRefusal } from "./checks.ts";
 import { Drafts } from "./drafts.svelte.ts";
-import { handled, parent, picked, type Level } from "@sunreye/builder/builder/levels.ts";
-import { wiredIn, panels, type Draft } from "@sunreye/builder/builder/modules.ts";
+import { handled, parent, picked, type Level } from "./levels.ts";
+import { wiredIn, panels, type Draft } from "./modules.ts";
 import { exists, type Plan } from "./outline.ts";
-import type { Geometry, Modules, Pv, Scene, Sizes } from "@sunreye/builder/builder/pv.ts";
-import {
-  layingOf,
-  type Editing,
-  type Hit,
-  type Roofwork,
-  type Panel,
-} from "@sunreye/builder/builder/drawing.svelte.ts";
+import type { Geometry, Modules, Pv, Scene, Sizes } from "./pv.ts";
+import { layingOf, type Editing, type Hit, type Roofwork, type Panel } from "./drawing.svelte.ts";
 import { Picking } from "./picking.svelte.ts";
 import { WiringMode } from "./wiring-mode.svelte.ts";
 
 /** Today in the browser's calendar, as a date input holds it: Sweden writes `YYYY-MM-DD`. */
 const today = (): string => new Date().toLocaleDateString("sv-SE");
 
-/** What a session reads: the crate, the core, the layout in force and the plant's devices. */
+/** What a session reads: the crate, its keeper, the layout in force and the plant's devices. */
 export interface Reads extends Checking {
   readonly pv: Pv;
-  readonly core: Core;
+  /** Takes its writes: Home's core. */
+  readonly core: Keeper;
   /** The layout in force, or an empty one: nothing to undo before it. */
   readonly start: Draft;
   /** The inverter and battery types of the layout in force, which a save keeps (ADR 27). */

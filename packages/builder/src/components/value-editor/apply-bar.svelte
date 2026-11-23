@@ -1,11 +1,10 @@
-<!-- The editor's apply, "Apply 100 A → 80 A", and the problem an apply left (ADR 21). -->
+<!-- The editor's apply, "Apply 100 A → 80 A", and the problem an apply left, as its caller says it (ADR 21). -->
 <script lang="ts">
   import ArrowRight from "@lucide/svelte/icons/arrow-right";
   import { Button } from "@sunreye/ui/button";
   import { Spinner } from "@sunreye/ui/spinner";
   import { m } from "../../paraglide/messages.js";
-  import type { Outcome } from "./editable.ts";
-  import WriteProblem from "./write-problem.svelte";
+  import type { Refusal, Refused } from "./editable.ts";
 
   let {
     nowText,
@@ -14,6 +13,7 @@
     pending,
     done,
     problem,
+    refusal,
     allowed,
     onapply,
   }: {
@@ -23,7 +23,9 @@
     changed: boolean;
     pending: boolean;
     done: boolean;
-    problem: Exclude<Outcome, { kind: "confirmed" }> | undefined;
+    problem: Refused | undefined;
+    /** Says a refused or mismatched apply; an editor whose applies are never refused has none. */
+    refusal?: Refusal | undefined;
     /** Whether the core's funnel would take the new value. */
     allowed: boolean;
     onapply: () => void;
@@ -51,7 +53,7 @@
 </script>
 
 {#if problem}
-  <WriteProblem {problem} />
+  {@render refusal?.(problem)}
 {/if}
 
 <Button size="lg" class="h-11 w-full text-[15px]" {disabled} onclick={onapply}>

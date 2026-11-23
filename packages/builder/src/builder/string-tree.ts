@@ -1,8 +1,9 @@
 // The Strings group's rows (ADR 20): each inverter, under it its MPPT inputs, and under each input
 // its strings, with the warnings that belong to each. Pure.
-import type { Device, StringDraft } from "../api/core.ts";
+import type { StringDraft } from "@sunreye/scene";
+import type { Device } from "./host.ts";
 import type { Sized } from "./checks.ts";
-import type { Inverters } from "@sunreye/builder/builder/pv.ts";
+import type { Inverters } from "./pv.ts";
 
 export interface StringRow {
   /** Its position in the layout. */

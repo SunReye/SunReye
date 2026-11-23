@@ -13,7 +13,7 @@
   import { m } from "../paraglide/messages.js";
   import ContextActions from "./ContextActions.svelte";
   import { measured } from "./canvas-zones.ts";
-  import type { Point } from "@sunreye/builder/builder/pv.ts";
+  import type { Point } from "./pv.ts";
   import { boxOf, carried } from "./toolbar-anchor.ts";
   import { placed } from "./toolbar-place.ts";
 

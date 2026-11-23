@@ -2,15 +2,17 @@
 <script lang="ts">
   import Redo2 from "@lucide/svelte/icons/redo-2";
   import Undo2 from "@lucide/svelte/icons/undo-2";
-  import DateField from "#lib/components/date-field.svelte";
+  import DateField from "../components/date-field.svelte";
   import { Button } from "@sunreye/ui/button";
-  import { confirmed } from "../feedback.ts";
   import { m } from "../paraglide/messages.js";
   import { today } from "./day.ts";
   import Outcome from "./Outcome.svelte";
   import type { Session } from "./session.svelte.ts";
+  import { host } from "./host.ts";
 
   let { session }: { session: Session } = $props();
+
+  const { confirmed } = host();
 
   async function save() {
     await session.save();

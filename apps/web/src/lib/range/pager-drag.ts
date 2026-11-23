@@ -2,7 +2,7 @@
 // 10 px is the pager's, vertical stays the page's scroll, and a drag that starts on a chart
 // (`data-scrub`) reads the chart. On the still tier, or for a swipe that only steps, nothing moves.
 import type { Attachment } from "svelte/attachments";
-import { VelocityTracker } from "../animate.ts";
+import { VelocityTracker } from "@sunreye/builder/animate.ts";
 
 export interface DragHandlers {
   /** Whether a drag can page at all. */

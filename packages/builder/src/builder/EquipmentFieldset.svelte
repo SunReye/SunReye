@@ -1,10 +1,10 @@
 <!-- A marker's level in the inspector: its device, block, wall and place along it. -->
 <script lang="ts">
   import * as Item from "@sunreye/ui/item";
-  import type { Device } from "../api/core.ts";
+  import type { Device } from "./host.ts";
   import { m } from "../paraglide/messages.js";
   import { choices, metres } from "./fields.ts";
-  import type { Equipment, Wall } from "@sunreye/builder/builder/pv.ts";
+  import type { Equipment, Wall } from "./pv.ts";
   import RemoveButton from "./RemoveButton.svelte";
   import SwitchRow from "./SwitchRow.svelte";
   import ValueRow from "./ValueRow.svelte";

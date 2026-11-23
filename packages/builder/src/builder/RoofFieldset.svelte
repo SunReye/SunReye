@@ -6,7 +6,7 @@
   import { m } from "../paraglide/messages.js";
   import { centred } from "./draft.ts";
   import { choices, metres } from "./fields.ts";
-  import type { RoofFace } from "@sunreye/builder/builder/pv.ts";
+  import type { RoofFace } from "./pv.ts";
   import RemoveButton from "./RemoveButton.svelte";
   import type { OnRoof } from "./roofing.ts";
   import ValueRow from "./ValueRow.svelte";

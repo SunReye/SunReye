@@ -1,14 +1,6 @@
 // What the builder calls each kind of roof, obstacle, finish, opening and wall (ADR 20).
 import { m } from "../paraglide/messages.js";
-import type {
-  FenceFinish,
-  GroundFinish,
-  Obstacle,
-  OpeningKind,
-  Roof,
-  Unfit,
-  Wall,
-} from "@sunreye/builder/builder/pv.ts";
+import type { FenceFinish, GroundFinish, Obstacle, OpeningKind, Roof, Unfit, Wall } from "./pv.ts";
 
 export const ROOFS: readonly (readonly [Roof["kind"], () => string])[] = [
   ["flat", m.roof_flat],

@@ -1,4 +1,4 @@
-import { valueText } from "../../settings/bounds.ts";
+import type { Snippet } from "svelte";
 
 /**
  * What the value editor edits: a bounded stepped number on a wheel, a time of day on an hour and a
@@ -27,6 +27,14 @@ export type Editable =
       readonly name: string;
       readonly options: readonly Readonly<{ value: number; text: string }>[];
     };
+
+/** The text the profile labels an enumerated value with, such as a mode's name; else the number. */
+export function valueText(
+  value: number,
+  labels: readonly Readonly<{ value: number; text: string }>[] | undefined,
+): string {
+  return labels?.find((label) => label.value === value)?.text ?? String(value);
+}
 
 /** What a setting declares (ADR 5), as the core's capabilities list it. */
 export type EditableSetting = Readonly<{
@@ -119,3 +127,9 @@ export type Outcome =
   | { readonly kind: "confirmed" }
   | { readonly kind: "refused"; readonly reason: string }
   | { readonly kind: "mismatch"; readonly reason: string };
+
+/** An apply that did not take: the editor says why through its caller. */
+export type Refused = Exclude<Outcome, { readonly kind: "confirmed" }>;
+
+/** Says a refused or mismatched apply, as the editor's caller words it. */
+export type Refusal = Snippet<[Refused]>;

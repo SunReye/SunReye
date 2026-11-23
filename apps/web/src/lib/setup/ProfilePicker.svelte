@@ -9,7 +9,7 @@
   import Search from "@lucide/svelte/icons/search";
   import { onMount } from "svelte";
   import type { Core, Listing, Problem } from "../api/core.ts";
-  import ResponsiveSheet from "#lib/components/responsive-sheet.svelte";
+  import ResponsiveSheet from "@sunreye/builder/components/responsive-sheet.svelte";
   import { Input } from "@sunreye/ui/input";
   import { m } from "../paraglide/messages.js";
   import { offers, power } from "./catalogue.ts";

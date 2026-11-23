@@ -4,10 +4,10 @@
   import { refusedInline } from "../feedback.ts";
   import BlockFieldset from "./BlockFieldset.svelte";
   import OpeningFieldset from "./OpeningFieldset.svelte";
-  import type { Pv, RoofFace, Scene, Unfit } from "@sunreye/builder/builder/pv.ts";
+  import type { Pv, RoofFace, Scene, Unfit } from "./pv.ts";
   import { chimneySizes, windowSizes } from "./roof-fields.ts";
   import RoofFieldset from "./RoofFieldset.svelte";
-  import { duplicate, refit } from "@sunreye/builder/builder/wall-openings.ts";
+  import { duplicate, refit } from "./wall-openings.ts";
 
   let {
     kind,

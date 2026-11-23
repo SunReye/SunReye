@@ -7,9 +7,9 @@
   import Unplug from "@lucide/svelte/icons/unplug";
   import X from "@lucide/svelte/icons/x";
   import * as DropdownMenu from "@sunreye/ui/dropdown-menu";
-  import type { StringDraft } from "../api/core.ts";
+  import type { StringDraft } from "@sunreye/scene";
   import { m } from "../paraglide/messages.js";
-  import { stringCss } from "@sunreye/builder/builder/scene.ts";
+  import { stringCss } from "./scene.ts";
   import ToolButton from "./ToolButton.svelte";
   import type { WiringMode } from "./wiring-mode.svelte.ts";
 

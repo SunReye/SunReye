@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { lengthened, nextBlock, shortened, withRoof } from "./draft.ts";
+import { lengthened, nextBlock, shortened, withRoof } from "@sunreye/builder/builder/draft.ts";
 
 test("the first block stands at the origin and the next beside the last, 2 m apart", () => {
   const first = nextBlock([]);

@@ -7,9 +7,10 @@
   import { Button } from "@sunreye/ui/button";
   import * as Item from "@sunreye/ui/item";
   import { Input } from "@sunreye/ui/input";
-  import type { Datasheet, ModuleType, Problem } from "../api/core.ts";
+  import { type Datasheet, host, type ModuleType, type Problem } from "./host.ts";
   import { m } from "../paraglide/messages.js";
-  import Refusal, { answered } from "../setup/Refusal.svelte";
+  import ProblemAlert from "../components/problem-alert.svelte";
+  import { answered } from "../feedback.ts";
   import { BLANK, datasheet, missing, REQUIRED, rows, type Entered } from "./datasheet.ts";
   import { valueRefusal } from "./checks.ts";
   import ValueRow from "./ValueRow.svelte";
@@ -29,6 +30,8 @@
 
   let name = $state("");
   let entered = $state.raw<Entered>(BLANK);
+  const { refusal } = host();
+
   let refused = $state.raw<Problem>();
   let adding = $state(false);
 
@@ -84,7 +87,7 @@
   {/each}
 
   <div class="flex flex-col gap-2 border-t border-border/60 p-3">
-    <Refusal {refused} text={pointed} />
+    <ProblemAlert text={pointed ?? (refused && refusal(refused.problem))} />
     <Button type="submit" disabled={adding || name.trim() === "" || !complete}>
       {m.builder_create_module_type()}
     </Button>

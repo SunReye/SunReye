@@ -9,7 +9,7 @@ import type {
   Overhang,
   Roof,
   RoofFace,
-} from "@sunreye/builder/builder/pv.ts";
+} from "./pv.ts";
 
 /** Metres between a new block and the last one. */
 const GAP = 2;

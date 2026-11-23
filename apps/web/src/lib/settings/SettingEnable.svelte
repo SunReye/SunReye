@@ -2,7 +2,7 @@
 <script lang="ts">
   import Refusal, { answered } from "../setup/Refusal.svelte";
   import type { Core, Problem, Setting } from "../api/core";
-  import { clock } from "../components/value-editor/editable.ts";
+  import { clock } from "@sunreye/builder/components/value-editor/editable.ts";
   import { m } from "../paraglide/messages.js";
   import { boundsText } from "./bounds";
   import { settingLabel } from "./setting-label.ts";

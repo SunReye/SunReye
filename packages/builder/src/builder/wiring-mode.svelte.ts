@@ -4,19 +4,13 @@
 import { roofFaceKey, type RoofFaceId } from "@sunreye/scene";
 import { m } from "../paraglide/messages.js";
 import { strungOn, type Stringing } from "./auto-string.ts";
-import type { Selecting } from "@sunreye/builder/builder/gestures.ts";
-import { laying, type Level } from "@sunreye/builder/builder/levels.ts";
-import { inNoString, type Draft } from "@sunreye/builder/builder/modules.ts";
-import type { Modules, RoofFace } from "@sunreye/builder/builder/pv.ts";
-import type { Panel } from "@sunreye/builder/builder/scene.ts";
-import {
-  mostUnwired,
-  unwired,
-  wiredInto,
-  wiredNew,
-  type Cell,
-} from "@sunreye/builder/builder/selecting.ts";
-import { wiring } from "@sunreye/builder/builder/wiring.ts";
+import type { Selecting } from "./gestures.ts";
+import { laying, type Level } from "./levels.ts";
+import { inNoString, type Draft } from "./modules.ts";
+import type { Modules, RoofFace } from "./pv.ts";
+import type { Panel } from "./scene.ts";
+import { mostUnwired, unwired, wiredInto, wiredNew, type Cell } from "./selecting.ts";
+import { wiring } from "./wiring.ts";
 
 /** The session the mode reads and edits. */
 export interface Wired {
@@ -80,7 +74,6 @@ export class WiringMode {
 
   /** Proposes grid `grid`'s modules in no string as new strings on the first inverter that lists
    * its inputs, else the first string's. */
-  // fallow-ignore-next-line unused-class-member -- read through `session.wiring` in the components.
   auto(grid: number): void {
     const { draft, present } = this.#session;
 
@@ -184,7 +177,6 @@ export class WiringMode {
 
   /** The roof face a phone's camera flies onto: a selected face's while its modules are laid, and
    * while wiring the face a tap named, else the one with the most modules in no string. */
-  // fallow-ignore-next-line unused-class-member -- read through `session.wiring` in the components.
   get onto(): RoofFace | undefined {
     const { level, laid, draft } = this.#session;
     const face = this.active ? (this.#face ?? mostUnwired(draft.scene)) : undefined;

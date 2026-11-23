@@ -1,6 +1,6 @@
 <!-- A grid's or a string's module type, picked from the plant's types. -->
 <script lang="ts">
-  import type { ModuleType } from "../api/core.ts";
+  import type { ModuleType } from "@sunreye/scene";
   import { m } from "../paraglide/messages.js";
   import { choices } from "./fields.ts";
   import ValueRow from "./ValueRow.svelte";

@@ -1,5 +1,5 @@
 // A module type's datasheet as the admin enters it (ADR 17): its rows, bounds and first values.
-import type { Datasheet } from "../api/core.ts";
+import type { Datasheet } from "@sunreye/scene";
 import { m } from "../paraglide/messages.js";
 import { getLocale } from "../paraglide/runtime.js";
 import type { Editable } from "../components/value-editor/editable.ts";

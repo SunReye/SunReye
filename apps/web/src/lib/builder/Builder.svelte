@@ -11,13 +11,13 @@
 <script lang="ts">
   import { MediaQuery } from "svelte/reactivity";
   import type { Core, Device, ModuleType } from "../api/core.ts";
+  import { hostIn } from "./host.ts";
   import InspectorPane, { PEEK } from "./InspectorPane.svelte";
   import { Moment } from "./moment.svelte.ts";
   import type { Aerial, Location, Neighbour, Pv } from "@sunreye/builder/builder/pv.ts";
-  import PhoneTools from "./PhoneTools.svelte";
-  import { Session, type Reads } from "./session.svelte.ts";
+  import PhoneTools from "@sunreye/builder/builder/PhoneTools.svelte";
+  import { Session, type Reads } from "@sunreye/builder/builder/session.svelte.ts";
   import Templates from "./Templates.svelte";
-  import { provideUploader } from "./upload.ts";
   import View from "./View.svelte";
 
   let {
@@ -84,7 +84,7 @@
     () => session.editing !== undefined || session.roofwork !== undefined,
   );
 
-  provideUploader((glb) => core.uploadCarBody(glb));
+  hostIn(() => core);
 
   const sheet = $derived(phone.current || portrait.current);
 

@@ -3,16 +3,16 @@
   copied from the module catalogue or entered here lays the grid at once.
 -->
 <script lang="ts">
-  import type { Core, ModuleType } from "../api/core.ts";
+  import type { Keeper, ModuleType } from "./host.ts";
   import FaceGrid from "./FaceGrid.svelte";
-  import { gridOn, moduleOf, type Level } from "@sunreye/builder/builder/levels.ts";
+  import { gridOn, moduleOf, type Level } from "./levels.ts";
   import ModuleLevel from "./ModuleLevel.svelte";
   import ModuleCatalogue from "./ModuleCatalogue.svelte";
-  import { addGrid, type Draft } from "@sunreye/builder/builder/modules.ts";
+  import { addGrid, type Draft } from "./modules.ts";
   import ModuleTypeForm from "./ModuleTypeForm.svelte";
   import ModuleTypePicker from "./ModuleTypePicker.svelte";
   import type { Plan } from "./outline.ts";
-  import type { RoofFace } from "@sunreye/builder/builder/pv.ts";
+  import type { RoofFace } from "./pv.ts";
 
   let {
     roof,
@@ -29,7 +29,7 @@
     plan: Plan;
     moduleTypes: readonly ModuleType[];
     /** Adds module types to the core, and its catalogue to add them from. */
-    types: Pick<Core, "addModuleType">;
+    types: Pick<Keeper, "addModuleType">;
     onchange: (draft: Draft) => void;
     /** Takes the tapped module off the face. */
     onremove: () => void;

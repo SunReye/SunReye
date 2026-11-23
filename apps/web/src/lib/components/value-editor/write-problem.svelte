@@ -3,9 +3,9 @@
   import CircleAlert from "@lucide/svelte/icons/circle-alert";
   import { m } from "../../paraglide/messages.js";
   import TextLink from "../text-link.svelte";
-  import type { Outcome } from "./editable.ts";
+  import type { Refused } from "@sunreye/builder/components/value-editor/editable.ts";
 
-  let { problem }: { problem: Exclude<Outcome, { kind: "confirmed" }> } = $props();
+  let { problem }: { problem: Refused } = $props();
 </script>
 
 <div

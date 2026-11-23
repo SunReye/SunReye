@@ -79,6 +79,11 @@ test("ships sources and the car's body alone: no test, no harness, and every fil
   await Promise.all(scripts().map((file) => script(file)));
 });
 
+test("ships its messages compiled, typed for a consumer that reads no JavaScript for types", () => {
+  for (const file of ["messages.js", "messages.d.ts", "runtime.js", "runtime.d.ts"])
+    expect(shipped).toContain(join("src", "paraglide", file));
+});
+
 test("a shipped file imports only what the package ships or declares as a peer", async () => {
   const declared = new Set(Object.keys(manifest.peerDependencies));
 
@@ -108,6 +113,7 @@ const siblings = (names: readonly string[]) => names.filter((name) => name.start
 
 test("its sibling packages are peers, never dependencies (ADR 25)", () => {
   expect(siblings(Object.keys(manifest.peerDependencies)).toSorted()).toEqual([
+    "@sunreye/catalogue",
     "@sunreye/pv-wasm",
     "@sunreye/scene",
     "@sunreye/ui",

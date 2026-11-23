@@ -1,13 +1,6 @@
 import { m } from "../paraglide/messages.js";
 import { getLocale } from "../paraglide/runtime.js";
-
-/** The text the profile labels an enumerated value with, such as a mode's name; else the number. */
-export function valueText(
-  value: number,
-  labels: readonly Readonly<{ value: number; text: string }>[] | undefined,
-): string {
-  return labels?.find((label) => label.value === value)?.text ?? String(value);
-}
+import { valueText } from "@sunreye/builder/components/value-editor/editable.ts";
 
 /** What a setting's write may carry, as the admin reads it before enabling it (ADR 8). */
 export function boundsText(

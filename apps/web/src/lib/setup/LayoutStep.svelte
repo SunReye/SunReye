@@ -5,7 +5,7 @@
 <script lang="ts">
   import * as Card from "@sunreye/ui/card";
   import { Skeleton } from "#lib/components/ui/skeleton/index.js";
-  import DrillHeader from "../components/drill-in/drill-header.svelte";
+  import DrillHeader from "@sunreye/builder/components/drill-in/drill-header.svelte";
   // The glue crate's release build, which the SPA build makes first (ADR 2, 20).
   import type { Core, Device } from "../api/core.ts";
   import { emptyDraft } from "@sunreye/builder/builder/modules.ts";

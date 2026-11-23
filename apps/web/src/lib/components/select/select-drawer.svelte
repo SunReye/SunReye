@@ -2,7 +2,7 @@
 <script lang="ts" generics="Value extends string">
   import Check from "@lucide/svelte/icons/check";
   import type { Snippet } from "svelte";
-  import DrawerSheet from "../drawer-sheet.svelte";
+  import DrawerSheet from "@sunreye/builder/components/drawer-sheet.svelte";
   import * as Item from "@sunreye/ui/item";
   import { Pressable } from "@sunreye/ui/pressable";
   import type { Choice, Section } from "./choices.ts";

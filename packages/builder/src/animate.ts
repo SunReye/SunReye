@@ -2,7 +2,7 @@
 // so every motion is interruptible and renders only while it runs.
 
 import { easeInOut } from "@sunreye/ui/motion/ease";
-import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
+import { motion } from "./motion/tier.svelte.ts";
 import { SPRINGS } from "./motion/values.ts";
 
 export interface SpringOptions {

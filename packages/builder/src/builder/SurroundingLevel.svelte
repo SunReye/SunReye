@@ -2,7 +2,7 @@
 <script lang="ts">
   import FenceFieldset from "./FenceFieldset.svelte";
   import ObstacleFieldset from "./ObstacleFieldset.svelte";
-  import type { Scene } from "@sunreye/builder/builder/pv.ts";
+  import type { Scene } from "./pv.ts";
   import SurfaceFieldset from "./SurfaceFieldset.svelte";
 
   let {

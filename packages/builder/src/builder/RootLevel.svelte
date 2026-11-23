@@ -7,7 +7,7 @@
   import Trees from "@lucide/svelte/icons/trees";
   import * as Item from "@sunreye/ui/item";
   import DrillRow from "../components/drill-in/drill-row.svelte";
-  import type { Level, Section } from "@sunreye/builder/builder/levels.ts";
+  import type { Level, Section } from "./levels.ts";
   import { SECTIONS, summary, type Plan } from "./outline.ts";
 
   let { plan, onlevel }: { plan: Plan; onlevel: (level: Level) => void } = $props();

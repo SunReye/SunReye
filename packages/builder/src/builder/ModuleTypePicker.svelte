@@ -4,7 +4,7 @@
   import Plus from "@lucide/svelte/icons/plus";
   import * as Item from "@sunreye/ui/item";
   import DrillRow from "../components/drill-in/drill-row.svelte";
-  import type { ModuleType } from "../api/core.ts";
+  import type { ModuleType } from "@sunreye/scene";
   import { m } from "../paraglide/messages.js";
   import { summary } from "./datasheet.ts";
 

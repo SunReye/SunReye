@@ -8,9 +8,12 @@
   import { modules } from "@sunreye/catalogue";
   import { Button } from "@sunreye/ui/button";
   import { Input } from "@sunreye/ui/input";
-  import type { Core, Datasheet, ModuleType, Problem } from "../api/core.ts";
+  import type { Datasheet, ModuleType } from "@sunreye/scene";
+  import type { Keeper, Problem } from "./host.ts";
   import { m } from "../paraglide/messages.js";
-  import Refusal, { answered } from "../setup/Refusal.svelte";
+  import ProblemAlert from "../components/problem-alert.svelte";
+  import { answered } from "../feedback.ts";
+  import { host } from "./host.ts";
   import CatalogueList from "./CatalogueList.svelte";
 
   let {
@@ -18,10 +21,12 @@
     onadded,
     oncancel,
   }: {
-    types: Pick<Core, "addModuleType">;
+    types: Pick<Keeper, "addModuleType">;
     onadded: (added: ModuleType) => void;
     oncancel: () => void;
   } = $props();
+
+  const { refusal } = host();
 
   let refused = $state.raw<Problem>();
   let query = $state("");
@@ -57,7 +62,7 @@
 </div>
 
 {#if refused !== undefined}
-  <div class="px-4 pt-2"><Refusal {refused} /></div>
+  <div class="px-4 pt-2"><ProblemAlert text={refused && refusal(refused.problem)} /></div>
 {/if}
 
 <CatalogueList

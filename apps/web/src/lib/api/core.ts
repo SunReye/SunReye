@@ -44,7 +44,7 @@ export { settleRead, type Problem, type Settled } from "./client";
 export type { Datasheet, ModuleType } from "./layouts";
 
 // The layout as the core's API carries it (ADR 25).
-export type { Layout, PvString, StringDraft, Types } from "@sunreye/scene";
+export type { Layout, PvString, StringDraft } from "@sunreye/scene";
 
 export type { ImportStatus, SharedArchive } from "./imports";
 

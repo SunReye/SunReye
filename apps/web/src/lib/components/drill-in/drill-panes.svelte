@@ -4,7 +4,7 @@
   import type { Snippet } from "svelte";
   import * as Item from "@sunreye/ui/item";
   import type { DrillGroup, DrillLevel } from "./drill-in.svelte";
-  import DrillRow from "./drill-row.svelte";
+  import DrillRow from "@sunreye/builder/components/drill-in/drill-row.svelte";
 
   let {
     groups,

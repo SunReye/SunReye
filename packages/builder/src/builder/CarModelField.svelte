@@ -6,9 +6,8 @@
   import * as Item from "@sunreye/ui/item";
   import { Button } from "@sunreye/ui/button";
   import { Input } from "@sunreye/ui/input";
-  import { problemText } from "../i18n/problems.ts";
   import { m } from "../paraglide/messages.js";
-  import { uploader } from "./upload.ts";
+  import { host } from "./host.ts";
 
   let {
     model,
@@ -19,7 +18,7 @@
     onchange: (model: string | null) => void;
   } = $props();
 
-  const upload = uploader();
+  const { refusal, uploadCarBody } = host();
 
   let refused = $state<string>();
   let file = $state<HTMLElement | null>(null);
@@ -27,10 +26,10 @@
   async function send(chosen: File | undefined): Promise<void> {
     if (chosen === undefined) return;
 
-    const stored = await upload(chosen);
+    const stored = await uploadCarBody(chosen);
 
     if (stored instanceof Object) {
-      refused = problemText(stored.problem);
+      refused = refusal(stored.problem);
 
       return;
     }

@@ -4,9 +4,9 @@
   import * as Item from "@sunreye/ui/item";
   import { m } from "../paraglide/messages.js";
   import { choices } from "./fields.ts";
-  import type { GridModule, Scene } from "@sunreye/builder/builder/pv.ts";
-  import { addString, optimize, wire, type Draft } from "@sunreye/builder/builder/modules.ts";
-  import { move } from "@sunreye/builder/builder/placing.ts";
+  import type { GridModule, Scene } from "./pv.ts";
+  import { addString, optimize, wire, type Draft } from "./modules.ts";
+  import { move } from "./placing.ts";
   import RemoveButton from "./RemoveButton.svelte";
   import SwitchRow from "./SwitchRow.svelte";
   import ValueRow from "./ValueRow.svelte";

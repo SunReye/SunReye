@@ -3,7 +3,7 @@ import { afterEach, expect, test } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../app.css";
-import ResponsiveSheet from "./components/responsive-sheet.svelte";
+import ResponsiveSheet from "@sunreye/builder/components/responsive-sheet.svelte";
 import Gallery from "./gallery/Gallery.svelte";
 import { unfaded } from "./scroll-fade.harness.ts";
 

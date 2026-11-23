@@ -2,7 +2,7 @@
   warnings of the input itself. -->
 <script lang="ts">
   import { m } from "../paraglide/messages.js";
-  import { wiredIn, type Draft } from "@sunreye/builder/builder/modules.ts";
+  import { wiredIn, type Draft } from "./modules.ts";
   import StringRow from "./StringRow.svelte";
   import type { InputRows } from "./string-tree.ts";
 

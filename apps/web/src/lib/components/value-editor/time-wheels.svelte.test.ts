@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../../app.css";
-import TimeWheels from "./time-wheels.svelte";
+import TimeWheels from "@sunreye/builder/components/value-editor/time-wheels.svelte";
 
 test("the minute wheel follows a changed step", async () => {
   const screen = await render(TimeWheels, { step: 5, now: null, onlive: () => {} });

@@ -3,7 +3,7 @@ import { expect, test } from "vitest";
 import { cdp, page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
-import ResponsiveSheet from "./responsive-sheet.svelte";
+import ResponsiveSheet from "@sunreye/builder/components/responsive-sheet.svelte";
 
 const form = createRawSnippet(() => ({ render: () => `<label>Name <input /></label>` }));
 

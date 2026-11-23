@@ -5,19 +5,13 @@
 <script lang="ts">
   import Grid2x2Plus from "@lucide/svelte/icons/grid-2x2-plus";
   import Grid2x2X from "@lucide/svelte/icons/grid-2x2-x";
-  import type { ModuleType } from "../api/core.ts";
+  import type { ModuleType } from "@sunreye/scene";
   import { m } from "../paraglide/messages.js";
   import { Button } from "@sunreye/ui/button";
   import type { Checks } from "./checks.ts";
   import GridSettings from "./GridSettings.svelte";
-  import {
-    clearGrid,
-    editGrid,
-    fillGrid,
-    removeGrid,
-    type Draft,
-  } from "@sunreye/builder/builder/modules.ts";
-  import type { ModuleGrid } from "@sunreye/builder/builder/pv.ts";
+  import { clearGrid, editGrid, fillGrid, removeGrid, type Draft } from "./modules.ts";
+  import type { ModuleGrid } from "./pv.ts";
 
   let {
     draft,

@@ -1,10 +1,10 @@
 // What the context toolbar stands by (ADR 20): the points of the selection in the scene, which
 // the canvas projects to a box. None, no toolbar. Pure.
-import type { Selecting } from "@sunreye/builder/builder/gestures.ts";
-import { offered } from "@sunreye/builder/builder/handles/offered.ts";
-import { gridOn, handled, laying, type Level } from "@sunreye/builder/builder/levels.ts";
-import type { Draft } from "@sunreye/builder/builder/modules.ts";
-import type { Geometry, Modules, Point, RoofFace } from "@sunreye/builder/builder/pv.ts";
+import type { Selecting } from "./gestures.ts";
+import { offered } from "./handles/offered.ts";
+import { gridOn, handled, laying, type Level } from "./levels.ts";
+import type { Draft } from "./modules.ts";
+import type { Geometry, Modules, Point, RoofFace } from "./pv.ts";
 
 /** What the anchor reads of a session. */
 export interface Anchored {

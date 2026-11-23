@@ -1,13 +1,13 @@
 <!-- A car place's level in the inspector: its loadpoint, footprint, colour and body. -->
 <script lang="ts">
   import * as Item from "@sunreye/ui/item";
-  import type { Device } from "../api/core.ts";
-  import { PLAIN } from "@sunreye/builder/cars/parked.ts";
+  import type { Device } from "./host.ts";
+  import { PLAIN } from "../cars/parked.ts";
   import { m } from "../paraglide/messages.js";
   import CarModelField from "./CarModelField.svelte";
   import HexField from "./HexField.svelte";
   import { choices, degrees, metres, REACH } from "./fields.ts";
-  import type { CarPlace } from "@sunreye/builder/builder/pv.ts";
+  import type { CarPlace } from "./pv.ts";
   import RemoveButton from "./RemoveButton.svelte";
   import ValueRow from "./ValueRow.svelte";
 

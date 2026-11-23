@@ -6,17 +6,9 @@
   hash route: `open` follows it, `onnavigate` asks to change it.
 -->
 <script lang="ts" module>
-  import type { Component } from "svelte";
+  import type { DrillGroup } from "@sunreye/builder/components/drill-in/drill.ts";
 
-  export interface DrillGroup {
-    readonly id: string;
-    readonly label: string;
-    /** Its current values in a few words, under the label. */
-    readonly summary?: string;
-    readonly icon?: Component<{ class?: string }>;
-    /** Listed but not open, such as a setup step not yet reached. */
-    readonly disabled?: boolean;
-  }
+  export type { DrillGroup };
 
   /** The screen a heading is drawn on: the root list, or an open group's page on the phone. */
   export type DrillLevel = "root" | "page";
@@ -28,11 +20,11 @@
   import * as Card from "@sunreye/ui/card";
   import * as Item from "@sunreye/ui/item";
   import { haptics } from "@sunreye/ui/haptics";
-  import { Push } from "./push.svelte.ts";
+  import { Push } from "@sunreye/builder/components/drill-in/push.svelte.ts";
   import { carded } from "./drill-card.svelte";
-  import DrillHeader from "./drill-header.svelte";
+  import DrillHeader from "@sunreye/builder/components/drill-in/drill-header.svelte";
   import DrillPanes from "./drill-panes.svelte";
-  import DrillRow from "./drill-row.svelte";
+  import DrillRow from "@sunreye/builder/components/drill-in/drill-row.svelte";
 
   let {
     groups,

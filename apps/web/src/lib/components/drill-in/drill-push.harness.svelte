@@ -1,7 +1,7 @@
 <!-- Test harness: a push over three levels, a → b → c, each a level below the one before; `nested` pushes inside b. -->
 <script lang="ts">
   import "../../../app.css";
-  import DrillPush from "./drill-push.svelte";
+  import DrillPush from "@sunreye/builder/components/drill-in/drill-push.svelte";
 
   let {
     at = "a",

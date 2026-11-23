@@ -1,6 +1,6 @@
 // A control's write through ADR 7's funnel, as the value editor and the schedule switch apply it.
 import type { Core } from "../api/core";
-import type { Outcome } from "../components/value-editor/editable.ts";
+import type { Outcome } from "@sunreye/builder/components/value-editor/editable.ts";
 import { confirmed } from "../feedback.ts";
 import { haptics } from "@sunreye/ui/haptics";
 import { m } from "../paraglide/messages.js";

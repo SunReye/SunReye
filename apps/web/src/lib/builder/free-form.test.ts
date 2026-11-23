@@ -9,7 +9,7 @@ import {
   type Group,
   type Object3D,
 } from "three";
-import { additions } from "./additions.ts";
+import { additions } from "@sunreye/builder/builder/additions.ts";
 import { overlay } from "@sunreye/builder/builder/overlay.ts";
 import { loadPv } from "@sunreye/pv-wasm";
 import { type Block, type FreeForm, type Scene } from "@sunreye/builder/builder/pv.ts";

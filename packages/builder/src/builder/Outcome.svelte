@@ -1,9 +1,10 @@
 <script lang="ts">
-  import type { Layout, Problem } from "../api/core.ts";
+  import type { Layout } from "@sunreye/scene";
+  import { host, type Problem } from "./host.ts";
   import ProblemAlert from "../components/problem-alert.svelte";
   import { m } from "../paraglide/messages.js";
   import { misplacedText } from "./checks.ts";
-  import type { Misplaced } from "@sunreye/builder/builder/pv.ts";
+  import type { Misplaced } from "./pv.ts";
 
   let {
     misplaced,
@@ -15,6 +16,8 @@
     saved: Layout | Problem | undefined;
   } = $props();
 
+  const { refusal } = host();
+
   function name(layout: Layout, id: number): string {
     return layout.strings.find((string) => string.id === id)?.name ?? String(id);
   }
@@ -25,7 +28,7 @@
 {/if}
 {#if saved !== undefined}
   {#if "problem" in saved}
-    <div class="mb-2"><ProblemAlert problem={saved.problem} /></div>
+    <div class="mb-2"><ProblemAlert text={refusal(saved.problem)} /></div>
   {:else}
     <!-- A warning, never a refusal: the plant may already exist (ADR 20). -->
     {#each saved.warnings as warning (warning.string)}

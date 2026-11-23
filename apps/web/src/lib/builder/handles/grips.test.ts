@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { nextBlock } from "../draft.ts";
+import { nextBlock } from "@sunreye/builder/builder/draft.ts";
 import type { Block, Scene } from "@sunreye/builder/builder/pv.ts";
 import {
   drag,

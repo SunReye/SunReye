@@ -198,7 +198,7 @@
       },
       {
         "from": "builder",
-        "allow": ["scene", "pv-wasm", "ui"]
+        "allow": ["scene", "pv-wasm", "ui", "catalogue"]
       },
       {
         "from": "profiles",

@@ -2,7 +2,7 @@
   "name": "@sunreye/builder",
   "version": "5.0.0",
   "private": true,
-  "description": "SunReye's 3D house builder: the scene canvas and what it draws and answers on it (ADRs 20, 25).",
+  "description": "SunReye's 3D house builder: the scene canvas, what it draws and answers on it, and the editing tools (ADRs 20, 25).",
   "license": "SEE LICENSE IN LICENSE",
   "files": [
     "src"
@@ -16,15 +16,27 @@
     },
     "./*": "./src/*"
   },
+  "scripts": {
+    "i18n": "bun scripts/i18n.ts"
+  },
   "devDependencies": {
+    "@inlang/paraglide-js": "3.2.1",
+    "@inlang/plugin-message-format": "4.6.0",
+    "@internationalized/date": "3.12.4",
+    "@lucide/svelte": "1.71.0",
     "@types/three": "0.187.0",
+    "bits-ui": "2.20.6",
     "svelte": "5.57.3",
     "three": "0.187.0"
   },
   "peerDependencies": {
+    "@internationalized/date": "^3.12.4",
+    "@lucide/svelte": "^1.71.0",
+    "@sunreye/catalogue": "^5.0.0",
     "@sunreye/pv-wasm": "^5.0.0",
     "@sunreye/scene": "^5.0.0",
     "@sunreye/ui": "^5.0.0",
+    "bits-ui": "^2.20.6",
     "svelte": "^5.57.3",
     "three": "^0.187.0"
   }

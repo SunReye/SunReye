@@ -1,12 +1,12 @@
 <!-- One object's level in the inspector; a face's level is its module-grid editor (ADR 20). -->
 <script lang="ts">
-  import type { Core, ModuleType } from "../api/core.ts";
+  import type { Keeper, ModuleType } from "./host.ts";
   import BuildingLevel from "./BuildingLevel.svelte";
   import CarPlaceFieldset from "./CarPlaceFieldset.svelte";
   import EquipmentFieldset from "./EquipmentFieldset.svelte";
   import FaceLevel from "./FaceLevel.svelte";
-  import { laying, type Level } from "@sunreye/builder/builder/levels.ts";
-  import { wiredIn, type Draft } from "@sunreye/builder/builder/modules.ts";
+  import { laying, type Level } from "./levels.ts";
+  import { wiredIn, type Draft } from "./modules.ts";
   import type { Plan } from "./outline.ts";
   import StringFieldset from "./StringFieldset.svelte";
   import SurroundingLevel from "./SurroundingLevel.svelte";
@@ -24,7 +24,7 @@
     plan: Plan;
     moduleTypes: readonly ModuleType[];
     /** Adds module types to the core, and its catalogue to add them from. */
-    types: Pick<Core, "addModuleType">;
+    types: Pick<Keeper, "addModuleType">;
     onchange: (draft: Draft) => void;
     onlevel: (level: Level) => void;
     /** Takes the level's object out of the draft and shows its group. */

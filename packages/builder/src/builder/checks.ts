@@ -2,41 +2,16 @@
 // string whose open-circuit voltage at −10 °C, as the pv crate reckons it, exceeds its inverter's
 // maximum DC input voltage. That one warns, never refuses: the plant may already exist. And after a
 // save, where the core points its refusal (ADR 9), worded beside the object it names.
-import type { Capabilities, ModuleType, Problem } from "../api/core.ts";
+import type { ModuleType } from "@sunreye/scene";
+import type { Problem } from "./host.ts";
 import { m } from "../paraglide/messages.js";
 import { getLocale } from "../paraglide/runtime.js";
-import { wiredIn, type Draft } from "@sunreye/builder/builder/modules.ts";
-import type { Misplaced, Pv } from "@sunreye/builder/builder/pv.ts";
-import type { InputLimits, Inverters, Sizing } from "@sunreye/builder/builder/pv.ts";
+import { wiredIn, type Draft } from "./modules.ts";
+import type { Misplaced, Pv } from "./pv.ts";
+import type { Inverters, Sizing } from "./pv.ts";
 
 /** Maximum DC input voltage in volts, by inverter device id. */
 export type Limits = Readonly<Record<number, number>>;
-
-/** The limits the core's capabilities list. */
-// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the API's generated type, read only.
-export function limitsOf({ devices }: Pick<Capabilities, "devices">): Limits {
-  return Object.fromEntries(
-    // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- read only, as above.
-    Object.entries(devices).flatMap(([id, support]) => {
-      const { maxInputVoltage } = support;
-
-      return maxInputVoltage === undefined || maxInputVoltage === null
-        ? []
-        : [[Number(id), maxInputVoltage] as const];
-    }),
-  );
-}
-
-/** The inputs the core's capabilities list, where an inverter's profile gives them (ADR 9). */
-// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the API's generated type, read only.
-export function inputsOf({ devices }: Pick<Capabilities, "devices">): Inverters {
-  return Object.fromEntries(
-    // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- read only, as above.
-    Object.entries(devices).flatMap(([id, { inputs }]): [number, readonly InputLimits[]][] =>
-      inputs === undefined || inputs.length === 0 ? [] : [[Number(id), inputs]],
-    ),
-  );
-}
 
 /** What the checks find in one grid: the first module the core would refuse, and the strings
  * over their inverter's limit in the cold. */

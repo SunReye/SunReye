@@ -3,7 +3,7 @@
   import { Popover } from "bits-ui";
   import { input } from "../../shell/input.svelte.ts";
   import DrawerSheet from "../drawer-sheet.svelte";
-  import type { Editable, Outcome } from "./editable.ts";
+  import type { Editable, Outcome, Refusal } from "./editable.ts";
   import EditorBody from "./editor-body.svelte";
 
   let {
@@ -13,6 +13,7 @@
     anchor,
     open = $bindable(false),
     onapply,
+    refusal,
     below = false,
   }: {
     /** Which setting it edits: a new one starts a fresh editor. */
@@ -23,6 +24,8 @@
     anchor: HTMLElement | null;
     open?: boolean;
     onapply: (value: number) => Promise<Outcome>;
+    /** Says a refused or mismatched apply. */
+    refusal?: Refusal | undefined;
     /** Open under the row's value instead of beside the row (two panes fill the width). */
     below?: boolean;
   } = $props();
@@ -53,7 +56,7 @@
         class="glass-modal glass-ambient z-50 w-[300px] origin-(--bits-popover-content-transform-origin) rounded-lg p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 elevation-4 outline-none duration-(--motion-base) ease-(--motion-ease) data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 data-open:animate-spring-in data-open:fade-in-0 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2"
       >
         {#key key}
-          <EditorBody {edit} {current} onapply={apply} compact />
+          <EditorBody {edit} {current} onapply={apply} {refusal} compact />
         {/key}
       </Popover.Content>
     </Popover.Portal>
@@ -62,7 +65,7 @@
   <DrawerSheet bind:open label={edit.name}>
     <div class="px-5 pt-2 pb-2">
       {#key key}
-        <EditorBody {edit} {current} onapply={apply} />
+        <EditorBody {edit} {current} onapply={apply} {refusal} />
       {/key}
     </div>
   </DrawerSheet>

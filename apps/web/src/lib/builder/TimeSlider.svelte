@@ -3,10 +3,10 @@
   picked on a calendar; the time scrubs, so it stays a slider (ADR 21).
 -->
 <script lang="ts">
-  import DateField from "#lib/components/date-field.svelte";
+  import DateField from "@sunreye/builder/components/date-field.svelte";
   import { Slider } from "@sunreye/ui/slider";
   import { m } from "../paraglide/messages.js";
-  import { today } from "./day.ts";
+  import { today } from "@sunreye/builder/builder/day.ts";
 
   let {
     day = $bindable(),

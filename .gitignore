@@ -105,3 +105,7 @@ __pycache__/
 # Rust build output
 /target
 **/target/
+
+# The builder's compiled messages (ADR 25). Not Paraglide's own ignore file beside them: that one
+# would keep them out of the packed package too.
+/packages/builder/src/paraglide

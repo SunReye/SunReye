@@ -1,6 +1,7 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { inputsOf, limitsOf, sized } from "./checks.ts";
+import { sized } from "@sunreye/builder/builder/checks.ts";
+import { inputsOf, limitsOf } from "./capabilities.ts";
 import type { Sizing } from "@sunreye/builder/builder/pv.ts";
 
 test("the limits are each inverter's maximum DC input voltage, by device id", () => {

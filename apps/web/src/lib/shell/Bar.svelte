@@ -5,7 +5,7 @@
 <script lang="ts">
   import Ellipsis from "@lucide/svelte/icons/ellipsis";
   import * as ToggleGroup from "@sunreye/ui/toggle-group";
-  import DrawerSheet from "#lib/components/drawer-sheet.svelte";
+  import DrawerSheet from "@sunreye/builder/components/drawer-sheet.svelte";
   import { m } from "../paraglide/messages.js";
   import { indicator } from "../range/indicator.ts";
   import MoreList from "./MoreList.svelte";

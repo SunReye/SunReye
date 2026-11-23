@@ -1,10 +1,10 @@
 // Auto-stringing (ADR 20): a roof face's modules in no string, run in a serpentine row by row from
 // the lower left and cut into as few new strings as the inverter's limits allow. Pure.
-import type { ModuleType } from "../api/core.ts";
+import type { ModuleType } from "@sunreye/scene";
 import type { Checking } from "./checks.ts";
-import { addString, inNoString, type Draft } from "@sunreye/builder/builder/modules.ts";
-import type { GridModule } from "@sunreye/builder/builder/pv.ts";
-import { wiredInto, type Cell } from "@sunreye/builder/builder/selecting.ts";
+import { addString, inNoString, type Draft } from "./modules.ts";
+import type { GridModule } from "./pv.ts";
+import { wiredInto, type Cell } from "./selecting.ts";
 
 /** An MPPT input that carries no string, and what it takes. */
 export interface Free {

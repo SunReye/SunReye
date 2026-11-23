@@ -1,7 +1,7 @@
 <!-- One series of the module catalogue: maker and series, the datasheets it was copied from, a row per power class. -->
 <script lang="ts">
   import * as Item from "@sunreye/ui/item";
-  import type { Datasheet } from "../api/core.ts";
+  import type { Datasheet } from "@sunreye/scene";
   import DrillRow from "../components/drill-in/drill-row.svelte";
   import { m } from "../paraglide/messages.js";
   import type { Series } from "./catalogue.ts";

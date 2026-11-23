@@ -7,7 +7,7 @@
   import { lengthened, shortened } from "./draft.ts";
   import { choices, metres, REACH } from "./fields.ts";
   import { FENCE_FINISHES } from "./outline.ts";
-  import type { Fence } from "@sunreye/builder/builder/pv.ts";
+  import type { Fence } from "./pv.ts";
   import RemoveButton from "./RemoveButton.svelte";
   import ValueRow from "./ValueRow.svelte";
 
