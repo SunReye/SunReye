@@ -20,7 +20,7 @@
   "scripts": {
     "wasm": "cargo build --locked --release -p sunreye-pv-wasm --target wasm32-unknown-unknown && mkdir -p dist && cp ../../target/wasm32-unknown-unknown/release/sunreye_pv_wasm.wasm dist/pv.wasm"
   },
-  "dependencies": {
-    "@sunreye/scene": "workspace:*"
+  "peerDependencies": {
+    "@sunreye/scene": "^5.0.0"
   }
 }

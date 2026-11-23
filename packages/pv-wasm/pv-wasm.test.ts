@@ -113,6 +113,58 @@ test("a consumer types the engine's answers with the published types", async () 
   ).toContain("is missing the following properties");
 });
 
+/** A sibling package as a consumer names it by path. */
+function byPath(name: string): string {
+  return `file:${join(here, "..", name)}`;
+}
+
+// Until the packages are published, SunReye Plan installs them by path (ADR 25, 2026-11-23): the
+// consumer supplies each package once, and the loader's declarations find the scene's types there.
+test("a consumer that installs the packages by path types the engine's answers", async () => {
+  const consumer = await mkdtemp(join(tmpdir(), "sunreye-by-path-"));
+  const packages = ["catalogue", "pv-wasm", "scene", "tokens"];
+
+  try {
+    await Bun.write(
+      join(consumer, "package.json"),
+      JSON.stringify({
+        type: "module",
+        dependencies: Object.fromEntries(
+          packages.map((name) => [`@sunreye/${name}`, byPath(name)]),
+        ),
+        // Bun satisfies a package's peer from the registry, never from a folder the consumer names.
+        overrides: { "@sunreye/scene": byPath("scene") },
+      }),
+    );
+    await Bun.write(
+      join(consumer, "tsconfig.json"),
+      JSON.stringify({
+        compilerOptions: {
+          strict: true,
+          noEmit: true,
+          module: "nodenext",
+          types: [],
+          // Bun links each file back into this repository; resolve from the consumer's install.
+          preserveSymlinks: true,
+        },
+        include: ["consumer.ts"],
+      }),
+    );
+    await Bun.write(join(consumer, "consumer.ts"), SHADED);
+
+    const installed = Bun.spawnSync(["bun", "install", "--no-save"], { cwd: consumer });
+
+    expect(installed.stderr.toString()).not.toContain("error:");
+    expect(installed.exitCode).toBe(0);
+
+    const checked = Bun.spawnSync([tsrs, "-p", "tsconfig.json"], { cwd: consumer });
+
+    expect(checked.stdout.toString() + checked.stderr.toString()).toBe("");
+  } finally {
+    await rm(consumer, { recursive: true, force: true });
+  }
+});
+
 test("the loader is what its declarations say", () => {
   const ran = Bun.spawnSync(
     [

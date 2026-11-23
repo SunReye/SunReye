@@ -76,8 +76,8 @@
     "packages/pv-wasm": {
       "name": "@sunreye/pv-wasm",
       "version": "5.0.0",
-      "dependencies": {
-        "@sunreye/scene": "workspace:*",
+      "peerDependencies": {
+        "@sunreye/scene": "^5.0.0",
       },
     },
     "packages/scene": {
