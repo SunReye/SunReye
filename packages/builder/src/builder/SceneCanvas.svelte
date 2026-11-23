@@ -6,7 +6,7 @@
 
 <script lang="ts">
   import { untrack } from "svelte";
-  import { PerspectiveCamera } from "three";
+  import { PerspectiveCamera, type Group } from "three";
   import {
     openGarage,
     parkedKey,
@@ -19,14 +19,16 @@
   import { FOV, type View } from "./camera.ts";
   import { fit, orbit } from "./orbit.svelte.ts";
   import { m } from "../paraglide/messages.js";
-  import type { Geometry, Point } from "./pv.ts";
+  import type { Geometry, Point, RoofFace } from "./pv.ts";
   import {
     RoofTool,
     Handled,
     keep,
+    marked,
     overlaid,
     picking,
     projector,
+    selector,
     type Around,
     type Editing,
     type Hit,
@@ -52,6 +54,9 @@
     onview,
     onrender,
     onpick,
+    roofs,
+    selected,
+    onselect,
     onready,
     onerror,
     editing,
@@ -87,6 +92,12 @@
     onrender?: ((project: Projector) => void) | undefined;
     /** A click, not a drag: what it struck, if anything. */
     onpick?: ((hit: Hit) => void) | undefined;
+    /** The crate's roof faces of the scene: what a click on a roof selects, and what is marked. */
+    roofs?: readonly RoofFace[] | undefined;
+    /** The `@sunreye/scene` key of the face marked selected; two views of one scene take one. */
+    selected?: string | undefined;
+    /** A click, not a drag: the roof face it struck, by block and face; null off every roof. */
+    onselect?: ((face: Pick<RoofFace, "block" | "face"> | null) => void) | undefined;
     /** The first frame is drawn: nothing was before, so it never waited on a compile. */
     onready?: (() => void) | undefined;
     onerror?: ((reason: SceneFailure) => void) | undefined;
@@ -178,6 +189,36 @@
     }
   }
 
+  /** Answers a click with its hit and the roof face it selects, and marks the selected face. */
+  function selecting(
+    canvas: HTMLCanvasElement,
+    camera: PerspectiveCamera,
+    { studio, opening }: Lit,
+    drawn: () => Group | undefined,
+  ): () => void {
+    const unpick = picking(canvas, camera, drawn, {
+      panels: source.panels,
+      onpick: selector({
+        roofs: () => roofs,
+        panels: source.panels,
+        onpick: () => onpick,
+        onselect: () => onselect,
+      }),
+    });
+
+    const unmark = marked(
+      studio.scene,
+      () => roofs,
+      () => selected,
+      opening.render,
+    );
+
+    return () => {
+      unpick();
+      unmark();
+    };
+  }
+
   /** Draws on a change of geometry, view, sun or theme, a camera move or a resize; nothing before
    * the studio is prepared. Cars come once the house is on screen. */
   function stage(canvas: HTMLCanvasElement): () => void {
@@ -197,10 +238,7 @@
     const roofSources = { roofwork: () => roofwork, drawn: kept.drawn, panels: source.panels };
     const roofPress = roofTool.attach(canvas, camera, roofSources);
 
-    const unpick = picking(canvas, camera, kept.drawn, {
-      panels: source.panels,
-      onpick: () => onpick,
-    });
+    const unselect = selecting(canvas, camera, scene, kept.drawn);
 
     const parking = parkLater(canvas, opening, () =>
       openGarage(
@@ -224,7 +262,7 @@
       unhandle();
       roofPress.dispose();
       unlay();
-      unpick();
+      unselect();
       controls.dispose();
       parking.dispose();
       scene.dispose();

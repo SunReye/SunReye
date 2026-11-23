@@ -29,6 +29,7 @@ Loads three.js: import it where a scene is drawn, or lazily.
   - A view's style and layers are these props: one left out is switched off.
   - Camera: `view` and `onview`; `locked` keeps it still.
   - Name and picking: `label` names the canvas; `onpick` answers a click with a `Hit`.
+  - A roof face, in and out: given the crate's `roofs`, it marks the face whose `@sunreye/scene` key is `selected`, and `onselect` answers a click on a roof or a module with the face's block and face, or null off every roof. Two views of one scene take one key.
   - Lifecycle: `onrender`, `onready`, `onerror`.
   - Editing: `editing` and `roofwork` carry the editing tools' handles and roof gestures.
 - Camera: `presetView` (a preset, turned to a compass heading), `headingOf` (the bearing a view looks toward, for a compass), `parseView`, and the types `View` and `Preset`.
