@@ -1,6 +1,6 @@
 # 26. Plant document and installer import
 
-Status: accepted (2026-11-19), amended (2026-11-23)
+Status: accepted (2026-11-19), amended (2026-11-23, twice)
 
 ## Context
 
@@ -15,6 +15,7 @@ A plant planned in SunReye Plan (ADR 25) should arrive in Home configured: the h
 - the PV layout with its scene (ADRs 17, 20), the equipment markers Plan placed included;
 - the devices: each a name, a kind, and its profile by id where one exists (ADR 5), never a connection, an address or a secret;
 - optionally a tariff (ADR 12): Plan sends the one its offer was calculated with, so the app's first savings figure matches the offer;
+- the facts its rules need (2026-11-23, ADR 29), so the app inherits them from the plan: the commissioning date, planned until the plant runs; the sale form, partial or full feed-in included; whether the plant is on a building; the export cap's share and how it is met, with each inverter's limit where the inverter meets it; the smart meter gateway's fitted and control-tested dates where known, which the admin otherwise enters later; any rule value the plan overrode, naming the rule; and the version of the rule set the plan was computed with. The building's use stays in Plan;
 - credits: one line per open-data source the geometry was taken from, each its Land, licence and year.
 
 **Unsigned.** A plant document is admin input. The core validates it exactly as it validates a layout, a scene and a tariff entered by hand, and it can do nothing the admin could not type. No key is added to ADR 8's.
@@ -31,7 +32,7 @@ A plant planned in SunReye Plan (ADR 25) should arrive in Home configured: the h
 
 - The host the core fetches from, and whether a custom Plan host can be named.
 - Whether a later design of the same project may be imported as a new layout version.
-- The tariff's shape in the document once ADR 28 moves the arithmetic.
+- The tariff's shape in the document once ADR 28 moves the arithmetic. (2026-11-23) Its export price is the rules', so the document carries an export price only as an override.
 
 ## Considered options
 
@@ -43,4 +44,4 @@ A plant planned in SunReye Plan (ADR 25) should arrive in Home configured: the h
 
 ## Consequences
 
-The plant document is a published contract from its first version: Plan and every Home release must agree on it, so it is versioned and additive. A Home older than a document's version refuses it and says so.
+The plant document is a published contract from its first version: Plan and every Home release must agree on it, so it is versioned and additive. The rule facts are part of version 1 (2026-11-23). A Home older than a document's version refuses it and says so.
