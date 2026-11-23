@@ -114,3 +114,17 @@ test("a tap on the arm of a non-convex free-form face lays a module there, saved
   expect(sent.grids?.[0]?.modules).toHaveLength(1);
   expect(sent.blocks[0]?.freeForm).toEqual(draft.scene.blocks[0]?.freeForm);
 });
+
+test("a tap on a free-form block's wall picks the block and offers nothing to add there", async () => {
+  const draft = lHouse();
+
+  await opened(draft);
+
+  // The arm's south wall: 2 m east, 1.6 m up, 8 m south.
+  await press("mouse", [onCanvas(draft.scene)([2, 1.6, 8])]);
+  await expect.element(inspector().getByRole("heading", { name: "Baukörper 1" })).toBeVisible();
+
+  const bar = page.getByRole("toolbar", { name: "Aktionen" });
+
+  expect(bar.getByRole("button", { name: "Hinzufügen" }).elements()).toHaveLength(0);
+});
