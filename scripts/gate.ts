@@ -48,6 +48,7 @@ const JS: Reads = {
     "packages",
     "profiles",
     "tools",
+    "fixtures",
     "scripts",
     "package.json",
     "bun.lock",
@@ -135,6 +136,8 @@ const steps: readonly Step[] = [
   // The app's tests load the engine from where @sunreye/pv-wasm ships it.
   { run: ["bun", "run", "--cwd", "packages/pv-wasm", "wasm"], fast: true },
   { run: ["bun", "test"], reads: ALL, fast: true },
+  // A second consumer installs the packages by path, builds and runs the builder (ADR 25).
+  { run: ["bun", "scripts/consumer.ts"], reads: BOTH },
   { run: [...web, "test:components"], reads: BOTH },
 ];
 

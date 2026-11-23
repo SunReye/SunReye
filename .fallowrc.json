@@ -5,6 +5,7 @@
     ".agents/**",
     ".claude/**",
     "tools/oxlint/anti-slop/**",
+    "fixtures/consumer/**",
     "target/**",
     "**/.svelte-kit/**",
     "apps/web/src/lib/components/ui/**",
