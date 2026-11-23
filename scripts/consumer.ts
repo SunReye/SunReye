@@ -115,16 +115,25 @@ function serve(built: string) {
   });
 }
 
-/** A screenshot of `label`'s canvas, once two in a row are the same: the studio has settled. */
-// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- Playwright's page is mutable.
-async function settled(page: Page, label: string, last?: Buffer): Promise<Buffer> {
+/** A screenshot of `label`'s canvas, once two in a row are the same: the studio has settled.
+ * Throws after `tries` screenshots that each differ from the last. */
+async function settled(
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- Playwright's page.
+  page: Page,
+  label: string,
+  tries = 240,
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- a Buffer is mutable.
+  last?: Buffer,
+): Promise<Buffer> {
   const shot = await page.getByLabel(label, { exact: true }).screenshot();
 
   if (last?.equals(shot) === true) return shot;
 
+  if (tries <= 1) throw new Error(`the ${label} never stopped changing`);
+
   await page.waitForTimeout(250);
 
-  return settled(page, label, shot);
+  return settled(page, label, tries - 1, shot);
 }
 
 /** One scene from above and in 3D: a click on a roof from above selects it in both. */
