@@ -1,10 +1,11 @@
 // The kit is the only source of controls (ADR 11): no Svelte file of the SPA outside
-// `components/ui` may hold a native <select>, <table>, bare <button>, or an <input> of a type the
+// `components/ui`, nor of the builder's package (ADR 25), may hold a native <select>, <table>, bare <button>, or an <input> of a type the
 // kit has a control for. A gate step; `bun scripts/native-controls.ts` lists the findings.
 
 import { Glob } from "bun";
 
-const ROOT = "apps/web/src/";
+/** Where Svelte files are held to it: the SPA and the builder, which is drawn with the kit. */
+const ROOTS = ["apps/web/src/", "packages/builder/src/"];
 
 const KIT = "apps/web/src/lib/components/ui/";
 
@@ -15,9 +16,12 @@ export interface Finding {
   readonly line: number;
 }
 
-/** Whether the rule holds for this file: a Svelte file of the SPA outside the kit. */
+/** Whether the rule holds for this file: a Svelte file of the SPA outside the kit, or of the
+ * builder. */
 export function covered(path: string): boolean {
-  return path.startsWith(ROOT) && path.endsWith(".svelte") && !path.startsWith(KIT);
+  return (
+    ROOTS.some((root) => path.startsWith(root)) && path.endsWith(".svelte") && !path.startsWith(KIT)
+  );
 }
 
 /** The markup alone: scripts, styles and comments blanked, every line kept. */
@@ -63,7 +67,10 @@ export function nativeControls(source: string): Finding[] {
 
 if (import.meta.main) {
   const root = new URL("..", import.meta.url).pathname;
-  const paths = [...new Glob(`${ROOT}**/*.svelte`).scanSync(root)].toSorted();
+
+  const paths = ROOTS.flatMap((under) =>
+    Array.from(new Glob(`${under}**/*.svelte`).scanSync(root)),
+  ).toSorted();
 
   const held = paths.filter((path) => covered(path));
 

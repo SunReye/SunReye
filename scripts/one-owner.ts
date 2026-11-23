@@ -1,5 +1,5 @@
 // A behaviour met on more than one screen lives in one component (ADR 21 "One behaviour, one
-// component", #836): no file of the SPA outside its owner rebuilds a segmented control, tabs in
+// component", #836): no file of the SPA or the builder's package (ADR 25) outside its owner rebuilds a segmented control, tabs in
 // another look, a haptic, a transition, a chart's entrance or its reading, a pick list, a card, its
 // glass, a link, a motion value or a pulse that reduced motion does not stop, nor puts the range
 // control off a header, nor opens or closes a card by its own transition (#837). A gate step;
@@ -14,6 +14,9 @@ import { Glob } from "bun";
 import { first, glass, handCard, literalMotion, unstopped } from "./one-owner-find.ts";
 
 const SRC = "apps/web/src/";
+
+/** The builder's sources, whose owners are named from here as the SPA's are from `lib/`. */
+const BUILDER = "packages/builder/src/";
 
 export interface Copy {
   readonly rule: string;
@@ -217,18 +220,25 @@ export const RULES: readonly Rule[] = [
   },
 ];
 
-/** Whether the rules hold for this file: SPA source, not a test or a harness. */
+/** Whether the rules hold for this file: SPA or builder source, not a test or a harness. */
 function covered(path: string): boolean {
-  return path.startsWith(SRC) && !/\.test\.ts$|\.harness\./u.test(path);
+  return (
+    (path.startsWith(SRC) || path.startsWith(BUILDER)) && !/\.test\.ts$|\.harness\./u.test(path)
+  );
+}
+
+/** Where owners are named from: the SPA's `lib/` and the builder's sources; a route owns nothing. */
+function owned(path: string): string {
+  const under = [`${SRC}lib/`, BUILDER].find((root) => path.startsWith(root));
+
+  return under === undefined ? "" : path.slice(under.length);
 }
 
 /** Every copy of an owned behaviour in one file. */
 export function copies(path: string, source: string): Copy[] {
   if (!covered(path)) return [];
 
-  // Owners are named from lib/; a route owns nothing.
-  const lib = `${SRC}lib/`;
-  const inLib = path.startsWith(lib) ? path.slice(lib.length) : "";
+  const inLib = owned(path);
 
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- a rule's patterns are only read.
   return RULES.flatMap((rule) => {
@@ -244,7 +254,10 @@ export function copies(path: string, source: string): Copy[] {
 
 if (import.meta.main) {
   const root = new URL("..", import.meta.url).pathname;
-  const paths = [...new Glob(`${SRC}**/*.{svelte,ts}`).scanSync(root)].toSorted();
+
+  const paths = [SRC, BUILDER]
+    .flatMap((under) => Array.from(new Glob(`${under}**/*.{svelte,ts}`).scanSync(root)))
+    .toSorted();
 
   const sources = await Promise.all(paths.map((path) => Bun.file(`${root}${path}`).text()));
 
