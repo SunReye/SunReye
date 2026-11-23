@@ -46,12 +46,12 @@ fn a_value_out_of_its_range_is_refused() {
         let mut bad = sheet();
         bad["modules"][0][field] = value;
         let typed: Datasheet = serde_json::from_value(bad["modules"][0].clone()).unwrap();
-        assert_eq!(typed.implausible(), Some(field));
-        assert!(
-            matches!(refused(&bad), Invalid::Value { ref model, field: ref named }
-                if model == "AIKO-A450-MAH54Db" && named == field),
-            "{field}"
-        );
+        let invalid = Invalid::Value {
+            model: "AIKO-A450-MAH54Db".into(),
+            field: field.into(),
+        };
+        assert_eq!(typed.check(), Err(invalid.clone()), "{field}");
+        assert_eq!(refused(&bad), invalid, "{field}");
     }
 }
 
@@ -59,7 +59,7 @@ fn a_value_out_of_its_range_is_refused() {
 fn a_module_typed_from_its_datasheet_passes() {
     let typed: Datasheet = serde_json::from_value(sheet()["modules"][0].clone()).unwrap();
 
-    assert_eq!(typed.implausible(), None);
+    assert_eq!(typed.check(), Ok(()));
 }
 
 #[test]

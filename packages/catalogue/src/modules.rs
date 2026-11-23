@@ -89,38 +89,45 @@ impl Datasheet {
             .map(|(field, _)| field)
     }
 
-    /// The first value out of its range or inconsistent with another, by its field's name: what a
+    /// # Errors
+    /// A value is out of its range or inconsistent with another, by its field's name: what a
     /// datasheet would not print, so a slip in copying one shows. A module typed outside the
     /// catalogue is checked so too.
-    #[must_use]
-    pub fn implausible(&self) -> Option<&'static str> {
+    pub fn check(&self) -> Result<(), Invalid> {
         // Datasheets print Vmp and Imp rounded, so their product strays from Pmax a little.
         let point = self.vmp * self.imp;
         let size = |metres: f64| (0.2..=3.0).contains(&metres);
-        self.unphysical().or_else(|| {
-            [
-                ("vmp", self.vmp < self.voc),
-                ("imp", self.imp < self.isc),
-                ("pmax", (point - self.pmax).abs() <= 0.02 * self.pmax),
-                (
-                    "powerCoefficient",
-                    (-1.0..0.0).contains(&self.power_coefficient),
-                ),
-                (
-                    "voltageCoefficient",
-                    (-1.0..0.0).contains(&self.voltage_coefficient),
-                ),
-                (
-                    "currentCoefficient",
-                    (0.0..1.0).contains(&self.current_coefficient),
-                ),
-                ("width", size(self.width)),
-                ("height", size(self.height)),
-                ("bypassDiodes", (1..=6).contains(&self.bypass_diodes)),
-            ]
-            .into_iter()
-            .find_map(|(field, within)| (!within).then_some(field))
-        })
+        self.unphysical()
+            .or_else(|| {
+                [
+                    ("vmp", self.vmp < self.voc),
+                    ("imp", self.imp < self.isc),
+                    ("pmax", (point - self.pmax).abs() <= 0.02 * self.pmax),
+                    (
+                        "powerCoefficient",
+                        (-1.0..0.0).contains(&self.power_coefficient),
+                    ),
+                    (
+                        "voltageCoefficient",
+                        (-1.0..0.0).contains(&self.voltage_coefficient),
+                    ),
+                    (
+                        "currentCoefficient",
+                        (0.0..1.0).contains(&self.current_coefficient),
+                    ),
+                    ("width", size(self.width)),
+                    ("height", size(self.height)),
+                    ("bypassDiodes", (1..=6).contains(&self.bypass_diodes)),
+                ]
+                .into_iter()
+                .find_map(|(field, within)| (!within).then_some(field))
+            })
+            .map_or(Ok(()), |field| {
+                Err(Invalid::Value {
+                    model: self.name.clone(),
+                    field: field.to_owned(),
+                })
+            })
     }
 }
 
@@ -147,14 +154,7 @@ pub fn parse(json: &str) -> Result<Sheet, Invalid> {
     {
         return Err(Invalid::Source);
     }
-    for module in &sheet.modules {
-        if let Some(field) = module.implausible() {
-            return Err(Invalid::Value {
-                model: module.name.clone(),
-                field: field.to_owned(),
-            });
-        }
-    }
+    sheet.modules.iter().try_for_each(Datasheet::check)?;
     Ok(sheet)
 }
 
