@@ -5,8 +5,8 @@ use super::fixtures::MODULE;
 use crate::perez::cos_incidence;
 use crate::shade::Casters;
 use crate::{
-    Energy, Input, Inverter, Layout, Location, Module, Occluder, Place, Plane, PvString,
-    ShadingTable, Sun, Weather, clear_weather, estimate, year, year_with,
+    Energy, Input, Inverter, Layout, Location, Module, MpptLimits, Occluder, Place, Plane,
+    PvString, ShadingTable, Sun, Weather, clear_weather, estimate, sun_position, year, year_with,
 };
 
 const QUARTER: i64 = 900;
@@ -223,6 +223,36 @@ fn a_sun_reads_the_nearest_node_on_either_side_of_north() {
 }
 
 #[test]
+fn a_step_reads_its_shade_from_the_table_not_from_a_trace() {
+    let layout = shaded(BERLIN, 0.0, -1.0);
+    let mut table = ShadingTable::default();
+    table.refresh(&layout);
+    // A minute of 21 December, the sun in the south on every module, where the true sun and its
+    // node disagree on a substring.
+    let december = JANUARY_21 + 334 * DAY;
+    let minute = (0..1440)
+        .map(|m| clear_weather(december + 60 * m, BERLIN))
+        .find(|w| {
+            let sun = sun_position(w.unix, BERLIN);
+            let south = sun.zenith < 85.0 && sun.azimuth.abs() < 60.0;
+            south
+                && table
+                    .row(sun)
+                    .is_some_and(|row| row != traced_at(&layout, sun))
+        })
+        .unwrap();
+
+    let run = year_with(&layout, &mut table, &[minute], 60);
+
+    let traced = estimate(&layout, &minute).inverters[0].power / 60.0;
+    let looked_up = run.inverters[0].dc.total;
+    assert!(
+        (looked_up - traced).abs() > 1e-6 * traced,
+        "{looked_up} Wh looked up, {traced} Wh traced"
+    );
+}
+
+#[test]
 fn the_table_is_traced_again_when_the_scene_or_the_layout_changes_and_not_otherwise() {
     let layout = shaded(BERLIN, 0.0, -1.0);
     let mut table = ShadingTable::default();
@@ -258,11 +288,19 @@ fn the_table_is_traced_again_when_the_scene_or_the_layout_changes_and_not_otherw
     for (what, change) in scene_and_layout {
         assert!(changed(change), "{what}");
     }
-    let otherwise: [Change; 4] = [
+    let otherwise: [Change; 5] = [
         ("the location", &|l| l.location = SYDNEY),
         ("a string's loss", &|l| first(l).loss = 5.0),
         ("a datasheet's electrics", &|l| first(l).module.vmp += 1.0),
         ("an optimizer", &|l| first(l).modules[0].optimized = true),
+        ("an input's limits", &|l| {
+            l.inverters[0].inputs[0].limits = Some(MpptLimits {
+                max_current: 20.0,
+                min_voltage: 150.0,
+                max_voltage: 850.0,
+                start_voltage: 180.0,
+            });
+        }),
     ];
     for (what, change) in otherwise {
         assert!(!changed(change), "{what}");
