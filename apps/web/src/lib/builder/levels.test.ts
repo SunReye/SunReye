@@ -63,7 +63,11 @@ test("a tree's crown and a box drill to their obstacle", () => {
 });
 
 test("a module drills to its face's grid editor, a marker to its marker", () => {
-  expect(picked(SCENE, { kind: "grid", grid: 0 })).toEqual({ kind: "face", block: 0, face: 1 });
+  expect(picked(SCENE, { kind: "grid", grid: 0, point: [5, -6, 5] })).toEqual({
+    kind: "face",
+    block: 0,
+    face: 1,
+  });
   expect(picked(SCENE, { kind: "equipment", index: 2 })).toEqual({ kind: "marker", index: 2 });
 });
 

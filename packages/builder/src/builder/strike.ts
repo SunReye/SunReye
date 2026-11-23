@@ -10,13 +10,15 @@ const FLOOR = new Plane(new Vector3(0, 1, 0), 0);
 const ON_ROOF = 0.05;
 
 /** What a click in the scene struck: a module of a grid, a marker, an opening, or a surface at a
- * point. */
+ * point. A point is in the shading frame: east, north, up. */
 export type Hit =
   | {
       readonly kind: "grid";
       readonly grid: number;
       /** The module's position in its grid, when the panel names it. */
       readonly module?: number;
+      /** Where the module was struck. */
+      readonly point: Point;
     }
   | { readonly kind: "equipment"; readonly index: number }
   | { readonly kind: "opening"; readonly index: number }
@@ -60,14 +62,17 @@ export function strike(
 
   // The modules are one instanced mesh, in the panels' order (ADR 20 Rendering).
   const { grid, module } = (object.name === "module" ? panels[instanceId ?? -1] : undefined) ?? {};
+  const struck: Point = [point.x, 0 - point.z, point.y];
 
   if (grid !== undefined) {
-    return module === undefined ? { kind: "grid", grid } : { kind: "grid", grid, module };
+    return module === undefined
+      ? { kind: "grid", grid, point: struck }
+      : { kind: "grid", grid, module, point: struck };
   }
 
   const index = group.getObjectsByProperty("name", object.name).indexOf(object);
 
   if (object.name === "equipment" || object.name === "opening") return { kind: object.name, index };
 
-  return { kind: "point", point: [point.x, 0 - point.z, point.y] };
+  return { kind: "point", point: struck };
 }
