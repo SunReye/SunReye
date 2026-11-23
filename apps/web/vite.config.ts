@@ -6,6 +6,7 @@ import { playwright } from "@vitest/browser-playwright";
 import { defineConfig } from "vitest/config";
 import { frameKnown } from "./browser-commands.ts";
 import { SCENE } from "./scene-tests.ts";
+import { touchFiles } from "./touch-tests.ts";
 
 /** Every lucide icon the sources import, so each new icon is pre-bundled without a list to keep. */
 function icons(): string[] {
@@ -28,6 +29,8 @@ function release(): string {
 
   return /^\[workspace\.package\]\nversion = "([^"]+)"/mu.exec(cargo)?.[1] ?? "dev";
 }
+
+const touch = touchFiles(import.meta.dirname);
 
 export default defineConfig({
   plugins: [
@@ -80,7 +83,7 @@ export default defineConfig({
         test: {
           name: "dom",
           include: ["src/**/*.svelte.test.ts"],
-          exclude: SCENE,
+          exclude: [...SCENE, ...touch.map(({ file }) => file)],
           // A file here that draws with WebGL fails: it belongs in SCENE (page.setup.ts).
           provide: { scene: false },
           sequence: { groupOrder: 0 },
@@ -91,6 +94,7 @@ export default defineConfig({
         test: {
           name: "scene",
           include: SCENE,
+          exclude: touch.map(({ file }) => file),
           provide: { scene: true },
           // Without a GPU every page's WebGL runs through one software renderer: the studio scenes
           // of files run side by side starve each other into timeouts.
@@ -98,6 +102,18 @@ export default defineConfig({
           sequence: { groupOrder: 1 },
         },
       },
+      // A file that emulates touch leaves its tab without a mouse (touch-tests.ts): each such file
+      // is a project of its own, so no other file shares its tab. A scene one runs after the scene
+      // project, one at a time, for the same software renderer.
+      ...touch.map(({ file, scene }, i) => ({
+        extends: true,
+        test: {
+          name: `touch ${file}`,
+          include: [file],
+          provide: { scene },
+          sequence: { groupOrder: scene ? 2 + i : 0 },
+        },
+      })),
     ],
   },
 });
