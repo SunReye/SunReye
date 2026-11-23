@@ -74,7 +74,7 @@ The scene canvas. Loads three.js: import it where a scene is drawn, or lazily.
   - Lifecycle: `onrender`, `onready`, `onerror`.
   - Editing: `editing` and `roofwork` carry the editing tools' handles and roof gestures.
   - Tracing a roof (ADR 20): `tracing`, a `Tracing`, switches the canvas to tracing, alongside the roof gestures; give the view from above (`presetView("top", …)`). Clicks are traced over whatever is drawn, the `around` aerial image included:
-    - `scene`: the scene traced on. Each click joins the last and snaps within `reach` pixels (12 without) to a traced point, else a traced line; the snap is named, and the line being drawn shows its length, in a chip beside the pointer. A click back on the chain's first point closes the loop; one on its last point, or Escape, ends the chain.
+    - `scene`: the scene traced on. Each click joins the last and snaps within `reach` pixels (12 without) to a traced point, else a traced line, as each is drawn, so a raised one is picked where it stands; the snap is named, and the line being drawn shows its length, in a chip beside the pointer. A click back on the chain's first point closes the loop; one on its last point, or Escape, ends the chain. A bent face (`@sunreye/scene`'s `bent`) is drawn in the warning colour.
     - `ontrace(scene, edit)`: each edit's next scene, made by `@sunreye/scene`'s operations, and the `TraceEdit` itself (`{ kind: "add", from, to }` or `{ kind: "move", block, line, by }`), so a consumer that keeps the scene elsewhere may run the same operation there. The consumer keeps the scene and hands it back; the canvas changes nothing itself.
     - `line` and `onpickline`: a tap on a traced line with no chain picks it (a `LineRef`, or undefined off every line); the consumer holds it and may remove it with `removeLine`. A press on a traced line dragged moves it.
 - Camera: `presetView` (a preset, turned to a compass heading), `headingOf` (the bearing a view looks toward, for a compass), `parseView`, and the types `View` and `Preset`.
@@ -86,7 +86,7 @@ The scene canvas. Loads three.js: import it where a scene is drawn, or lazily.
 
 The frame around a canvas. Loads three.js, so a screen that only shows the scene imports the root instead.
 
-- `Builder`: a canvas, the time slider and the inspector of one editing session; its Buildings group traces a roof with the canvas's tracing mode, one undo step per line. Props:
+- `Builder`: a canvas, the time slider and the inspector of one editing session; its Buildings group traces a roof with the canvas's tracing mode, one undo step per line. Its tracing bar pulls the roof up by its eave and ridge heights; with a line picked, it makes the line an eave or a ridge and gives its two points heights by number, each one undo step, and says when a face is bent and carries no modules. Props:
   - `pv`: the engine, from `@sunreye/pv-wasm`.
   - `core: Keeper`: takes the session's two writes, a layout change and an added module type.
   - `records?: Records`: what the frame reads besides the scene, each optional.
