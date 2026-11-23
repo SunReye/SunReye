@@ -20,7 +20,8 @@ pub struct Ghost {
     pub across: f64,
     pub up: f64,
     pub landscape: bool,
-    /// Inside the setback, off the chimneys and roof windows and 2 cm off every other module.
+    /// Inside the setback, off the chimneys, roof windows and existing PV and 2 cm off every other
+    /// module.
     pub fits: bool,
     /// Its corners in the scene, counter-clockwise from the lower left, seen from the front.
     pub corners: [Point; 4],
@@ -238,7 +239,11 @@ impl Scene {
                 let area = grid.footprint(size?, laid.spot);
                 let on = |taken: &Area| overlap(area, *taken, 0.0);
                 let face = face?;
-                let mut taken = face.chimneys.iter().chain(&face.windows);
+                let mut taken = face
+                    .chimneys
+                    .iter()
+                    .chain(&face.windows)
+                    .chain(&face.existing);
                 taken.any(on).then_some((at, module))
             })
         });

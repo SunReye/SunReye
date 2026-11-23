@@ -3,6 +3,7 @@ mod device_types;
 mod diode;
 mod equipment;
 mod estimate;
+mod existing_pv;
 mod face_detail;
 mod fitting;
 mod fixtures;

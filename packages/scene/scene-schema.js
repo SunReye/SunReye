@@ -236,6 +236,45 @@ export const SCENE_SCHEMA = {
       ],
       "type": "string"
     },
+    "ExistingPv": {
+      "additionalProperties": false,
+      "description": "Modules already on a block's roof face, placed in the face's outline like a roof window:\nmetres across the slope and up it from the face's lowest corner on the left.",
+      "properties": {
+        "across": {
+          "description": "Its centre on the face.",
+          "type": "number"
+        },
+        "block": {
+          "description": "The block's index in the scene.",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "face": {
+          "description": "The roof face's index in its block, as module grids name it.",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "length": {
+          "type": "number"
+        },
+        "up": {
+          "type": "number"
+        },
+        "width": {
+          "description": "Its size: across the slope, and up it.",
+          "type": "number"
+        }
+      },
+      "required": [
+        "block",
+        "face",
+        "across",
+        "up",
+        "width",
+        "length"
+      ],
+      "type": "object"
+    },
     "FaceDetail": {
       "additionalProperties": false,
       "description": "A roof face's covering and pitch, named by block and face as a module grid names it.",
@@ -865,6 +904,13 @@ export const SCENE_SCHEMA = {
           "description": "Markers for inverters and batteries.",
           "items": {
             "$ref": "#/$defs/Equipment"
+          },
+          "type": "array"
+        },
+        "existingPv": {
+          "description": "Modules already on roof faces that stay. Drawn only; they never shade and produce nothing.",
+          "items": {
+            "$ref": "#/$defs/ExistingPv"
           },
           "type": "array"
         },

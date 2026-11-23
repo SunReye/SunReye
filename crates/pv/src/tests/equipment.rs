@@ -30,6 +30,7 @@ fn house(equipment: Vec<Equipment>) -> Scene {
         openings: vec![],
         roof_windows: vec![],
         face_details: vec![],
+        existing_pv: vec![],
     }
 }
 

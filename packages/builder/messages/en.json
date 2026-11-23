@@ -114,6 +114,7 @@
   "misplaced_overlap": "Grid {grid}: module {module} overlaps another module.",
   "misplaced_chimney": "Grid {grid}: module {module} lies on a chimney.",
   "misplaced_window": "Grid {grid}: module {module} lies on a roof window.",
+  "misplaced_existing": "Grid {grid}: module {module} lies on existing PV.",
   "builder_cold_voltage": "{name}: {voltage} V open-circuit at −10 °C exceeds the inverter's {limit} V.",
   "sizing_start": "{name}: {voltage} V open-circuit at −10 °C stays below the {limit} V start voltage. The string never starts.",
   "sizing_low": "{name}: {voltage} V at its peak with 70 °C cells lies below the MPPT window from {limit} V.",

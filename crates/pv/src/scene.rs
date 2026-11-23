@@ -10,8 +10,8 @@ use crate::parking::colour;
 use crate::polygon::{self, Plan};
 use crate::shade::cross;
 use crate::{
-    CarPlace, Chimney, Equipment, FaceDetail, Fence, FreeForm, GroundSurface, ModuleGrid, Occluder,
-    Opening, Point, RoofWindow,
+    CarPlace, Chimney, Equipment, ExistingPv, FaceDetail, Fence, FreeForm, GroundSurface,
+    ModuleGrid, Occluder, Opening, Point, RoofWindow,
 };
 
 /// A trunk's radius as a share of its crown's.
@@ -59,6 +59,9 @@ pub struct Scene {
     /// without one has an unknown covering and an estimated pitch.
     #[serde(default, rename = "faceDetails", skip_serializing_if = "Vec::is_empty")]
     pub face_details: Vec<FaceDetail>,
+    /// Modules already on roof faces that stay. Drawn only; they never shade and produce nothing.
+    #[serde(default, rename = "existingPv", skip_serializing_if = "Vec::is_empty")]
+    pub existing_pv: Vec<ExistingPv>,
 }
 
 /// A rectangular footprint with one roof. Its width runs along x and its depth along z from its

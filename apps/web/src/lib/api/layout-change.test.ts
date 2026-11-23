@@ -3,7 +3,7 @@ import { expect, test } from "bun:test";
 import type { Block, Scene } from "../../../../../packages/builder/src/builder/pv.ts";
 import { body } from "./layout-change.ts";
 
-test("a change sends every part of its scene: surfaces, fences, chimneys and openings too", () => {
+test("a change sends every part of its scene: surfaces, fences, chimneys, openings and existing PV too", () => {
   const scene: Scene = {
     north: 0,
     blocks: [],
@@ -23,6 +23,7 @@ test("a change sends every part of its scene: surfaces, fences, chimneys and ope
     openings: [{ kind: "frontDoor", block: 0, wall: "front", along: 4, width: 1, height: 2.1 }],
     roofWindows: [{ block: 0, face: 1, across: 3, up: 2, width: 0.8, length: 1.2 }],
     faceDetails: [{ block: 0, face: 1, covering: "tiles", pitchConfirmed: true }],
+    existingPv: [{ block: 0, face: 0, across: 5, up: 2, width: 4, length: 1.8 }],
   };
 
   const sent: unknown = body({ appliesFrom: "2026-11-01T00:00:00Z", strings: [], scene }).scene;
@@ -34,6 +35,7 @@ test("a change sends every part of its scene: surfaces, fences, chimneys and ope
     openings: scene.openings,
     roofWindows: scene.roofWindows,
     faceDetails: scene.faceDetails,
+    existingPv: scene.existingPv,
   });
 });
 

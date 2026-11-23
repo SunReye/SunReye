@@ -85,4 +85,6 @@ export interface Geometry {
   readonly openings?: readonly Fitted[] | null;
   /** By roof window, its pane's corners from the lower left; null while one is refused. */
   readonly roofWindows?: readonly (readonly Point[])[] | null;
+  /** By existing PV, its field's corners from the lower left; null while one is refused. */
+  readonly existingPv?: readonly (readonly Point[])[] | null;
 }

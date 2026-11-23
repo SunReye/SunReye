@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::polygon;
 use crate::shade::{cross, dot, offset, sub};
-use crate::{Module, Place, Plane, Point, RoofWindow, Scene};
+use crate::{ExistingPv, Module, Place, Plane, Point, RoofWindow, Scene};
 
 /// Metres the builder keeps between neighbouring modules.
 pub const GAP: f64 = 0.02;
@@ -206,6 +206,8 @@ pub struct RoofFace {
     pub chimneys: Vec<Area>,
     /// The panes of the roof windows lying in it.
     pub windows: Vec<Area>,
+    /// The fields of the existing PV on it.
+    pub existing: Vec<Area>,
     /// The outline's frame: its origin, and the unit directions across the slope and up it.
     pub origin: Point,
     pub across: Point,
@@ -235,6 +237,8 @@ pub enum Misplaced {
     Chimney { grid: usize, module: usize },
     /// The module overlaps a roof window.
     Window { grid: usize, module: usize },
+    /// The module overlaps existing PV.
+    Existing { grid: usize, module: usize },
 }
 
 /// Why a footprint cannot lie on a face.
@@ -243,6 +247,7 @@ pub enum Blocked {
     Setback,
     Chimney,
     Window,
+    Existing,
     Overlap,
 }
 
@@ -252,6 +257,7 @@ impl Blocked {
             Self::Setback => Misplaced::Setback { grid, module },
             Self::Chimney => Misplaced::Chimney { grid, module },
             Self::Window => Misplaced::Window { grid, module },
+            Self::Existing => Misplaced::Existing { grid, module },
             Self::Overlap => Misplaced::Overlap { grid, module },
         }
     }
@@ -344,6 +350,12 @@ impl Scene {
                     .filter(|w| (w.block, w.face) == (block, face))
                     .map(RoofWindow::area)
                     .collect();
+                roof.existing = self
+                    .existing_pv
+                    .iter()
+                    .filter(|e| (e.block, e.face) == (block, face))
+                    .map(ExistingPv::area)
+                    .collect();
                 roof
             })
             .collect()
@@ -353,7 +365,7 @@ impl Scene {
     ///
     /// # Errors
     /// A grid names no roof face or module type, or a module crosses the setback or overlaps a
-    /// roof chimney, a roof window or an earlier module on its face.
+    /// roof chimney, a roof window, existing PV or an earlier module on its face.
     pub fn modules(&self, size: impl Fn(u32) -> Option<Size>) -> Result<Vec<Placed>, Misplaced> {
         let roofs = self.roofs();
         let mut placed = Vec::new();
@@ -446,13 +458,15 @@ impl RoofFace {
             outline,
             chimneys: Vec::new(),
             windows: Vec::new(),
+            existing: Vec::new(),
             origin: offset(offset(first, across, left), up, bottom),
             across,
             up,
         }
     }
 
-    /// Whether a footprint lies inside the setback and off every chimney and roof window.
+    /// Whether a footprint lies inside the setback and off every chimney, roof window and existing
+    /// PV.
     pub(crate) fn clear(&self, area: Area, setback: f64) -> Result<(), Blocked> {
         if !self.holds(area, setback - TOLERANCE) {
             return Err(Blocked::Setback);
@@ -462,6 +476,9 @@ impl RoofFace {
         }
         if self.windows.iter().any(|w| overlap(area, *w, 0.0)) {
             return Err(Blocked::Window);
+        }
+        if self.existing.iter().any(|e| overlap(area, *e, 0.0)) {
+            return Err(Blocked::Existing);
         }
         Ok(())
     }
