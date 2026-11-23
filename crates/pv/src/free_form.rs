@@ -20,6 +20,25 @@ pub struct FreeForm {
     pub footprint: Vec<[f64; 2]>,
     /// Each face's corners as x, y and z, in metres, counter-clockwise seen from above.
     pub faces: Vec<Vec<[f64; 3]>>,
+    /// The lines a traced roof's faces are derived from; none for faces entered as they are.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub traced: Option<Traced>,
+}
+
+/// A traced roof's source (ADR 20): its points and lines, and the points each face's corners are.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(deny_unknown_fields)]
+pub struct Traced {
+    /// Each point as x, y and z, in metres; y is its height now.
+    pub points: Vec<[f64; 3]>,
+    /// The points whose height was set, by the person or by a surface: no pull changes it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub set: Vec<usize>,
+    /// Each line's two points.
+    pub lines: Vec<[usize; 2]>,
+    /// For each face, in the order of the faces, the points its corners are.
+    pub faces: Vec<Vec<usize>>,
 }
 
 /// Metres a corner may lie off its face's plane (ADR 20).
@@ -27,11 +46,19 @@ pub const FLATNESS: f64 = 0.02;
 
 impl FreeForm {
     /// Whether its footprint is a polygon and every face flat, simple, facing up and over it.
+    /// A traced roof whose faces make no single outline yet has no footprint, and its faces then
+    /// stand over none.
     pub(crate) fn valid(&self) -> bool {
-        simple(&self.footprint) && self.faces.iter().all(|face| self.holds(face))
+        let unwalled = self.footprint.is_empty() && self.traced.is_some();
+        (unwalled || simple(&self.footprint))
+            && self.faces.iter().all(|face| self.holds(face, unwalled))
+            && self
+                .traced
+                .as_ref()
+                .is_none_or(|traced| traced.names(&self.faces))
     }
 
-    fn holds(&self, face: &[[f64; 3]]) -> bool {
+    fn holds(&self, face: &[[f64; 3]], unwalled: bool) -> bool {
         let plan: Vec<Plan> = face.iter().map(|&[x, _, z]| [x, z]).collect();
         let Some(normal) = facing(face) else {
             return false;
@@ -43,7 +70,27 @@ impl FreeForm {
         let flat = face
             .iter()
             .all(|&p| dot(sub(p, mean), normal).abs() <= FLATNESS);
-        simple(&plan) && flat && overlap(&plan, &self.footprint)
+        simple(&plan) && flat && (unwalled || overlap(&plan, &self.footprint))
+    }
+}
+
+impl Traced {
+    /// Whether every line joins two of its points, every set point is one, and each of `faces`
+    /// has its corners at the points it names.
+    fn names(&self, faces: &[Vec<[f64; 3]>]) -> bool {
+        let count = self.points.len();
+        let lines = self
+            .lines
+            .iter()
+            .all(|&[a, b]| a != b && a < count && b < count);
+        let at = |corner: [f64; 3], point: usize| {
+            self.points.get(point).is_some_and(|&p| near(p, corner))
+        };
+        let named = self.faces.len() == faces.len()
+            && self.faces.iter().zip(faces).all(|(points, corners)| {
+                points.len() == corners.len() && points.iter().zip(corners).all(|(&p, &c)| at(c, p))
+            });
+        lines && named && self.set.iter().all(|&p| p < count)
     }
 }
 

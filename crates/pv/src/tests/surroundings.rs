@@ -21,6 +21,7 @@ fn scene(obstacles: Vec<Obstacle>) -> Scene {
         fences: vec![],
         openings: vec![],
         roof_windows: vec![],
+        face_details: vec![],
     }
 }
 

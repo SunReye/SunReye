@@ -1411,6 +1411,11 @@ export interface components {
             days: components["schemas"]["CostDay"][];
             total: components["schemas"]["Money"];
         };
+        /**
+         * @description What a roof face is covered with.
+         * @enum {string}
+         */
+        Covering: "tiles" | "slate" | "metal" | "bitumen";
         /** @description A token just created: the only time the token is shown. */
         Created: {
             /** Format: int32 */
@@ -1639,6 +1644,16 @@ export interface components {
          * @enum {string}
          */
         EquipmentKind: "inverter" | "battery";
+        /** @description A roof face's covering and pitch, named by block and face as a module grid names it. */
+        FaceDetail: {
+            /** @description The block's index in the scene. */
+            block: number;
+            covering?: components["schemas"]["Covering"] | null;
+            /** @description The roof face's index in its block, as module grids name it. */
+            face: number;
+            /** @description Its pitch was confirmed, not estimated. */
+            pitchConfirmed?: boolean;
+        };
         /** @description A polyline on the ground through `points`. */
         Fence: {
             finish: components["schemas"]["FenceFinish"];
@@ -1753,6 +1768,7 @@ export interface components {
             faces: number[][][];
             /** @description Corners as x and z, in metres. */
             footprint: number[][];
+            traced?: components["schemas"]["Traced"] | null;
         };
         /** @description A module on a roof face. */
         GridModule: {
@@ -2578,6 +2594,11 @@ export interface components {
             chimneys?: components["schemas"]["Chimney"][];
             /** @description Markers for inverters and batteries. */
             equipment?: components["schemas"]["Equipment"][];
+            /**
+             * @description What is known of roof faces: their covering and whether their pitch is confirmed. A face
+             *     without one has an unknown covering and an estimated pitch.
+             */
+            faceDetails?: components["schemas"]["FaceDetail"][];
             /** @description Drawn only; they never shade. */
             fences?: components["schemas"]["Fence"][];
             /** @description At most one per roof face. */
@@ -2798,6 +2819,17 @@ export interface components {
             appliesFrom: string;
             /** @description Each parent before its children, the root first. */
             points: components["schemas"]["PointView"][];
+        };
+        /** @description A traced roof's source (ADR 20): its points and lines, and the points each face's corners are. */
+        Traced: {
+            /** @description For each face, in the order of the faces, the points its corners are. */
+            faces: number[][];
+            /** @description Each line's two points. */
+            lines: number[][];
+            /** @description Each point as x, y and z, in metres; y is its height now. */
+            points: number[][];
+            /** @description The points whose height was set, by the person or by a surface: no pull changes it. */
+            set?: number[];
         };
         /**
          * @description The wire framing on a connection's endpoint.
