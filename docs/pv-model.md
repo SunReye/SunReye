@@ -53,9 +53,23 @@ flowchart LR
 
 ## A year's run
 
-`sunreye_pv::year(layout, weather, step)` runs `estimate` at each weather sample and holds its watts for `step` seconds: energy in Wh for every string, MPPT input and inverter, by UTC month and over the run. Months are UTC because the crate knows no time zone; at a quarter-hour step the plant-local boundary moves only night hours. A sample with no irradiance is skipped. Strings sum to their input and inputs to their inverter, as each instant's estimate does.
+`sunreye_pv::year(layout, weather, step)` runs the model at each weather sample, its shade looked up in a shading table, and holds its watts for `step` seconds: energy in Wh for every string, MPPT input and inverter, by UTC month and over the run. Months are UTC because the crate knows no time zone; at a quarter-hour step the plant-local boundary moves only night hours. A sample with no irradiance is skipped. Strings sum to their input and inputs to their inverter, as each instant's estimate does.
+
+`year_with(layout, table, weather, step)` does the same with a `ShadingTable` the caller keeps, which it traces again first only when what shading reads changed.
 
 `@sunreye/pv-wasm`'s `year` takes the plant as `clearSky` does, each inverter's inverter type for its MPPT limits, and the weather as columns at a fixed step from a start instant. It returns each string's energy by position and each inverter's by device id with its inputs by number.
+
+### Shading table
+
+Which substrings a scene shades depends on the sun's direction, not on the date (ADR 17, `shading.rs`).
+
+- The grid has a node every 2° of elevation, from the horizon to the zenith, and of azimuth, all round. It is the same at every location, so a sky view or a horizon can be laid over it.
+- At each node, every placed module facing the sun is traced as below, and each of its substrings is stored as shaded or not, in layout order. With no occluders or no placed module nothing is traced.
+- A step reads the node nearest the sun; azimuths wrap at north. The sun below the horizon reads nothing.
+- `refresh` compares what shading reads (the occluders; each string's module size, bypass diodes, and modules' planes and places, in order) with what the table was traced from, and traces again only when they differ.
+- Nearest-node lookup moves a shade's edge by up to a node's half-width, about 4 minutes of sun. The tests bound a string's energy at 2 % in a clear day and 0.5 % over a run; on the profile's plant a clear year reads at most 0.34 % off in a month and 0.04 % in the year, against tracing every instant.
+
+The profile `cargo test -p sunreye-pv --release profile::a_shading_table -- --ignored --nocapture` prints the table's build time, the year's run looked up and traced, and their difference.
 
 ## How shade reaches the electrics
 

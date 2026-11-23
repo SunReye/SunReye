@@ -1,12 +1,22 @@
 //! A layout's output under one weather instant: strings, then their MPPT inputs, then inverters.
 
-use crate::{Estimate, InverterEstimate, Layout, Sky, Weather, input_output, sun_position};
+use crate::mppt::operating_point;
+use crate::shade::Casters;
+use crate::string::Shade;
+use crate::{Estimate, InverterEstimate, Layout, Sky, Weather, sun_position};
 
 pub const SECONDS_PER_DAY: i64 = 86_400;
 
 #[must_use]
 pub fn estimate(layout: &Layout, weather: &Weather) -> Estimate {
-    let sky = Sky {
+    let sky = sky(layout, weather);
+    let casters = Casters::under(sky.sun, &layout.occluders);
+    shaded(layout, &sky, |_| Shade::Traced(&casters))
+}
+
+/// The weather at the layout's location.
+pub fn sky(layout: &Layout, weather: &Weather) -> Sky {
+    Sky {
         sun: sun_position(weather.unix, layout.location),
         day_of_year: day_of_year(weather.unix.div_euclid(SECONDS_PER_DAY)),
         ghi: weather.ghi,
@@ -14,7 +24,12 @@ pub fn estimate(layout: &Layout, weather: &Weather) -> Estimate {
         dhi: weather.dhi,
         temperature: weather.temperature,
         wind: weather.wind,
-    };
+    }
+}
+
+/// The estimate with each string's shade, by its place in the layout's order, from `shade`.
+pub fn shaded<'a>(layout: &Layout, sky: &Sky, shade: impl Fn(usize) -> Shade<'a>) -> Estimate {
+    let mut first = 0;
     let inverters = layout
         .inverters
         .iter()
@@ -22,7 +37,11 @@ pub fn estimate(layout: &Layout, weather: &Weather) -> Estimate {
             let inputs: Vec<_> = inverter
                 .inputs
                 .iter()
-                .map(|i| input_output(i, &sky, &layout.occluders))
+                .map(|input| {
+                    let from = first;
+                    first += input.strings.len();
+                    operating_point(input, sky, |k| shade(from + k))
+                })
                 .collect();
             InverterEstimate {
                 power: inputs.iter().map(|i| i.power).sum(),

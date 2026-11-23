@@ -19,6 +19,7 @@ mod roof_window;
 mod roofing;
 mod scene;
 mod shade;
+mod shading;
 mod sizing;
 mod string;
 mod sun;

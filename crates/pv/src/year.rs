@@ -2,7 +2,7 @@
 //! by UTC month and over the run.
 
 use crate::estimate::{SECONDS_PER_DAY, month};
-use crate::{Estimate, Layout, Weather, estimate};
+use crate::{Estimate, Layout, ShadingTable, Weather};
 
 /// Watt-hours by UTC month, January first, and over the whole run.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -44,6 +44,18 @@ pub struct InputYear {
 /// for `step` seconds and counted in the UTC month of its instant.
 #[must_use]
 pub fn year(layout: &Layout, weather: &[Weather], step: i64) -> Year {
+    year_with(layout, &mut ShadingTable::default(), weather, step)
+}
+
+/// The same, its shade looked up in `table`, which is traced again first when the layout's
+/// scene changed since.
+pub fn year_with(
+    layout: &Layout,
+    table: &mut ShadingTable,
+    weather: &[Weather],
+    step: i64,
+) -> Year {
+    table.refresh(layout);
     let mut run = empty(layout);
     #[expect(
         clippy::cast_precision_loss,
@@ -56,7 +68,7 @@ pub fn year(layout: &Layout, weather: &[Weather], step: i64) -> Year {
             continue;
         }
         let month = month(sample.unix.div_euclid(SECONDS_PER_DAY));
-        add(&mut run, &estimate(layout, sample), month, hours);
+        add(&mut run, &table.estimate(layout, sample), month, hours);
     }
     run
 }
