@@ -2,7 +2,7 @@
 import { expect, test } from "bun:test";
 import type { Weather } from "../weather/weather.ts";
 import { Plot } from "./plot.ts";
-import { sceneWeather } from "./weather.ts";
+import { sceneWeather } from "../weather/scene-weather.ts";
 
 const NONE: Weather = {
   cloud: null,

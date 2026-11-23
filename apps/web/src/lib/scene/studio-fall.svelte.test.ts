@@ -4,7 +4,8 @@ import { TRIAL_WEATHER } from "../builder/trials.ts";
 import { daylight, theme } from "./light.ts";
 import { drawn } from "./quality.ts";
 import { Studio } from "./studio.ts";
-import { sceneWeather, type Falling } from "./weather.ts";
+import { sceneWeather } from "../weather/scene-weather.ts";
+import type { Falling } from "./weather.ts";
 
 let studio: Studio | undefined;
 

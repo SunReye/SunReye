@@ -3,7 +3,8 @@
 import { today } from "./day.ts";
 import { load, shareAt, spanOf, wattsAt, type Day, type Reading } from "./moment.ts";
 import { sunAt, type Point } from "./pv.ts";
-import { exact, sceneWeather, type SceneWeather } from "../scene/weather.ts";
+import { exact, type SceneWeather } from "../scene/weather.ts";
+import { sceneWeather } from "../weather/scene-weather.ts";
 import { readWeather, weatherAt, type Weather, type WeatherRead } from "../weather/weather.ts";
 import { TRIAL_WEATHER, type Trial } from "./trials.ts";
 
