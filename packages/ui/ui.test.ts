@@ -157,6 +157,7 @@ test("the sheet builds the kit's utilities and variants under a consumer's Tailw
     "data-open:animate-in",
     "touch:size-11",
     "dark:bg-input/30",
+    "canvas-chip",
   ];
 
   const missing = candidates.filter((candidate) => {
