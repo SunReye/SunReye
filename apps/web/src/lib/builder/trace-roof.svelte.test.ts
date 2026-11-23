@@ -1,7 +1,7 @@
 import "../../app.css";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import Builder from "../../../../../packages/builder/src/builder/Builder.svelte";
 import { parseView } from "../../../../../packages/builder/src/builder/camera.ts";
@@ -19,6 +19,7 @@ import {
   testCore,
   undesk,
 } from "./builder.harness.ts";
+import { finish } from "../motion/animations.harness.ts";
 import { onView } from "./projection.harness.ts";
 
 // Home's builder traces a roof (ADR 20): the Buildings group starts the tracing mode, the canvas
@@ -89,4 +90,69 @@ test("a roof traced from above is a new block, and Done leaves the tracing", asy
         .first(),
     )
     .toBeVisible();
+});
+
+/** The tracing bar. */
+const bar = () => page.getByRole("toolbar", { name: "Dach nachzeichnen" });
+
+/** Types `value` into the bar's height `name` and applies it. */
+async function height(name: string, value: string): Promise<void> {
+  await bar()
+    .getByRole("button", { name: new RegExp(`^${name} `, "u") })
+    .click();
+  await page.getByRole("button", { name: /tippen zum Eingeben/u }).click();
+  await userEvent.fill(page.getByRole("textbox", { name: `${name} eingeben` }), value);
+  await userEvent.keyboard("{Enter}");
+
+  const apply = page.getByRole("button", { name: /^Übernehmen/u });
+
+  await apply.click();
+  await finish(() => apply.query() === null);
+}
+
+test("a traced gable is pulled up by its eaves and ridge, and a point raised by number bends a face", async () => {
+  await tracing();
+
+  const view = parseView(localStorage.getItem("sunreye.builder.view"));
+  const canvas = page.getByLabelText("3D-Szene des Hauses").element().getBoundingClientRect();
+
+  if (view === undefined) throw new Error("no view from above was kept");
+
+  const at = onView(view, canvas);
+
+  // The outline with a point at each verge's middle, then the ridge between them.
+  for (const [x, z] of [
+    [2, 2],
+    [2, 4],
+    [2, 6],
+    [10, 6],
+    [10, 4],
+    [10, 2],
+    [2, 2],
+    [2, 4],
+    [10, 4],
+  ] as const) {
+    // oxlint-disable-next-line no-await-in-loop -- one click after another, as the person traces.
+    await press("mouse", [at([x, 0, z])]);
+  }
+
+  await userEvent.keyboard("{Escape}");
+  await height("Traufhöhe", "3");
+  await height("Firsthöhe", "6");
+
+  await expect.element(bar().getByRole("button", { name: /^Traufhöhe 3 m/u })).toBeVisible();
+  await expect.element(bar().getByRole("button", { name: /^Firsthöhe 6 m/u })).toBeVisible();
+
+  // The ridge is picked where it stands now, 6 m up, off-centre: not over the ground under it.
+  await press("mouse", [at([8, 6, 4])]);
+
+  await expect
+    .element(bar().getByRole("radio", { name: "First" }))
+    .toHaveAttribute("aria-checked", "true");
+
+  await height("Höhe Ende", "5");
+
+  await expect
+    .element(bar().getByRole("status"))
+    .toHaveTextContent("Eine Dachfläche ist nicht eben und trägt keine Module, bis sie es ist.");
 });
