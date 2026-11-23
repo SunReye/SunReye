@@ -573,6 +573,51 @@ fn the_archive_asks_for_whole_utc_days_hourly_at_the_rounded_location() {
     );
 }
 
+#[test]
+fn a_past_year_asks_for_hourly_means_through_the_next_new_year_at_the_rounded_location() {
+    assert_eq!(
+        open_meteo::year_url(BERLIN, 2024),
+        "https://archive-api.open-meteo.com/v1/archive?latitude=52.52&longitude=13.38\
+         &start_date=2024-01-01&end_date=2025-01-01\
+         &hourly=shortwave_radiation,direct_normal_irradiance,diffuse_radiation,temperature_2m,\
+         wind_speed_10m&wind_speed_unit=ms&timezone=GMT&timeformat=unixtime"
+    );
+}
+
+/// The archive's irradiance without `_instant` is the mean of the hour before its time, so each
+/// sample stands at that hour's middle (ADR 17), and the year keeps those inside it.
+#[test]
+fn a_past_years_hourly_means_stand_at_each_hours_middle() {
+    // 2023-12-31 00:00 to 2024-01-01 23:00 UTC.
+    let body = include_str!("../../fixtures/open-meteo-archive-means.json");
+
+    let samples = open_meteo::parse_year(body, 2024).unwrap();
+
+    // 2024-01-01 00:30, the hour to 01:00, to 22:30; 00:00's hour belongs to 2023.
+    let new_year = 1_704_067_200;
+    assert_eq!(samples.len(), 23);
+    assert_eq!(samples.first().map(|w| w.unix), Some(new_year + 1800));
+    assert_eq!(
+        samples.last().map(|w| w.unix),
+        Some(new_year + 22 * 3600 + 1800)
+    );
+    // The hour to noon, from the recorded answer.
+    let noon = samples
+        .iter()
+        .find(|w| w.unix == new_year + 11 * 3600 + 1800);
+    assert_eq!(
+        noon.copied(),
+        Some(sunreye_pv::Weather {
+            unix: new_year + 11 * 3600 + 1800,
+            ghi: 77.0,
+            dni: 57.0,
+            dhi: 63.0,
+            temperature: 6.3,
+            wind: Some(5.12),
+        })
+    );
+}
+
 /// An archive hour of 2026-06-21 at `hour` UTC.
 fn past(hour: u64, ghi: f64) -> Slot {
     Slot {

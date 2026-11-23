@@ -6,6 +6,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use jiff::civil::Date;
 use serde::Deserialize;
+use sunreye_pv::Weather;
 
 use super::{Archive, Detail, Error, Provider, Slot};
 use crate::location::Location;
@@ -22,6 +23,11 @@ const DETAIL: &str = "relative_humidity_2m,wind_direction_10m,wind_gusts_10m,\
                       apparent_temperature,sunshine_duration";
 /// The forecast has these hourly only.
 const HOURLY: &str = "cloud_cover,snow_depth";
+/// For a typical year (ADR 17): irradiance as the mean of the hour before each time, so a year's
+/// samples sum to its irradiation.
+const MEANS: &str = "shortwave_radiation,direct_normal_irradiance,diffuse_radiation,temperature_2m,\
+                     wind_speed_10m";
+const HOUR: i64 = 3600;
 const TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Fetches from `api.open-meteo.com`.
@@ -49,6 +55,21 @@ impl Archive for OpenMeteoArchive {
             .await
             .map_err(|e| Error::Fetch(e.to_string()))??;
         parse_archive(&body)
+    }
+}
+
+impl OpenMeteoArchive {
+    /// The UTC year `year` at `location`, rounded, for a typical year (ADR 17): hourly means, each
+    /// stamped at its hour's middle.
+    ///
+    /// # Errors
+    /// The archive could not be reached, refused, or did not answer with a year.
+    pub async fn year(&self, location: Location, year: i16) -> Result<Vec<Weather>, Error> {
+        let url = year_url(location.rounded(), year);
+        let body = tokio::task::spawn_blocking(move || get(&url))
+            .await
+            .map_err(|e| Error::Fetch(e.to_string()))??;
+        parse_year(&body, year)
     }
 }
 
@@ -80,6 +101,70 @@ pub fn archive_url(location: Location, from: Date, to: Date) -> String {
          &hourly={VARIABLES},{DETAIL},{HOURLY}&wind_speed_unit=ms&timezone=GMT&timeformat=unixtime",
         location.latitude, location.longitude
     )
+}
+
+/// The request for the UTC year `year`, at 0.01°: through the next 1 January, whose first hour
+/// closes the year.
+pub fn year_url(location: Location, year: i16) -> String {
+    format!(
+        "{ARCHIVE}?latitude={:.2}&longitude={:.2}&start_date={year:04}-01-01&end_date={:04}-01-01\
+         &hourly={MEANS}&wind_speed_unit=ms&timezone=GMT&timeformat=unixtime",
+        location.latitude,
+        location.longitude,
+        i32::from(year) + 1
+    )
+}
+
+#[derive(Deserialize)]
+struct MeansBody {
+    hourly: Means,
+}
+
+#[derive(Deserialize)]
+struct Means {
+    time: Vec<i64>,
+    #[serde(rename = "shortwave_radiation")]
+    ghi: Vec<Option<f64>>,
+    #[serde(rename = "direct_normal_irradiance")]
+    dni: Vec<Option<f64>>,
+    #[serde(rename = "diffuse_radiation")]
+    dhi: Vec<Option<f64>>,
+    #[serde(rename = "temperature_2m")]
+    temperature: Vec<Option<f64>>,
+    #[serde(rename = "wind_speed_10m")]
+    wind: Vec<Option<f64>>,
+}
+
+/// The samples of a year's answer inside the UTC year `year`, each stamped half an hour before
+/// its time; one missing anything but wind is dropped.
+///
+/// # Errors
+/// The body is not an archive answer.
+pub fn parse_year(body: &str, year: i16) -> Result<Vec<Weather>, Error> {
+    let MeansBody { hourly: m } = serde_json::from_str(body).map_err(|_| Error::Format)?;
+    let seconds = |date: Date| {
+        date.to_zoned(jiff::tz::TimeZone::UTC)
+            .map(|z| z.timestamp().as_second())
+            .map_err(|_| Error::Format)
+    };
+    let start = seconds(jiff::civil::date(year, 1, 1))?;
+    let end = seconds(jiff::civil::date(year.saturating_add(1), 1, 1))?;
+    Ok(m.time
+        .iter()
+        .enumerate()
+        .filter_map(|(i, &time)| {
+            let unix = time - HOUR / 2;
+            (start..end).contains(&unix).then_some(())?;
+            Some(Weather {
+                unix,
+                ghi: value(&m.ghi, i)?,
+                dni: value(&m.dni, i)?,
+                dhi: value(&m.dhi, i)?,
+                temperature: value(&m.temperature, i)?,
+                wind: value(&m.wind, i),
+            })
+        })
+        .collect())
 }
 
 #[derive(Deserialize)]
