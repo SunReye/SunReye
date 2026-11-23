@@ -11,7 +11,8 @@ import type { Point } from "./pv.ts";
 export interface Aimed {
   readonly at: Spot;
   readonly reach: number;
-  /** The traced point or line it picks by its pixels, as drawn; undefined over neither. */
+  /** What it picks by its pixels, as drawn: a traced point, a line, or free. Without one, it
+   * snaps by the ground under it. */
   readonly snap?: Snap | undefined;
 }
 

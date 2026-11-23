@@ -59,6 +59,9 @@ export interface Shown {
   readonly refused: Refusal | undefined;
 }
 
+/** Metres an end already picked by its pixels is snapped within again: none to speak of. */
+const RESOLVED = 1e-3;
+
 /** A press: where it landed, and the traced line it took, which a drag moves. */
 interface Pressed {
   readonly at: Spot;
@@ -223,7 +226,8 @@ export class TraceTool {
 
     if (from === undefined) this.#started(tracing, end, line);
     else if (samePoint(from, end)) this.end();
-    else this.#joined(tracing, from, end, reach);
+    // Ends picked by pixels are resolved already: the scene's snap in metres must not move them.
+    else this.#joined(tracing, from, end, aimed.snap === undefined ? reach : RESOLVED);
   }
 
   /** No chain yet: a tap on a line picks it, one elsewhere starts a chain there. */

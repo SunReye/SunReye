@@ -68,9 +68,11 @@ export class TracePress {
     const box = this.#canvas.getBoundingClientRect();
     const pointer = [event.clientX - box.left, event.clientY - box.top] as const;
 
-    const snap = pick(scene, (spot) => project(pvPoint(scene.north, spot)), pointer, pixels);
+    if (aimed === null) return null;
 
-    return aimed && { ...aimed, snap };
+    const picked = pick(scene, (spot) => project(pvPoint(scene.north, spot)), pointer, pixels);
+
+    return { ...aimed, snap: picked ?? { kind: "free", at: aimed.at } };
   }
 
   readonly #press = (event: PointerEvent): void => {
