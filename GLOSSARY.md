@@ -313,7 +313,7 @@ The datasheet values of one battery model: usable capacity, power and round-trip
 _Avoid_: Battery model
 
 **Datasheet catalogue**:
-Inverter and battery types bundled with SunReye under the module catalogue's rules. Picking one adds a type.
+Inverter and battery types copied from makers' datasheets under the module catalogue's rules. SunReye holds its format and checks; SunReye Plan collects the entries. Picking one adds a type.
 _Avoid_: Device database, product list
 
 **Module catalogue**:
