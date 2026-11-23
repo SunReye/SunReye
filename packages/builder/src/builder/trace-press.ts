@@ -4,7 +4,9 @@
 // clicks where it lets go. Escape ends the chain.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- three.js and the DOM, used in place. */
 import type { PerspectiveCamera } from "three";
-import { aim, type Aimed } from "./trace-aim.ts";
+import { projector } from "./project.ts";
+import { aim, pvPoint, type Aimed } from "./trace-aim.ts";
+import { pick } from "./trace-pick.ts";
 import { Handover, listen } from "./pointer.ts";
 import type { TraceTool, Tracing } from "./tracing.svelte.ts";
 
@@ -57,8 +59,18 @@ export class TracePress {
     };
   }
 
+  /** Where `event` aims, and what of the traced roof it picks as drawn. */
   #aim(event: PointerEvent, tracing: Tracing): Aimed | null {
-    return aim(this.#canvas, this.#camera, tracing.scene.north, event, tracing.reach ?? REACH);
+    const { scene } = tracing;
+    const pixels = tracing.reach ?? REACH;
+    const aimed = aim(this.#canvas, this.#camera, scene.north, event, pixels);
+    const project = projector(this.#canvas, this.#camera);
+    const box = this.#canvas.getBoundingClientRect();
+    const pointer = [event.clientX - box.left, event.clientY - box.top] as const;
+
+    const snap = pick(scene, (spot) => project(pvPoint(scene.north, spot)), pointer, pixels);
+
+    return aimed && { ...aimed, snap };
   }
 
   readonly #press = (event: PointerEvent): void => {
