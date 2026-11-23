@@ -126,6 +126,47 @@ export interface components {
          * @enum {string}
          */
         readonly Crown: "broadleaf" | "conifer";
+        /** @description A PV module model's datasheet values. */
+        readonly Datasheet: {
+            /** Format: int32 */
+            readonly bypassDiodes: number;
+            /** Format: double */
+            readonly currentCoefficient: number;
+            /** Format: double */
+            readonly height: number;
+            /** Format: double */
+            readonly imp: number;
+            /** Format: double */
+            readonly isc: number;
+            readonly name: string;
+            /**
+             * Format: double
+             * @description Watts at standard test conditions.
+             */
+            readonly pmax: number;
+            /**
+             * Format: double
+             * @description Of Pmax, Voc and Isc, in %/K.
+             */
+            readonly powerCoefficient: number;
+            /**
+             * Format: double
+             * @description Volts and amperes at the maximum power point.
+             */
+            readonly vmp: number;
+            /**
+             * Format: double
+             * @description Open-circuit volts and short-circuit amperes.
+             */
+            readonly voc: number;
+            /** Format: double */
+            readonly voltageCoefficient: number;
+            /**
+             * Format: double
+             * @description Metres.
+             */
+            readonly width: number;
+        };
         /** @description A marker linked to its device, placed on a block's wall. */
         readonly Equipment: {
             /**
@@ -295,6 +336,13 @@ export interface components {
              * @description Metres kept free along every edge of the face.
              */
             readonly setback: number;
+        };
+        readonly ModuleType: components["schemas"]["Datasheet"] & {
+            /**
+             * Format: int32
+             * @description Stable; never reused.
+             */
+            readonly id: number;
         };
         /** @description One MPPT input's limits on a datasheet. */
         readonly MpptInput: {
@@ -584,6 +632,7 @@ export type Block = components['schemas']['Block'];
 export type CarPlace = components['schemas']['CarPlace'];
 export type Chimney = components['schemas']['Chimney'];
 export type Crown = components['schemas']['Crown'];
+export type Datasheet = components['schemas']['Datasheet'];
 export type Equipment = components['schemas']['Equipment'];
 export type EquipmentKind = components['schemas']['EquipmentKind'];
 export type Fence = components['schemas']['Fence'];
@@ -598,6 +647,7 @@ export type Layout = components['schemas']['Layout'];
 export type LayoutChange = components['schemas']['LayoutChange'];
 export type Light = components['schemas']['Light'];
 export type ModuleGrid = components['schemas']['ModuleGrid'];
+export type ModuleType = components['schemas']['ModuleType'];
 export type MpptInput = components['schemas']['MpptInput'];
 export type Obstacle = components['schemas']['Obstacle'];
 export type Opening = components['schemas']['Opening'];

@@ -86,6 +86,16 @@ test("the published types refuse what the core refuses", async () => {
   expect(await check(dome)).toContain(`Type '"dome"' is not assignable`);
 });
 
+test("a consumer types a module type with its datasheet", async () => {
+  const sheet = `
+import type { ModuleType } from "@sunreye/scene";
+
+export const moduleType: Pick<ModuleType, "id" | "width" | "height"> = { id: 1, width: 1.1, height: 1.7 };
+`;
+
+  expect(await check(sheet)).toBe("");
+});
+
 /** A module namespace has a null prototype, so `instanceof Object` cannot narrow it. */
 function isScene(module: unknown): module is { readonly roofFaceKey: typeof roofFaceKey } {
   return Object.prototype.hasOwnProperty.call(module, "roofFaceKey");
