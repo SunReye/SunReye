@@ -1,7 +1,7 @@
 use serde_json::{Value, json};
 
-use crate::Invalid;
-use crate::modules::{Datasheet, bundled, parse};
+use crate::modules::{Datasheet, bundled};
+use crate::{Invalid, Sheet};
 
 /// AIKO's A450 as its datasheet `DS_EN_2405_V1.5` prints it.
 fn sheet() -> Value {
@@ -18,15 +18,29 @@ fn sheet() -> Value {
 }
 
 fn refused(sheet: &Value) -> Invalid {
-    parse(&sheet.to_string()).unwrap_err()
+    Sheet::parse(&sheet.to_string()).unwrap_err()
 }
 
 #[test]
 fn a_sheet_copied_from_its_datasheet_loads() {
-    let parsed = parse(&sheet().to_string()).unwrap();
+    let parsed = Sheet::parse(&sheet().to_string()).unwrap();
 
     assert_eq!(parsed.modules[0].name, "AIKO-A450-MAH54Db");
     assert_eq!(parsed.source.revision, "DS_EN_2405_V1.5");
+    assert_eq!(serde_json::to_value(&parsed).unwrap(), sheet());
+}
+
+#[test]
+fn a_module_sheet_without_its_maker_or_series_is_refused() {
+    for member in ["maker", "series"] {
+        let mut unnamed = sheet();
+        unnamed.as_object_mut().unwrap().remove(member);
+        assert_eq!(refused(&unnamed), Invalid::Source, "{member}");
+
+        let mut blank = sheet();
+        blank[member] = json!(" ");
+        assert_eq!(refused(&blank), Invalid::Source, "{member}");
+    }
 }
 
 #[test]
@@ -87,7 +101,8 @@ fn every_bundled_sheet_loads_and_names_its_datasheet() {
     assert!(
         sheets
             .iter()
-            .any(|s| s.maker == "AIKO" && s.series == "Neostar 2S+")
+            .any(|s| s.maker.as_deref() == Some("AIKO")
+                && s.series.as_deref() == Some("Neostar 2S+"))
     );
     for sheet in &sheets {
         assert!(

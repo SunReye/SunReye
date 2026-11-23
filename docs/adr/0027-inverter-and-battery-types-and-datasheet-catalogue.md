@@ -25,6 +25,7 @@ A device may carry one inverter type and one battery type, copied by value. The 
 
 - *Format (2026-11-22).* A sheet holds its `source` and its `inverters` and `batteries`. An entry is the type picking it adds (`inverter` or `battery`) and, where a profile reads its model, `profile`: the profile's id and, where the family has one per model, the variant (ADR 5). The checks are pure functions of an entry, in the catalogue crate that SunReye Plan reads (ADR 25); whether a link names a profile the core serves takes the served profiles as an argument.
 - *Where it lives (2026-11-23).* The format and its checks are in `packages/catalogue` beside the module catalogue: the `sunreye-catalogue` crate, pure like `pv`, and the `@sunreye/catalogue` package (ADR 25). This repository bundles no inverter or battery entry and serves no datasheet catalogue: the collected one is SunReye Plan's. A product an installer types or an agent adds passes the same checks as an entry.
+- *One sheet format (2026-11-23).* Both catalogues' sheets are one format, still in separate files: a module sheet holds `maker`, `series` and `modules`, a datasheet catalogue sheet `inverters` and `batteries`; a module sheet without its maker or series is refused. Every entry, a module's included, is checked alike and refused by its model and the field out of range. The module catalogue's served sheets are unchanged; its published schema marks `maker` and `series` optional and lists the inverter and battery entries.
 - *Ranges (2026-11-22).* An entry passes its type's bounds and names its maker's seat, and is refused where a value lies where no datasheet prints it, as a slip in copying shows: a maximum DC input voltage outside 30–1500 V; an AC rating outside 100 W–500 kW; an efficiency outside 80–100 % (100 excluded); an input's maximum current outside 1–100 A; a usable capacity outside 100 Wh–2 MWh; a charge or discharge power outside 100 W–1 MW, or one that would charge or empty the battery in under 15 minutes or over 20 hours; a round-trip efficiency outside 70–100 % (100 excluded); a profile link with a blank id or a variant that is no variant id.
 
 **Origin.** Every sheet, the module catalogue's included (ADR 17), names the country of its maker's registered seat as the datasheet prints it, and the country of manufacture only where the datasheet states one, never inferred from the brand. A type copies both. SunReye Plan filters on them when a customer asks for makers from a region (ADR 25); the core only stores them.
@@ -41,7 +42,7 @@ A device may carry one inverter type and one battery type, copied by value. The 
 - **Limits from profiles only.** Rejected: a planner could offer only what Home already reads.
 - **Layouts referencing catalogue entries.** Rejected as for modules: a catalogue fix would silently change past layouts.
 - **The profile winning over the type.** Rejected: a plan checked against a datasheet would shift when a profile is corrected.
-- **One catalogue for modules, inverters and batteries.** Rejected for now: the module catalogue's endpoint is published; the two share rules, not a file.
+- **One catalogue for modules, inverters and batteries.** Rejected for now: the module catalogue's endpoint is published; the two share rules and a sheet format, not a file.
 
 ## Consequences
 

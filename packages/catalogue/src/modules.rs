@@ -6,7 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Invalid, Source};
+use crate::{Invalid, Sheet};
 
 /// The sheets, one per maker's datasheet, as `modules/` holds them at build time.
 const BUNDLED: &[&str] = &[
@@ -131,35 +131,8 @@ impl Datasheet {
     }
 }
 
-/// The power classes one maker's datasheet prints.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct Sheet {
-    pub maker: String,
-    pub series: String,
-    pub source: Source,
-    pub modules: Vec<Datasheet>,
-}
-
-/// # Errors
-/// The sheet does not parse, names no source or module, or a value is out of its range.
-pub fn parse(json: &str) -> Result<Sheet, Invalid> {
-    let sheet: Sheet = serde_json::from_str(json).map_err(|e| Invalid::Json(e.to_string()))?;
-    let source = &sheet.source;
-    if [&source.title, &source.revision, &source.url]
-        .iter()
-        .any(|text| text.trim().is_empty())
-        || sheet.modules.is_empty()
-    {
-        return Err(Invalid::Source);
-    }
-    sheet.modules.iter().try_for_each(Datasheet::check)?;
-    Ok(sheet)
-}
-
 /// # Errors
 /// A bundled sheet is refused; a test loads them all.
 pub fn bundled() -> Result<Vec<Sheet>, Invalid> {
-    BUNDLED.iter().map(|json| parse(json)).collect()
+    BUNDLED.iter().map(|json| Sheet::parse(json)).collect()
 }

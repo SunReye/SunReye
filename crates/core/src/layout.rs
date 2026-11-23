@@ -903,7 +903,7 @@ async fn list_module_types(State((layouts, _)): LayoutState) -> Result<Json<Modu
 /// The module catalogue's sheets, as the admin picks a datasheet to add as a module type.
 #[derive(Serialize, ToSchema)]
 struct ModuleCatalogue {
-    sheets: Vec<catalogue::Sheet>,
+    sheets: Vec<sunreye_catalogue::Sheet>,
 }
 
 #[utoipa::path(get, path = "/api/v1/module-catalogue", responses(

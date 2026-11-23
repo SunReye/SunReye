@@ -8,19 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use sunreye_pv::{BatteryType, InverterType, MpptInput};
 
-use crate::{Invalid, Source};
-
-/// The models one maker's datasheet prints.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct Sheet {
-    pub source: Source,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub inverters: Vec<InverterEntry>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub batteries: Vec<BatteryEntry>,
-}
+use crate::Invalid;
 
 /// One inverter model: the type picking it adds, and the profile that reads it, where one exists.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -51,42 +39,6 @@ pub struct ProfileLink {
     pub id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub variant: Option<String>,
-}
-
-impl Sheet {
-    /// # Errors
-    /// The sheet names no source or model, or an entry is refused.
-    pub fn check(&self) -> Result<(), Invalid> {
-        let source = &self.source;
-        if [&source.title, &source.revision, &source.url]
-            .iter()
-            .any(|text| text.trim().is_empty())
-            || self.inverters.is_empty() && self.batteries.is_empty()
-        {
-            return Err(Invalid::Source);
-        }
-        self.inverters.iter().try_for_each(InverterEntry::check)?;
-        self.batteries.iter().try_for_each(BatteryEntry::check)
-    }
-
-    /// The first model whose profile link `served` does not know, by its profile id and
-    /// variant.
-    #[must_use]
-    pub fn unlinked(&self, served: impl Fn(&str, Option<&str>) -> bool) -> Option<&str> {
-        let inverters = self
-            .inverters
-            .iter()
-            .map(|e| (&e.inverter.model, &e.profile));
-        let batteries = self
-            .batteries
-            .iter()
-            .map(|e| (&e.battery.model, &e.profile));
-        inverters.chain(batteries).find_map(|(model, link)| {
-            let link = link.as_ref()?;
-            let known = served(&link.id, link.variant.as_deref());
-            (!known).then_some(model.as_str())
-        })
-    }
 }
 
 impl ProfileLink {

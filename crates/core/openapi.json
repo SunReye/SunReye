@@ -118,6 +118,29 @@
         ],
         "type": "object"
       },
+      "BatteryEntry": {
+        "additionalProperties": false,
+        "description": "One battery model: the type picking it adds, and the profile that reads it, where one exists.",
+        "properties": {
+          "battery": {
+            "$ref": "#/components/schemas/BatteryType"
+          },
+          "profile": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ProfileLink"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "battery"
+        ],
+        "type": "object"
+      },
       "BatteryType": {
         "additionalProperties": false,
         "description": "One battery model's datasheet values.",
@@ -2070,6 +2093,29 @@
         ],
         "type": "object"
       },
+      "InverterEntry": {
+        "additionalProperties": false,
+        "description": "One inverter model: the type picking it adds, and the profile that reads it, where one exists.",
+        "properties": {
+          "inverter": {
+            "$ref": "#/components/schemas/InverterType"
+          },
+          "profile": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ProfileLink"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "inverter"
+        ],
+        "type": "object"
+      },
       "InverterType": {
         "additionalProperties": false,
         "description": "One inverter model's datasheet values.",
@@ -3193,6 +3239,25 @@
         ],
         "type": "object"
       },
+      "ProfileLink": {
+        "additionalProperties": false,
+        "description": "The profile, and its variant where the family has one per model (ADR 5), that reads an\nentry's model.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "variant": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
       "Proposal": {
         "description": "A device the identify probe of a profile found.",
         "properties": {
@@ -3983,10 +4048,26 @@
       },
       "Sheet": {
         "additionalProperties": false,
-        "description": "The power classes one maker's datasheet prints.",
+        "description": "The models one maker's datasheet prints: a module sheet's power classes, or its inverters and\nbatteries.",
         "properties": {
+          "batteries": {
+            "items": {
+              "$ref": "#/components/schemas/BatteryEntry"
+            },
+            "type": "array"
+          },
+          "inverters": {
+            "items": {
+              "$ref": "#/components/schemas/InverterEntry"
+            },
+            "type": "array"
+          },
           "maker": {
-            "type": "string"
+            "description": "A module sheet names its maker and series; an inverter or battery type names its own.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "modules": {
             "items": {
@@ -3995,17 +4076,17 @@
             "type": "array"
           },
           "series": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "source": {
             "$ref": "#/components/schemas/Source"
           }
         },
         "required": [
-          "maker",
-          "series",
-          "source",
-          "modules"
+          "source"
         ],
         "type": "object"
       },

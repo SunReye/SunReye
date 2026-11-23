@@ -5,7 +5,7 @@ pub mod datasheets;
 pub mod modules;
 mod sheet;
 
-pub use sheet::{Invalid, Source};
+pub use sheet::{Invalid, Sheet, Source};
 
 #[cfg(test)]
 mod tests;

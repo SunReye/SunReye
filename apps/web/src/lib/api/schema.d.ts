@@ -1121,6 +1121,11 @@ export interface components {
             /** @description `HH:MM`, up to 24:00; later than `from`. */
             to: string;
         };
+        /** @description One battery model: the type picking it adds, and the profile that reads it, where one exists. */
+        BatteryEntry: {
+            battery: components["schemas"]["BatteryType"];
+            profile?: components["schemas"]["ProfileLink"] | null;
+        };
         /** @description One battery model's datasheet values. */
         BatteryType: {
             /**
@@ -1896,6 +1901,11 @@ export interface components {
              */
             startVoltage: number;
         };
+        /** @description One inverter model: the type picking it adds, and the profile that reads it, where one exists. */
+        InverterEntry: {
+            inverter: components["schemas"]["InverterType"];
+            profile?: components["schemas"]["ProfileLink"] | null;
+        };
         /** @description One inverter model's datasheet values. */
         InverterType: {
             /**
@@ -2365,6 +2375,14 @@ export interface components {
         Problems: {
             problems: components["schemas"]["Condition"][];
         };
+        /**
+         * @description The profile, and its variant where the family has one per model (ADR 5), that reads an
+         *     entry's model.
+         */
+        ProfileLink: {
+            id: string;
+            variant?: string | null;
+        };
         /** @description A device the identify probe of a profile found. */
         Proposal: {
             /** @description What the homeowner is shown: the variant's name, else the profile's. */
@@ -2640,11 +2658,17 @@ export interface components {
             /** @description Its path under `/share`. */
             path: string;
         };
-        /** @description The power classes one maker's datasheet prints. */
+        /**
+         * @description The models one maker's datasheet prints: a module sheet's power classes, or its inverters and
+         *     batteries.
+         */
         Sheet: {
-            maker: string;
-            modules: components["schemas"]["Datasheet"][];
-            series: string;
+            batteries?: components["schemas"]["BatteryEntry"][];
+            inverters?: components["schemas"]["InverterEntry"][];
+            /** @description A module sheet names its maker and series; an inverter or battery type names its own. */
+            maker?: string | null;
+            modules?: components["schemas"]["Datasheet"][];
+            series?: string | null;
             source: components["schemas"]["Source"];
         };
         /** @description The maker's datasheet every value of a sheet was copied from. */
