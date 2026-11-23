@@ -279,3 +279,14 @@ fn an_inverter_without_a_type_computes_as_before() {
         assert_eq!(untyped.inputs, typed.inputs);
     }
 }
+
+#[test]
+fn a_load_too_small_for_the_curve_yields_no_ac() {
+    let (june, dc) = noon();
+    // Under 0.0059 / 0.9858 of its DC rating the curve's efficiency is negative.
+    let run = year(&typed(dc, 0.001), &[june], QUARTER);
+
+    let ac = run.inverters[0].ac.as_ref().expect("typed");
+    assert_eq!(ac.energy.total, 0.0);
+    assert_eq!(ac.clipped.total, 0.0);
+}
