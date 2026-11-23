@@ -75,3 +75,35 @@ export declare function loops(
   points: readonly (readonly number[])[],
   lines: readonly (readonly number[])[],
 ): number[][];
+
+/** What a traced point or line is, for pulling up: a pull of the eaves raises the eaves, a pull of
+ * the ridges the ridges. A point neither eave, ridge nor set follows, keeping faces flat. */
+export type Kind = "eave" | "ridge";
+
+/** The scene with block `block`'s eave points raised to `height` metres, but those whose height
+ * was set; the points that follow keep the faces flat. `from` and `to` are -1. */
+export declare function pullEaves(scene: Scene, block: number, height: number): Edited;
+
+/** The scene with block `block`'s ridge points raised to `height` metres, as `pullEaves`. */
+export declare function pullRidges(scene: Scene, block: number, height: number): Edited;
+
+/** The scene with line `line` of block `block` made an eave or a ridge, both its points with it,
+ * by the person's word: the outline's corners are eaves and inner lines' ends ridges without it. */
+export declare function markLine(scene: Scene, block: number, line: number, kind: Kind): Edited;
+
+/** The scene with point `point` of block `block` at `height` metres, set: no pull changes it.
+ * `from` and `to` are the point. */
+export declare function setHeight(
+  scene: Scene,
+  block: number,
+  point: number,
+  height: number,
+): Edited;
+
+/** What line `line` of block `block` is: an eave or a ridge when both its points are; undefined
+ * for any other line, as a hip, a valley or a verge. */
+export declare function lineKind(scene: Scene, block: number, line: number): Kind | undefined;
+
+/** Block `block`'s faces bent off their plane by more than 2 cm: drawn in the warning colour,
+ * they carry no modules. */
+export declare function bent(scene: Scene, block: number): number[];

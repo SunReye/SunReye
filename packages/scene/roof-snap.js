@@ -7,7 +7,7 @@ import { along, apart, between } from "./roof-plan.js";
 /** @import { Lines } from "./roof-faces.js" */
 
 /** A block without lines. */
-const UNTRACED = { points: [], set: [], lines: [], faces: [] };
+const UNTRACED = { points: [], set: [], lines: [], faces: [], eaves: [], ridges: [] };
 
 /**
  * A block's traced part; empty for a block without one.
@@ -15,9 +15,10 @@ const UNTRACED = { points: [], set: [], lines: [], faces: [] };
  * @returns {Lines}
  */
 export function linesOf(block) {
-  const { points, set = [], lines, faces } = block?.freeForm?.traced ?? UNTRACED;
+  const traced = block?.freeForm?.traced ?? UNTRACED;
+  const { points, set = [], lines, faces, eaves = [], ridges = [] } = traced;
 
-  return { points, set, lines, faces };
+  return { points, set, lines, faces, eaves, ridges };
 }
 
 /**
