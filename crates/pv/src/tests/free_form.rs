@@ -512,3 +512,19 @@ fn a_wall_opening_or_an_equipment_marker_on_a_free_form_block_is_refused() {
     assert_eq!(opening.fitted(), Err(0));
     assert_eq!(marker.mounts(), Err(0));
 }
+
+#[test]
+fn a_level_face_keeps_its_frame_whichever_corner_its_corners_start_from() {
+    let one = ell(&json!({ "north": 30.0 })).roofs();
+    let other = {
+        let mut scene = ell_from_its_far_corner();
+        scene.north = 30.0;
+        scene.roofs()
+    };
+
+    assert!(same(&one[0], &other[0]), "{:?}\n{:?}", one[0], other[0]);
+    assert!(near(
+        &one[0].across,
+        &[30f64.to_radians().cos(), -30f64.to_radians().sin(), 0.0]
+    ));
+}
