@@ -26,7 +26,6 @@ import {
 export type {
   Fence,
   FenceFinish,
-  FencePoint,
   Fencing,
   Ground,
   GroundFinish,
