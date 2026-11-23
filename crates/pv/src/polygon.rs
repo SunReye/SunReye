@@ -1,5 +1,7 @@
-//! Simple polygons in a plane, convex or not: whether one crosses itself, its triangles, and
-//! whether two share area.
+//! Simple polygons in a plane, convex or not: whether one crosses itself, its triangles, whether
+//! two share area, and what lies inside one.
+
+use crate::grid::TOLERANCE;
 
 /// Metres within which two points are one, or a point lies on a line.
 const EPSILON: f64 = 1e-9;
@@ -122,4 +124,69 @@ fn triangles_overlap(a: [Plan; 3], b: [Plan; 3]) -> bool {
         edges(&t).any(|(p, q)| other.iter().all(|&r| turn(p, q, r) <= EPSILON))
     };
     !apart(a, b) && !apart(b, a)
+}
+
+/// Whether `p` lies at least `margin` inside the polygon's edges, or with a negative margin no
+/// further than that outside them.
+pub fn inside(polygon: &[Plan], p: Plan, margin: f64) -> bool {
+    let near = edges(polygon)
+        .map(|edge| reach(p, edge))
+        .fold(f64::INFINITY, f64::min);
+    if contains(polygon, p) {
+        near >= margin - EPSILON
+    } else {
+        near <= EPSILON - margin
+    }
+}
+
+/// Whether the rectangle from its lower left to its upper right corner lies at least `margin`
+/// inside the polygon's edges: its corners do, and no edge comes nearer to it or passes through.
+pub fn holds(polygon: &[Plan], [[l, b], [r, t]]: [Plan; 2], margin: f64) -> bool {
+    let corners = [[l, b], [r, b], [r, t], [l, t]];
+    // Grazed, not crossed, by an edge along its side.
+    let inner = [
+        [l + TOLERANCE, b + TOLERANCE],
+        [r - TOLERANCE, b + TOLERANCE],
+        [r - TOLERANCE, t - TOLERANCE],
+        [l + TOLERANCE, t - TOLERANCE],
+    ];
+    corners.iter().all(|&p| inside(polygon, p, margin))
+        && edges(polygon).all(|edge| {
+            let ends = <[Plan; 2]>::from(edge);
+            let crosses = edges(&inner).any(|side| touch(edge, side))
+                || ends.iter().any(|&p| contains(&inner, p));
+            let near = corners
+                .iter()
+                .map(|&p| reach(p, edge))
+                .chain(ends.map(|p| {
+                    let du = (l - p[0]).max(p[0] - r).max(0.0);
+                    let dv = (b - p[1]).max(p[1] - t).max(0.0);
+                    du.hypot(dv)
+                }))
+                .fold(f64::INFINITY, f64::min);
+            !crosses && near >= margin - EPSILON
+        })
+}
+
+/// Whether `p` lies within the polygon, by the edges a ray from it to the right crosses.
+fn contains(polygon: &[Plan], [u, v]: Plan) -> bool {
+    edges(polygon)
+        .filter(|&([au, av], [bu, bv])| {
+            (av > v) != (bv > v) && u < (bu - au).mul_add((v - av) / (bv - av), au)
+        })
+        .count()
+        % 2
+        == 1
+}
+
+/// The distance from `p` to the segment.
+fn reach(p: Plan, (a, b): (Plan, Plan)) -> f64 {
+    let (du, dv) = (b[0] - a[0], b[1] - a[1]);
+    let length = du.mul_add(du, dv * dv);
+    let along = if length < EPSILON {
+        0.0
+    } else {
+        ((p[0] - a[0]).mul_add(du, (p[1] - a[1]) * dv) / length).clamp(0.0, 1.0)
+    };
+    (p[0] - along.mul_add(du, a[0])).hypot(p[1] - along.mul_add(dv, a[1]))
 }

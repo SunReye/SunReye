@@ -67,7 +67,7 @@ impl Chimney {
 
     /// Whether it stands wholly on `face`.
     fn fits(&self, face: &RoofFace) -> bool {
-        self.corners(face).iter().all(|p| face.inside(*p, 0.0))
+        face.holds(self.area(face), 0.0)
     }
 
     /// Whether it stands on none of the face's roof windows.

@@ -57,11 +57,7 @@ impl RoofWindow {
         let sized = [self.width, self.length]
             .iter()
             .all(|size| size.is_finite() && *size > 0.0);
-        let [[l, b], [r, t]] = self.area();
-        sized
-            && [[l, b], [r, b], [r, t], [l, t]]
-                .iter()
-                .all(|p| face.inside(*p, clear))
+        sized && face.holds(self.area(), clear)
     }
 
     /// Whether it lies on `face` off its chimneys and off `others`, the face's other windows.
