@@ -37,7 +37,16 @@ Without the person's word, a corner of the outline is an eave; any other point a
 
 After every edit, a point that is no eave, ridge or set point takes its height on a face whose eave, ridge and set points fix a plane (the best fit to three or more not in one line), again until none changes; so faces stay flat, and a line drawn on a pulled roof lands on it.
 
-Ready shapes and dormers will join this module, each an edit of a block's lines whose faces `rebuild` derives (`roof-faces.js`).
+## Ready roofs
+
+A ready roof is placed in one click as the lines a person could have traced: `placeRoof` clicks them with `addLine`, marks and sets what the outline does not tell (`markLine`, `setHeight`), and pulls the eaves and ridges up. It is then a traced block like any other.
+
+- `readyRoofs: ReadyEntry[]`: the ready roofs for a menu, in order, each `{ id, de, en }`: its id and its name in German and English. Ready dormers will share `ReadyEntry`.
+- `placeRoof(scene, id, { x, z }, { width, depth, eave, ridge }): Edited`: ready roof `id` as a new traced block, its corner at `x`, `z`, `width` metres along x and `depth` along z; its eaves at `eave` metres and its top (a ridge, a mono-pitch roof's high side, a parapet) at `ridge`. A gable's ridge runs along x, a hip roof's along the longer side. Refused `"joins"` where it would touch a traced block, `"short"` without a positive size, `"missing"` for an unknown id.
+
+The ids: `satteldach`, `pultdach`, `versetztes-pultdach`, `flachdach`, `flachdach-attika`, `walmdach`, `krueppelwalmdach`, `zeltdach`, `mansarddach`, `mansardwalmdach`, `schleppdach`, `sheddach`, `schmetterlingsdach`, `tonnendach`. A point has one height, so a step between two roof parts (a versetztes Pultdach, a Sheddach's teeth, a parapet's inner wall) is a strip 10 cm wide seen from above; a Tonnendach is six flat strips.
+
+Ready dormers will join this module, each an edit of a block's lines whose faces `rebuild` derives (`roof-faces.js`).
 
 ## Face details
 

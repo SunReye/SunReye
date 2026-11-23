@@ -107,3 +107,35 @@ export declare function lineKind(scene: Scene, block: number, line: number): Kin
 /** Block `block`'s faces bent off their plane by more than 2 cm: drawn in the warning colour,
  * they carry no modules. */
 export declare function bent(scene: Scene, block: number): number[];
+
+/** A ready shape for a consumer's menu: its id and its name in German and English. Ready roofs
+ * and ready dormers share it. */
+export interface ReadyEntry {
+  readonly id: string;
+  readonly de: string;
+  readonly en: string;
+}
+
+/** The ready roofs, in the order a menu lists them. */
+export declare const readyRoofs: readonly ReadyEntry[];
+
+/** A ready roof's size: `width` metres along x and `depth` along z from its corner, its eaves at
+ * `eave` metres and its top, a ridge, a mono-pitch roof's high side or a parapet, at `ridge`. A
+ * flat roof without a parapet has no top. */
+export interface RoofSize {
+  readonly width: number;
+  readonly depth: number;
+  readonly eave: number;
+  readonly ridge: number;
+}
+
+/** The scene with ready roof `id` placed with its corner at `at`, as a new traced block: the
+ * lines a person could have traced, pulled up to `size`'s heights, then edited as any traced roof.
+ * Refused (`"joins"`) where it would touch a traced block, `"short"` without a positive size,
+ * `"missing"` for an id that is no ready roof. `faces` is empty, `from` and `to` -1. */
+export declare function placeRoof(
+  scene: Scene,
+  id: string,
+  at: { readonly x: number; readonly z: number },
+  size: RoofSize,
+): Edited;
