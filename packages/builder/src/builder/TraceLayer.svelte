@@ -1,10 +1,11 @@
 <!--
-  A traced roof's lines and points over the canvas (ADR 20), the line being drawn from the last
-  click to the pointer's snap, and beside the pointer a chip naming the snap and the line's length.
+  A traced roof's lines and points over the canvas (ADR 20), its bent faces in the warning colour,
+  the line being drawn from the last click to the pointer's snap, and beside the pointer a chip
+  naming the snap and the line's length.
   It never takes the pointer: the canvas beneath traces.
 -->
 <script lang="ts">
-  import type { Refusal, Snap } from "@sunreye/scene";
+  import { bent, type Refusal, type Snap } from "@sunreye/scene";
   import { getLocale } from "../paraglide/runtime.js";
   import { m } from "../paraglide/messages.js";
   import type { Projector } from "./drawing.svelte.ts";
@@ -57,6 +58,19 @@
         return from && to ? [{ key: `${index}/${line}`, from, to, dash: "", ...look }] : [];
       });
     }),
+  );
+
+  /** Each bent face's corners on the canvas, as an SVG polygon's points. */
+  const bentFaces = $derived(
+    tracing.scene.blocks.flatMap((block, index) =>
+      bent(tracing.scene, index).flatMap((face) => {
+        const on = (block.freeForm?.faces[face] ?? []).map((corner) => at(corner));
+
+        return on.every((p) => p !== null)
+          ? [{ key: `${index}/${face}`, points: on.map(([x, y]) => `${x},${y}`).join(" ") }]
+          : [];
+      }),
+    ),
   );
 
   const corners = $derived(
@@ -125,6 +139,15 @@
 </script>
 
 <svg class="pointer-events-none absolute inset-0 size-full" aria-label={m.builder_trace_lines()}>
+  {#each bentFaces as { key, points } (key)}
+    <polygon
+      {points}
+      fill="var(--warning)"
+      fill-opacity="0.35"
+      stroke="var(--warning)"
+      stroke-width="2"
+    />
+  {/each}
   {#each [...traced, ...dashed] as { key, from, to, colour, width, dash } (key)}
     <line
       x1={from[0]}

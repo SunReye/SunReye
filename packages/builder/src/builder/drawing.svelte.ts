@@ -2,14 +2,14 @@
 // glow, the first build in slices, and the hits of a click.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- three.js and the DOM, used in place. */
 import { untrack } from "svelte";
-import { type Group, type PerspectiveCamera, type Scene as Studio, Vector3 } from "three";
+import { type Group, type PerspectiveCamera, type Scene as Studio } from "three";
 import { cssColour } from "../scene/backdrop.ts";
 import { pause } from "../scene/prepare.ts";
 import type { Lit } from "../scene/stage.svelte.ts";
 import { freeOverlay, overlay, type Tints } from "./overlay.ts";
 import { RoofPress, type RoofSources, type Roofwork } from "./roof-press.ts";
-import type { Around, Geometry, Ghost, Point } from "./pv.ts";
-import { buildScene, buildSliced, strike, tint, toThree, type Hit, type Panel } from "./scene.ts";
+import type { Around, Geometry, Ghost } from "./pv.ts";
+import { buildScene, buildSliced, strike, tint, type Hit, type Panel } from "./scene.ts";
 
 export type { Hit, Panel } from "./scene.ts";
 
@@ -29,8 +29,7 @@ export { default as TraceLayer } from "./TraceLayer.svelte";
 
 export { TracingMode } from "./tracing-mode.svelte.ts";
 
-/** Pixels from the canvas's top left corner. */
-export type Projector = (point: Point) => readonly [number, number] | null;
+export { projector, type Projector } from "./project.ts";
 
 /** SceneCanvas's props, read when needed. */
 export interface Source {
@@ -47,16 +46,6 @@ export interface Kept {
   readonly drawn: () => Group | undefined;
   /** The first build is shown. */
   readonly built: Promise<void>;
-}
-
-export function projector(canvas: HTMLCanvasElement, camera: PerspectiveCamera): Projector {
-  return (point) => {
-    const at = new Vector3(...toThree(point)).project(camera);
-
-    return at.z > 1
-      ? null
-      : [((at.x + 1) / 2) * canvas.clientWidth, ((1 - at.y) / 2) * canvas.clientHeight];
-  };
 }
 
 /** Keeps the drawn meshes in step with the geometry and the live glow: the first build in

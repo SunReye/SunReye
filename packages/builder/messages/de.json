@@ -303,5 +303,13 @@
   "builder_trace_short": "Keine Länge",
   "builder_trace_joins": "Verbindet zwei Dächer",
   "builder_trace_crosses": "Linien kreuzen sich",
-  "builder_trace_missing": "Nicht mehr da"
+  "builder_trace_missing": "Nicht mehr da",
+  "builder_trace_eaves": "Traufhöhe",
+  "builder_trace_ridges": "Firsthöhe",
+  "builder_trace_kind": "Linie ist",
+  "builder_trace_eave": "Traufe",
+  "builder_trace_ridge": "First",
+  "builder_trace_start": "Höhe Anfang",
+  "builder_trace_end": "Höhe Ende",
+  "builder_trace_bent": "Eine Dachfläche ist nicht eben und trägt keine Module, bis sie es ist."
 }

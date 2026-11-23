@@ -1,16 +1,20 @@
 // A traced block's faces derived again from its lines (ADR 20), and what stands on them kept on the
 // face that stays. Pure.
 
+import { flat, follow } from "./roof-heights.js";
 import { area, loops, outline } from "./roof-plan.js";
 
 /** @import { Block, Scene } from "./schema.d.ts" */
 /**
- * A traced block's points, the points whose height was set, its lines, and its faces' points.
+ * A traced block's points, the points whose height was set, its lines, its faces' points, and the
+ * points the person made eaves and ridges.
  * @typedef {{
  *   readonly points: readonly (readonly number[])[],
  *   readonly set: readonly number[],
  *   readonly lines: readonly (readonly number[])[],
  *   readonly faces: readonly (readonly number[])[],
+ *   readonly eaves: readonly number[],
+ *   readonly ridges: readonly number[],
  * }} Lines
  */
 
@@ -151,9 +155,34 @@ function places(stays, old) {
 }
 
 /**
- * Block `index` of `scene` traced as `lines`, its faces derived again from their loops, and for
- * each old face its place now, or -1 where it went, taking what stood on it. `lines.faces` are the
- * old faces, by `lines`' points.
+ * A list of points in order; undefined when empty, so it is left out.
+ * @param {readonly number[]} list
+ */
+const sorted = (list) => (list.length > 0 ? list.toSorted((a, b) => a - b) : undefined);
+
+/**
+ * The traced part stored for `lines` whose faces are `faces`: a list of points left out when empty.
+ * @param {Lines} lines
+ * @param {readonly (readonly number[])[]} faces
+ */
+function stored(lines, faces) {
+  const [set, eaves, ridges] = [sorted(lines.set), sorted(lines.eaves), sorted(lines.ridges)];
+
+  return {
+    points: lines.points,
+    lines: lines.lines,
+    faces,
+    ...(set && { set }),
+    ...(eaves && { eaves }),
+    ...(ridges && { ridges }),
+  };
+}
+
+/**
+ * Block `index` of `scene` traced as `lines`, its faces derived again from their loops, its points
+ * that follow at their heights, and for each old face its place now, or -1 where it went, taking
+ * what stood on it; a bent face's module grids go. `lines.faces` are the old faces, by `lines`'
+ * points.
  * @param {Scene} scene
  * @param {number} index
  * @param {Lines} lines
@@ -167,13 +196,13 @@ export function rebuild(scene, index, lines) {
 
   /** @type {readonly (readonly number[])[]} */
   const faces = order.map((k) => found[k] ?? []);
-  const set = lines.set.toSorted((a, b) => a - b);
-  const traced = { points: lines.points, lines: lines.lines, faces };
+  const followed = follow(lines, faces);
+  const corners = faces.map((loop) => loop.map((p) => followed.points[p] ?? []));
 
   const freeForm = {
-    footprint: outline(lines.points, faces),
-    faces: faces.map((loop) => loop.map((p) => lines.points[p] ?? [])),
-    traced: set.length > 0 ? { ...traced, set } : traced,
+    footprint: outline(followed.points, faces),
+    faces: corners,
+    traced: stored(followed, faces),
   };
 
   /** @type {<T extends { readonly block: number, readonly face: number }>(item: T) => T | undefined} */
@@ -187,8 +216,11 @@ export function rebuild(scene, index, lines) {
 
   const block = scene.blocks[index] ?? FRESH;
 
+  const placed = onFaces(scene, change);
+
   const next = {
-    ...onFaces(scene, change),
+    ...placed,
+    grids: placed.grids?.filter((g) => g.block !== index || flat(corners[g.face] ?? [])),
     blocks: [
       ...scene.blocks.slice(0, index),
       { ...block, freeForm },

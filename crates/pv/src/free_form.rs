@@ -39,6 +39,12 @@ pub struct Traced {
     pub lines: Vec<[usize; 2]>,
     /// For each face, in the order of the faces, the points its corners are.
     pub faces: Vec<Vec<usize>>,
+    /// The points the person made eaves: a pull of the eaves raises them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub eaves: Vec<usize>,
+    /// The points the person made ridges: a pull of the ridges raises them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ridges: Vec<usize>,
 }
 
 /// Metres a corner may lie off its face's plane (ADR 20).
@@ -58,24 +64,38 @@ impl FreeForm {
                 .is_none_or(|traced| traced.names(&self.faces))
     }
 
+    /// Whether face `face` is a traced one bent off its plane: it carries no modules (ADR 20).
+    pub(crate) fn bent(&self, face: usize) -> bool {
+        self.traced.is_some() && self.faces.get(face).is_some_and(|corners| !flat(corners))
+    }
+
     fn holds(&self, face: &[[f64; 3]], unwalled: bool) -> bool {
         let plan: Vec<Plan> = face.iter().map(|&[x, _, z]| [x, z]).collect();
-        let Some(normal) = facing(face) else {
-            return false;
-        };
-        let count = f64::from(u32::try_from(face.len()).unwrap_or(u32::MAX));
-        let mean = face.iter().fold([0.0; 3], |[x, y, z], [px, py, pz]| {
-            [x + px / count, y + py / count, z + pz / count]
-        });
-        let flat = face
-            .iter()
-            .all(|&p| dot(sub(p, mean), normal).abs() <= FLATNESS);
-        simple(&plan) && flat && (unwalled || overlap(&plan, &self.footprint))
+        // A traced face may be bent while its heights are being given (ADR 20).
+        let flat = self.traced.is_some() || flat(face);
+        facing(face).is_some()
+            && simple(&plan)
+            && flat
+            && (unwalled || overlap(&plan, &self.footprint))
     }
 }
 
+/// Whether no corner lies more than `FLATNESS` off the plane through the corners' mean square to
+/// their Newell normal.
+fn flat(face: &[[f64; 3]]) -> bool {
+    let Some(normal) = facing(face) else {
+        return false;
+    };
+    let count = f64::from(u32::try_from(face.len()).unwrap_or(u32::MAX));
+    let mean = face.iter().fold([0.0; 3], |[x, y, z], [px, py, pz]| {
+        [x + px / count, y + py / count, z + pz / count]
+    });
+    face.iter()
+        .all(|&p| dot(sub(p, mean), normal).abs() <= FLATNESS)
+}
+
 impl Traced {
-    /// Whether every line joins two of its points, every set point is one, and each of `faces`
+    /// Whether every line joins two of its points, every set, eave and ridge point is one, and each of `faces`
     /// has its corners at the points it names.
     fn names(&self, faces: &[Vec<[f64; 3]>]) -> bool {
         let count = self.points.len();
@@ -90,7 +110,8 @@ impl Traced {
             && self.faces.iter().zip(faces).all(|(points, corners)| {
                 points.len() == corners.len() && points.iter().zip(corners).all(|(&p, &c)| at(c, p))
             });
-        lines && named && self.set.iter().all(|&p| p < count)
+        let points = |list: &[usize]| list.iter().all(|&p| p < count);
+        lines && named && points(&self.set) && points(&self.eaves) && points(&self.ridges)
     }
 }
 

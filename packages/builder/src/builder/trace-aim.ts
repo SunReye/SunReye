@@ -1,7 +1,7 @@
 // Where a pointer aims while tracing a roof (ADR 20): the plain ground under it in the scene's
 // frame, how many metres a click's snap reaches there, and a scene spot in the pv crate's frame.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- three.js and the DOM, used in place. */
-import type { Click, Spot } from "@sunreye/scene";
+import type { Click, Snap, Spot } from "@sunreye/scene";
 import { type PerspectiveCamera, Raycaster, Vector2 } from "three";
 import { inScene, level, world } from "./handles/frame.ts";
 import { ndc } from "./pointer.ts";
@@ -11,6 +11,9 @@ import type { Point } from "./pv.ts";
 export interface Aimed {
   readonly at: Spot;
   readonly reach: number;
+  /** What it picks by its pixels, as drawn: a traced point, a line, or free. Without one, it
+   * snaps by the ground under it. */
+  readonly snap?: Snap | undefined;
 }
 
 /** Metres a click snaps within where the ground cannot be measured. */
@@ -47,8 +50,8 @@ function ground(
 }
 
 /** Where `event` lands on the plain ground, and the metres `pixels` reach there; null off the
- * ground. A surface that carries heights comes with tracing on it (ADR 20): a click then lands on
- * it, and snaps by the pixels between it and the points it may take. */
+ * ground. What it picks of the traced roof by pixels is `pick`'s (trace-pick.ts). A surface that
+ * carries heights comes with tracing on it (ADR 20): a click then lands on it. */
 export function aim(
   canvas: HTMLCanvasElement,
   camera: PerspectiveCamera,

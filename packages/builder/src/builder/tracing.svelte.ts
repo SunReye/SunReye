@@ -7,7 +7,6 @@ import {
   addLine,
   moveLine,
   snap,
-  type Click,
   type End,
   type PointRef,
   type Refusal,
@@ -60,6 +59,9 @@ export interface Shown {
   readonly refused: Refusal | undefined;
 }
 
+/** Metres an end already picked by its pixels is snapped within again: none to speak of. */
+const RESOLVED = 1e-3;
+
 /** A press: where it landed, and the traced line it took, which a drag moves. */
 interface Pressed {
   readonly at: Spot;
@@ -86,11 +88,20 @@ function shifted(scene: Scene, { block, line }: LineRef, from: Spot, to: Spot): 
   return { from: by(a), to: by(b) };
 }
 
-/** Where a click ends a line: the traced point it snaps to, else the click itself. */
-function ended(scene: Scene, click: Click, reach: number): End {
-  const snapped = snap(scene, click, reach);
+/** What an aimed pointer snaps to: what it picks as drawn, else by the ground under it. */
+function snapOf(scene: Scene, { at, reach, snap: picked }: Aimed): Snap {
+  return picked ?? snap(scene, clickAt(at), reach);
+}
 
-  return snapped.kind === "point" ? { block: snapped.block, point: snapped.point } : click;
+/** Where a click ends a line: the traced point it snaps to, a place on the line it snaps to, else
+ * the click itself. */
+function ended(scene: Scene, aimed: Aimed): End {
+  const snapped = snapOf(scene, aimed);
+
+  if (snapped.kind === "point") return { block: snapped.block, point: snapped.point };
+
+  // A line's place by its plan, where the scene's operations snap it to the line again.
+  return snapped.kind === "line" ? { x: snapped.at[0], z: snapped.at[2] } : clickAt(aimed.at);
 }
 
 /** Whether two ends are the same traced point. */
@@ -136,8 +147,9 @@ export class TraceTool {
     if (at === undefined) this.#snap = undefined;
   }
 
-  press(tracing: Tracing, { at, reach }: Aimed): void {
-    const snapped = snap(tracing.scene, clickAt(at), reach);
+  press(tracing: Tracing, aimed: Aimed): void {
+    const snapped = snapOf(tracing.scene, aimed);
+    const { at } = aimed;
 
     const line =
       this.#from === undefined && snapped.kind === "line"
@@ -149,12 +161,13 @@ export class TraceTool {
   }
 
   /** The pointer moved: its snap, and a dragged line where it would go. */
-  move(tracing: Tracing, { at, reach }: Aimed, dragged: boolean): void {
+  move(tracing: Tracing, aimed: Aimed, dragged: boolean): void {
     const pressed = this.#pressed;
     const line = pressed?.line;
+    const { at } = aimed;
 
     this.#scene = tracing.scene;
-    this.#snap = line === undefined ? snap(tracing.scene, clickAt(at), reach) : undefined;
+    this.#snap = line === undefined ? snapOf(tracing.scene, aimed) : undefined;
 
     if (dragged && line !== undefined && pressed !== undefined)
       this.#dragged = shifted(tracing.scene, line, pressed.at, at);
@@ -204,15 +217,17 @@ export class TraceTool {
 
   /** A click: with no chain, a tap on a line picks it and one elsewhere starts a chain; on the
    * chain's last point it ends the chain; anywhere else it draws the line to there. */
-  #clicked(tracing: Tracing, { at, reach }: Aimed, line: LineRef | undefined): void {
-    const end = ended(tracing.scene, clickAt(at), reach);
+  #clicked(tracing: Tracing, aimed: Aimed, line: LineRef | undefined): void {
+    const { reach } = aimed;
+    const end = ended(tracing.scene, aimed);
     const from = this.#from;
 
     this.#refused = undefined;
 
     if (from === undefined) this.#started(tracing, end, line);
     else if (samePoint(from, end)) this.end();
-    else this.#joined(tracing, from, end, reach);
+    // Ends picked by pixels are resolved already: the scene's snap in metres must not move them.
+    else this.#joined(tracing, from, end, aimed.snap === undefined ? reach : RESOLVED);
   }
 
   /** No chain yet: a tap on a line picks it, one elsewhere starts a chain there. */

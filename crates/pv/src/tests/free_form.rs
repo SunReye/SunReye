@@ -664,3 +664,85 @@ fn a_roof_being_traced_has_no_footprint_until_its_lines_close() {
         0
     );
 }
+
+/// A traced 4 m square, one face, whose corner (4, 4) stands at `height` and the rest at 3 m.
+fn raised(height: f64) -> Value {
+    let points = json!([
+        [0.0, 3.0, 0.0],
+        [0.0, 3.0, 4.0],
+        [4.0, height, 4.0],
+        [4.0, 3.0, 0.0]
+    ]);
+    traced(
+        &points,
+        &json!([[0, 1], [1, 2], [2, 3], [3, 0]]),
+        &json!([points]),
+        &json!([[0, 1, 2, 3]]),
+        &json!([[0.0, 0.0], [0.0, 4.0], [4.0, 4.0], [4.0, 0.0]]),
+    )
+}
+
+#[test]
+fn a_bent_traced_face_is_kept_but_a_bent_face_entered_by_its_corners_is_refused() {
+    let bent = raised(4.0);
+    let entered = free(&bent["freeForm"]["footprint"], &bent["freeForm"]["faces"]);
+
+    assert_eq!(scene(0.0, &json!([bent])).check_blocks(), Ok(()));
+    assert_eq!(scene(0.0, &json!([entered])).check_blocks(), Err(0));
+}
+
+#[test]
+fn a_module_grid_on_a_bent_traced_face_is_refused() {
+    let grids = json!([{
+        "block": 0, "face": 0, "moduleType": 7, "landscape": false, "setback": 0.0,
+        "modules": [portrait(0.5, 0.5)],
+    }]);
+    let sized = |id| (id == 7).then_some(SIZE);
+    let laid = |block: Value| {
+        let stored = json!({ "north": 0.0, "blocks": [block], "obstacles": [], "grids": grids });
+        serde_json::from_value::<Scene>(stored)
+            .unwrap()
+            .modules(sized)
+            .map(|placed| placed.len())
+    };
+
+    assert_eq!(laid(raised(3.0)), Ok(1));
+    assert_eq!(laid(raised(4.0)), Err(Misplaced::Face { grid: 0 }));
+}
+
+#[test]
+fn a_traced_roof_keeps_the_points_the_person_made_eaves_and_ridges() {
+    let mut block = square();
+    block["freeForm"]["traced"]["eaves"] = json!([0, 1]);
+    block["freeForm"]["traced"]["ridges"] = json!([2]);
+    let stored = json!({ "north": 0.0, "blocks": [block], "obstacles": [], "grids": [] });
+
+    let read: Scene = serde_json::from_value(stored.clone()).unwrap();
+
+    assert_eq!(serde_json::to_value(&read).unwrap(), stored);
+    assert_eq!(read.check_blocks(), Ok(()));
+
+    for field in ["eaves", "ridges"] {
+        let mut stray = square();
+        stray["freeForm"]["traced"][field] = json!([4]);
+        assert_eq!(scene(0.0, &json!([stray])).check_blocks(), Err(0));
+    }
+}
+
+#[test]
+fn a_bent_traced_face_offers_no_free_roof_to_fill() {
+    let grids = json!([{
+        "block": 0, "face": 0, "moduleType": 7, "landscape": false, "setback": 0.0, "modules": [],
+    }]);
+    let sized = |id| (id == 7).then_some(SIZE);
+    let free = |block: Value| {
+        let stored = json!({ "north": 0.0, "blocks": [block], "obstacles": [], "grids": grids });
+        serde_json::from_value::<Scene>(stored)
+            .unwrap()
+            .fill(0, sized)
+            .len()
+    };
+
+    assert!(free(raised(3.0)) > 0);
+    assert_eq!(free(raised(4.0)), 0);
+}

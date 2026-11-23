@@ -303,5 +303,13 @@
   "builder_trace_short": "No length",
   "builder_trace_joins": "Joins two roofs",
   "builder_trace_crosses": "Lines cross",
-  "builder_trace_missing": "No longer there"
+  "builder_trace_missing": "No longer there",
+  "builder_trace_eaves": "Eave height",
+  "builder_trace_ridges": "Ridge height",
+  "builder_trace_kind": "Line is",
+  "builder_trace_eave": "Eave",
+  "builder_trace_ridge": "Ridge",
+  "builder_trace_start": "Height at start",
+  "builder_trace_end": "Height at end",
+  "builder_trace_bent": "A roof face is not flat and carries no modules until it is."
 }

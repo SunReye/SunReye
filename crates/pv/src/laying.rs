@@ -46,6 +46,10 @@ impl<'a> Laying<'a> {
         moved: Option<usize>,
     ) -> Option<Self> {
         let grid = scene.grids.get(index)?;
+        // A bent face carries no modules (ADR 20): nothing is laid on it.
+        if scene.bent(grid.block, grid.face) {
+            return None;
+        }
         let on = |other: &ModuleGrid| (other.block, other.face) == (grid.block, grid.face);
         let face = roofs
             .iter()

@@ -44,6 +44,8 @@ export const RULES: readonly Rule[] = [
       "gallery/": GALLERY,
       "shell/Bar.svelte": "Navigation, which is no choice of a few (ADR 21).",
       "builder/ColourRow.svelte": "Swatches: each is a figure, not a word (ADR 21).",
+      "builder/PickedLine.svelte":
+        "A traced line may be neither eave nor ridge, so the choice may be left empty (ADR 20).",
       "settings/ImportSources.svelte":
         "A choice that may be left empty means the default (ADR 21).",
       "scene/PerfOverlay.svelte": "A choice that may be left empty means the default (ADR 21).",

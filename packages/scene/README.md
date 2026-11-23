@@ -23,7 +23,21 @@ A traced roof is a free-form block whose `freeForm.traced` keeps its points (x, 
 
 After every edit the block's faces are derived again. A loop keeping three or more of an old face's points stays that face, at its index, with its module grid, roof chimneys, roof windows, existing PV and face details; of two such loops the one keeping more points stays it, then the larger. A loop keeping no old face is new: it takes the place of a face that went, the first first, else a place after the others. A face whose loop went takes what stood on it; only where more faces went than came do later faces move up, with theirs, as `faces` says. A click on plain ground lands at height 0; one bringing a `height` (a surface that carries heights) sets its point's height.
 
-Pulling up, a point's height, ready shapes and dormers join this module, each an edit of a block's lines whose faces `rebuild` derives (`roof-faces.js`).
+## Pulling a traced roof up
+
+The tracing has no heights; the roof is pulled up in two moves, eaves then ridges. Each is an `Edited` as above, `from` and `to` -1 unless said.
+
+- `pullEaves(scene, block, height)`, `pullRidges(scene, block, height)`: every eave, or ridge, point of the block to `height` metres, but a point whose height was set.
+- `markLine(scene, block, line, kind)`: makes a line, both its points, an eave or a ridge (`Kind`, `"eave" | "ridge"`), kept in `traced.eaves` and `traced.ridges`; `from` and `to` are its points. A point that splits such a line is one too.
+- `setHeight(scene, block, point, height)`: a point's height, set: no pull changes it; `from` and `to` are the point.
+- `lineKind(scene, block, line)`: an eave or a ridge when both its points are; undefined for a hip, a valley or a verge.
+- `bent(scene, block)`: the block's faces more than 2 cm off their plane, as the `pv` crate measures it. They are drawn in the warning colour; every edit drops a module grid on one, as the crate refuses it.
+
+Without the person's word, a corner of the outline is an eave; any other point an inner line ends at is a ridge, unless that line only runs straight on through it; any other point on the outline an eave. A gable's ridge ending on its verges is a ridge; a hip's hips, which end at corners, are not.
+
+After every edit, a point that is no eave, ridge or set point takes its height on a face whose eave, ridge and set points fix a plane (the best fit to three or more not in one line), again until none changes; so faces stay flat, and a line drawn on a pulled roof lands on it.
+
+Ready shapes and dormers will join this module, each an edit of a block's lines whose faces `rebuild` derives (`roof-faces.js`).
 
 ## Face details
 

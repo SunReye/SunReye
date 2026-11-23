@@ -1,7 +1,7 @@
 // Tracing a roof (ADR 20): a scene in, the next scene out. A traced block's lines are its source;
 // each edit derives its faces again from their closed loops (`rebuild`). Pure: no browser, no 3D.
-// Pulling up, a point's height, ready shapes and dormers come here too, each an edit of a block's
-// lines handed to `rebuild`.
+// Pulling up is roof-pull.js's; ready shapes and dormers will join, each an edit of a block's lines
+// handed to `rebuild`.
 
 import { rebuild, withoutBlock } from "./roof-faces.js";
 import { PLACE, along, apart, between, crossing, onSegment, touching } from "./roof-plan.js";
@@ -60,6 +60,11 @@ function withPoint(lines, at, set) {
 
   const [i = 0, j = 0] = lines.lines[on] ?? [];
 
+  /** A point splitting a line the person made an eave or a ridge is one too.
+   * @param {readonly number[]} list */
+  const named = (list) =>
+    on >= 0 && list.includes(i) && list.includes(j) ? [...list, point] : list;
+
   const split =
     on >= 0
       ? [...lines.lines.slice(0, on), [i, point], [point, j], ...lines.lines.slice(on + 1)]
@@ -71,6 +76,8 @@ function withPoint(lines, at, set) {
       points: [...lines.points, at],
       set: set ? [...lines.set, point] : lines.set,
       lines: split,
+      eaves: named(lines.eaves),
+      ridges: named(lines.ridges),
     },
     point,
   };
@@ -227,6 +234,8 @@ export function removeLine(scene, block, line) {
     set: lines.set.flatMap((p) => rename(p)),
     lines: left.map((l) => l.flatMap((p) => rename(p))),
     faces: lines.faces.map((f) => f.flatMap((p) => rename(p))),
+    eaves: lines.eaves.flatMap((p) => rename(p)),
+    ridges: lines.ridges.flatMap((p) => rename(p)),
   };
 
   return { ...rebuild(scene, block, kept), block, from: -1, to: -1 };
