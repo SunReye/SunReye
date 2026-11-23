@@ -1,7 +1,15 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
 import { loadPv } from "@sunreye/pv-wasm";
-import { addLine, type End, type Scene } from "@sunreye/scene";
+import {
+  addLine,
+  pullEaves,
+  pullRidges,
+  setHeight,
+  type End,
+  type Edited,
+  type Scene,
+} from "@sunreye/scene";
 
 // A traced roof as the pv crate reads it (ADR 20): the faces the tracing derives face up and
 // carry modules, so the core would save them.
@@ -67,4 +75,68 @@ test("a gable traced on a surface is two faces at its pitch, and a module lies o
   expect(laid.roofs.map(({ tilt }) => Math.round(tilt))).toEqual([35, 35]);
   expect(laid.misplaced).toBeNull();
   expect(laid.grids[0]?.modules).toHaveLength(1);
+});
+
+/** The scene an edit made. */
+function made(edited: Edited): Scene {
+  if ("refused" in edited) throw new Error(edited.refused);
+
+  return edited.scene;
+}
+
+/** Clicks on the plain ground from `from`, which bring no height, each joined to the last. */
+function ground(scene: Scene, from: End, ...clicks: readonly (readonly [number, number])[]): Scene {
+  let at = { scene, from };
+
+  for (const [x, z] of clicks) {
+    const edited = addLine(at.scene, at.from, { x, z }, 0.3);
+
+    if ("refused" in edited) throw new Error(edited.refused);
+
+    at = { scene: edited.scene, from: { block: edited.block, point: edited.to } };
+  }
+
+  return at.scene;
+}
+
+/** A module on face 1 of block 0. */
+const ONE = {
+  block: 0,
+  face: 1,
+  moduleType: 1,
+  landscape: false,
+  setback: 0.3,
+  modules: [{ across: 1, up: 1, landscape: false }],
+};
+
+test("a gable traced on the plain ground and pulled up is two faces at its pitch, and carries modules", () => {
+  const outline = ground(
+    { north: 0, blocks: [], obstacles: [] },
+    { x: 0, z: 0 },
+    [0, 8],
+    [10, 8],
+    [10, 0],
+    [0, 0],
+  );
+
+  const gable = ground(outline, { x: 0, z: 4 }, [10, 4]);
+  const pulled = made(pullRidges(made(pullEaves(gable, 0, 3)), 0, RIDGE));
+
+  const laid = pv.modules({ ...pulled, grids: [ONE] }, { 1: { width: 1.134, height: 1.722 } });
+
+  expect(laid.roofs.map(({ tilt }) => Math.round(tilt))).toEqual([35, 35]);
+  expect(laid.misplaced).toBeNull();
+  expect(laid.grids[0]?.modules).toHaveLength(1);
+
+  // A corner raised by hand bends its face: the engine keeps the roof and lays no module on it.
+  const corner = (pulled.blocks[0]?.freeForm?.traced?.points ?? []).findIndex(
+    ([x, , z]) => x === 0 && z === 8,
+  );
+
+  const bent = made(setHeight({ ...pulled, grids: [ONE] }, 0, corner, 4));
+
+  expect(bent.grids).toEqual([]);
+  expect(
+    pv.modules({ ...bent, grids: [ONE] }, { 1: { width: 1.134, height: 1.722 } }).misplaced,
+  ).not.toBeNull();
 });
