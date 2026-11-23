@@ -20,6 +20,7 @@
     "apps/web/src/lib/api/schema.d.ts",
     "packages/sdk/src/generated.ts",
     "packages/scene/schema.d.ts",
+    "packages/scene/scene-schema.js",
     "target/**",
     "apps/web/src/lib/components/ui/**",
     "packages/builder/src/motion.ts",

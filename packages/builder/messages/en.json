@@ -291,5 +291,16 @@
   "view_north": "North",
   "view_south": "South",
   "view_top": "Top",
-  "view_west": "West"
+  "view_west": "West",
+  "builder_trace": "Trace a roof",
+  "builder_trace_hint": "Click along every roof line. Every closed shape becomes a roof face.",
+  "builder_trace_done": "Done",
+  "builder_trace_remove": "Remove line",
+  "builder_trace_lines": "Traced roof lines",
+  "builder_snap_point": "Point",
+  "builder_snap_line": "On line",
+  "builder_trace_short": "No length",
+  "builder_trace_joins": "Joins two roofs",
+  "builder_trace_crosses": "Lines cross",
+  "builder_trace_missing": "No longer there"
 }

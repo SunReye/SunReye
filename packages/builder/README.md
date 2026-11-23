@@ -73,16 +73,20 @@ The scene canvas. Loads three.js: import it where a scene is drawn, or lazily.
   - A roof face, in and out: given the crate's `roofs`, it marks the face whose `@sunreye/scene` key is `selected`, and `onselect` answers a click on a roof or a module with the face's block and face, or null off every roof. Two views of one scene take one key.
   - Lifecycle: `onrender`, `onready`, `onerror`.
   - Editing: `editing` and `roofwork` carry the editing tools' handles and roof gestures.
+  - Tracing a roof (ADR 20): `tracing`, a `Tracing`, switches the canvas to tracing, alongside the roof gestures; give the view from above (`presetView("top", …)`). Clicks are traced over whatever is drawn, the `around` aerial image included:
+    - `scene`: the scene traced on. Each click joins the last and snaps within `reach` pixels (12 without) to a traced point, else a traced line; the snap is named, and the line being drawn shows its length, in a chip beside the pointer. A click back on the chain's first point closes the loop; one on its last point, or Escape, ends the chain.
+    - `ontrace(scene, edit)`: each edit's next scene, made by `@sunreye/scene`'s operations, and the `TraceEdit` itself (`{ kind: "add", from, to }` or `{ kind: "move", block, line, by }`), so a consumer that keeps the scene elsewhere may run the same operation there. The consumer keeps the scene and hands it back; the canvas changes nothing itself.
+    - `line` and `onpickline`: a tap on a traced line with no chain picks it (a `LineRef`, or undefined off every line); the consumer holds it and may remove it with `removeLine`. A press on a traced line dragged moves it.
 - Camera: `presetView` (a preset, turned to a compass heading), `headingOf` (the bearing a view looks toward, for a compass), `parseView`, and the types `View` and `Preset`.
 - Language: `speak` sets the locale of every entry's words, `Locale`; a change shows without a reload.
 - `panels`, the modules a layout draws; `sunAt`, the sun's direction at an instant.
-- Types the props name: `Around`, `Aerial`, `Editing`, `Hit`, `Panel`, `Projector`, `Roofwork`.
+- Types the props name: `Around`, `Aerial`, `Editing`, `Hit`, `Panel`, `Projector`, `Roofwork`, `Tracing`, `TraceEdit`, `LineRef`.
 
 ## `@sunreye/builder/frame`
 
 The frame around a canvas. Loads three.js, so a screen that only shows the scene imports the root instead.
 
-- `Builder`: a canvas, the time slider and the inspector of one editing session. Props:
+- `Builder`: a canvas, the time slider and the inspector of one editing session; its Buildings group traces a roof with the canvas's tracing mode, one undo step per line. Props:
   - `pv`: the engine, from `@sunreye/pv-wasm`.
   - `core: Keeper`: takes the session's two writes, a layout change and an added module type.
   - `records?: Records`: what the frame reads besides the scene, each optional.

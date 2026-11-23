@@ -21,6 +21,14 @@ export { layingOf, type Roofwork } from "./gestures.ts";
 
 export { marked, selector } from "./roof-select.svelte.ts";
 
+export { TracePress } from "./trace-press.ts";
+
+export { TraceTool, type Tracing } from "./tracing.svelte.ts";
+
+export { default as TraceLayer } from "./TraceLayer.svelte";
+
+export { TracingMode } from "./tracing-mode.svelte.ts";
+
 /** Pixels from the canvas's top left corner. */
 export type Projector = (point: Point) => readonly [number, number] | null;
 

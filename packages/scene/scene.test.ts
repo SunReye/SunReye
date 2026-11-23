@@ -5,7 +5,7 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { roofFaceKey } from "./index.js";
+import { SCENE_SCHEMA, SCENE_SCHEMA_VERSION, roofFaceKey } from "./index.js";
 
 const here = new URL(".", import.meta.url).pathname;
 const tsrs = join(here, "../../node_modules/.bin/tsrs");
@@ -117,4 +117,35 @@ test("a roof face has one key, whichever view selected it", async () => {
   expect(key({ block: 0, face: 1 })).toBe(roofFaceKey(grid));
   expect(key({ block: 0, face: 1 })).not.toBe(key({ block: 1, face: 0 }));
   expect(key({ block: 1, face: 10 })).not.toBe(key({ block: 11, face: 0 }));
+});
+
+test("a consumer traces a roof with the shipped operations, typed", async () => {
+  const consumer = `
+import { addLine, type Edited, type Scene } from "@sunreye/scene";
+
+const empty: Scene = { north: 0, blocks: [], obstacles: [] };
+
+export const edited: Edited = addLine(empty, { x: 0, z: 0 }, { x: 0, z: 4 }, 0.3);
+`;
+
+  const module: unknown = await import(Bun.resolveSync("@sunreye/scene", out));
+
+  expect(await check(consumer)).toBe("");
+  expect(Object.prototype.hasOwnProperty.call(module, "addLine")).toBe(true);
+});
+
+test("a consumer reads the scene's JSON Schema and the version it was made at from the package", async () => {
+  const module: unknown = await import(Bun.resolveSync("@sunreye/scene", out));
+  const schema: unknown = Object.getOwnPropertyDescriptor(module, "SCENE_SCHEMA")?.value;
+  const version: unknown = Object.getOwnPropertyDescriptor(module, "SCENE_SCHEMA_VERSION")?.value;
+  const manifest: unknown = await Bun.file(new URL("package.json", import.meta.url)).json();
+
+  expect(schema).toMatchObject({
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    $ref: "#/$defs/Scene",
+    $defs: { Scene: { required: ["north", "blocks", "obstacles"] } },
+  });
+  expect(JSON.stringify(schema)).not.toContain("#/components/schemas/");
+  expect(manifest).toMatchObject({ version });
+  expect([schema, version]).toEqual([SCENE_SCHEMA, SCENE_SCHEMA_VERSION]);
 });

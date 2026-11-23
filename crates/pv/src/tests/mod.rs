@@ -3,6 +3,7 @@ mod device_types;
 mod diode;
 mod equipment;
 mod estimate;
+mod face_detail;
 mod fitting;
 mod fixtures;
 mod free_form;

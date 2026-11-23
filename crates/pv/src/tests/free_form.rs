@@ -575,3 +575,92 @@ fn a_face_bent_within_the_tolerance_does_not_shade_its_own_modules() {
         }
     }
 }
+
+/// A traced block (ADR 20): the 4 m square at height 0 split by the line from (0, 0) to (4, 4),
+/// its two faces naming their points.
+fn traced(points: &Value, lines: &Value, faces: &Value, loops: &Value, footprint: &Value) -> Value {
+    json!({
+        "x": 0.0, "z": 0.0, "width": 0.0, "depth": 0.0, "eave": 0.0, "rotation": 0.0,
+        "roof": { "kind": "flat" },
+        "freeForm": {
+            "footprint": footprint,
+            "faces": faces,
+            "traced": { "points": points, "lines": lines, "faces": loops },
+        },
+    })
+}
+
+fn square() -> Value {
+    traced(
+        &json!([
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 4.0],
+            [4.0, 0.0, 4.0],
+            [4.0, 0.0, 0.0]
+        ]),
+        &json!([[0, 1], [1, 2], [2, 3], [3, 0], [0, 2]]),
+        &json!([
+            [[0.0, 0.0, 0.0], [0.0, 0.0, 4.0], [4.0, 0.0, 4.0]],
+            [[0.0, 0.0, 0.0], [4.0, 0.0, 4.0], [4.0, 0.0, 0.0]],
+        ]),
+        &json!([[0, 1, 2], [0, 2, 3]]),
+        &json!([[0.0, 0.0], [0.0, 4.0], [4.0, 4.0], [4.0, 0.0]]),
+    )
+}
+
+#[test]
+fn a_traced_roof_reads_and_writes_unchanged() {
+    let stored = json!({ "north": 0.0, "blocks": [square()], "obstacles": [], "grids": [] });
+
+    let scene: Scene = serde_json::from_value(stored.clone()).unwrap();
+
+    assert_eq!(serde_json::to_value(&scene).unwrap(), stored);
+    assert_eq!(scene.check_blocks(), Ok(()));
+}
+
+#[test]
+fn a_traced_face_whose_corners_are_not_its_points_is_refused() {
+    let mut block = square();
+    block["freeForm"]["traced"]["faces"] = json!([[0, 1, 2], [0, 1, 3]]);
+
+    assert_eq!(scene(0.0, &json!([block])).check_blocks(), Err(0));
+}
+
+#[test]
+fn a_traced_line_or_face_naming_no_point_is_refused() {
+    let mut line = square();
+    line["freeForm"]["traced"]["lines"] = json!([[0, 9]]);
+    let mut same = square();
+    same["freeForm"]["traced"]["lines"] = json!([[1, 1]]);
+    let mut set = square();
+    set["freeForm"]["traced"]["set"] = json!([4]);
+    let mut count = square();
+    count["freeForm"]["traced"]["faces"] = json!([[0, 1, 2]]);
+
+    for block in [line, same, set, count] {
+        assert_eq!(
+            scene(0.0, &json!([block])).check_blocks(),
+            Err(0),
+            "{block}"
+        );
+    }
+}
+
+#[test]
+fn a_roof_being_traced_has_no_footprint_until_its_lines_close() {
+    let open = traced(
+        &json!([[0.0, 0.0, 0.0], [0.0, 0.0, 4.0], [4.0, 0.0, 4.0]]),
+        &json!([[0, 1], [1, 2]]),
+        &json!([]),
+        &json!([]),
+        &json!([]),
+    );
+    let untraced = free(&json!([]), &json!([]));
+
+    assert_eq!(scene(0.0, &json!([open])).check_blocks(), Ok(()));
+    assert_eq!(scene(0.0, &json!([untraced])).check_blocks(), Err(0));
+    assert_eq!(
+        surfaces(&scene(0.0, &json!([open])), Surface::Wall).len(),
+        0
+    );
+}

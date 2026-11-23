@@ -4,3 +4,7 @@
 export function roofFaceKey({ block, face }) {
   return `${block}/${face}`;
 }
+
+export { addLine, loops, moveLine, removeLine, snap } from "./roof.js";
+
+export { SCENE_SCHEMA, SCENE_SCHEMA_VERSION } from "./scene-schema.js";

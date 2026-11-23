@@ -344,6 +344,14 @@ _Avoid_: Eave depth, soffit
 A roof face given by its corners rather than by its block's roof kind; it carries module grids like any other.
 _Avoid_: Custom roof, polygon roof, LoD2 face
 
+**Roof line**:
+A line traced along a roof seen from above: an eave, ridge, hip, valley or verge. A traced roof's lines are its source; every closed loop of them is a free-form roof face.
+_Avoid_: Edge, stroke, segment
+
+**Covering**:
+What a roof face is covered with: tiles, slate, sheet metal or bitumen; unknown until someone says.
+_Avoid_: Roofing, material, Eindeckung
+
 **Rack field**:
 Rows of modules tilted off a flat roof face or level ground, at their own tilt and azimuth.
 _Avoid_: Ground mount, elevation, substructure, Aufständerung

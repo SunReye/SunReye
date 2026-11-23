@@ -129,6 +129,7 @@
       covered={sheet && session.expanded}
       editing={session.editing}
       roofwork={session.roofwork}
+      tracing={session.tracing.tracing}
       onto={phone.current ? session.wiring.onto : undefined}
       tools={phone.current ? tools : undefined}
       selected={session}

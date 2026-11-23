@@ -714,6 +714,31 @@ async fn overhangs_chimneys_and_colours_are_saved_and_a_bad_one_is_refused() {
 }
 
 #[tokio::test]
+async fn a_face_detail_is_saved_and_one_naming_no_face_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let module = core.module_type(&set_cookie).await;
+    let strings = [string(None, "south", &module, 1, 0.0)];
+    let with = |face: usize| {
+        let mut scene = house(&module, &[cell(0, 0, Some(0), false)]);
+        scene["faceDetails"] =
+            json!([{ "block": 0, "face": face, "covering": "slate", "pitchConfirmed": true }]);
+        scene
+    };
+
+    let (status, saved) = core.put_scene(&set_cookie, &strings, &with(1)).await;
+    let (_, read) = core.call(&set_cookie, get("/api/v1/layout")).await;
+    let (refused, body) = core.put_scene(&set_cookie, &strings, &with(2)).await;
+
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    assert_eq!(read["scene"], with(1));
+    assert_eq!(
+        (refused, &body["code"]),
+        (StatusCode::UNPROCESSABLE_ENTITY, &json!("layout.scene"))
+    );
+}
+
+#[tokio::test]
 async fn a_free_form_roof_is_saved_with_its_modules_and_a_bent_face_is_refused() {
     let dir = tempfile::tempdir().unwrap();
     let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
