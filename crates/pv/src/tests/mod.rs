@@ -25,4 +25,5 @@ mod string;
 mod sun;
 mod surroundings;
 mod temperature;
+mod typical;
 mod year;

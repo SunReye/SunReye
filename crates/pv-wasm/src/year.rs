@@ -19,11 +19,11 @@ thread_local! {
 /// Weather at a fixed step, as columns: sample `i` is at `start + i × step`.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Steps {
+pub struct Steps {
     /// Seconds since 1970, UTC.
     start: i64,
     /// Seconds.
-    step: i64,
+    pub step: i64,
     /// W/m².
     ghi: Vec<f64>,
     dni: Vec<f64>,
@@ -36,7 +36,7 @@ struct Steps {
 }
 
 impl Steps {
-    fn samples(&self) -> Result<Vec<Weather>, String> {
+    pub fn samples(&self) -> Result<Vec<Weather>, String> {
         let n = self.ghi.len();
         let lengths = [
             self.dni.len(),

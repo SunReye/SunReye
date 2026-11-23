@@ -2,6 +2,7 @@
 //!
 //! Angles are in degrees. Azimuths follow ADR 17: 0 = south, −90 = east, 90 = west.
 
+mod cautious;
 mod chimney;
 mod clear_sky;
 mod device_types;
@@ -28,8 +29,10 @@ mod string;
 mod sun;
 mod surroundings;
 mod temperature;
+mod typical;
 mod year;
 
+pub use cautious::{Basis, Cautious, cautious, irradiation};
 pub use chimney::{Chimney, Footing};
 pub use clear_sky::{Irradiance, clear_sky, clear_weather};
 pub use device_types::{BatteryType, InverterType, MpptInput};
@@ -53,6 +56,7 @@ pub use surroundings::{
     Fence, FenceFinish, FencePoint, Fencing, Ground, GroundFinish, GroundSurface,
 };
 pub use temperature::cell_temperature;
+pub use typical::{FEWEST_YEARS, TYPICAL_YEAR, Typical, TypicalRefused, typical_year};
 pub use year::{AcYear, Energy, InputYear, InverterYear, Year, year, year_with};
 
 /// The cell temperature in °C a string's open-circuit voltage is checked at (ADR 20).
@@ -87,6 +91,19 @@ pub struct Sun {
 pub struct Location {
     pub latitude: f64,
     pub longitude: f64,
+}
+
+impl Location {
+    /// To 0.01° (about 1 km): what a plant's location is stored at and leaves the home at, and
+    /// the rounded location a typical year belongs to (ADR 17).
+    #[must_use]
+    pub fn rounded(self) -> Self {
+        let round = |degrees: f64| (degrees * 100.0).round() / 100.0;
+        Self {
+            latitude: round(self.latitude),
+            longitude: round(self.longitude),
+        }
+    }
 }
 
 /// The weather at one instant, irradiance in W/m².

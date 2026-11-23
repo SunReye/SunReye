@@ -472,6 +472,14 @@ _Avoid_: Condition, weather type
 A whole instant's weather the builder's weather button shows the plant in, in place of the stored weather; held by the page, never saved. German UI: the button's words (Klar, Regen, …).
 _Avoid_: Sample (a reading), preset (a camera view), demo weather
 
+**Typical year**:
+One year of weather for a rounded location, each calendar month taken whole from the past year closest to twenty or more of them; the year an offer's expected yield is simulated on.
+_Avoid_: TMY, average year, reference year
+
+**Cautious yield**:
+The yearly yield exceeded in nine years of ten (P90): the simulated typical year scaled by past years' irradiation on the planes.
+_Avoid_: Worst case, minimum yield
+
 **Correction**:
 A multiplier the plant learns per MPPT input, plant-local month and hour: measured over modelled PV power on past weather.
 _Avoid_: Calibration, bias factor
