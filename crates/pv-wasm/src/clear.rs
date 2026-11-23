@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use serde::Deserialize;
 use sunreye_pv::{
-    Input, Inverter, Layout, Module, ModuleType, MpptLimits, Neighbour, NeighbourRefused, Plane,
+    Input, Inverter, InverterType, Layout, Module, ModuleType, Neighbour, NeighbourRefused, Plane,
     PvString, Scene, Size, clear_weather, estimate,
 };
 
@@ -85,7 +85,7 @@ impl Run {
     /// # Errors
     /// A supplied neighbour's [`NeighbourRefused`].
     pub fn watts(&self) -> Result<Vec<Vec<f64>>, NeighbourRefused> {
-        let Wired { layout, order, .. } = self.plant.layout(|_, _| None)?;
+        let Wired { layout, order, .. } = self.plant.layout(&HashMap::new())?;
         Ok(self
             .times
             .iter()
@@ -116,15 +116,12 @@ pub struct Wired {
 }
 
 impl Plant {
-    /// The model's layout, each input's limits by `limits(device, input)`; strings of an unknown
-    /// module type are left out.
+    /// The model's layout, each inverter's MPPT limits and AC side from its type in `types` by
+    /// device id, read whole; strings of an unknown module type are left out.
     ///
     /// # Errors
     /// A supplied neighbour's [`NeighbourRefused`].
-    pub fn layout(
-        &self,
-        limits: impl Fn(u32, u32) -> Option<MpptLimits>,
-    ) -> Result<Wired, NeighbourRefused> {
+    pub fn layout(&self, types: &HashMap<u32, InverterType>) -> Result<Wired, NeighbourRefused> {
         let wired = self.by_input();
         let order = wired
             .values()
@@ -138,15 +135,23 @@ impl Plant {
             .collect();
         let inverters = wired
             .into_iter()
-            .map(|(device, inputs)| Inverter {
-                inputs: inputs
-                    .into_iter()
-                    .map(|(input, strings)| Input {
-                        limits: limits(device, input),
-                        strings: strings.into_iter().map(|(_, s)| s).collect(),
-                    })
-                    .collect(),
-                ac: None,
+            .map(|(device, inputs)| {
+                let datasheet = types.get(&device);
+                let limits = datasheet.map(InverterType::limits).unwrap_or_default();
+                Inverter {
+                    inputs: inputs
+                        .into_iter()
+                        .map(|(input, strings)| Input {
+                            limits: usize::try_from(input)
+                                .ok()
+                                .and_then(|i| i.checked_sub(1))
+                                .and_then(|i| limits.get(i))
+                                .copied(),
+                            strings: strings.into_iter().map(|(_, s)| s).collect(),
+                        })
+                        .collect(),
+                    ac: datasheet.map(InverterType::ac_side),
+                }
             })
             .collect();
         let mut occluders = self.scene.occluders();

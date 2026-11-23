@@ -57,7 +57,7 @@ flowchart LR
 
 An inverter with an AC side, its inverter type's AC rating and European weighted efficiency, also gets its AC energy and the energy its rating clipped. Each sample's DC watts pass pvlib's `inverter.pvwatts`: the type's efficiency is the nominal one and its rating over that efficiency the DC rating, so efficiency falls at part load; AC watts above the rating are clipped. AC and clipped energy sum to the curve's output. Without an AC side an inverter reports neither, and nothing on the DC side changes with one (ADR 17).
 
-`@sunreye/pv-wasm`'s `year` takes the plant as `clearSky` does, each inverter's inverter type for its MPPT limits, and the weather as columns at a fixed step from a start instant. It returns each string's energy by position and each inverter's by device id with its inputs by number.
+`@sunreye/pv-wasm`'s `year` takes the plant as `clearSky` does, each inverter's inverter type for its MPPT limits and AC side, and the weather as columns at a fixed step from a start instant. It returns each string's energy by position and each inverter's by device id with its inputs by number, and a typed inverter's `ac`: its AC and clipped energy.
 
 ## How shade reaches the electrics
 
