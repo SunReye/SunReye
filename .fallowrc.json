@@ -9,7 +9,25 @@
     "**/.svelte-kit/**",
     "apps/web/src/lib/components/ui/**",
     "apps/web/src/lib/motion.ts",
-    "apps/web/src/lib/utils.ts",
+    "packages/ui/src/alert/**",
+    "packages/ui/src/button/**",
+    "packages/ui/src/calendar/**",
+    "packages/ui/src/card/**",
+    "packages/ui/src/checkbox/**",
+    "packages/ui/src/dialog/**",
+    "packages/ui/src/drawer/**",
+    "packages/ui/src/dropdown-menu/**",
+    "packages/ui/src/input/**",
+    "packages/ui/src/item/**",
+    "packages/ui/src/popover/**",
+    "packages/ui/src/pressable/**",
+    "packages/ui/src/separator/**",
+    "packages/ui/src/slider/**",
+    "packages/ui/src/spinner/**",
+    "packages/ui/src/toggle/**",
+    "packages/ui/src/toggle-group/**",
+    "packages/ui/src/track-active.ts",
+    "packages/ui/src/utils.ts",
     "apps/web/src/lib/hooks/**"
   ],
   "ignoreBinaries": ["systemd-analyze"],
@@ -129,6 +147,10 @@
         "patterns": ["packages/scene/**"]
       },
       {
+        "name": "ui",
+        "patterns": ["packages/ui/**"]
+      },
+      {
         "name": "profiles",
         "patterns": ["profiles/**"]
       },
@@ -140,7 +162,7 @@
     "rules": [
       {
         "from": "web",
-        "allow": ["tokens", "catalogue", "scene"]
+        "allow": ["tokens", "catalogue", "scene", "ui"]
       },
       {
         "from": "sdk",
@@ -159,12 +181,16 @@
         "allow": []
       },
       {
+        "from": "ui",
+        "allow": []
+      },
+      {
         "from": "profiles",
         "allow": ["sdk"]
       },
       {
         "from": "tooling",
-        "allow": ["web", "sdk", "tokens", "catalogue", "scene", "profiles"]
+        "allow": ["web", "sdk", "tokens", "catalogue", "scene", "ui", "profiles"]
       }
     ],
     "coverage": {

@@ -12,5 +12,7 @@
     "skipLibCheck": true,
     "types": ["bun"]
   },
-  "include": ["scripts", "packages", "profiles"]
+  "include": ["scripts", "packages", "profiles"],
+  // The kit's sources import Svelte components: the app's Svelte check reads them.
+  "exclude": ["packages/ui/src"]
 }

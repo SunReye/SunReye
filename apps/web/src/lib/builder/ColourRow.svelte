@@ -1,8 +1,8 @@
 <!-- An inspector row choosing a finish's colour: its own, a common one, or any (ADR 20). -->
 <script lang="ts">
   import Check from "@lucide/svelte/icons/check";
-  import * as Item from "#lib/components/ui/item/index.js";
-  import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
+  import * as Item from "@sunreye/ui/item";
+  import * as ToggleGroup from "@sunreye/ui/toggle-group";
   import { m } from "../paraglide/messages.js";
   import type { Swatch } from "./colours.ts";
   import HexField from "./HexField.svelte";

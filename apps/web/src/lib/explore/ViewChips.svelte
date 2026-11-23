@@ -3,7 +3,7 @@
   shows is marked. One row that scrolls sideways, so twenty of them leave the chart where it is.
 -->
 <script lang="ts">
-  import { Pressable } from "#lib/components/ui/pressable/index.js";
+  import { Pressable } from "@sunreye/ui/pressable";
   import { m } from "../paraglide/messages.js";
   import type { View } from "./saved.ts";
 

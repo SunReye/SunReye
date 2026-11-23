@@ -2,7 +2,7 @@ import { createRawSnippet } from "svelte";
 import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { haptics } from "../haptics.ts";
+import { haptics } from "@sunreye/ui/haptics";
 import { closed, finish } from "../motion/animations.harness.ts";
 import { settle } from "../motion/clock.harness.ts";
 import { motion } from "../motion/tier.svelte.ts";

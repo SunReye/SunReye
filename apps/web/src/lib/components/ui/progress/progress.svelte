@@ -36,7 +36,7 @@
 
 <script lang="ts">
   import { Progress as ProgressPrimitive } from "bits-ui";
-  import { cn, type WithoutChildrenOrChild } from "#lib/utils.js";
+  import { cn, type WithoutChildrenOrChild } from "@sunreye/ui/utils";
 
   let {
     ref = $bindable(null),

@@ -3,8 +3,8 @@
   import Trash2 from "@lucide/svelte/icons/trash-2";
   import type { PointDraft } from "../api/core.ts";
   import ResponsiveSheet from "../components/responsive-sheet.svelte";
-  import { Button } from "#lib/components/ui/button/index.js";
-  import { Input } from "#lib/components/ui/input/index.js";
+  import { Button } from "@sunreye/ui/button";
+  import { Input } from "@sunreye/ui/input";
   import { m } from "../paraglide/messages.js";
   import MoveField from "./MoveField.svelte";
   import { roleOf } from "./point-look.ts";

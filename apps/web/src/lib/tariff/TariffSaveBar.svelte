@@ -1,7 +1,7 @@
 <!-- The tariff form's submits, on a card that stays in reach above the bar however long the bands run. -->
 <script lang="ts">
-  import { Button } from "#lib/components/ui/button/index.js";
-  import * as Card from "#lib/components/ui/card/index.js";
+  import { Button } from "@sunreye/ui/button";
+  import * as Card from "@sunreye/ui/card";
   import { m } from "../paraglide/messages.js";
 
   /** Whether a date to reprice from is set. */

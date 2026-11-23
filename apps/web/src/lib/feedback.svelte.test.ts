@@ -5,7 +5,7 @@ import { render } from "vitest-browser-svelte";
 import "../app.css";
 import { Toaster } from "./components/ui/sonner/index.js";
 import { answered, confirmed, refused, refusedInline } from "./feedback.ts";
-import { haptics } from "./haptics.ts";
+import { haptics } from "@sunreye/ui/haptics";
 import Refusal from "./setup/Refusal.svelte";
 
 /** The toast showing `text`. */

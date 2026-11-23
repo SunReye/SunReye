@@ -7,7 +7,7 @@
   import Section from "../../components/section.svelte";
   import StatStrip from "../../components/stat-strip.svelte";
   import StatusLine from "../../components/status-line.svelte";
-  import { Button } from "../../components/ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
   import Demo from "../Demo.svelte";
 
   const STATS = [

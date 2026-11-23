@@ -2,9 +2,9 @@ import { afterEach, expect, test, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
-import { HAPTICS, haptics } from "../haptics.ts";
+import { HAPTICS, haptics } from "@sunreye/ui/haptics";
 import ToggleRow from "../settings/ToggleRow.svelte";
-import { Checkbox } from "./ui/checkbox/index.js";
+import { Checkbox } from "@sunreye/ui/checkbox";
 import { Switch } from "./ui/switch/index.js";
 
 afterEach(() => {

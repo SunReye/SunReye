@@ -2,8 +2,8 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import type { Problem } from "../api/client.ts";
-  import { Button } from "#lib/components/ui/button/index.js";
-  import { Input } from "#lib/components/ui/input/index.js";
+  import { Button } from "@sunreye/ui/button";
+  import { Input } from "@sunreye/ui/input";
   import { m } from "../paraglide/messages.js";
   import Refusal, { answered } from "../setup/Refusal.svelte";
 

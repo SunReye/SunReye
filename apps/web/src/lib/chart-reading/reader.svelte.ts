@@ -9,7 +9,7 @@
 // - Keys: arrows and Home/End move, Shift and arrows select, Enter narrows or drills, Escape clears.
 // A finger's or a key's reading ticks `selection` as it crosses into another band.
 import { inSheet } from "../detail/in-sheet.ts";
-import { haptics } from "../haptics.ts";
+import { haptics } from "@sunreye/ui/haptics";
 import { Rest } from "./rest.ts";
 
 /** A key that moves the reading. */

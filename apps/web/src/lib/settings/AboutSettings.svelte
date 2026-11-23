@@ -1,7 +1,7 @@
 <!-- Settings › About SunReye: credits whose licences ask to be shown, CC BY 4.0's title, author, source, licence and changes. The spot prices' credit also stays beside them (ADR 12). -->
 <script lang="ts">
   import DrillCard from "../components/drill-in/drill-card.svelte";
-  import * as Item from "#lib/components/ui/item/index.js";
+  import * as Item from "@sunreye/ui/item";
   import { m } from "../paraglide/messages.js";
   import SpotAttribution from "../SpotAttribution.svelte";
 </script>

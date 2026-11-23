@@ -1,6 +1,6 @@
 <!-- Test harness: a card over a block of content, in a frame of a set width, and what stands below. -->
 <script lang="ts">
-  import * as Card from "./ui/card/index.js";
+  import * as Card from "@sunreye/ui/card";
 
   let {
     height,

@@ -8,7 +8,7 @@
   import DrillCard from "./drill-in/drill-card.svelte";
   import type { Snippet } from "svelte";
   import Eyebrow from "./eyebrow.svelte";
-  import * as Card from "#lib/components/ui/card/index.js";
+  import * as Card from "@sunreye/ui/card";
 
   let {
     title,

@@ -3,9 +3,9 @@
   writes through ADR 7's funnel at once; it shows the device's value again once the write ends.
 -->
 <script lang="ts">
-  import { Checkbox } from "#lib/components/ui/checkbox/index.js";
-  import * as Item from "#lib/components/ui/item/index.js";
-  import { FEEDBACK } from "#lib/components/ui/pressable/index.js";
+  import { Checkbox } from "@sunreye/ui/checkbox";
+  import * as Item from "@sunreye/ui/item";
+  import { FEEDBACK } from "@sunreye/ui/pressable";
   import type { Outcome } from "../components/value-editor/editable.ts";
   import WriteProblem from "../components/value-editor/write-problem.svelte";
   import { m } from "../paraglide/messages.js";

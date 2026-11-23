@@ -1,9 +1,9 @@
 <script lang="ts">
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
-  import { buttonVariants } from "../../components/ui/button/index.js";
+  import { buttonVariants } from "@sunreye/ui/button";
   import * as Command from "../../components/ui/command/index.js";
   import * as ContextMenu from "../../components/ui/context-menu/index.js";
-  import * as DropdownMenu from "../../components/ui/dropdown-menu/index.js";
+  import * as DropdownMenu from "@sunreye/ui/dropdown-menu";
   import * as Menubar from "../../components/ui/menubar/index.js";
   import Demo from "../Demo.svelte";
 

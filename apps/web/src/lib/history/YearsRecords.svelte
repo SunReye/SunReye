@@ -1,6 +1,6 @@
 <!-- Every recorded year for the question against the same dates before, and the records since the start; each opens its range. -->
 <script lang="ts">
-  import { Pressable } from "../components/ui/pressable/index.js";
+  import { Pressable } from "@sunreye/ui/pressable";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import type { Records } from "../api/records.ts";
   import { m } from "../paraglide/messages.js";

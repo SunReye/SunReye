@@ -1,6 +1,6 @@
 <!-- The loadpoints' cards: one appears when EVCC first names its loadpoint, and leaves with it (ADR 21). -->
 <script lang="ts">
-  import { Presence } from "#lib/components/ui/card/index.js";
+  import { Presence } from "@sunreye/ui/card";
   import type { FigureId } from "../detail/figures.ts";
   import EvCard from "./EvCard.svelte";
 

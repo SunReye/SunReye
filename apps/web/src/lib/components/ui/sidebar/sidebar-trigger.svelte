@@ -1,7 +1,7 @@
 <script lang="ts">
   import PanelLeftIcon from "@lucide/svelte/icons/panel-left";
-  import { Button } from "#lib/components/ui/button/index.js";
-  import { cn } from "#lib/utils.js";
+  import { Button } from "@sunreye/ui/button";
+  import { cn } from "@sunreye/ui/utils";
   import { useSidebar } from "./context.svelte.js";
   import type { ComponentProps } from "svelte";
 

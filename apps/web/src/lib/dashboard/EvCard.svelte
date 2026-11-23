@@ -1,8 +1,8 @@
 <!-- One EVCC loadpoint (ADR 10): what it charges, the vehicle's state of charge and its target. -->
 <script lang="ts">
-  import { Pressable } from "../components/ui/pressable/index.js";
+  import { Pressable } from "@sunreye/ui/pressable";
   import Car from "@lucide/svelte/icons/car";
-  import * as Card from "#lib/components/ui/card/index.js";
+  import * as Card from "@sunreye/ui/card";
   import { Progress } from "#lib/components/ui/progress/index.js";
   import AnimatedNumber from "../components/animated-number.svelte";
   import PowerNumber from "../components/power-number.svelte";

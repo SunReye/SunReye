@@ -4,7 +4,7 @@
 import { tick } from "svelte";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
-import { HAPTICS } from "../../haptics.ts";
+import { HAPTICS } from "@sunreye/ui/haptics";
 import { realTimers } from "../../motion/clock.harness.ts";
 import Harness from "./drill-push.harness.svelte";
 import { frame, until } from "./drill-in.probe.ts";

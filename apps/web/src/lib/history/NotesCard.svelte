@@ -1,6 +1,6 @@
 <!-- At most three things worth a look, each leading to its cause. -->
 <script lang="ts">
-  import * as Card from "#lib/components/ui/card/index.js";
+  import * as Card from "@sunreye/ui/card";
   import OpenRow from "../components/open-row.svelte";
   import Info from "@lucide/svelte/icons/info";
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert";

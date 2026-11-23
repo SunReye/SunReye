@@ -5,7 +5,7 @@
 <script lang="ts">
   import Plus from "@lucide/svelte/icons/plus";
   import type { Connection, Core, Device } from "../api/core";
-  import { Button } from "#lib/components/ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
   import { m } from "../paraglide/messages.js";
   import DevicesStep from "../setup/DevicesStep.svelte";
   import DeviceForm from "./DeviceForm.svelte";

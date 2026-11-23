@@ -1,10 +1,10 @@
 <!-- What the tree leaves out, an unused port too: a row opens the list, one tap adds below the root. -->
 <script lang="ts">
-  import { Pressable } from "../components/ui/pressable/index.js";
+  import { Pressable } from "@sunreye/ui/pressable";
   import Plus from "@lucide/svelte/icons/plus";
   import type { Device, PointDraft } from "../api/core.ts";
   import ResponsiveSheet from "../components/responsive-sheet.svelte";
-  import { haptics } from "../haptics.ts";
+  import { haptics } from "@sunreye/ui/haptics";
   import { m } from "../paraglide/messages.js";
   import { roleOf } from "./point-look.ts";
   import PointTile from "./PointTile.svelte";

@@ -5,8 +5,8 @@
 
 <script lang="ts">
   import CloudSun from "@lucide/svelte/icons/cloud-sun";
-  import { Button } from "#lib/components/ui/button/index.js";
-  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
+  import { Button } from "@sunreye/ui/button";
+  import * as DropdownMenu from "@sunreye/ui/dropdown-menu";
   import { m } from "../paraglide/messages.js";
   import { TRIALS, type Trial } from "./trials.ts";
 

@@ -4,7 +4,7 @@
 -->
 <script lang="ts">
   import type { HTMLAnchorAttributes } from "svelte/elements";
-  import { haptics } from "../haptics.ts";
+  import { haptics } from "@sunreye/ui/haptics";
 
   let {
     current,

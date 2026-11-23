@@ -6,9 +6,9 @@
 -->
 <script lang="ts">
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
-  import { Button } from "#lib/components/ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
   import type { Problem } from "../api/client.ts";
-  import { haptics } from "../haptics.ts";
+  import { haptics } from "@sunreye/ui/haptics";
   import { problemText } from "../i18n/problems.ts";
   import { m } from "../paraglide/messages.js";
   import TextLink from "./text-link.svelte";

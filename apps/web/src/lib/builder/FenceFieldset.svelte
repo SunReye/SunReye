@@ -1,8 +1,8 @@
 <!-- A fence's level in the inspector: its finish, its height and each of its points. -->
 <script lang="ts">
   import Plus from "@lucide/svelte/icons/plus";
-  import { Button } from "#lib/components/ui/button/index.js";
-  import * as Item from "#lib/components/ui/item/index.js";
+  import { Button } from "@sunreye/ui/button";
+  import * as Item from "@sunreye/ui/item";
   import { m } from "../paraglide/messages.js";
   import { lengthened, shortened } from "./draft.ts";
   import { choices, metres, REACH } from "./fields.ts";

@@ -4,8 +4,8 @@
 -->
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import * as Card from "#lib/components/ui/card/index.js";
-  import { cn } from "#lib/utils.js";
+  import * as Card from "@sunreye/ui/card";
+  import { cn } from "@sunreye/ui/utils";
   import { markCard } from "./card-surface.ts";
 
   let {

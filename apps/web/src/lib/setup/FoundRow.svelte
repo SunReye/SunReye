@@ -1,7 +1,7 @@
 <!-- A device a profile recognised: chosen from the start, named as the admin likes. -->
 <script lang="ts">
   import TextField from "../components/text-field.svelte";
-  import { Checkbox } from "#lib/components/ui/checkbox/index.js";
+  import { Checkbox } from "@sunreye/ui/checkbox";
   import { m } from "../paraglide/messages.js";
   import type { Choice } from "./choices.ts";
 

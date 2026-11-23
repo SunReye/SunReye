@@ -3,7 +3,7 @@
   import DrillCard from "../components/drill-in/drill-card.svelte";
   import Refusal, { answered } from "../setup/Refusal.svelte";
   import Eyebrow from "../components/eyebrow.svelte";
-  import * as Item from "#lib/components/ui/item/index.js";
+  import * as Item from "@sunreye/ui/item";
   import type { Capabilities, Core, Device, Problem } from "../api/core";
   import { m } from "../paraglide/messages.js";
   import SettingEnable from "./SettingEnable.svelte";

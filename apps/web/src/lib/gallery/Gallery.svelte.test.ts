@@ -4,10 +4,10 @@ import { cdp } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import Gallery from "./Gallery.svelte";
 
-/** Every component folder of the kit, by name. */
-const kit = Object.keys(import.meta.glob("../components/ui/*/index.ts")).map(
-  (path) => path.split("/").at(-2) ?? "",
-);
+/** Every component folder of the kit, the app's and the package's (ADR 25), by name. */
+const kit = Object.keys(
+  import.meta.glob(["../components/ui/*/index.ts", "../../../../../packages/ui/src/*/index.ts"]),
+).map((path) => path.split("/").at(-2) ?? "");
 
 const root = document.documentElement;
 

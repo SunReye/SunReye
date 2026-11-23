@@ -1,6 +1,6 @@
 <!-- A ground surface's level in the inspector: its footprint and its finish. -->
 <script lang="ts">
-  import * as Item from "#lib/components/ui/item/index.js";
+  import * as Item from "@sunreye/ui/item";
   import { m } from "../paraglide/messages.js";
   import { choices, degrees, metres, REACH } from "./fields.ts";
   import { GROUND_FINISHES } from "./outline.ts";

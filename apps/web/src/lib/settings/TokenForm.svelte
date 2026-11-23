@@ -2,7 +2,7 @@
 <script lang="ts">
   import KeyRound from "@lucide/svelte/icons/key-round";
   import type { CreatedToken, Problem, Scope } from "../api/core";
-  import { Input } from "#lib/components/ui/input/index.js";
+  import { Input } from "@sunreye/ui/input";
   import Segmented from "../components/segmented.svelte";
   import { m } from "../paraglide/messages.js";
   import AccessForm from "./AccessForm.svelte";

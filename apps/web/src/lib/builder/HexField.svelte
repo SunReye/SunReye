@@ -1,6 +1,6 @@
 <!-- A colour as `#rrggbb` in a text field, beside the swatch it names (ADR 21: free-form values keep a text field). -->
 <script lang="ts">
-  import { Input } from "#lib/components/ui/input/index.js";
+  import { Input } from "@sunreye/ui/input";
 
   let {
     value,

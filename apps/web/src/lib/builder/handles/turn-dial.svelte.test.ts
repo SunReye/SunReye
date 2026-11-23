@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect } from "../../api/core.ts";
-import { haptics } from "../../haptics.ts";
+import { haptics } from "@sunreye/ui/haptics";
 import Builder from "../Builder.svelte";
 import type { View } from "../camera.ts";
 import {

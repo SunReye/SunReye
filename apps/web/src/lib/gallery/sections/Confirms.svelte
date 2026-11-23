@@ -1,7 +1,7 @@
 <!-- The app's destructive confirm (ADR 21): a dialog beside the rail, a drawer under the bar. -->
 <script lang="ts">
   import ConfirmSheet from "../../components/confirm-sheet.svelte";
-  import { Button } from "../../components/ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
   import Demo from "../Demo.svelte";
 
   let confirming = $state(false);

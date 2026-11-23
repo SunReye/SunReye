@@ -1,6 +1,6 @@
 <!-- The value editor's body (ADR 21): header with rolling digits, wheel or list, apply. -->
 <script lang="ts">
-  import { haptics } from "../../haptics.ts";
+  import { haptics } from "@sunreye/ui/haptics";
   import { m } from "../../paraglide/messages.js";
   import { getLocale } from "../../paraglide/runtime.js";
   import ApplyBar from "./apply-bar.svelte";

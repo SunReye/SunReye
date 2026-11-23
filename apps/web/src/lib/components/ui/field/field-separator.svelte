@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Separator } from "#lib/components/ui/separator/index.js";
-  import { cn, type WithElementRef } from "#lib/utils.js";
+  import { Separator } from "@sunreye/ui/separator";
+  import { cn, type WithElementRef } from "@sunreye/ui/utils";
   import type { Snippet } from "svelte";
   import type { HTMLAttributes } from "svelte/elements";
 

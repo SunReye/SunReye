@@ -11,12 +11,12 @@
   import CalendarDays from "@lucide/svelte/icons/calendar-days";
   import { getLocale } from "../paraglide/runtime.js";
   import { input } from "../shell/input.svelte.ts";
-  import { Button, buttonVariants } from "./ui/button/index.js";
+  import { Button, buttonVariants } from "@sunreye/ui/button";
   import DrawerSheet from "./drawer-sheet.svelte";
-  import { Calendar } from "./ui/calendar/index.js";
-  import * as Item from "./ui/item/index.js";
-  import { FEEDBACK, SELECTED } from "./ui/pressable/index.js";
-  import * as Popover from "./ui/popover/index.js";
+  import { Calendar } from "@sunreye/ui/calendar";
+  import * as Item from "@sunreye/ui/item";
+  import { FEEDBACK, SELECTED } from "@sunreye/ui/pressable";
+  import * as Popover from "@sunreye/ui/popover";
 
   let {
     value,

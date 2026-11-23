@@ -3,7 +3,7 @@ import { afterEach, expect, test } from "vitest";
 import { cdp, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
-import { HAPTICS } from "../haptics.ts";
+import { HAPTICS } from "@sunreye/ui/haptics";
 import { language } from "../i18n/language.svelte.ts";
 import { LOW_POWER } from "../motion/tier.ts";
 import { motion } from "../motion/tier.svelte.ts";

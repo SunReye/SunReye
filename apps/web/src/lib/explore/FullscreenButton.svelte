@@ -2,7 +2,7 @@
 <script lang="ts">
   import Maximize from "@lucide/svelte/icons/maximize";
   import Minimize from "@lucide/svelte/icons/minimize";
-  import { Button } from "#lib/components/ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
   import { m } from "../paraglide/messages.js";
 
   let { full, onchange }: { full: boolean; onchange: () => void } = $props();

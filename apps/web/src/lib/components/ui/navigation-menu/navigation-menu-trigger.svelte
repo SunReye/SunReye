@@ -1,6 +1,6 @@
 <script lang="ts" module>
   import { tv } from "tailwind-variants";
-  import { cn } from "#lib/utils.js";
+  import { cn } from "@sunreye/ui/utils";
 
   export const navigationMenuTriggerStyle = tv({
     // Local: only colours and the ring fade, not upstream's transition-all; 44 px on touch (ADR 21, #750).

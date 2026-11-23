@@ -4,7 +4,7 @@
   import Plus from "@lucide/svelte/icons/plus";
   import type { Found } from "../api/core.ts";
   import type { Endpoint } from "./choices.ts";
-  import { Button } from "#lib/components/ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
   import ValueRow from "../builder/ValueRow.svelte";
   import Segmented from "../components/segmented.svelte";
   import { m } from "../paraglide/messages.js";

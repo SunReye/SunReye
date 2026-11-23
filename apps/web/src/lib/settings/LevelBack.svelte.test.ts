@@ -6,7 +6,7 @@ import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { connect } from "../api/core.ts";
-import { HAPTICS } from "../haptics.ts";
+import { HAPTICS } from "@sunreye/ui/haptics";
 import { framesUntil, realTimers } from "../motion/clock.harness.ts";
 import { FakeCore } from "./devices.harness.ts";
 import Routed from "./routed.harness.svelte";

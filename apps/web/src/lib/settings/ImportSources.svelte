@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Core, SharedArchive } from "../api/core";
-  import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
+  import * as ToggleGroup from "@sunreye/ui/toggle-group";
   import { m } from "../paraglide/messages.js";
   import ImportUpload from "./ImportUpload.svelte";
 

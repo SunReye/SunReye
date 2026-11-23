@@ -1,7 +1,7 @@
 <!-- A module tapped on the roof (ADR 20): its string, picked or new, its orientation, its optimizer,
   and its removal. -->
 <script lang="ts">
-  import * as Item from "#lib/components/ui/item/index.js";
+  import * as Item from "@sunreye/ui/item";
   import { m } from "../paraglide/messages.js";
   import { choices } from "./fields.ts";
   import type { GridModule, Scene } from "./pv.ts";

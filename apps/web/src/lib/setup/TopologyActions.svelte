@@ -1,7 +1,7 @@
 <!-- The step's foot: accept first; "Anpassen" second, or back to the proposal while adjusting. -->
 <script lang="ts">
   import type { Problem } from "../api/core.ts";
-  import { Button } from "#lib/components/ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
   import { m } from "../paraglide/messages.js";
   import Refusal from "./Refusal.svelte";
 

@@ -2,7 +2,7 @@
 // on free roof of the selected face it lays the ghost module or, dragged, a row; on one of its
 // modules it moves that module, or selects it with a tap; in the wiring mode it selects the modules
 // the pointer crosses, in that order, on any face.
-import { haptics } from "../haptics.ts";
+import { haptics } from "@sunreye/ui/haptics";
 import type { Aim } from "./aim.ts";
 import type { Draft } from "./modules.ts";
 import { move, place } from "./placing.ts";

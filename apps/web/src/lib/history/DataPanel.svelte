@@ -1,7 +1,7 @@
 <!-- How complete the record is: coverage of the range and every gap, each opening its day. -->
 <script lang="ts">
   import StatStrip from "../components/stat-strip.svelte";
-  import { Pressable } from "../components/ui/pressable/index.js";
+  import { Pressable } from "@sunreye/ui/pressable";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import CircleCheck from "@lucide/svelte/icons/circle-check";
   import { m } from "../paraglide/messages.js";

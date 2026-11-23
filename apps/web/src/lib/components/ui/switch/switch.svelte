@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Switch as SwitchPrimitive } from "bits-ui";
-  import { cn, type WithoutChildrenOrChild } from "#lib/utils.js";
-  import { haptics } from "#lib/haptics.ts";
+  import { cn, type WithoutChildrenOrChild } from "@sunreye/ui/utils";
+  import { haptics } from "@sunreye/ui/haptics";
 
   let {
     ref = $bindable(null),

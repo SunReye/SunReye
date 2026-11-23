@@ -4,7 +4,7 @@
 -->
 <script lang="ts">
   import type { Connection, Core, Device, Problem } from "../api/core.ts";
-  import { Button } from "#lib/components/ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
   import { m } from "../paraglide/messages.js";
   import { manual, scanned, type Choice, type Endpoint } from "./choices.ts";
   import EndpointForm from "./EndpointForm.svelte";

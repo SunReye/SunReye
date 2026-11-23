@@ -3,7 +3,7 @@
   import Check from "@lucide/svelte/icons/check";
   import ChevronDown from "@lucide/svelte/icons/chevron-down";
   import * as Collapsible from "#lib/components/ui/collapsible/index.js";
-  import { Pressable } from "#lib/components/ui/pressable/index.js";
+  import { Pressable } from "@sunreye/ui/pressable";
   import type { PickerGroup, PickerSeries } from "./picker.ts";
   import type { SeriesRef } from "./view.ts";
 

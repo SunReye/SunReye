@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Collapsible as CollapsiblePrimitive } from "bits-ui";
   // Local: chevron turn on the open state (#38).
-  import { cn } from "#lib/utils.js";
+  import { cn } from "@sunreye/ui/utils";
 
   // Local: `class` is merged with the chevron turn below.
   let {

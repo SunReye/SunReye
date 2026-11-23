@@ -4,7 +4,7 @@
 -->
 <script lang="ts">
   import AnimatedNumber from "../components/animated-number.svelte";
-  import { Button } from "../components/ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
   import { flowColour, type Flow } from "../energy-colours.ts";
   import { KIND_ICONS, KIND_NAMES } from "../equipment-kinds.ts";
   import { m } from "../paraglide/messages.js";

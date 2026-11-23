@@ -1,6 +1,6 @@
 <!-- The range's highest powers, each with its hour or, over several days, the day it opens. -->
 <script lang="ts">
-  import * as Card from "#lib/components/ui/card/index.js";
+  import * as Card from "@sunreye/ui/card";
   import OpenRow from "../components/open-row.svelte";
   import { m } from "../paraglide/messages.js";
   import { formatPower } from "../power.ts";

@@ -3,7 +3,7 @@
   import Redo2 from "@lucide/svelte/icons/redo-2";
   import Undo2 from "@lucide/svelte/icons/undo-2";
   import DateField from "#lib/components/date-field.svelte";
-  import { Button } from "#lib/components/ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
   import { confirmed } from "../feedback.ts";
   import { m } from "../paraglide/messages.js";
   import { today } from "./day.ts";

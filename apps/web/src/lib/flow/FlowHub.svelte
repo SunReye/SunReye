@@ -3,7 +3,7 @@
   so rails pass underneath, and a ring that beats with the plant on `full`. Tapping opens its sheet.
 -->
 <script lang="ts">
-  import { Pressable } from "../components/ui/pressable/index.js";
+  import { Pressable } from "@sunreye/ui/pressable";
   import Cpu from "@lucide/svelte/icons/cpu";
   import Gauge from "@lucide/svelte/icons/gauge";
   import AnimatedNumber from "../components/animated-number.svelte";

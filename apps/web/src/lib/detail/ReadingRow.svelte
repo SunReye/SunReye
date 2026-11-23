@@ -4,7 +4,7 @@
   its value.
 -->
 <script lang="ts">
-  import { FEEDBACK_WITHIN, Pressable } from "../components/ui/pressable/index.js";
+  import { FEEDBACK_WITHIN, Pressable } from "@sunreye/ui/pressable";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import { m } from "../paraglide/messages.js";
   import ReadingValue from "./ReadingValue.svelte";

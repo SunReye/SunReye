@@ -1,7 +1,7 @@
 <!-- Settings › Display (ADR 21): this browser's theme, language, 3D quality (ADR 20), frame limit, weather effects (ADR 23), motion, low-power and haptics switches. -->
 <script lang="ts">
   import DrillCard from "../components/drill-in/drill-card.svelte";
-  import * as Item from "#lib/components/ui/item/index.js";
+  import * as Item from "@sunreye/ui/item";
   import FrameLimitRow from "./FrameLimitRow.svelte";
   import HapticsRow from "./HapticsRow.svelte";
   import LanguageRow from "./LanguageRow.svelte";

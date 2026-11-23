@@ -4,8 +4,8 @@
 -->
 <script lang="ts">
   import "../../app.css";
-  import { Button } from "#lib/components/ui/button/index.js";
-  import * as Card from "#lib/components/ui/card/index.js";
+  import { Button } from "@sunreye/ui/button";
+  import * as Card from "@sunreye/ui/card";
   import Pager from "./Pager.svelte";
   import type { Travel } from "./travel.svelte.ts";
 

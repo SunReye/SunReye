@@ -1,6 +1,6 @@
 <script lang="ts">
   import { CalendarDate } from "@internationalized/date";
-  import { Calendar } from "../../components/ui/calendar/index.js";
+  import { Calendar } from "@sunreye/ui/calendar";
   import { RangeCalendar } from "../../components/ui/range-calendar/index.js";
   import Demo from "../Demo.svelte";
 

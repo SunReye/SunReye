@@ -1,7 +1,7 @@
 <!-- A number's large rolling digits; a tap types the value instead (ADR 21). -->
 <script lang="ts">
-  import { Button } from "#lib/components/ui/button/index.js";
-  import { Input } from "#lib/components/ui/input/index.js";
+  import { Button } from "@sunreye/ui/button";
+  import { Input } from "@sunreye/ui/input";
   import { m } from "../../paraglide/messages.js";
   import type { Editable, Rows } from "./editable.ts";
   import RollingNumber from "./rolling-number.svelte";

@@ -4,7 +4,7 @@
   import { Badge } from "#lib/components/ui/badge/index.js";
   import { sidebarMenuButtonVariants } from "#lib/components/ui/sidebar/sidebar-menu-button.svelte";
   import * as Tooltip from "#lib/components/ui/tooltip/index.js";
-  import { cn } from "#lib/utils.js";
+  import { cn } from "@sunreye/ui/utils";
   import { m } from "../paraglide/messages.js";
   import { href, type NavItem } from "./nav.ts";
 

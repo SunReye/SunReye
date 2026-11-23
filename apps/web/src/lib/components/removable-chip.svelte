@@ -5,8 +5,8 @@
 <script lang="ts">
   import X from "@lucide/svelte/icons/x";
   import type { Snippet } from "svelte";
-  import { Pressable } from "#lib/components/ui/pressable/index.js";
-  import { haptics } from "../haptics.ts";
+  import { Pressable } from "@sunreye/ui/pressable";
+  import { haptics } from "@sunreye/ui/haptics";
 
   let {
     remove,

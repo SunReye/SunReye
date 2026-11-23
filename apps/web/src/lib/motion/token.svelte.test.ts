@@ -1,6 +1,6 @@
 // A motion token as a script reads it (ADR 21), however the stylesheet writes its time.
 import { afterEach, expect, test } from "vitest";
-import { tokenMs } from "./token.ts";
+import { tokenMs } from "@sunreye/ui/motion/token";
 
 const el = document.createElement("div");
 

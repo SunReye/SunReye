@@ -1,6 +1,6 @@
 <!-- Stored value: every day moves this bar (ADR 12). It opens the payback tab. -->
 <script lang="ts">
-  import * as Card from "#lib/components/ui/card/index.js";
+  import * as Card from "@sunreye/ui/card";
   import { Progress } from "#lib/components/ui/progress/index.js";
   import FigureNumber from "./FigureNumber.svelte";
   import type { Payback } from "../api/tariff.ts";

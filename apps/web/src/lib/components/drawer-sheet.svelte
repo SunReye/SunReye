@@ -4,8 +4,8 @@
 -->
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import * as Drawer from "#lib/components/ui/drawer/index.js";
-  import { haptics } from "../haptics.ts";
+  import * as Drawer from "@sunreye/ui/drawer";
+  import { haptics } from "@sunreye/ui/haptics";
   import { motion } from "../motion/tier.svelte.ts";
 
   let {

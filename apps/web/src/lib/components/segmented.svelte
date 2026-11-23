@@ -3,7 +3,7 @@
   3D/2D look, its pressed box sliding to the next choice. It owns the look; the kit's group, the haptic.
 -->
 <script lang="ts" generics="T extends string">
-  import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
+  import * as ToggleGroup from "@sunreye/ui/toggle-group";
 
   let {
     options,

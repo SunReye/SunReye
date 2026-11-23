@@ -6,8 +6,8 @@
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import type { Snippet } from "svelte";
   import type { ClassValue } from "svelte/elements";
-  import { Pressable } from "#lib/components/ui/pressable/index.js";
-  import { haptics } from "../haptics.ts";
+  import { Pressable } from "@sunreye/ui/pressable";
+  import { haptics } from "@sunreye/ui/haptics";
 
   let {
     label,

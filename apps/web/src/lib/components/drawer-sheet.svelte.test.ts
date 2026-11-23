@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { cdp, page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
-import { haptics } from "../haptics.ts";
+import { haptics } from "@sunreye/ui/haptics";
 import { closed, finish } from "../motion/animations.harness.ts";
 import { motion } from "../motion/tier.svelte.ts";
 import DrawerSheet from "./drawer-sheet.svelte";

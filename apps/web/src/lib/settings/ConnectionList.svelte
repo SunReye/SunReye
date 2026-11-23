@@ -1,7 +1,7 @@
 <!-- Settings › Connections' list as the core answered it, and the add action. -->
 <script lang="ts">
   import type { Connection, Problem } from "../api/core";
-  import * as Item from "#lib/components/ui/item/index.js";
+  import * as Item from "@sunreye/ui/item";
   import { m } from "../paraglide/messages.js";
   import AddRow from "./AddRow.svelte";
   import ConnectionRow from "./ConnectionRow.svelte";

@@ -1,7 +1,7 @@
 <!-- One action of the context toolbar (ADR 20): an icon with a short label, a finger's size. -->
 <script lang="ts">
   import type { Component } from "svelte";
-  import { Button, type ButtonProps } from "#lib/components/ui/button/index.js";
+  import { Button, type ButtonProps } from "@sunreye/ui/button";
 
   let {
     icon: Icon,

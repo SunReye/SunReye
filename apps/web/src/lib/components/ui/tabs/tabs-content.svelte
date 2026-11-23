@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Tabs as TabsPrimitive } from "bits-ui";
-  import { cn } from "#lib/utils.js";
+  import { cn } from "@sunreye/ui/utils";
   // Local: content crossfade on a switch (#8).
   import { crossfade } from "./tabs-motion.js";
 

@@ -21,7 +21,7 @@
 
 <script lang="ts" generics="D">
   import type { Snippet } from "svelte";
-  import { haptics } from "../haptics.ts";
+  import { haptics } from "@sunreye/ui/haptics";
   import { cardOf } from "./card-surface.ts";
   import Pager from "./Pager.svelte";
 

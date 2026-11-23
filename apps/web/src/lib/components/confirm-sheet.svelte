@@ -4,7 +4,7 @@
 -->
 <script lang="ts">
   import type { Problem } from "../api/core";
-  import { Button } from "#lib/components/ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
   import { confirmed } from "../feedback.ts";
   import { m } from "../paraglide/messages.js";
   import Refusal, { answered } from "../setup/Refusal.svelte";

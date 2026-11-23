@@ -1,7 +1,7 @@
 <!-- The plotted points as a CSV (ADR 22); nothing drawn, nothing to export. -->
 <script lang="ts">
   import Download from "@lucide/svelte/icons/download";
-  import { Button } from "#lib/components/ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
   import { m } from "../paraglide/messages.js";
   import type { Table } from "./csv.ts";
   import { save } from "./save.ts";

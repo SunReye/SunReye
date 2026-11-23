@@ -1,7 +1,7 @@
 <!-- A band's start or end as a button that opens the value editor's time wheels (ADR 21). -->
 <script lang="ts">
   import Clock from "@lucide/svelte/icons/clock";
-  import { Button } from "#lib/components/ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
   import { clock, type Editable, type Outcome } from "../components/value-editor/editable.ts";
   import ValueEditor from "../components/value-editor/value-editor.svelte";
 

@@ -4,7 +4,7 @@
 -->
 <script lang="ts">
   import Ellipsis from "@lucide/svelte/icons/ellipsis";
-  import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
+  import * as ToggleGroup from "@sunreye/ui/toggle-group";
   import DrawerSheet from "#lib/components/drawer-sheet.svelte";
   import { m } from "../paraglide/messages.js";
   import { indicator } from "../range/indicator.ts";

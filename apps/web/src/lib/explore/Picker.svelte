@@ -5,7 +5,7 @@
 -->
 <script lang="ts">
   import Search from "@lucide/svelte/icons/search";
-  import { Input } from "#lib/components/ui/input/index.js";
+  import { Input } from "@sunreye/ui/input";
   import LoadFailed from "../components/load-failed.svelte";
   import LoadingRows from "../components/loading-rows.svelte";
   import { m } from "../paraglide/messages.js";

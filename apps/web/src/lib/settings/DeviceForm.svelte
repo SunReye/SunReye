@@ -6,7 +6,7 @@
 <script lang="ts">
   import Plus from "@lucide/svelte/icons/plus";
   import type { Connection, Core, Device, Problem } from "../api/core";
-  import { Button } from "#lib/components/ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
   import ValueRow from "../builder/ValueRow.svelte";
   import { m } from "../paraglide/messages.js";
   import ProfilePicker from "../setup/ProfilePicker.svelte";

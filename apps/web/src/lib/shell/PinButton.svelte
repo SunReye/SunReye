@@ -2,7 +2,7 @@
 <script lang="ts">
   import Pin from "@lucide/svelte/icons/pin";
   import PinOff from "@lucide/svelte/icons/pin-off";
-  import { Button } from "#lib/components/ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
   import { m } from "../paraglide/messages.js";
 
   let { pinned, ontoggle }: { pinned: boolean; ontoggle: () => void } = $props();

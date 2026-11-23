@@ -5,7 +5,7 @@
 <script lang="ts">
   import CircleAlert from "@lucide/svelte/icons/circle-alert";
   import { problemText } from "../i18n/problems.ts";
-  import * as Alert from "./ui/alert/index.js";
+  import * as Alert from "@sunreye/ui/alert";
 
   let {
     problem,

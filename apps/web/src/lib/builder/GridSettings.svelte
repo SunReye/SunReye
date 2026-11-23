@@ -1,6 +1,6 @@
 <!-- A face grid's module type, the orientation its new modules take, and its edge setback. -->
 <script lang="ts">
-  import * as Item from "#lib/components/ui/item/index.js";
+  import * as Item from "@sunreye/ui/item";
   import type { ModuleType } from "../api/core.ts";
   import { m } from "../paraglide/messages.js";
   import { choices, metres } from "./fields.ts";

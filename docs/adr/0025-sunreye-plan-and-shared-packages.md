@@ -21,6 +21,7 @@ Installers plan a PV plant before it exists, and the homeowner monitors it after
 | `@sunreye/builder` | the 3D house builder's components (ADR 20) |
 | `@sunreye/catalogue` | the module and datasheet catalogues (ADRs 17, 27) |
 | `@sunreye/tokens` | the look's design tokens (ADR 21) |
+| `@sunreye/ui` | the kit components the builder uses and the kit's Tailwind sheet (ADRs 11, 21) |
 
 The builder moves out of `apps/web` into `packages/builder` before the first release, so Home is its first consumer and Plan its second. Publishing to npm starts when Plan ships.
 
@@ -36,11 +37,15 @@ The builder moves out of `apps/web` into `packages/builder` before the first rel
 - *Done (2026-11-23).* The owner read the licence and confirmed it fits. `LICENSE` holds its text as published, the `license` fields follow, and cargo-deny no longer allows an AGPL dependency.
 - *Plan* uses the crates and packages as their owner. An outside contribution is accepted only under an agreement that leaves the owner free to license it.
 
+**The UI kit (2026-11-23).** The kit components the builder uses, directly or through the app's own components, are `@sunreye/ui`, so the builder looks and responds the same in both products. The builder is drawn with the kit: every button, row, menu and sheet in it is a kit component, and a planner that brought its own would drift from Home's look with each change to either.
+- *What it holds.* Alert, button, calendar, card, checkbox, dialog, drawer, dropdown menu, input, item, popover, pressable, separator, slider, spinner, toggle and toggle group; the helpers they share (class merging, haptics, the sliding indicator, the motion ease); and the kit's Tailwind sheet: its utilities, variants, theme mapping and motion tokens. The rest of the kit stays in `apps/web` and moves when a shared component first needs it.
+- *How it ships.* As Svelte and TypeScript sources, which a consumer compiles with Svelte's Vite plugin. A consumer imports Tailwind, `@sunreye/tokens` and the package's sheet, and points Tailwind's `@source` at the package. Svelte is a peer dependency, so one runtime serves the package and its consumer.
+- *What stays the app's.* Components that carry the app's messages or API types (the value editor, drill-in, the date field) are not the kit; they move with the builder.
+
 **Imagery stays out of Home.** Plan loads aerial imagery and building models by address; Home fetches no map data (ADR 20). A plant document carries finished geometry and never imagery.
 
 ## Open before build
 
-- Whether the UI kit the builder's components use becomes a sixth package, or the builder takes those components from its consumer.
 - Whether a linked package runs with one Svelte runtime in the browser: the trial type-checked and built, and ran nothing.
 
 ## Considered options
@@ -50,6 +55,7 @@ The builder moves out of `apps/web` into `packages/builder` before the first rel
 - **Business Source License, Functional Source License.** Rejected: both turn each release into an open licence after a period, which the owner does not want.
 - **PolyForm Noncommercial with a permission for commercial monitoring.** Rejected: it needs wording of our own, and forbids an installer's own use, which the owner does not mind.
 - **AGPL with the valuable parts private in Plan.** Rejected: Home would not get them.
+- **The builder takes the kit from its consumer.** Rejected: each consumer would supply its own buttons, menus and sheets to the builder's interface, so the builder would look like whichever app hosts it, and keeping the two alike would be a copy to maintain by hand.
 - **A git submodule instead of packages.** Rejected: Plan could import any file here, so the packages' interfaces would never harden; a change made inside the submodule would pass by this repository's gate; and every shared change would need its pin moved in Plan.
 - **One workspace above both repositories.** Rejected: each root has its own dependency catalogue and lockfile, and an install from a root above them fails on Plan's catalogue (tried 2026-11-20).
 - **Ground-mounted parks in Plan.** Rejected: project developers are another customer with another workflow, and nothing is handed to a Home. Plan stops at what an installer builds: roofs, several buildings of one plant, racks on flat roofs and small ground fields (ADR 20).

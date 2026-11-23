@@ -4,10 +4,10 @@ import { afterEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
-import { haptics } from "../haptics.ts";
+import { haptics } from "@sunreye/ui/haptics";
 import Choices from "./choices.harness.svelte";
 import Probe from "./select.harness.svelte";
-import { Toggle } from "./ui/toggle/index.js";
+import { Toggle } from "@sunreye/ui/toggle";
 
 afterEach(() => {
   vi.restoreAllMocks();
