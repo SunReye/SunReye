@@ -10,3 +10,5 @@ export type RoofFaceId = Pick<ModuleGrid, "block" | "face">;
 
 /** The roof face's key: equal for the same face wherever it was picked, as from above or in 3D. */
 export declare function roofFaceKey(face: RoofFaceId): string;
+
+export * from "./roof.js";

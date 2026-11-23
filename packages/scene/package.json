@@ -2,12 +2,18 @@
   "name": "@sunreye/scene",
   "version": "5.0.0",
   "private": true,
-  "description": "SunReye's scene and layout types, generated from the crates, and a roof face's key (ADR 25).",
+  "description": "SunReye's scene and layout types, generated from the crates, a roof face's key, and the operations that trace a roof (ADRs 20, 25).",
   "license": "SEE LICENSE IN LICENSE",
   "files": [
     "index.js",
     "index.d.ts",
-    "schema.d.ts"
+    "roof.js",
+    "roof-faces.js",
+    "roof-plan.js",
+    "roof-snap.js",
+    "roof.d.ts",
+    "schema.d.ts",
+    "README.md"
   ],
   "type": "module",
   "exports": {

@@ -118,3 +118,18 @@ test("a roof face has one key, whichever view selected it", async () => {
   expect(key({ block: 0, face: 1 })).not.toBe(key({ block: 1, face: 0 }));
   expect(key({ block: 1, face: 10 })).not.toBe(key({ block: 11, face: 0 }));
 });
+
+test("a consumer traces a roof with the shipped operations, typed", async () => {
+  const consumer = `
+import { addLine, type Edited, type Scene } from "@sunreye/scene";
+
+const empty: Scene = { north: 0, blocks: [], obstacles: [] };
+
+export const edited: Edited = addLine(empty, { x: 0, z: 0 }, { x: 0, z: 4 }, 0.3);
+`;
+
+  const module: unknown = await import(Bun.resolveSync("@sunreye/scene", out));
+
+  expect(await check(consumer)).toBe("");
+  expect(Object.prototype.hasOwnProperty.call(module, "addLine")).toBe(true);
+});

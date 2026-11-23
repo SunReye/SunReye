@@ -4,3 +4,5 @@
 export function roofFaceKey({ block, face }) {
   return `${block}/${face}`;
 }
+
+export { addLine, loops, moveLine, removeLine, snap } from "./roof.js";
