@@ -30,6 +30,13 @@ export interface Aerial {
   readonly extent: Extent;
 }
 
+/** What the scene draws of what the consumer supplies: the image, and the neighbours as the pv
+ * crate's faces. */
+export interface Around {
+  readonly aerial?: Aerial | undefined;
+  readonly neighbours: readonly Face[];
+}
+
 export interface Supplier {
   /** The neighbours' walls and tops, east, north, up; throws the crate's reason for one refused. */
   readonly neighbours: (neighbours: readonly Neighbour[]) => Face[];

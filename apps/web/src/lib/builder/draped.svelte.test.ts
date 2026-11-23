@@ -5,8 +5,7 @@ import { BufferAttribute, BufferGeometry, Mesh, MeshStandardMaterial, type Objec
 import { expect, test } from "vitest";
 import type { Face, Geometry } from "./pv.ts";
 import { buildScene } from "./scene.ts";
-import type { Around } from "../scene/surroundings.ts";
-import type { Aerial } from "./supplied.ts";
+import type { Aerial, Around } from "./supplied.ts";
 
 /** A 10 m × 8 m house, its roof rising north from the eave along the scene's x axis. */
 const house: Geometry = {

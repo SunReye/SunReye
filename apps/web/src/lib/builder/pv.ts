@@ -43,7 +43,7 @@ export type { GridModule, ModuleGrid, OnGrid, Sizes, Spot } from "./grids.ts";
 
 export type { Footprint, Ghost, LaidGrid, Misplaced, Modules, RoofFace } from "./laid.ts";
 
-export type { Aerial, Neighbour } from "./supplied.ts";
+export type { Aerial, Around, Neighbour } from "./supplied.ts";
 
 /** A string as the core's API wires it. */
 export type Wiring = Readonly<Omit<StringDraft, "id">>;

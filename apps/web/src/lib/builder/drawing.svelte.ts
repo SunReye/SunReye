@@ -8,15 +8,12 @@ import { pause } from "../scene/prepare.ts";
 import type { Lit } from "../scene/stage.svelte.ts";
 import { freeOverlay, overlay, type Tints } from "./overlay.ts";
 import { RoofPress, type RoofSources, type Roofwork } from "./roof-press.ts";
-import type { Geometry, Ghost, Point } from "./pv.ts";
-import type { Around } from "../scene/surroundings.ts";
+import type { Around, Geometry, Ghost, Point } from "./pv.ts";
 import { buildScene, buildSliced, strike, tint, toThree, type Hit, type Panel } from "./scene.ts";
 
 export type { Hit, Panel } from "./scene.ts";
 
-export type { Geometry, Point } from "./pv.ts";
-
-export type { Around } from "../scene/surroundings.ts";
+export type { Around, Geometry, Point } from "./pv.ts";
 
 export { Handled, type Editing } from "./handles/handled.svelte.ts";
 

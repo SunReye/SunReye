@@ -13,13 +13,13 @@ import {
 } from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import * as finish from "../scene/materials.ts";
-import { aerialGround, drape, fence, ground, photo, type Around } from "../scene/surroundings.ts";
+import { aerialGround, drape, fence, ground, photo } from "../scene/surroundings.ts";
 import { conifer, crown, level, triangles as cut } from "../scene/surfaces.ts";
 import { roofWindows } from "../scene/roof-windows.ts";
 import { openings } from "../scene/wall-openings.ts";
 import { trim } from "../scene/trim.ts";
 import { modules, toThree, type Panel } from "./panels.ts";
-import type { Face, Geometry, Mount, Solid } from "./pv.ts";
+import type { Around, Face, Geometry, Mount, Solid } from "./pv.ts";
 
 /** Each face as triangles, convex or not. */
 function triangles(faces: readonly Face[]): number[] {

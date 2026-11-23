@@ -16,7 +16,7 @@ import {
   SRGBColorSpace,
   Texture,
 } from "three";
-import type { Face, Fencing, Ground, Point } from "../builder/pv.ts";
+import type { Fencing, Ground, Point } from "../builder/pv.ts";
 import type { Aerial, Extent } from "../builder/supplied.ts";
 import { FENCE, GROUND } from "./materials.ts";
 import { fan } from "./surfaces.ts";
@@ -151,13 +151,6 @@ export function fence(fencing: Fencing): Group {
   group.name = "fence";
 
   return group;
-}
-
-/** What the scene draws of what the consumer supplies: the image, and the neighbours as the pv
- * crate's faces. */
-export interface Around {
-  readonly aerial?: Aerial | undefined;
-  readonly neighbours: readonly Face[];
 }
 
 /** Metres the aerial image lies over the floor: under every ground surface. */
