@@ -5,8 +5,8 @@
 -->
 <script lang="ts">
   import { untrack } from "svelte";
-  import { Toggle } from "#lib/components/ui/toggle/index.js";
-  import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
+  import { Toggle } from "@sunreye/ui/toggle";
+  import * as ToggleGroup from "@sunreye/ui/toggle-group";
   import { motion } from "../motion/tier.svelte.ts";
   import { m } from "../paraglide/messages.js";
   import { readout } from "./perf-lines.ts";

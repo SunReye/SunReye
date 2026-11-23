@@ -1,8 +1,8 @@
 <!-- One band of a schedule: its weekdays, its hours on the time wheels and its price. -->
 <script lang="ts">
   import Trash from "@lucide/svelte/icons/trash-2";
-  import { Button } from "#lib/components/ui/button/index.js";
-  import { Checkbox } from "#lib/components/ui/checkbox/index.js";
+  import { Button } from "@sunreye/ui/button";
+  import { Checkbox } from "@sunreye/ui/checkbox";
   import { m } from "../paraglide/messages.js";
   import BandTime from "./BandTime.svelte";
   import type { BandDraft } from "./draft";

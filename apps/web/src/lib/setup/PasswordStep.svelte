@@ -2,7 +2,7 @@
 <script lang="ts">
   import TextField from "../components/text-field.svelte";
   import type { Core, Problem } from "../api/core.ts";
-  import { Button } from "#lib/components/ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
   import { m } from "../paraglide/messages.js";
   import Refusal, { answered, refusedInline } from "./Refusal.svelte";
 

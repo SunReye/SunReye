@@ -4,7 +4,7 @@ import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { connect } from "../api/core.ts";
 import { finish } from "../motion/animations.harness.ts";
-import { haptics } from "../haptics.ts";
+import { haptics } from "@sunreye/ui/haptics";
 import { problem } from "../settings/settings.harness.ts";
 import Controls from "./Controls.svelte";
 import { SCHEDULE, controlsCore } from "./controls.harness.ts";

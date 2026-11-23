@@ -6,7 +6,7 @@
   import PageTitle from "../components/page-title.svelte";
   import Lock from "@lucide/svelte/icons/lock";
   import ShieldCheck from "@lucide/svelte/icons/shield-check";
-  import { Button } from "#lib/components/ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
   import { m } from "../paraglide/messages.js";
 
   let { writes, title = true }: { writes: boolean; title?: boolean } = $props();

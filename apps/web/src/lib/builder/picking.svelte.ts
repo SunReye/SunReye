@@ -1,6 +1,6 @@
 // What is picked in the builder (ADR 20) and how it is held: the level the inspector stands on,
 // whether its object's ring shows, and the wall spot a tap struck. Held by the page.
-import { haptics } from "../haptics.ts";
+import { haptics } from "@sunreye/ui/haptics";
 import type { Level } from "./levels.ts";
 import type { Modules } from "./pv.ts";
 import type { Hit } from "./scene.ts";

@@ -3,9 +3,9 @@
   self-consumption meters and the day curve, divided by hairlines. Every part opens its detail.
 -->
 <script lang="ts">
-  import { Pressable } from "../components/ui/pressable/index.js";
+  import { Pressable } from "@sunreye/ui/pressable";
   import { flowColour } from "../energy-colours.ts";
-  import * as Card from "#lib/components/ui/card/index.js";
+  import * as Card from "@sunreye/ui/card";
   import AnimatedNumber from "../components/animated-number.svelte";
   import { m } from "../paraglide/messages.js";
   import { getLocale } from "../paraglide/runtime.js";

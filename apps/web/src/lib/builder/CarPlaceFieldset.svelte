@@ -1,6 +1,6 @@
 <!-- A car place's level in the inspector: its loadpoint, footprint, colour and body. -->
 <script lang="ts">
-  import * as Item from "#lib/components/ui/item/index.js";
+  import * as Item from "@sunreye/ui/item";
   import type { Device } from "../api/core.ts";
   import { PLAIN } from "../cars/parked.ts";
   import { m } from "../paraglide/messages.js";

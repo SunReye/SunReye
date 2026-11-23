@@ -3,7 +3,7 @@
   below that a drawer under the bar, or a dialog beside the rail, open while the route says so.
 -->
 <script lang="ts">
-  import * as Card from "#lib/components/ui/card/index.js";
+  import * as Card from "@sunreye/ui/card";
   import ResponsiveSheet from "../components/responsive-sheet.svelte";
   import { m } from "../paraglide/messages.js";
   import type { Explore } from "./explore.svelte.ts";

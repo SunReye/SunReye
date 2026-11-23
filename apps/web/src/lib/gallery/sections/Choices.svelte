@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { Checkbox } from "../../components/ui/checkbox/index.js";
+  import { Checkbox } from "@sunreye/ui/checkbox";
   import { Label } from "../../components/ui/label/index.js";
   import * as NativeSelect from "../../components/ui/native-select/index.js";
   import * as RadioGroup from "../../components/ui/radio-group/index.js";
   import * as Select from "../../components/ui/select/index.js";
-  import { Slider } from "../../components/ui/slider/index.js";
+  import { Slider } from "@sunreye/ui/slider";
   import { Switch } from "../../components/ui/switch/index.js";
   import Segmented from "../../components/segmented.svelte";
   import Demo from "../Demo.svelte";

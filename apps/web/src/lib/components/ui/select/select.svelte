@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Select as SelectPrimitive } from "bits-ui";
-  import { haptics } from "#lib/haptics.ts";
+  import { haptics } from "@sunreye/ui/haptics";
 
   let {
     open = $bindable(false),

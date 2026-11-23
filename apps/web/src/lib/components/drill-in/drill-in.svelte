@@ -25,9 +25,9 @@
 <script lang="ts">
   import { tick, untrack, type Snippet } from "svelte";
   import { MediaQuery } from "svelte/reactivity";
-  import * as Card from "#lib/components/ui/card/index.js";
-  import * as Item from "../ui/item/index.js";
-  import { haptics } from "../../haptics.ts";
+  import * as Card from "@sunreye/ui/card";
+  import * as Item from "@sunreye/ui/item";
+  import { haptics } from "@sunreye/ui/haptics";
   import { Push } from "./push.svelte.ts";
   import { carded } from "./drill-card.svelte";
   import DrillHeader from "./drill-header.svelte";

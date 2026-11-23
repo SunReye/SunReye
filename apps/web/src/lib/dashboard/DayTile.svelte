@@ -1,6 +1,6 @@
 <!-- Today's small day chart, actual against forecast; a press opens the day's details. -->
 <script lang="ts">
-  import { Pressable } from "../components/ui/pressable/index.js";
+  import { Pressable } from "@sunreye/ui/pressable";
   import { Skeleton } from "../components/ui/skeleton/index.js";
   import { m } from "../paraglide/messages.js";
   import type { Day } from "./day.ts";

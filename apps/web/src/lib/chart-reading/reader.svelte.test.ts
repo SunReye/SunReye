@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
-import { haptics } from "../haptics.ts";
+import { haptics } from "@sunreye/ui/haptics";
 import Plot from "./reader.harness.svelte";
 import { ChartReader, type Readable } from "./reader.svelte.ts";
 

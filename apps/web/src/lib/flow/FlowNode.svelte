@@ -5,7 +5,7 @@
   the node's detail sheet.
 -->
 <script lang="ts">
-  import { Pressable } from "../components/ui/pressable/index.js";
+  import { Pressable } from "@sunreye/ui/pressable";
   import { KIND_ICONS } from "../equipment-kinds.ts";
   import PowerNumber from "../components/power-number.svelte";
   import type { MotionTier } from "../motion/tier.ts";

@@ -1,6 +1,6 @@
 <script lang="ts">
   import * as Tooltip from "#lib/components/ui/tooltip/index.js";
-  import { cn, type WithElementRef } from "#lib/utils.js";
+  import { cn, type WithElementRef } from "@sunreye/ui/utils";
   import {
     SIDEBAR_COOKIE_MAX_AGE,
     SIDEBAR_COOKIE_NAME,

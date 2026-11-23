@@ -1,8 +1,8 @@
 <!-- The orbit camera's preset views (ADR 20): one button on the canvas, its menu closed until asked for. -->
 <script lang="ts">
   import Rotate3d from "@lucide/svelte/icons/rotate-3d";
-  import { Button } from "#lib/components/ui/button/index.js";
-  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
+  import { Button } from "@sunreye/ui/button";
+  import * as DropdownMenu from "@sunreye/ui/dropdown-menu";
   import { m } from "../paraglide/messages.js";
   import { presets, type Preset } from "./camera.ts";
 

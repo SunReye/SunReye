@@ -3,8 +3,8 @@
   import Check from "@lucide/svelte/icons/check";
   import type { Snippet } from "svelte";
   import DrawerSheet from "../drawer-sheet.svelte";
-  import * as Item from "../ui/item/index.js";
-  import { Pressable } from "../ui/pressable/index.js";
+  import * as Item from "@sunreye/ui/item";
+  import { Pressable } from "@sunreye/ui/pressable";
   import type { Choice, Section } from "./choices.ts";
 
   let {

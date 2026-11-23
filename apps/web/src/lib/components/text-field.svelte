@@ -2,7 +2,7 @@
 <script lang="ts">
   import type { HTMLInputAttributes } from "svelte/elements";
   import FormField from "./form-field.svelte";
-  import { Input } from "./ui/input/index.js";
+  import { Input } from "@sunreye/ui/input";
 
   let {
     label,

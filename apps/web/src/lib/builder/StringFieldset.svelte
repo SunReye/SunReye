@@ -1,7 +1,7 @@
 <!-- A string's level in the inspector: its name, module type, wiring and loss. -->
 <script lang="ts">
-  import * as Item from "#lib/components/ui/item/index.js";
-  import { Input } from "#lib/components/ui/input/index.js";
+  import * as Item from "@sunreye/ui/item";
+  import { Input } from "@sunreye/ui/input";
   import type { Device, ModuleType, StringDraft } from "../api/core.ts";
   import { m } from "../paraglide/messages.js";
   import { amount, choices } from "./fields.ts";

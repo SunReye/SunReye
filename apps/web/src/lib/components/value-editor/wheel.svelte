@@ -4,7 +4,7 @@
 -->
 <script lang="ts">
   import { spring, VelocityTracker } from "../../animate.ts";
-  import { haptics } from "../../haptics.ts";
+  import { haptics } from "@sunreye/ui/haptics";
   import { motion } from "../../motion/tier.svelte.ts";
   import { SPRINGS } from "../../motion/values.ts";
   import { m } from "../../paraglide/messages.js";

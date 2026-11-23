@@ -5,7 +5,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
-import { haptics } from "../haptics.ts";
+import { haptics } from "@sunreye/ui/haptics";
 import AddButton from "./add-button.svelte";
 import NavLink from "./nav-link.svelte";
 import OpenRow from "./open-row.svelte";

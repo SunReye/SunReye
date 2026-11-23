@@ -3,8 +3,8 @@
   import Trash2 from "@lucide/svelte/icons/trash-2";
   import type { Problem } from "../api/core";
   import ConfirmSheet from "../components/confirm-sheet.svelte";
-  import { Button } from "#lib/components/ui/button/index.js";
-  import * as Item from "#lib/components/ui/item/index.js";
+  import { Button } from "@sunreye/ui/button";
+  import * as Item from "@sunreye/ui/item";
 
   let {
     name,

@@ -1,9 +1,9 @@
 <!-- The archive upload as a ui button; the label keeps the hidden file input named and focusable. -->
 <script lang="ts">
   import Upload from "@lucide/svelte/icons/upload";
-  import { buttonVariants } from "#lib/components/ui/button/index.js";
-  import { Input } from "#lib/components/ui/input/index.js";
-  import { cn } from "#lib/utils.js";
+  import { buttonVariants } from "@sunreye/ui/button";
+  import { Input } from "@sunreye/ui/input";
+  import { cn } from "@sunreye/ui/utils";
   import { m } from "../paraglide/messages.js";
 
   let { disabled, onupload }: { disabled: boolean; onupload: (file: File) => void } = $props();

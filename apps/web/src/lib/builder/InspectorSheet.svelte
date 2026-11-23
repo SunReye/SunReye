@@ -9,10 +9,10 @@
 </script>
 
 <script lang="ts">
-  import { Pressable } from "../components/ui/pressable/index.js";
+  import { Pressable } from "@sunreye/ui/pressable";
   import type { Snippet } from "svelte";
   import { spring, VelocityTracker } from "../animate.ts";
-  import { haptics } from "../haptics.ts";
+  import { haptics } from "@sunreye/ui/haptics";
   import { SPRINGS } from "../motion/values.ts";
   import { m } from "../paraglide/messages.js";
 

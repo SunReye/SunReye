@@ -4,10 +4,10 @@
   import ItalicIcon from "@lucide/svelte/icons/italic";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import * as ButtonGroup from "../../components/ui/button-group/index.js";
-  import { Button } from "../../components/ui/button/index.js";
-  import { Separator } from "../../components/ui/separator/index.js";
-  import * as ToggleGroup from "../../components/ui/toggle-group/index.js";
-  import { Toggle } from "../../components/ui/toggle/index.js";
+  import { Button } from "@sunreye/ui/button";
+  import { Separator } from "@sunreye/ui/separator";
+  import * as ToggleGroup from "@sunreye/ui/toggle-group";
+  import { Toggle } from "@sunreye/ui/toggle";
   import Demo from "../Demo.svelte";
 </script>
 

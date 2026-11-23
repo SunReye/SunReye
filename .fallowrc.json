@@ -9,7 +9,25 @@
     "**/.svelte-kit/**",
     "apps/web/src/lib/components/ui/**",
     "apps/web/src/lib/motion.ts",
-    "apps/web/src/lib/utils.ts",
+    "packages/ui/src/alert/**",
+    "packages/ui/src/button/**",
+    "packages/ui/src/calendar/**",
+    "packages/ui/src/card/**",
+    "packages/ui/src/checkbox/**",
+    "packages/ui/src/dialog/**",
+    "packages/ui/src/drawer/**",
+    "packages/ui/src/dropdown-menu/**",
+    "packages/ui/src/input/**",
+    "packages/ui/src/item/**",
+    "packages/ui/src/popover/**",
+    "packages/ui/src/pressable/**",
+    "packages/ui/src/separator/**",
+    "packages/ui/src/slider/**",
+    "packages/ui/src/spinner/**",
+    "packages/ui/src/toggle/**",
+    "packages/ui/src/toggle-group/**",
+    "packages/ui/src/track-active.ts",
+    "packages/ui/src/utils.ts",
     "apps/web/src/lib/hooks/**"
   ],
   "ignoreBinaries": ["systemd-analyze"],
@@ -129,6 +147,10 @@
         "patterns": ["packages/scene/**"]
       },
       {
+        "name": "ui",
+        "patterns": ["packages/ui/**"]
+      },
+      {
         "name": "pv-wasm",
         "patterns": ["packages/pv-wasm/**"]
       },
@@ -144,7 +166,7 @@
     "rules": [
       {
         "from": "web",
-        "allow": ["tokens", "catalogue", "scene", "pv-wasm"]
+        "allow": ["tokens", "catalogue", "scene", "ui", "pv-wasm"]
       },
       {
         "from": "sdk",
@@ -163,6 +185,10 @@
         "allow": []
       },
       {
+        "from": "ui",
+        "allow": []
+      },
+      {
         "from": "pv-wasm",
         "allow": ["scene"]
       },
@@ -172,7 +198,7 @@
       },
       {
         "from": "tooling",
-        "allow": ["web", "sdk", "tokens", "catalogue", "scene", "pv-wasm", "profiles"]
+        "allow": ["web", "sdk", "tokens", "catalogue", "scene", "ui", "pv-wasm", "profiles"]
       }
     ],
     "coverage": {

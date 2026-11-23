@@ -3,7 +3,7 @@
   import CircleAlert from "@lucide/svelte/icons/circle-alert";
   import CircleCheck from "@lucide/svelte/icons/circle-check";
   import type { Core } from "../api/core";
-  import * as Item from "#lib/components/ui/item/index.js";
+  import * as Item from "@sunreye/ui/item";
   import LoadingRows from "../components/loading-rows.svelte";
   import { problemText } from "../i18n/problems";
   import { m } from "../paraglide/messages.js";

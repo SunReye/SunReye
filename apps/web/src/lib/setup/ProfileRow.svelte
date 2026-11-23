@@ -1,6 +1,6 @@
 <!-- One offer in the picker: its name, a family or community tag under it, its rating beside it. -->
 <script lang="ts">
-  import { Pressable } from "../components/ui/pressable/index.js";
+  import { Pressable } from "@sunreye/ui/pressable";
   import Check from "@lucide/svelte/icons/check";
   import { m } from "../paraglide/messages.js";
   import { power, type Offer } from "./catalogue.ts";

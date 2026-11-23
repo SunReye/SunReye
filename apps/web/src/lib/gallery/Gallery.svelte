@@ -7,7 +7,7 @@
   import { mode, setMode } from "mode-watcher";
   import type { Component } from "svelte";
   import "../../app.css";
-  import * as ToggleGroup from "../components/ui/toggle-group/index.js";
+  import * as ToggleGroup from "@sunreye/ui/toggle-group";
   import * as Tooltip from "../components/ui/tooltip/index.js";
 
   /** Every section file, in name order: a new one joins the gallery by existing. */

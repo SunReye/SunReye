@@ -16,8 +16,8 @@
 <script lang="ts">
   import { sidebarMenuButtonVariants } from "#lib/components/ui/sidebar/sidebar-menu-button.svelte";
   import SunMark from "#lib/components/sun-mark.svelte";
-  import { cn } from "#lib/utils.js";
-  import { haptics } from "../haptics.ts";
+  import { cn } from "@sunreye/ui/utils";
+  import { haptics } from "@sunreye/ui/haptics";
   import { m } from "../paraglide/messages.js";
   import { DASHBOARD, RAIL, SETTINGS, href } from "./nav.ts";
   import Connection from "./Connection.svelte";

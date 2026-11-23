@@ -1,7 +1,7 @@
 <!-- One v3 device of the archive and the v5 device it imports into, picked from a select field. -->
 <script lang="ts">
   import SelectField from "#lib/components/select-field.svelte";
-  import * as Item from "#lib/components/ui/item/index.js";
+  import * as Item from "@sunreye/ui/item";
 
   let {
     slug,

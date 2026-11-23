@@ -3,7 +3,7 @@
   import Refusal, { answered } from "../setup/Refusal.svelte";
   import type { Core, Declared, Problem, Update } from "../api/core";
   import { m } from "../paraglide/messages.js";
-  import { Button } from "#lib/components/ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
   import { boundsText } from "./bounds";
   import { settingLabel } from "./setting-label.ts";
 

@@ -4,7 +4,7 @@
 -->
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import * as Dialog from "#lib/components/ui/dialog/index.js";
+  import * as Dialog from "@sunreye/ui/dialog";
   import { motion } from "../motion/tier.svelte.ts";
   import { input } from "../shell/input.svelte.ts";
   import DrawerSheet from "./drawer-sheet.svelte";

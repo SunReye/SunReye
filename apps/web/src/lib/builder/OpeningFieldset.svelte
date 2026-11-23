@@ -1,7 +1,7 @@
 <!-- A window's or a door's level in the inspector: its kind, wall, place and size (ADR 20). -->
 <script lang="ts">
-  import { Button } from "#lib/components/ui/button/index.js";
-  import * as Item from "#lib/components/ui/item/index.js";
+  import { Button } from "@sunreye/ui/button";
+  import * as Item from "@sunreye/ui/item";
   import type { Editable } from "../components/value-editor/editable.ts";
   import { m } from "../paraglide/messages.js";
   import { choices, metres } from "./fields.ts";

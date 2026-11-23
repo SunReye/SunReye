@@ -1,7 +1,7 @@
 <!-- Beside the chart: the breakdown, the peaks, what stands out, and payback or, in the first week, what fills in. -->
 <script lang="ts">
   import type { Payback } from "../api/tariff.ts";
-  import { Presence } from "#lib/components/ui/card/index.js";
+  import { Presence } from "@sunreye/ui/card";
   import BreakdownCard from "./BreakdownCard.svelte";
   import Filling from "./Filling.svelte";
   import type { Note } from "./notes.ts";

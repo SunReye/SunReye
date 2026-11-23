@@ -88,7 +88,8 @@ export const RULES: readonly Rule[] = [
   {
     name: "haptics library outside the haptics module",
     found: first(/from "web-haptics"|\bnavigator\.vibrate\b/u),
-    owners: { "haptics.ts": "The one haptics module (ADR 21): its switch and its presets." },
+    // The one haptics module (ADR 21) is the kit's, in @sunreye/ui (ADR 25).
+    owners: {},
   },
   {
     name: "bits-ui choice outside the kit",

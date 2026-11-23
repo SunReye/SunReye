@@ -1,9 +1,9 @@
 <!-- The first week: what is already there and when the rest fills in. -->
 <script lang="ts">
-  import * as Card from "#lib/components/ui/card/index.js";
+  import * as Card from "@sunreye/ui/card";
   import Check from "@lucide/svelte/icons/check";
   import Circle from "@lucide/svelte/icons/circle";
-  import { Button } from "#lib/components/ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
   import { m } from "../paraglide/messages.js";
   import { shortDay } from "../range/calendar.ts";
 

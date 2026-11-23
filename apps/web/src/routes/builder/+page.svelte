@@ -1,7 +1,6 @@
 <script lang="ts">
   import { useCore } from "../../lib/shell/core.ts";
-  // The glue crate's release build, which the SPA build makes first (ADR 2, 20).
-  import { Button } from "#lib/components/ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
   import { Skeleton } from "#lib/components/ui/skeleton/index.js";
   import Builder, { BUILDER_SIZE } from "../../lib/builder/Builder.svelte";
   import { inputsOf, limitsOf } from "../../lib/builder/checks";

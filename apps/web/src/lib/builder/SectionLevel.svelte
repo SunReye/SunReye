@@ -1,6 +1,6 @@
 <!-- An inspector group: a row per object drilling to it, and the objects it can add. -->
 <script lang="ts">
-  import * as Item from "#lib/components/ui/item/index.js";
+  import * as Item from "@sunreye/ui/item";
   import DrillRow from "../components/drill-in/drill-row.svelte";
   import { m } from "../paraglide/messages.js";
   import AddButtons from "./AddButtons.svelte";

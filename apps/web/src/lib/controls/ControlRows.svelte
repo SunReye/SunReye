@@ -1,6 +1,6 @@
 <!-- A group's settings, each row its current value, and where the limits come from (ADR 21). -->
 <script lang="ts">
-  import * as Item from "#lib/components/ui/item/index.js";
+  import * as Item from "@sunreye/ui/item";
   import { m } from "../paraglide/messages.js";
   import ControlRow from "./ControlRow.svelte";
   import type { Control, ControlGroup } from "./groups.ts";

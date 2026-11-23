@@ -6,7 +6,7 @@
   import Plus from "@lucide/svelte/icons/plus";
   import Unplug from "@lucide/svelte/icons/unplug";
   import X from "@lucide/svelte/icons/x";
-  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
+  import * as DropdownMenu from "@sunreye/ui/dropdown-menu";
   import type { StringDraft } from "../api/core.ts";
   import { m } from "../paraglide/messages.js";
   import { stringCss } from "./scene.ts";

@@ -1,7 +1,7 @@
 <!-- A settings row that picks one of a few: its name, a line of status, and a segmented control. -->
 <script lang="ts" generics="T extends string">
   import type { Snippet } from "svelte";
-  import * as Item from "#lib/components/ui/item/index.js";
+  import * as Item from "@sunreye/ui/item";
   import Segmented from "../components/segmented.svelte";
 
   let {

@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import * as Card from "#lib/components/ui/card/index.js";
+  import * as Card from "@sunreye/ui/card";
   import type { Core, Device } from "../api/core.ts";
   import { m } from "../paraglide/messages.js";
   import Inspector from "./Inspector.svelte";

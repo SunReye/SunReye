@@ -1,12 +1,12 @@
 <script lang="ts">
   import LoadFailed from "../../components/load-failed.svelte";
   import { Badge } from "../../components/ui/badge/index.js";
-  import { Button } from "../../components/ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
   import { Kbd } from "../../components/ui/kbd/index.js";
   import { Progress } from "../../components/ui/progress/index.js";
-  import { Separator } from "../../components/ui/separator/index.js";
+  import { Separator } from "@sunreye/ui/separator";
   import { Skeleton } from "../../components/ui/skeleton/index.js";
-  import { Spinner } from "../../components/ui/spinner/index.js";
+  import { Spinner } from "@sunreye/ui/spinner";
   import Demo from "../Demo.svelte";
 
   const TONES = ["solar", "battery", "import", "export", "house", "ev", "under", "over"] as const;

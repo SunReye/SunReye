@@ -3,9 +3,9 @@
   import ProblemAlert from "../components/problem-alert.svelte";
   import Upload from "@lucide/svelte/icons/upload";
   import X from "@lucide/svelte/icons/x";
-  import * as Item from "#lib/components/ui/item/index.js";
-  import { Button } from "#lib/components/ui/button/index.js";
-  import { Input } from "#lib/components/ui/input/index.js";
+  import * as Item from "@sunreye/ui/item";
+  import { Button } from "@sunreye/ui/button";
+  import { Input } from "@sunreye/ui/input";
   import { problemText } from "../i18n/problems.ts";
   import { m } from "../paraglide/messages.js";
   import { uploader } from "./upload.ts";

@@ -1,7 +1,7 @@
 <!-- The "now" strip (ADR 21): price, PV still to come and the weather, one surface divided by hairlines. -->
 <script lang="ts">
-  import { Pressable } from "../components/ui/pressable/index.js";
-  import * as Card from "#lib/components/ui/card/index.js";
+  import { Pressable } from "@sunreye/ui/pressable";
+  import * as Card from "@sunreye/ui/card";
   import AnimatedNumber from "../components/animated-number.svelte";
   import { m } from "../paraglide/messages.js";
   import { getLocale } from "../paraglide/runtime.js";

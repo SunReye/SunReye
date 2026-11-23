@@ -7,7 +7,7 @@
   import Grid2x2X from "@lucide/svelte/icons/grid-2x2-x";
   import type { ModuleType } from "../api/core.ts";
   import { m } from "../paraglide/messages.js";
-  import { Button } from "#lib/components/ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
   import type { Checks } from "./checks.ts";
   import GridSettings from "./GridSettings.svelte";
   import { clearGrid, editGrid, fillGrid, removeGrid, type Draft } from "./modules.ts";

@@ -5,7 +5,7 @@
   import Search from "@lucide/svelte/icons/search";
   import type { Core, Problem } from "../api/core.ts";
   import type { ScanReport } from "../api/setup.ts";
-  import { Button } from "#lib/components/ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
   import { m } from "../paraglide/messages.js";
   import Refusal, { answered } from "./Refusal.svelte";
 

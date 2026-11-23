@@ -1,10 +1,10 @@
 <script lang="ts">
   import SearchIcon from "@lucide/svelte/icons/search";
-  import { Checkbox } from "../../components/ui/checkbox/index.js";
+  import { Checkbox } from "@sunreye/ui/checkbox";
   import * as Field from "../../components/ui/field/index.js";
   import * as InputGroup from "../../components/ui/input-group/index.js";
   import * as InputOTP from "../../components/ui/input-otp/index.js";
-  import { Input } from "../../components/ui/input/index.js";
+  import { Input } from "@sunreye/ui/input";
   import { Label } from "../../components/ui/label/index.js";
   import { Switch } from "../../components/ui/switch/index.js";
   import { Textarea } from "../../components/ui/textarea/index.js";

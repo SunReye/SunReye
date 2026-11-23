@@ -2,7 +2,7 @@
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
 import type { TransitionConfig } from "svelte/transition";
 import { motionMs } from "../motion.ts";
-import { easeInOut } from "./ease.ts";
+import { easeInOut } from "@sunreye/ui/motion/ease";
 
 const SLIDE_MS = 300;
 

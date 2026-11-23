@@ -1,7 +1,7 @@
 // rAF-driven springs and tweens that start from the current value and velocity,
 // so every motion is interruptible and renders only while it runs.
 
-import { easeInOut } from "./motion/ease.ts";
+import { easeInOut } from "@sunreye/ui/motion/ease";
 import { motion } from "./motion/tier.svelte.ts";
 import { SPRINGS } from "./motion/values.ts";
 

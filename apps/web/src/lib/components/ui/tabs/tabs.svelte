@@ -1,8 +1,8 @@
 <script lang="ts">
   import { Tabs as TabsPrimitive } from "bits-ui";
-  import { cn } from "#lib/utils.js";
+  import { cn } from "@sunreye/ui/utils";
   // Local: a tab the user picks ticks (ADR 21 "One behaviour, one component").
-  import { haptics } from "#lib/haptics.js";
+  import { haptics } from "@sunreye/ui/haptics";
 
   let {
     ref = $bindable(null),

@@ -2,8 +2,8 @@
 <script lang="ts">
   import DrillCard from "../components/drill-in/drill-card.svelte";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
-  import * as Item from "#lib/components/ui/item/index.js";
-  import { FEEDBACK } from "#lib/components/ui/pressable/index.js";
+  import * as Item from "@sunreye/ui/item";
+  import { FEEDBACK } from "@sunreye/ui/pressable";
   import { m } from "../paraglide/messages.js";
 </script>
 

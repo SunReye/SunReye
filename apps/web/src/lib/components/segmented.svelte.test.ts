@@ -2,7 +2,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
-import { haptics } from "../haptics.ts";
+import { haptics } from "@sunreye/ui/haptics";
 import SegmentedTabs from "./segmented-tabs.harness.svelte";
 import Segmented from "./segmented.svelte";
 import { finish } from "../motion/animations.harness.ts";

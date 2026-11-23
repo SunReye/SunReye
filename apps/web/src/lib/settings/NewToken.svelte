@@ -3,7 +3,7 @@
   import Check from "@lucide/svelte/icons/check";
   import Copy from "@lucide/svelte/icons/copy";
   import type { CreatedToken } from "../api/core";
-  import { Button } from "#lib/components/ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
   import { m } from "../paraglide/messages.js";
 
   let { created, ondone }: { created: CreatedToken; ondone: () => void } = $props();

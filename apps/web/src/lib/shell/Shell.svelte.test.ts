@@ -2,7 +2,7 @@ import { createRawSnippet, flushSync } from "svelte";
 import { afterEach, expect, test, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { haptics } from "../haptics.ts";
+import { haptics } from "@sunreye/ui/haptics";
 import { finish } from "../motion/animations.harness.ts";
 import Shell from "./Shell.svelte";
 import "../../app.css";

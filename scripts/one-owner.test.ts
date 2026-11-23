@@ -117,12 +117,12 @@ test("routes are held to it too", () => {
   ]);
 });
 
-test("the haptics library or the vibration API outside the haptics module is a copy", () => {
+test("the haptics library or the vibration API anywhere in the app is a copy: the module is the kit's", () => {
   const rule = "haptics library outside the haptics module";
 
   expect(rules("tariff/Zone.svelte", `import { WebHaptics } from "web-haptics";`)).toEqual([rule]);
   expect(rules("builder/gestures.ts", `navigator.vibrate(10);`)).toEqual([rule]);
-  expect(rules("haptics.ts", `import { WebHaptics } from "web-haptics";`)).toEqual([]);
+  expect(rules("haptics.ts", `import { WebHaptics } from "web-haptics";`)).toEqual([rule]);
 });
 
 test("toggle groups or tabs straight from bits-ui outside the kit are a copy", () => {

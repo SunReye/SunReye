@@ -5,10 +5,10 @@
 <script lang="ts">
   import TextField from "../components/text-field.svelte";
   import PageTitle from "../components/page-title.svelte";
-  import * as Card from "#lib/components/ui/card/index.js";
+  import * as Card from "@sunreye/ui/card";
   import type { Core, Problem } from "../api/core.ts";
-  import { Button } from "#lib/components/ui/button/index.js";
-  import { haptics } from "../haptics.ts";
+  import { Button } from "@sunreye/ui/button";
+  import { haptics } from "@sunreye/ui/haptics";
   import LocaleSwitch from "../LocaleSwitch.svelte";
   import { m } from "../paraglide/messages.js";
   import AccountSwitch from "./AccountSwitch.svelte";

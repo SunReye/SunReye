@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Input } from "#lib/components/ui/input/index.js";
-  import { cn } from "#lib/utils.js";
+  import { Input } from "@sunreye/ui/input";
+  import { cn } from "@sunreye/ui/utils";
   import type { ComponentProps } from "svelte";
 
   let {

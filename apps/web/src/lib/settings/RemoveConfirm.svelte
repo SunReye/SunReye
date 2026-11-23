@@ -3,7 +3,7 @@
   import Trash2 from "@lucide/svelte/icons/trash-2";
   import type { Problem } from "../api/core";
   import ConfirmSheet from "../components/confirm-sheet.svelte";
-  import { Button } from "#lib/components/ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
   import { m } from "../paraglide/messages.js";
 
   let {

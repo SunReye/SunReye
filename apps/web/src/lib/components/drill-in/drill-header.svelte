@@ -8,7 +8,7 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import ChevronLeft from "@lucide/svelte/icons/chevron-left";
-  import { Button } from "../ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
 
   let {
     back,

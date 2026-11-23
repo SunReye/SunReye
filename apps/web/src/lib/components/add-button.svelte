@@ -1,8 +1,8 @@
 <!-- "+ something" (ADR 21 "One behaviour, one component"): a press adds it, with `light`. -->
 <script lang="ts">
   import Plus from "@lucide/svelte/icons/plus";
-  import { Button } from "#lib/components/ui/button/index.js";
-  import { haptics } from "../haptics.ts";
+  import { Button } from "@sunreye/ui/button";
+  import { haptics } from "@sunreye/ui/haptics";
 
   let { text, onadd }: { text: string; onadd: () => void } = $props();
 </script>

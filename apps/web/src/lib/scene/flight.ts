@@ -1,7 +1,7 @@
 // The camera's flight between views (ADR 20 Motion): ADR 21's ease-in-out, drawn only while it
 // runs.
 import { Spherical, Vector3 } from "three";
-import { easeInOut } from "../motion/ease.ts";
+import { easeInOut } from "@sunreye/ui/motion/ease";
 import type { View } from "../builder/camera.ts";
 
 /** ADR 20: the camera flies to a preset in about 600 ms. */

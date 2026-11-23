@@ -1,6 +1,6 @@
 <!-- Test harness: a card that data shows or takes away, in a column with a gap, between two that stay. -->
 <script lang="ts">
-  import * as Card from "./ui/card/index.js";
+  import * as Card from "@sunreye/ui/card";
 
   let {
     shown,

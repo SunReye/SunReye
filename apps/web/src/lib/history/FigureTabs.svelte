@@ -1,6 +1,6 @@
 <!-- The range's answer: four figures, each the door to its own view (ADR 21). -->
 <script lang="ts">
-  import { Pressable } from "../components/ui/pressable/index.js";
+  import { Pressable } from "@sunreye/ui/pressable";
   import CircleCheck from "@lucide/svelte/icons/circle-check";
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
   import FigureNumber from "./FigureNumber.svelte";

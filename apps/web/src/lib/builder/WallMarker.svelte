@@ -1,7 +1,7 @@
 <!-- A marker kind in the wall spot's menu (ADR 20): one device, one tap; several, a menu of them
   to say which the marker names. -->
 <script lang="ts">
-  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
+  import * as DropdownMenu from "@sunreye/ui/dropdown-menu";
   import type { Device } from "../api/core.ts";
   import type { Equipment } from "./pv.ts";
   import type { WallAdd } from "./wall-actions.ts";

@@ -7,7 +7,7 @@
   import ChartEntrance from "../chart-entrance/ChartEntrance.svelte";
   import type { Attachment } from "svelte/attachments";
   import ArrowRight from "@lucide/svelte/icons/arrow-right";
-  import { Button } from "#lib/components/ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
   import { brushBands, clamp } from "../chart-reading/bands.ts";
   import { ChartReader, type Move } from "../chart-reading/reader.svelte.ts";
   import { m } from "../paraglide/messages.js";

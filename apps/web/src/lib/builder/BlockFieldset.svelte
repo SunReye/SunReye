@@ -1,6 +1,6 @@
 <!-- A block's level in the inspector: its footprint, eave, roof, overhang, colours and whether it is a carport. -->
 <script lang="ts">
-  import * as Item from "#lib/components/ui/item/index.js";
+  import * as Item from "@sunreye/ui/item";
   import { m } from "../paraglide/messages.js";
   import BlockColours from "./BlockColours.svelte";
   import { withRoof } from "./draft.ts";

@@ -2,7 +2,7 @@
   its warnings under it. -->
 <script lang="ts">
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
-  import { Pressable } from "../components/ui/pressable/index.js";
+  import { Pressable } from "@sunreye/ui/pressable";
   import { m } from "../paraglide/messages.js";
   import type { WiredIn } from "./modules.ts";
   import { stringCss } from "./scene.ts";

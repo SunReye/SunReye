@@ -1,6 +1,6 @@
 <!-- The savings sheet before a tariff is set (ADR 12): nothing was saved, and the way to set one. -->
 <script lang="ts">
-  import { Button } from "#lib/components/ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
   import { m } from "../paraglide/messages.js";
 
   let { admin }: { admin: boolean } = $props();

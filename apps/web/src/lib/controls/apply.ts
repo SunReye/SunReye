@@ -2,7 +2,7 @@
 import type { Core } from "../api/core";
 import type { Outcome } from "../components/value-editor/editable.ts";
 import { confirmed } from "../feedback.ts";
-import { haptics } from "../haptics.ts";
+import { haptics } from "@sunreye/ui/haptics";
 import { m } from "../paraglide/messages.js";
 import { editorOutcome } from "../settings/outcomes";
 import type { Control } from "./groups.ts";

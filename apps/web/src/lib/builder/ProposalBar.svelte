@@ -1,7 +1,7 @@
 <!-- Auto-stringing's result (ADR 20), listed above and drawn on the roof until it is kept or
   dropped. -->
 <script lang="ts">
-  import { Button } from "#lib/components/ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
   import { m } from "../paraglide/messages.js";
   import type { Proposal, WiringMode } from "./wiring-mode.svelte.ts";
 

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { tick } from "svelte";
 import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { HAPTICS } from "../../haptics.ts";
+import { HAPTICS } from "@sunreye/ui/haptics";
 import { motion } from "../../motion/tier.svelte.ts";
 import Harness from "./drill-in.harness.svelte";
 import { browserBack, child, frame, offset, rect, until } from "./drill-in.probe.ts";

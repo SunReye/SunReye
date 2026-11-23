@@ -4,13 +4,13 @@
   manufacturer and family, filtered as the admin types.
 -->
 <script lang="ts">
-  import { Pressable } from "../components/ui/pressable/index.js";
+  import { Pressable } from "@sunreye/ui/pressable";
   import ChevronDown from "@lucide/svelte/icons/chevron-down";
   import Search from "@lucide/svelte/icons/search";
   import { onMount } from "svelte";
   import type { Core, Listing, Problem } from "../api/core.ts";
   import ResponsiveSheet from "#lib/components/responsive-sheet.svelte";
-  import { Input } from "#lib/components/ui/input/index.js";
+  import { Input } from "@sunreye/ui/input";
   import { m } from "../paraglide/messages.js";
   import { offers, power } from "./catalogue.ts";
   import ProfileList from "./ProfileList.svelte";

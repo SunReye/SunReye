@@ -5,7 +5,7 @@
 <script lang="ts">
   import Plus from "@lucide/svelte/icons/plus";
   import Undo2 from "@lucide/svelte/icons/undo-2";
-  import { Button } from "#lib/components/ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
   import { m } from "../paraglide/messages.js";
   import AddSheet from "./AddSheet.svelte";
   import type { Session } from "./session.svelte.ts";

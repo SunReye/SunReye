@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Core, SharedArchive } from "../api/core";
-  import * as Item from "#lib/components/ui/item/index.js";
+  import * as Item from "@sunreye/ui/item";
   import LoadingRows from "../components/loading-rows.svelte";
   import { m } from "../paraglide/messages.js";
   import ImportDevice from "./ImportDevice.svelte";

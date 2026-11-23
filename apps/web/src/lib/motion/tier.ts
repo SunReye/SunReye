@@ -28,8 +28,7 @@
  * `bun test` reaches it.
  */
 
-/** Where each browser keeps its low-power switch (ADR 21). */
-export const LOW_POWER = "sunreye.low-power";
+export { LOW_POWER } from "@sunreye/ui/low-power";
 
 /** What is actually rendered. */
 export type MotionTier =

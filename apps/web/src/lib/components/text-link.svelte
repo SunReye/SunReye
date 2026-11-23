@@ -6,7 +6,7 @@
 <script lang="ts">
   import ArrowRight from "@lucide/svelte/icons/arrow-right";
   import type { Snippet } from "svelte";
-  import { Pressable } from "./ui/pressable/index.js";
+  import { Pressable } from "@sunreye/ui/pressable";
 
   let {
     href,

@@ -1,6 +1,6 @@
 <!-- What the scene's chips do not carry: the house (or battery, while PV is idle) and the grid. -->
 <script lang="ts">
-  import { Pressable } from "../components/ui/pressable/index.js";
+  import { Pressable } from "@sunreye/ui/pressable";
   import PowerNumber from "../components/power-number.svelte";
   import { m } from "../paraglide/messages.js";
 

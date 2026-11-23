@@ -1,7 +1,7 @@
 <!-- Removes the inspector's object; undo brings it back (ADR 20), so nothing asks first. -->
 <script lang="ts">
   import Trash2 from "@lucide/svelte/icons/trash-2";
-  import { Button } from "#lib/components/ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
   import { m } from "../paraglide/messages.js";
 
   let { onremove }: { onremove: () => void } = $props();

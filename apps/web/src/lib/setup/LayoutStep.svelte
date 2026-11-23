@@ -3,7 +3,7 @@
   back. "Done" always carries on, a layout saved or not: without 3D it is the only way on.
 -->
 <script lang="ts">
-  import * as Card from "#lib/components/ui/card/index.js";
+  import * as Card from "@sunreye/ui/card";
   import { Skeleton } from "#lib/components/ui/skeleton/index.js";
   import DrillHeader from "../components/drill-in/drill-header.svelte";
   // The glue crate's release build, which the SPA build makes first (ADR 2, 20).
@@ -11,7 +11,7 @@
   import { emptyDraft } from "../builder/modules";
   import { fetchPv } from "../builder/engine.ts";
   import { stream } from "../live/stream.svelte.ts";
-  import { Button } from "#lib/components/ui/button/index.js";
+  import { Button } from "@sunreye/ui/button";
   import { m } from "../paraglide/messages.js";
 
   let {

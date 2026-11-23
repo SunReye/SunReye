@@ -1,5 +1,5 @@
 // The modules' live glow eases to each tick (ADR 20).
-import { easeInOut } from "../motion/ease.ts";
+import { easeInOut } from "@sunreye/ui/motion/ease";
 
 export type Shares = readonly (number | null)[];
 
