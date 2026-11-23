@@ -10,7 +10,7 @@ import {
   Vector3,
 } from "three";
 import type { Face, Point } from "../builder/pv.ts";
-import { normal } from "../builder/vector.ts";
+import { dot, normal } from "../builder/vector.ts";
 import { TONE } from "./materials.ts";
 import { level } from "./surfaces.ts";
 
@@ -36,20 +36,8 @@ const key = (point: Point): string => point.map((v) => Math.round(v * 1000)).joi
 /** An edge's key, whichever way it runs. */
 const span = (from: Point, to: Point): string => [key(from), key(to)].toSorted().join("|");
 
-/** An edge with its face's lowest height, and whether the face falls away from it. */
-type Side = Edge & { readonly low: number; readonly falls: boolean };
-
-/** Whether a face lies downhill of its edge from `from` to `to`, as from a ridge or a hip, not
- * uphill as from a valley. */
-function fallsFrom(corners: readonly Point[], from: Point, to: Point): boolean {
-  const [east, north] = normal(corners);
-
-  const mean = (i: 0 | 1): number =>
-    corners.reduce((sum, corner) => sum + corner[i], 0) / corners.length;
-
-  // The normal leans downhill.
-  return (mean(0) - (from[0] + to[0]) / 2) * east + (mean(1) - (from[1] + to[1]) / 2) * north > 0;
-}
+/** An edge with its face's corners and lowest height. */
+type Side = Edge & { readonly low: number; readonly face: readonly Point[] };
 
 /** Each pitched roof face's edges. */
 function sides(faces: readonly Face[]): Side[] {
@@ -63,15 +51,26 @@ function sides(faces: readonly Face[]): Side[] {
 
         if (to === undefined) return [];
 
-        const falls = fallsFrom(corners, from, to);
+        const side = { from, to, low, face: corners };
 
-        return [colour === undefined ? { from, to, low, falls } : { from, to, low, falls, colour }];
+        return [colour === undefined ? side : { ...side, colour }];
       });
     });
 }
 
 /** Metres an eave may lie over its face's lowest corner. */
 const LEVEL = 0.001;
+
+/** Whether two faces meeting along a line rise from it: a corner of one stands over the other's
+ * plane. */
+function valley(one: Side, other: Side): boolean {
+  const up = normal(one.face);
+
+  return other.face.some(
+    (corner) =>
+      dot([corner[0] - one.from[0], corner[1] - one.from[1], corner[2] - one.from[2]], up) > LEVEL,
+  );
+}
 
 const bare = ({ from, to, colour }: Side): Edge =>
   colour === undefined ? { from, to } : { from, to, colour };
@@ -83,21 +82,20 @@ export function edges(faces: readonly Face[]): Trim {
 
   for (const { from, to } of all) met.set(span(from, to), (met.get(span(from, to)) ?? 0) + 1);
 
-  const shared = new Set<string>();
-  // Where a face rises from a line it shares, the line is a valley.
-  const valleys = new Set(all.filter(({ falls }) => !falls).map(({ from, to }) => span(from, to)));
+  const first = new Map<string, Side>();
 
   return {
-    ridges: all
-      .filter(({ from, to }) => {
-        const at = span(from, to);
-        const first = met.get(at) === 2 && !shared.has(at) && !valleys.has(at);
+    // Each line two faces share, once, where they fall away from it.
+    ridges: all.flatMap((side) => {
+      const at = span(side.from, side.to);
+      const before = first.get(at);
 
-        shared.add(at);
+      first.set(at, before ?? side);
 
-        return first;
-      })
-      .map((side) => bare(side)),
+      return met.get(at) === 2 && before !== undefined && !valley(before, side)
+        ? [bare(before)]
+        : [];
+    }),
     eaves: all
       .filter(
         ({ from, to, low }) =>
