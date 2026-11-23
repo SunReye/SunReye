@@ -16,7 +16,7 @@ Installers plan a PV plant before it exists, and the homeowner monitors it after
 
 | Package | Holds |
 |---|---|
-| `@sunreye/pv-wasm` | the `pv` crate's browser build (ADR 17) |
+| `@sunreye/pv-wasm` | the `pv` crate's browser build (ADR 17), and a loader that instantiates it from bytes and types its answers, which read and return the types of `@sunreye/scene` (2026-11-23) |
 | `@sunreye/scene` | the scene, layout and plant document types, generated from the crates; a roof face's key, from its block and its face as ADR 20 names it, so every view selects a face by the same key (2026-11-23) |
 | `@sunreye/builder` | the 3D house builder's components (ADR 20) |
 | `@sunreye/catalogue` | the module and datasheet catalogues (ADRs 17, 27) |
