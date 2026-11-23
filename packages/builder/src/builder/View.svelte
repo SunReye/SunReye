@@ -8,7 +8,6 @@
   import { parked } from "../cars/parked.ts";
   import type { Device, Records } from "./host.ts";
   import type { Moment } from "./moment.svelte.ts";
-  import type { Draft } from "./modules.ts";
   import type { Geometry, Location, RoofFace } from "./pv.ts";
   import ContextBar, { type Selected } from "./ContextBar.svelte";
   import Stage, {
@@ -18,9 +17,11 @@
     type Roofwork,
     type Panel,
     type Projector,
+    type Tracing,
   } from "./Stage.svelte";
   import StatusStrip from "./StatusStrip.svelte";
   import TimeSlider from "./TimeSlider.svelte";
+  import TraceBar from "./TraceBar.svelte";
 
   let {
     records,
@@ -36,13 +37,14 @@
     onpick,
     editing,
     roofwork,
+    tracing,
     onto,
     tools,
     selected,
   }: {
     records: Records;
     /** Read, never written: the slider changes nothing in the scene (ADR 20). */
-    draft: Draft;
+    draft: Selected["draft"];
     geometry: Geometry;
     panels: readonly Panel[];
     /** The aerial image and the neighbours the builder's consumer supplies. */
@@ -60,6 +62,8 @@
     editing?: Editing | undefined;
     /** The selected face's laying, or the wiring mode's selecting. */
     roofwork?: Roofwork | undefined;
+    /** The tracing mode: on, clicks trace a roof's lines. */
+    tracing?: Tracing | undefined;
     /** The roof face a phone's camera flies onto: from afar a module is too small for a finger
      * (ADR 20). */
     onto?: RoofFace | undefined;
@@ -114,6 +118,7 @@
       {onpick}
       {editing}
       {roofwork}
+      {tracing}
       onrender={(next) => {
         project = next;
       }}
@@ -133,6 +138,8 @@
       <TimeSlider bind:day={moment.day} bind:minutes={moment.minutes} />
     </div>
   </div>
+
+  <TraceBar session={selected} />
 
   <!-- One row: the status line takes what the tools leave, so the two never overlap. -->
   <div

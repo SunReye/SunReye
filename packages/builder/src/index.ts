@@ -9,6 +9,8 @@ export { headingOf, parseView, presetView, type Preset, type View } from "./buil
 
 export type { Around, Editing, Hit, Panel, Projector, Roofwork } from "./builder/drawing.svelte.ts";
 
+export type { LineRef, TraceEdit, Tracing } from "./builder/tracing.svelte.ts";
+
 export type { Aerial } from "./builder/supplied.ts";
 
 export { panels } from "./builder/modules.ts";

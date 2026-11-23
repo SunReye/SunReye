@@ -77,6 +77,7 @@ export const RULES: readonly Rule[] = [
       "range/Stepper.svelte": "An arrow or a swipe stepping the range, `selection`.",
       "builder/gestures.ts": "The canvas's presses: a module laid, moved or refused.",
       "builder/handles/grabbing.ts": "A handle's turn crossing a snapped step, `selection`.",
+      "builder/tracing.svelte.ts": "A traced line drawn or moved, `selection`, or refused.",
       "builder/picking.svelte.ts":
         "Every pick in the builder, from the canvas or the inspector, `soft`.",
       "builder/InspectorSheet.svelte": "The inspector sheet's snap, `soft`.",

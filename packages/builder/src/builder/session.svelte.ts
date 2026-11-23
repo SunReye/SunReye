@@ -7,7 +7,14 @@ import { handled, parent, picked, type Level } from "./levels.ts";
 import { wiredIn, panels, type Draft } from "./modules.ts";
 import { exists, type Plan } from "./outline.ts";
 import type { Geometry, Modules, Pv, Scene, Sizes } from "./pv.ts";
-import { layingOf, type Editing, type Hit, type Roofwork, type Panel } from "./drawing.svelte.ts";
+import {
+  layingOf,
+  TracingMode,
+  type Editing,
+  type Hit,
+  type Roofwork,
+  type Panel,
+} from "./drawing.svelte.ts";
 import { Picking } from "./picking.svelte.ts";
 import { WiringMode } from "./wiring-mode.svelte.ts";
 
@@ -53,6 +60,9 @@ export class Session {
 
   /** Whether a click in 3D asked the inspector to show itself. */
   expanded = $state(false);
+
+  /** The tracing mode: clicks on the canvas trace a roof's lines (ADR 20). */
+  readonly tracing = new TracingMode(this);
 
   /** The wiring mode: its selection, and what wiring it makes of the draft (ADR 20). */
   readonly wiring = new WiringMode(this, () => ({
@@ -180,7 +190,7 @@ export class Session {
   get editing(): Editing | undefined {
     const { level } = this;
 
-    if (!handled(level)) return undefined;
+    if (!handled(level) || this.tracing.active) return undefined;
 
     return {
       scene: this.draft.scene,
@@ -200,6 +210,8 @@ export class Session {
   /** The selected face's grid, on whose roof a press in 3D lays modules, or the wiring mode, in
    * which a drag across modules selects them (ADR 20). */
   get roofwork(): Roofwork | undefined {
+    if (this.tracing.active) return undefined;
+
     return (
       this.wiring.roofwork ??
       layingOf(this.level, {
