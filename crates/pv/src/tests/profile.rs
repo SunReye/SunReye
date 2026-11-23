@@ -1,6 +1,6 @@
 //! A plant like the owner's under a saved scene: a guard on its shaded output, and the model's
-//! cost by stage (`docs/pv-model.md`), printed by
-//! `cargo test -p sunreye-pv --release cost_by_stage -- --ignored --nocapture`.
+//! cost by stage (`docs/pv-model.md`) and a year's run's, printed by
+//! `cargo test -p sunreye-pv --release profile:: -- --ignored --nocapture`.
 
 use std::hint::black_box;
 use std::time::Instant;
@@ -16,13 +16,15 @@ use crate::string::Curve;
 use crate::{
     GridModule, Input, Inverter, Layout, Location, Module, ModuleGrid, MpptLimits, Occluder, Place,
     Plane, Point, PvString, Scene, Size, Sky, Spot, Sun, Weather, clear_weather, estimate,
-    input_output, plane_irradiance, sun_position,
+    input_output, plane_irradiance, sun_position, year,
 };
 
 const BERLIN: Location = Location {
     latitude: 52.52,
     longitude: 13.38,
 };
+/// 00:00 UTC on 2026-01-01.
+const NEW_YEAR: i64 = 1_767_225_600;
 /// 00:00 UTC on 2026-06-21, 2026-03-21 and 2026-12-21.
 const JUNE: i64 = 1_782_000_000;
 const MARCH: i64 = 1_774_051_200;
@@ -414,4 +416,20 @@ fn cost_by_stage() {
             println!("  {stage:<18} {:.4}", milliseconds / 96.0);
         }
     }
+}
+
+#[test]
+#[ignore = "a profile, read by a person"]
+#[expect(clippy::print_stdout, reason = "a profile, read by a person")]
+fn a_years_run() {
+    let layout = layout();
+    let weather: Vec<Weather> = (0..365 * 96)
+        .map(|k| clear_weather(NEW_YEAR + QUARTER * k, BERLIN))
+        .collect();
+    let start = Instant::now();
+    let run = black_box(year(&layout, &weather, QUARTER));
+    let elapsed = start.elapsed().as_secs_f64();
+
+    let kwh = run.inverters[0].dc.total / 1e3;
+    println!("a clear 2026 at quarter hours: {elapsed:.2} s, {kwh:.0} kWh");
 }

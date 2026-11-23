@@ -51,6 +51,12 @@ flowchart LR
 11. **MPPT window** (`mppt.rs`). Without limits nothing is capped. With them: an open-circuit voltage under the window's bottom or the start voltage yields nothing; the search stays inside the window; the current is capped at the input's maximum.
 12. **Shares and sum** (`mppt.rs`, `estimate.rs`). An input's power is split among its strings by their modelled current at the operating point. An inverter is the sum of its inputs. The AC rating is not applied here: the solar forecast caps, so the learner sees what a clipped hour would have produced (ADR 17).
 
+## A year's run
+
+`sunreye_pv::year(layout, weather, step)` runs `estimate` at each weather sample and holds its watts for `step` seconds: energy in Wh for every string, MPPT input and inverter, by UTC month and over the run. Months are UTC because the crate knows no time zone; at a quarter-hour step the plant-local boundary moves only night hours. A sample with no irradiance is skipped. Strings sum to their input and inputs to their inverter, as each instant's estimate does.
+
+`@sunreye/pv-wasm`'s `year` takes the plant as `clearSky` does, each inverter's inverter type for its MPPT limits, and the weather as columns at a fixed step from a start instant. It returns each string's energy by position and each inverter's by device id with its inputs by number.
+
 ## How shade reaches the electrics
 
 - A module has one substring per bypass diode: strips along its long side, side by side across its short side.
