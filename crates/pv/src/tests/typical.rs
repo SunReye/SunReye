@@ -3,7 +3,17 @@
 
 use std::f64::consts::TAU;
 
-use crate::{Location, TypicalRefused, Weather, typical_year};
+use super::fixtures::MODULE;
+use crate::estimate::day_of_year;
+use crate::{
+    Input, Inverter, Layout, Location, Occluder, Plane, PvString, Sky, TypicalRefused, Weather,
+    cautious, clear_weather, irradiation, plane_irradiance, sun_position, typical_year,
+};
+
+const BERLIN: Location = Location {
+    latitude: 52.52,
+    longitude: 13.38,
+};
 
 const QUARTER: i64 = 900;
 const DAY: i64 = 86_400;
@@ -164,5 +174,149 @@ fn a_step_that_does_not_divide_a_day_is_refused() {
     assert_eq!(
         typical_year(&years, 7 * 60).err(),
         Some(TypicalRefused::Step(420))
+    );
+}
+
+fn layout(strings: Vec<PvString>, occluders: Vec<Occluder>) -> Layout {
+    Layout {
+        location: BERLIN,
+        inverters: vec![Inverter {
+            inputs: vec![Input {
+                limits: None,
+                strings,
+            }],
+        }],
+        occluders,
+    }
+}
+
+/// Every quarter hour of 21 June, stamped at its middle, under a clear sky.
+fn june_day() -> Vec<Weather> {
+    (0..96)
+        .map(|q| clear_weather(midnight(2026, 6, 21) + q * QUARTER + QUARTER / 2, BERLIN))
+        .collect()
+}
+
+/// Perez on `plane` over `weather`, in Wh/m², each sample held a quarter hour.
+fn on(plane: Plane, weather: &[Weather]) -> f64 {
+    weather
+        .iter()
+        .map(|w| {
+            let sky = Sky {
+                sun: sun_position(w.unix, BERLIN),
+                day_of_year: day_of_year(w.unix.div_euclid(DAY)),
+                ghi: w.ghi,
+                dni: w.dni,
+                dhi: w.dhi,
+                temperature: w.temperature,
+                wind: w.wind,
+            };
+            let p = plane_irradiance(plane, &sky);
+            (p.beam + p.sky_diffuse + p.ground_diffuse) / 4.0
+        })
+        .sum()
+}
+
+const SOUTH: Plane = Plane {
+    tilt: 35.0,
+    azimuth: 0.0,
+};
+const EAST: Plane = Plane {
+    tilt: 20.0,
+    azimuth: -90.0,
+};
+
+#[test]
+fn irradiation_is_perez_on_the_planes_without_shade() {
+    let weather = june_day();
+    // A wall of triangles in front of the modules, which a year's run would see.
+    let wall = Occluder::Triangle([[-50.0, -1.0, 0.0], [50.0, -1.0, 0.0], [0.0, -1.0, 100.0]]);
+    let south = layout(
+        vec![PvString::on_one_plane(MODULE, SOUTH, 10, 0, 2.0)],
+        vec![wall],
+    );
+
+    let wh = irradiation(&south, &weather, QUARTER);
+
+    let expected = on(SOUTH, &weather);
+    assert!(expected > 5000.0, "a clear June day: {expected} Wh/m²");
+    assert!(
+        (wh - expected).abs() < 1e-9 * expected,
+        "{wh} != {expected}"
+    );
+}
+
+#[test]
+fn each_module_weighs_by_its_datasheet_power() {
+    let weather = june_day();
+    let double = crate::ModuleType {
+        imp: MODULE.imp * 2.0,
+        ..MODULE
+    };
+    let mixed = layout(
+        vec![
+            PvString::on_one_plane(MODULE, SOUTH, 10, 0, 2.0),
+            PvString::on_one_plane(double, EAST, 5, 0, 2.0),
+        ],
+        Vec::new(),
+    );
+
+    let wh = irradiation(&mixed, &weather, QUARTER);
+
+    // Ten modules of power P south, five of 2P east: equal weights.
+    let expected = f64::midpoint(on(SOUTH, &weather), on(EAST, &weather));
+    assert!(
+        (wh - expected).abs() < 1e-9 * expected,
+        "{wh} != {expected}"
+    );
+}
+
+#[test]
+fn p50_and_p90_scale_the_simulated_year_by_each_past_years_irradiation() {
+    let years = [
+        (2001, 900.0),
+        (2002, 1000.0),
+        (2003, 1100.0),
+        (2004, 1000.0),
+        (2005, 1000.0),
+    ];
+
+    let figure = cautious(10_000_000.0, 1000.0, &years).expect("five years");
+
+    // Ratios 0.9, 1, 1.1, 1, 1: mean 1, sample deviation √0.005; P90 lies 1.28155 deviations
+    // below the mean, exceeded in nine years of ten.
+    assert!((figure.p50 - 10_000_000.0).abs() < 1e-6, "{}", figure.p50);
+    assert!(
+        (figure.p90 - 9_093_806.197_563).abs() < 1e-3,
+        "{}",
+        figure.p90
+    );
+    // How it was made.
+    assert_eq!(figure.basis.typical, 1000.0);
+    assert_eq!(figure.basis.years, years.to_vec());
+    assert!((figure.basis.mean - 1.0).abs() < 1e-12);
+    assert!((figure.basis.deviation - 0.005_f64.sqrt()).abs() < 1e-12);
+}
+
+#[test]
+fn a_brighter_past_lifts_p50_above_the_simulated_year() {
+    let years = [(2001, 1100.0), (2002, 1100.0)];
+
+    let figure = cautious(1000.0, 1000.0, &years).expect("two years");
+
+    assert!((figure.p50 - 1100.0).abs() < 1e-9, "{}", figure.p50);
+    assert!(
+        (figure.p90 - 1100.0).abs() < 1e-9,
+        "no spread: {}",
+        figure.p90
+    );
+}
+
+#[test]
+fn one_year_or_no_typical_irradiation_gives_no_cautious_figure() {
+    assert_eq!(cautious(1000.0, 1000.0, &[(2001, 1000.0)]), None);
+    assert_eq!(
+        cautious(1000.0, 0.0, &[(2001, 1000.0), (2002, 900.0)]),
+        None
     );
 }
