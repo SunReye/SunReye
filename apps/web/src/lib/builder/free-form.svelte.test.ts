@@ -35,17 +35,19 @@ const L: readonly (readonly [number, number])[] = [
   [10, 4],
 ];
 
-/** The L under one non-convex face falling 1 m in 4 to the south, an empty grid on it. */
-function lHouse(): Draft {
+/** The L under one non-convex face falling 1 m in 4 to the south, an empty grid on it; its block's
+ * unused rectangle none, or as `unused` gives it. */
+function lHouse(unused: Partial<Block> = {}): Draft {
   const block: Block = {
     x: 0,
     z: 0,
-    width: 10,
-    depth: 8,
-    eave: 3,
+    width: 0,
+    depth: 0,
+    eave: 0,
     rotation: 0,
     roof: { kind: "flat" },
     freeForm: { footprint: L, faces: [L.map(([x, z]) => [x, 5 - z / 4, z])] },
+    ...unused,
   };
 
   return {
@@ -116,7 +118,8 @@ test("a tap on the arm of a non-convex free-form face lays a module there, saved
 });
 
 test("a tap on a free-form block's wall picks the block and offers nothing to add there", async () => {
-  const draft = lHouse();
+  // Its unused rectangle the L's bounds: its front wall's frame lies under the tap.
+  const draft = lHouse({ width: 10, depth: 8, eave: 3 });
 
   await opened(draft);
 
