@@ -25,13 +25,22 @@ export function made(edited: Edited): Scene {
 
 /** Clicks along `spots`, each joined to the last, as the person traces them. */
 export function trace(scene: Scene, ...spots: readonly (readonly [number, number])[]): Scene {
+  return clicks(scene, REACH, ...spots);
+}
+
+/** Clicks as `trace` does, each snapping within `reach` metres: closer in, a smaller reach. */
+export function clicks(
+  scene: Scene,
+  reach: number,
+  ...spots: readonly (readonly [number, number])[]
+): Scene {
   let at = scene;
   let from: End | undefined;
 
   for (const [x, z] of spots) {
     if (from === undefined) from = { x, z };
     else {
-      const edited = addLine(at, from, { x, z }, REACH);
+      const edited = addLine(at, from, { x, z }, reach);
 
       at = made(edited);
       from = "refused" in edited ? from : { block: edited.block, point: edited.to };

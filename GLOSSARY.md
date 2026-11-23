@@ -360,6 +360,10 @@ _Avoid_: Warped face, invalid face
 A small roof traced inside a face of a traced roof: a closed loop of lines whose faces are its own. It cuts its outline out of the face it stands on, which keeps no modules there, and its front and cheeks are walls up from that face. German UI: Gaube.
 _Avoid_: Roof extension, Dachaufbau
 
+**Ready roof**:
+A common German roof, such as a Satteldach or a Mansarddach, placed in one click as the lines a person could have traced and pulled up, then edited as any traced roof.
+_Avoid_: Template, preset, roof type
+
 **Covering**:
 What a roof face is covered with: tiles, slate, sheet metal or bitumen; unknown until someone says.
 _Avoid_: Roofing, material, Eindeckung

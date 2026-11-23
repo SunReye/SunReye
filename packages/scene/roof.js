@@ -1,7 +1,7 @@
 // Tracing a roof (ADR 20): a scene in, the next scene out. A traced block's lines are its source;
 // each edit derives its faces again from their closed loops (`rebuild`). Pure: no browser, no 3D.
-// Pulling up is roof-pull.js's; ready shapes and dormers will join, each an edit of a block's lines
-// handed to `rebuild`.
+// Pulling up is roof-pull.js's, dormers roof-dormer.js's, ready roofs roof-ready.js's: each an
+// edit of a block's lines handed to `rebuild`.
 
 import { rebuild, withoutBlock } from "./roof-faces.js";
 import { within } from "./roof-nest.js";

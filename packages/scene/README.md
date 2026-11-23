@@ -46,7 +46,16 @@ A closed loop traced inside a face, apart from its lines or joined to them by on
 
 A dormer's points that are not set lie on the plane of its face, so one traced on a pulled roof lies on it and follows the house's pulls. The edit that cuts a face, or moves its cut, drops that face's grid. The `pv` crate takes a traced face lying inside another as a cut in that one's module area, its setback holding from the cut, and stands the dormer's walls on that face.
 
-Ready shapes will join this module, each an edit of a block's lines whose faces `rebuild` derives (`roof-faces.js`).
+## Ready roofs
+
+A ready roof is placed in one click as the lines a person could have traced: `placeRoof` clicks them with `addLine`, marks and sets what the outline does not tell (`markLine`, `setHeight`), and pulls the eaves and ridges up. It is then a traced block like any other.
+
+- `readyRoofs: ReadyEntry[]`: the ready roofs for a menu, in order, each `{ id, de, en }`: its id and its name in German and English. Ready dormers will share `ReadyEntry`.
+- `placeRoof(scene, id, { x, z }, { width, depth, eave, ridge }): Edited`: ready roof `id` as a new traced block, its corner at `x`, `z`, `width` metres along x and `depth` along z; its eaves at `eave` metres and its top (a ridge, a mono-pitch roof's high side, a parapet) at `ridge`. A gable's ridge runs along x, a hip roof's along the longer side. Refused `"joins"` where it would touch a traced block, `"short"` without a positive size, `"missing"` for an unknown id.
+
+The ids: `satteldach`, `pultdach`, `versetztes-pultdach`, `flachdach`, `flachdach-attika`, `walmdach`, `krueppelwalmdach`, `zeltdach`, `mansarddach`, `mansardwalmdach`, `schleppdach`, `sheddach`, `schmetterlingsdach`, `tonnendach`. A point has one height, so a step between two roof parts (a versetztes Pultdach, a Sheddach's teeth, a parapet's inner wall) is a strip 10 cm wide seen from above; a Tonnendach is six flat strips.
+
+Ready dormers will join this module, each an edit of a block's lines whose faces `rebuild` derives (`roof-faces.js`).
 
 ## Face details
 

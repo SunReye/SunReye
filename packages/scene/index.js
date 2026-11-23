@@ -11,4 +11,6 @@ export { bent, lineKind, markLine, pullEaves, pullRidges, setHeight } from "./ro
 
 export { dormers, pullDormer } from "./roof-dormer.js";
 
+export { placeRoof, readyRoofs } from "./roof-ready.js";
+
 export { SCENE_SCHEMA, SCENE_SCHEMA_VERSION } from "./scene-schema.js";
