@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import type { Scene } from "../builder/pv.ts";
+import type { Block, Scene } from "../builder/pv.ts";
 import { body } from "./layout-change.ts";
 
 test("a change sends every part of its scene: surfaces, fences, chimneys and openings too", () => {
@@ -31,6 +31,39 @@ test("a change sends every part of its scene: surfaces, fences, chimneys and ope
     chimneys: scene.chimneys,
     openings: scene.openings,
   });
+});
+
+test("a change sends a block's free-form roof as it is", () => {
+  const freeForm = {
+    footprint: [
+      [0, 0],
+      [4, 0],
+      [4, 4],
+    ],
+    faces: [
+      [
+        [0, 3, 0],
+        [4, 3, 4],
+        [4, 3, 0],
+      ],
+    ],
+  };
+
+  const block: Block = {
+    x: 0,
+    z: 0,
+    width: 0,
+    depth: 0,
+    eave: 0,
+    rotation: 0,
+    roof: { kind: "flat" },
+  };
+
+  const scene: Scene = { north: 0, blocks: [{ ...block, freeForm }, block], obstacles: [] };
+
+  const sent: unknown = body({ appliesFrom: "2026-11-01T00:00:00Z", strings: [], scene }).scene;
+
+  expect(sent).toMatchObject({ blocks: [{ ...block, freeForm }, block] });
 });
 
 test("a change carries the inverter and battery types the layout's devices have", () => {

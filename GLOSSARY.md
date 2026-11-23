@@ -333,7 +333,7 @@ The margin along every edge of a roof face that no module may cross.
 _Avoid_: Border, margin
 
 **Block**:
-A rectangular building footprint with one roof.
+A building footprint with its roof: a rectangle under one roof kind, or a polygon under free-form roof faces.
 _Avoid_: Building, house
 
 **Overhang**:

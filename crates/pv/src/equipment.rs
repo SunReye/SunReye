@@ -109,7 +109,8 @@ impl Scene {
     /// Each marker's mount, in the order of `equipment`.
     ///
     /// # Errors
-    /// The index of the first marker that names no block or lies past its wall's ends.
+    /// The index of the first marker that names no block with its four walls, or lies past its
+    /// wall's ends.
     pub fn mounts(&self) -> Result<Vec<Mount>, usize> {
         self.equipment
             .iter()
@@ -145,6 +146,9 @@ impl Scene {
 
     fn mount(&self, marker: &Equipment) -> Option<Mount> {
         let block = self.blocks.get(marker.block)?;
+        if block.free_form.is_some() {
+            return None;
+        }
         let run = marker.wall.run(block.width, block.depth);
         if !(0.0..=run.length).contains(&marker.along) {
             return None;

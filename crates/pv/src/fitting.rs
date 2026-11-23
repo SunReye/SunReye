@@ -72,7 +72,7 @@ impl Scene {
     /// `opening` on its wall: no smaller than the smallest, a door on the ground, under the
     /// eave, between the wall's ends, in centimetres.
     fn kept(&self, opening: Opening) -> Option<Opening> {
-        let block = self.blocks.get(opening.block).filter(|b| !b.open)?;
+        let block = self.blocks.get(opening.block).filter(|b| b.walled())?;
         let length = opening.wall.run(block.width, block.depth).length;
         let sill = if opening.kind.door() {
             0.0

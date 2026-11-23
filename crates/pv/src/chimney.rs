@@ -67,7 +67,7 @@ impl Chimney {
 
     /// Whether it stands wholly on `face`.
     fn fits(&self, face: &RoofFace) -> bool {
-        self.corners(face).iter().all(|p| face.inside(*p, 0.0))
+        face.holds(self.area(face), 0.0)
     }
 
     /// Whether it stands on none of the face's roof windows.
@@ -195,7 +195,8 @@ impl Scene {
         )))
     }
 
-    /// Whether every block's overhang is at least 0 and its colours are `#rrggbb`.
+    /// Whether every block's overhang is at least 0, its colours are `#rrggbb`, and its free-form
+    /// roof, if any, is valid with no overhang of its own (ADR 20).
     ///
     /// # Errors
     /// The index of the first block that is not.
@@ -205,9 +206,13 @@ impl Scene {
             .iter()
             .position(|block| {
                 let reach = [block.overhang.eave, block.overhang.verge];
+                let free = block.free_form.as_ref().is_none_or(|free| {
+                    free.valid() && block.overhang == crate::Overhang::default()
+                });
                 !(reach.iter().all(|m| m.is_finite() && *m >= 0.0)
                     && painted(&block.roof_colour)
-                    && painted(&block.wall_colour))
+                    && painted(&block.wall_colour)
+                    && free)
             })
             .map_or(Ok(()), Err)
     }

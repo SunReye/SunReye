@@ -2,7 +2,7 @@
 import type { ModuleType, StringDraft } from "../api/core.ts";
 import type { Fence, Fencing, Ground, GroundSurface, Obstacle } from "./obstacles.ts";
 import { roofCalls } from "./roof-calls.ts";
-import type { Chimney, Overhang, RoofWindow } from "./roofing.ts";
+import type { Chimney, FreeForm, Overhang, RoofWindow } from "./roofing.ts";
 import { sizingCalls, type Sizer } from "./sizing.ts";
 import type { Equipment, Fitted, Opening, OpeningKind, Unfit } from "./walls.ts";
 
@@ -34,7 +34,7 @@ export type {
   Obstacle,
 } from "./obstacles.ts";
 
-export type { Chimney, Footing, Overhang, RoofWindow } from "./roofing.ts";
+export type { Chimney, Footing, FreeForm, Overhang, RoofWindow } from "./roofing.ts";
 
 import type { ModuleGrid, OnGrid, Sizes } from "./grids.ts";
 import type { Ghost, Modules } from "./laid.ts";
@@ -70,6 +70,9 @@ export interface Block {
   /** `#rrggbb`; the finish's own colour without one. */
   readonly roofColour?: string | null;
   readonly wallColour?: string | null;
+  /** A polygon footprint under free-form roof faces; the corner, size, eave, rotation and roof
+   * then go unused. */
+  readonly freeForm?: FreeForm | null;
 }
 
 /** A parking footprint linked to an EVCC loadpoint; width along x, length along z. */
@@ -105,7 +108,7 @@ export interface Scene {
 
 export interface Face {
   readonly surface: "wall" | "roof" | "obstacle" | "hedge" | "chimney";
-  /** A flat convex polygon. */
+  /** A flat polygon: convex, but for a free-form roof face or its wall. */
   readonly corners: readonly Point[];
   /** Its block's wall or roof colour, `#rrggbb`. */
   readonly colour?: string;
