@@ -4,6 +4,9 @@
 !Cargo.lock
 !rust-toolchain.toml
 !crates/
+!packages/catalogue/Cargo.toml
+!packages/catalogue/src/
+!packages/catalogue/modules/
 !profiles/
 !apps/web/build/
 **/target/

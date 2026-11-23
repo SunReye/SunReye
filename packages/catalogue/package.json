@@ -1,0 +1,19 @@
+{
+  "name": "@sunreye/catalogue",
+  "version": "5.0.0",
+  "private": true,
+  "description": "SunReye's module catalogue, one sheet per maker's datasheet (ADRs 17, 27).",
+  "license": "SEE LICENSE IN LICENSE",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "modules/*.json"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  }
+}

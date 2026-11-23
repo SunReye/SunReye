@@ -12,7 +12,7 @@ use sunreye_pv as pv;
 use super::ClearSkyIndex;
 use crate::bus::{Bus, DeviceId, Series};
 use crate::correction::{Cell, Grid};
-use crate::layout::{Datasheet, Inverters, Layouts, StringDraft, Wiring};
+use crate::layout::{Datasheet, Draft, Inverters, Layouts, StringDraft, Wiring};
 use crate::location::Location;
 use crate::solar::SolarForecast;
 use crate::storage::{ChangePoint, Issue, Keep, Policy, Storage};
@@ -120,7 +120,10 @@ async fn plant(inverters: &[(DeviceId, Option<f64>)]) -> Plant {
             },
         })
         .collect();
-    layouts.change(at(0), strings, None, at(0)).await.unwrap();
+    layouts
+        .change(at(0), Draft::new(strings, None), at(0))
+        .await
+        .unwrap();
     Plant {
         _dir: dir,
         bus,

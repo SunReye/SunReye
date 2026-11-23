@@ -94,6 +94,12 @@
         "max-lines": "off",
         "import/max-dependencies": "off"
       }
+    },
+    {
+      "files": ["packages/catalogue/index.js"],
+      "rules": {
+        "import/max-dependencies": "off"
+      }
     }
   ]
 }

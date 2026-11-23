@@ -121,6 +121,10 @@
         "patterns": ["packages/tokens/**"]
       },
       {
+        "name": "catalogue",
+        "patterns": ["packages/catalogue/**"]
+      },
+      {
         "name": "profiles",
         "patterns": ["profiles/**"]
       },
@@ -132,7 +136,7 @@
     "rules": [
       {
         "from": "web",
-        "allow": ["tokens"]
+        "allow": ["tokens", "catalogue"]
       },
       {
         "from": "sdk",
@@ -143,12 +147,16 @@
         "allow": []
       },
       {
+        "from": "catalogue",
+        "allow": []
+      },
+      {
         "from": "profiles",
         "allow": ["sdk"]
       },
       {
         "from": "tooling",
-        "allow": ["web", "sdk", "tokens", "profiles"]
+        "allow": ["web", "sdk", "tokens", "catalogue", "profiles"]
       }
     ],
     "coverage": {

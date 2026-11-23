@@ -1,4 +1,4 @@
-# Applied to `profile`, `pv` and their WASM glue: they stay pure (ADR 5, 17, 19).
+# Applied to `profile`, `pv`, their WASM glue and `catalogue`: they stay pure (ADR 5, 17, 19, 27).
 [bans]
 multiple-versions = "allow"
 deny = [

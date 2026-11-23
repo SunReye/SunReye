@@ -69,11 +69,11 @@ const ALL: Reads = { paths: ["."] };
 const DENY: Reads = { ...RUST, tools: [["cargo", "deny", "--version"]] };
 const SHEAR: Reads = { ...RUST, tools: [["cargo", "shear", "--version"]] };
 
-const bans = (crate: string): Command => [
+const bans = (dir: string): Command => [
   "cargo",
   "deny",
   "--manifest-path",
-  `crates/${crate}/Cargo.toml`,
+  `${dir}/Cargo.toml`,
   "--config",
   "deny.pure.toml",
   "check",
@@ -105,9 +105,10 @@ const steps: readonly Step[] = [
   { run: ["bun", "scripts/built-css.ts"], reads: JS },
   // Asks the advisory database, which changes without a file here changing.
   { run: ["cargo", "deny", "--workspace", "check"] },
-  { run: bans("profile-wasm"), reads: DENY },
-  { run: bans("pv"), reads: DENY },
-  { run: bans("pv-wasm"), reads: DENY },
+  { run: bans("crates/profile-wasm"), reads: DENY },
+  { run: bans("crates/pv"), reads: DENY },
+  { run: bans("crates/pv-wasm"), reads: DENY },
+  { run: bans("packages/catalogue"), reads: DENY },
   { run: ["cargo", "shear"], reads: SHEAR },
   // Types
   { run: ["tsrs", "-p", "tsconfig.json"], reads: JS, fast: true },
@@ -116,7 +117,19 @@ const steps: readonly Step[] = [
   { run: [...web, "api:check"], reads: BOTH, fast: true },
   // Builds and tests
   { run: ["cargo", "test", "--workspace", "--locked"], reads: CORE },
-  { run: ["cargo", "build", "--locked", "-p", "sunreye-pv", "--target", "wasm32-unknown-unknown"] },
+  {
+    run: [
+      "cargo",
+      "build",
+      "--locked",
+      "-p",
+      "sunreye-pv",
+      "-p",
+      "sunreye-catalogue",
+      "--target",
+      "wasm32-unknown-unknown",
+    ],
+  },
   // The SDK's tests load the WASM from where the package ships it.
   { run: ["bun", "run", "--cwd", "packages/sdk", "wasm"], fast: true },
   {

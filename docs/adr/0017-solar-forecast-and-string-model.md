@@ -1,6 +1,6 @@
 # 17. Solar forecast and string model
 
-Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12, 2026-11-13, 2026-11-15, 2026-11-16, 2026-11-17, 2026-11-18, 2026-11-19, 2026-11-20, 2026-11-23)
+Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12, 2026-11-13, 2026-11-15, 2026-11-16, 2026-11-17, 2026-11-18, 2026-11-19, 2026-11-20, 2026-11-22, 2026-11-23)
 
 ## Context
 
@@ -10,10 +10,10 @@ Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12, 2026-11-13, 2026
 
 **Layout.** The PV layout is the wiring.
 
-- An MPPT input belongs to an inverter. Its count, maximum input current, voltage window and start voltage come from the inverter profile (ADR 5), or from the inverter's inverter type where it has one (2026-11-19, ADR 27).
+- An MPPT input belongs to an inverter. Its count, maximum input current, voltage window and start voltage come from the inverter profile (ADR 5), or from the inverter's inverter type where it has one (2026-11-19, ADR 27). So do the inverter's maximum DC input voltage and AC rating; the type is read whole (2026-11-22).
 - A string is a series of modules of one module type, with an optional loss in %. Each module has a plane (tilt, and azimuth with 0 = south, −90 = east, 90 = west) and may have an optimizer, so a string may span roof faces. Entered by form, a string has one plane for all its modules and a count of optimized modules; a scene (ADR 20) places each module. Strings on one MPPT input are in parallel.
 - A module type holds datasheet values: Pmax, Vmp, Imp, Voc, Isc, the temperature coefficients of power, voltage and current, width, height and the number of bypass diodes. The admin enters them or copies them from the module catalogue.
-- The module catalogue is bundled with the core, like the official profiles (ADR 8), one sheet per maker's datasheet: maker, series, the datasheet's title, revision and URL, and each power class it prints. Every value is copied from that datasheet; a power class or series whose datasheet lacks a value, the bypass diodes included, is left out, never estimated. The core refuses at build time, by test, a sheet without its source or with a value out of range or inconsistent (Vmp above Voc, Imp above Isc, Vmp × Imp more than 2 % off Pmax, a coefficient of the wrong sign, a size outside 0.2–3 m). Admins read it at `GET /api/v1/module-catalogue`. Picking an entry adds a module type with its values (`POST /api/v1/module-types`), so a layout never depends on the catalogue and keeps working when it changes.
+- The module catalogue is bundled with the core, like the official profiles (ADR 8), one sheet per maker's datasheet: maker, series, the datasheet's title, revision and URL, and each power class it prints. Every value is copied from that datasheet; a power class or series whose datasheet lacks a value, the bypass diodes included, is left out, never estimated. The core refuses at build time, by test, a sheet without its source or with a value out of range or inconsistent (Vmp above Voc, Imp above Isc, Vmp × Imp more than 2 % off Pmax, a coefficient of the wrong sign, a size outside 0.2–3 m). Admins read it at `GET /api/v1/module-catalogue`. Picking an entry adds a module type with its values (`POST /api/v1/module-types`), so a layout never depends on the catalogue and keeps working when it changes. Its sheets and checks live in `packages/catalogue`, as the `sunreye-catalogue` crate and the `@sunreye/catalogue` package (ADRs 25, 27, 2026-11-23): the core bundles the sheets from the crate, and the app's builder reads them from the package, as a builder without a core does. A module typed outside the catalogue can be checked against the same ranges, which name the first field out of them.
 - kWp is derived: modules × Pmax.
 - A lint warns when parallel strings on one MPPT input differ in module count.
 - Strings and module types have stable ids that are never reused; `pv.string.power` is indexed by string id. A layout change applies from its date, and past estimates keep the layout they were computed with, as for topology (ADR 14).

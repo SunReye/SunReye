@@ -1,6 +1,6 @@
 // Modules on the roof faces and their wiring into strings (ADR 20). Pure: each edit returns a new scene; the
 // pv crate decides where a module lies and what fits.
-import type { CatalogueSheet, Datasheet, ModuleType, Problem, StringDraft } from "../api/core.ts";
+import type { Datasheet, ModuleType, Problem, StringDraft } from "../api/core.ts";
 import type { GridModule, LaidGrid, ModuleGrid, Scene } from "./pv.ts";
 import { following, ordered } from "./wiring.ts";
 import { withOpenings } from "./wall-openings.ts";
@@ -62,8 +62,6 @@ export function removeGrid(scene: Scene, index: number): Scene {
 export interface TypeSource {
   /** Adds a module type to the core. */
   addModuleType(datasheet: Readonly<Datasheet>): Promise<ModuleType | Problem>;
-  /** The module catalogue's sheets. */
-  moduleCatalogue(): Promise<readonly CatalogueSheet[] | Problem>;
 }
 
 /** Whether a module is in no string: it produces nothing. */

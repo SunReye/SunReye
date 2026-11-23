@@ -1121,6 +1121,32 @@ export interface components {
             /** @description `HH:MM`, up to 24:00; later than `from`. */
             to: string;
         };
+        /** @description One battery model's datasheet values. */
+        BatteryType: {
+            /**
+             * Format: double
+             * @description Watts.
+             */
+            chargePower: number;
+            /** Format: double */
+            dischargePower: number;
+            /** @description The country of manufacture, ISO 3166-1 alpha-2, only where the datasheet states one. */
+            madeIn?: string | null;
+            maker: string;
+            /** @description The country of the maker's registered seat, ISO 3166-1 alpha-2. */
+            makerCountry?: string | null;
+            model: string;
+            /**
+             * Format: double
+             * @description In %.
+             */
+            roundTripEfficiency: number;
+            /**
+             * Format: double
+             * @description Watt-hours.
+             */
+            usableCapacity: number;
+        };
         BestView: {
             /** @description `YYYY-MM-DD`. */
             date: string;
@@ -1519,14 +1545,15 @@ export interface components {
              */
             estimated: string[];
             /**
-             * @description An inverter's MPPT inputs' limits from its profile, in the inputs' order from 1: what the
-             *     builder offers a string and warns against (ADR 20).
+             * @description An inverter's MPPT inputs' limits from its inverter type or else its profile, in the
+             *     inputs' order from 1: what the builder offers a string and warns against (ADR 20).
              */
             inputs?: components["schemas"]["InputSupport"][];
             /**
              * Format: double
-             * @description An inverter's maximum DC input voltage in volts, from its profile: what a string's
-             *     open-circuit voltage at −10 °C is checked against (ADR 20).
+             * @description An inverter's maximum DC input voltage in volts, from its inverter type or else its
+             *     profile (ADR 27): what a string's open-circuit voltage at −10 °C is checked against
+             *     (ADR 20).
              */
             maxInputVoltage?: number | null;
             /**
@@ -1846,7 +1873,7 @@ export interface components {
             input: number;
             recent?: components["schemas"]["RecentEnergy"] | null;
         };
-        /** @description One MPPT input's limits (ADR 5). */
+        /** @description One MPPT input's limits (ADR 5, 27). */
         InputSupport: {
             /**
              * Format: double
@@ -1868,6 +1895,32 @@ export interface components {
              * @description Volts.
              */
             startVoltage: number;
+        };
+        /** @description One inverter model's datasheet values. */
+        InverterType: {
+            /**
+             * Format: double
+             * @description Watts of AC output at its rating.
+             */
+            acRating: number;
+            /**
+             * Format: double
+             * @description The European weighted efficiency, in %.
+             */
+            efficiency: number;
+            /** @description The MPPT inputs, numbered from 1 in order, as `pv.mppt.*` indices. */
+            inputs: components["schemas"]["MpptInput"][];
+            /** @description The country of manufacture, ISO 3166-1 alpha-2, only where the datasheet states one. */
+            madeIn?: string | null;
+            maker: string;
+            /** @description The country of the maker's registered seat, ISO 3166-1 alpha-2. */
+            makerCountry?: string | null;
+            /**
+             * Format: double
+             * @description Volts.
+             */
+            maxInputVoltage: number;
+            model: string;
         };
         /** @description The investment payback is measured against. */
         Investment: {
@@ -1892,17 +1945,28 @@ export interface components {
             value: number;
         };
         /** @description One layout version. */
-        Layout: {
+        Layout: components["schemas"]["Types"] & {
             /** @description RFC 3339, UTC. */
             appliesFrom: string;
             scene?: components["schemas"]["Scene"] | null;
             strings: components["schemas"]["PvString"][];
             warnings: components["schemas"]["Warning"][];
         };
-        /** @description A layout change: every string, applying from an instant on. */
+        /**
+         * @description A layout change: every string, applying from an instant on. A member this core does not know
+         *     is refused, not dropped (ADR 25).
+         */
         LayoutChange: {
             /** @description RFC 3339. */
             appliesFrom: string;
+            /** @description By battery device. */
+            batteryTypes?: {
+                [key: string]: components["schemas"]["BatteryType"];
+            };
+            /** @description By inverter device: read before its profile (ADR 27). */
+            inverterTypes?: {
+                [key: string]: components["schemas"]["InverterType"];
+            };
             scene?: components["schemas"]["Scene"] | null;
             strings: components["schemas"]["StringDraft"][];
         };
@@ -2045,6 +2109,26 @@ export interface components {
              * @description The standing charge owed, in no other figure.
              */
             standing: number;
+        };
+        /** @description One MPPT input's limits on a datasheet. */
+        MpptInput: {
+            /**
+             * Format: double
+             * @description Amperes.
+             */
+            maxCurrent: number;
+            /** Format: double */
+            maxVoltage: number;
+            /**
+             * Format: double
+             * @description The voltage window, in volts.
+             */
+            minVoltage: number;
+            /**
+             * Format: double
+             * @description Volts.
+             */
+            startVoltage: number;
         };
         NewIndex: {
             /** @description The `index.json` URL. */
@@ -2688,6 +2772,18 @@ export interface components {
          * @enum {string}
          */
         Transport: "modbus-tcp" | "rtu-over-tcp" | "solarman-v5" | "mqtt" | "http";
+        /**
+         * @description The inverter and battery types a version's devices carry, by device id, copied by value
+         *     (ADR 27). Stored as this JSON, which refuses a member this build does not know (ADR 25).
+         */
+        Types: {
+            batteryTypes?: {
+                [key: string]: components["schemas"]["BatteryType"];
+            };
+            inverterTypes?: {
+                [key: string]: components["schemas"]["InverterType"];
+            };
+        };
         /** @description A served profile and the update waiting for it, as the admin reviews it. */
         Update: {
             /** @description The version served. */

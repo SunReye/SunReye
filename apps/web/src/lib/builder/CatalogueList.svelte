@@ -1,10 +1,8 @@
 <!--
-  The module catalogue's body: each maker's series matching the query, or skeleton rows while the
-  core answers.
+  The module catalogue's body: each maker's series matching the query.
 -->
 <script lang="ts">
-  import type { CatalogueSheet, Datasheet } from "../api/core.ts";
-  import LoadingRows from "../components/loading-rows.svelte";
+  import type { Datasheet, Sheet } from "@sunreye/catalogue";
   import { m } from "../paraglide/messages.js";
   import { shelves } from "./catalogue.ts";
   import CatalogueSeries from "./CatalogueSeries.svelte";
@@ -15,20 +13,17 @@
     adding,
     onpick,
   }: {
-    /** Undefined while the core answers. */
-    sheets: readonly CatalogueSheet[] | undefined;
+    sheets: readonly Sheet[];
     query: string;
     /** While a pick is being added; the rows wait. */
     adding: boolean;
     onpick: (datasheet: Readonly<Datasheet>) => void;
   } = $props();
 
-  const makers = $derived(sheets === undefined ? [] : shelves(sheets, query));
+  const makers = $derived(shelves(sheets, query));
 </script>
 
-{#if sheets === undefined}
-  <LoadingRows rows={4} />
-{:else if makers.length === 0}
+{#if makers.length === 0}
   <p class="px-4 py-6 text-center text-sm text-muted-foreground">
     {m.builder_module_none({ query: query.trim() })}
   </p>

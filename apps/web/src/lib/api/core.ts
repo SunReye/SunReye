@@ -45,7 +45,7 @@ export type WriteLog = components["schemas"]["WriteLog"];
 
 export { settleRead, type Problem, type Settled } from "./client";
 
-export type { CatalogueSheet, Datasheet, Layout, ModuleType } from "./layouts";
+export type { Datasheet, Layout, ModuleType, Types } from "./layouts";
 
 export type { ImportStatus, SharedArchive } from "./imports";
 

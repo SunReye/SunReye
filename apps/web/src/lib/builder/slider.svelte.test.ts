@@ -117,6 +117,20 @@ function readingCore(corrections: () => Corrections): Transport & { readonly put
 
 const BERLIN = { latitude: 52.52, longitude: 13.38 };
 
+/** The saved layout's inverter type for device 1 (ADR 27). */
+const TYPES = {
+  inverterTypes: {
+    "1": {
+      maker: "Maker",
+      model: "X6",
+      maxInputVoltage: 600,
+      acRating: 6000,
+      efficiency: 97.5,
+      inputs: [{ maxCurrent: 16, minVoltage: 120, maxVoltage: 550, startVoltage: 150 }],
+    },
+  },
+};
+
 test("the slider shows a past day's measured string power and changes nothing in the scene", async () => {
   const transport = readingCore(() => ({ inputs: [] }));
 
@@ -124,6 +138,7 @@ test("the slider shows a past day's measured string power and changes nothing in
     pv,
     core: connect(transport),
     start: SAVED,
+    types: TYPES,
     moduleTypes: [MODULE],
     devices: DEVICES,
     location: BERLIN,
@@ -141,7 +156,7 @@ test("the slider shows a past day's measured string power and changes nothing in
 
   await savedFrom("2026-11-01");
 
-  expect(transport.puts[0]).toMatchObject({ scene: SAVED.scene });
+  expect(transport.puts[0]).toMatchObject({ scene: SAVED.scene, ...TYPES });
 });
 
 test("a far day runs a clear sky in the browser", async () => {

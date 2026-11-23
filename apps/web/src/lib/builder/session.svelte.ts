@@ -1,14 +1,6 @@
 // One editing session of the builder (ADR 20): the draft with undo and redo until save, what the
 // crate makes of it, and the inspector's level.
-import type {
-  CatalogueSheet,
-  Core,
-  Datasheet,
-  Device,
-  Layout,
-  ModuleType,
-  Problem,
-} from "../api/core.ts";
+import type { Core, Datasheet, Device, Layout, ModuleType, Problem, Types } from "../api/core.ts";
 import { checked, stringRefusal, type Checking, type StringRefusal } from "./checks.ts";
 import { Drafts } from "./drafts.svelte.ts";
 import { handled, parent, picked, type Level } from "./levels.ts";
@@ -28,6 +20,8 @@ export interface Reads extends Checking {
   readonly core: Core;
   /** The layout in force, or an empty one: nothing to undo before it. */
   readonly start: Draft;
+  /** The inverter and battery types of the layout in force, which a save keeps (ADR 27). */
+  readonly types?: Readonly<Types> | undefined;
   readonly moduleTypes: readonly Readonly<ModuleType>[];
   readonly devices: readonly Readonly<Device>[];
 }
@@ -109,11 +103,6 @@ export class Session {
     if (!("problem" in added)) this.#added = [...this.#added, added];
 
     return added;
-  }
-
-  /** The module catalogue's sheets (ADR 17), read anew each time a face asks. */
-  moduleCatalogue(): Promise<readonly CatalogueSheet[] | Problem> {
-    return this.#opening().core.moduleCatalogue();
   }
 
   #refused(): StringRefusal | null {
@@ -276,6 +265,7 @@ export class Session {
       appliesFrom: new Date(`${this.appliesFrom}T00:00`).toISOString(),
       strings,
       scene: draft.scene,
+      types: this.#opening().types,
     });
 
     this.saved = saved;

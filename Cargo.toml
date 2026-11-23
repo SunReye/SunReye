@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*"]
+members = ["crates/*", "packages/catalogue"]
 
 [workspace.package]
 version = "5.0.0"
@@ -12,6 +12,7 @@ publish = false
 serde = { version = "1.0.229", features = ["derive"] }
 # float_roundtrip: profile scales like 0.01 must parse to the nearest double.
 serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
+sunreye-catalogue = { path = "packages/catalogue" }
 sunreye-profile = { path = "crates/profile" }
 sunreye-pv = { path = "crates/pv" }
 utoipa = "6.0.0"

@@ -5,10 +5,10 @@
 -->
 <script lang="ts">
   import Search from "@lucide/svelte/icons/search";
-  import { onMount } from "svelte";
+  import { modules } from "@sunreye/catalogue";
   import { Button } from "#lib/components/ui/button/index.js";
   import { Input } from "#lib/components/ui/input/index.js";
-  import type { CatalogueSheet, Datasheet, ModuleType, Problem } from "../api/core.ts";
+  import type { Datasheet, ModuleType, Problem } from "../api/core.ts";
   import { m } from "../paraglide/messages.js";
   import Refusal, { answered } from "../setup/Refusal.svelte";
   import type { TypeSource } from "./modules.ts";
@@ -24,19 +24,9 @@
     oncancel: () => void;
   } = $props();
 
-  let sheets = $state.raw<readonly CatalogueSheet[]>();
   let refused = $state.raw<Problem>();
   let query = $state("");
   let adding = $state(false);
-
-  onMount(() => {
-    void (async () => {
-      const answer = await types.moduleCatalogue();
-
-      if ("problem" in answer) refused = answer;
-      else sheets = answer;
-    })();
-  });
 
   async function pick(datasheet: Readonly<Datasheet>): Promise<void> {
     adding = true;
@@ -71,16 +61,14 @@
   <div class="px-4 pt-2"><Refusal {refused} /></div>
 {/if}
 
-{#if sheets !== undefined || refused === undefined}
-  <CatalogueList
-    {sheets}
-    {query}
-    {adding}
-    onpick={(datasheet) => {
-      void pick(datasheet);
-    }}
-  />
-{/if}
+<CatalogueList
+  sheets={modules}
+  {query}
+  {adding}
+  onpick={(datasheet) => {
+    void pick(datasheet);
+  }}
+/>
 
 <div class="flex flex-col gap-2 border-t border-border/60 p-3">
   <Button type="button" variant="ghost" onclick={oncancel}>{m.builder_cancel()}</Button>
