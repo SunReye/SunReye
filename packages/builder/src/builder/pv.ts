@@ -36,6 +36,7 @@ export type {
   CarPlace,
   Chimney,
   Equipment,
+  ExistingPv,
   Fence,
   FenceFinish,
   FreeForm,

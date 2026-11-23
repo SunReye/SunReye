@@ -113,8 +113,8 @@ export function fillGrid(
   ]);
 }
 
-/** The scene without block `index`: its grids, chimneys, roof windows and equipment go, later
- * blocks' follow it down. */
+/** The scene without block `index`: its grids, chimneys, roof windows, existing PV and equipment
+ * go, later blocks' follow it down. */
 export function withoutBlock(scene: Scene, index: number): Scene {
   const equipment = scene.equipment
     ?.filter((marker) => marker.block !== index)
@@ -128,9 +128,14 @@ export function withoutBlock(scene: Scene, index: number): Scene {
     ?.filter((item) => item.block !== index)
     .map((item) => (item.block > index ? onBlock(item, item.block - 1) : item));
 
+  const existing = scene.existingPv
+    ?.filter((item) => item.block !== index)
+    .map((item) => (item.block > index ? onBlock(item, item.block - 1) : item));
+
   const blocks = scene.blocks.toSpliced(index, 1);
   const walled = withOpenings(scene, index);
-  const glazed = windows === undefined ? walled : { ...walled, roofWindows: windows };
+  const fielded = existing === undefined ? walled : { ...walled, existingPv: existing };
+  const glazed = windows === undefined ? fielded : { ...fielded, roofWindows: windows };
   const kept = chimneys === undefined ? { ...glazed, blocks } : { ...glazed, blocks, chimneys };
 
   return withGrids(equipment === undefined ? kept : { ...kept, equipment }, (grids) =>

@@ -114,6 +114,7 @@
   "misplaced_overlap": "Raster {grid}: Modul {module} überlappt ein anderes Modul.",
   "misplaced_chimney": "Raster {grid}: Modul {module} liegt auf einem Schornstein.",
   "misplaced_window": "Raster {grid}: Modul {module} liegt auf einem Dachfenster.",
+  "misplaced_existing": "Raster {grid}: Modul {module} liegt auf bestehenden Modulen.",
   "builder_cold_voltage": "{name}: {voltage} V Leerlaufspannung bei −10 °C übersteigen die {limit} V des Wechselrichters.",
   "sizing_start": "{name}: {voltage} V Leerlaufspannung bei −10 °C bleiben unter der Startspannung von {limit} V. Der String startet nie.",
   "sizing_low": "{name}: {voltage} V im Arbeitspunkt bei 70 °C Zelltemperatur liegen unter dem MPPT-Bereich ab {limit} V.",

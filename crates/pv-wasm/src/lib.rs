@@ -48,6 +48,7 @@ fn geometry(scene: &[u8]) -> String {
                     .collect::<Vec<_>>()
             }),
             "roofWindows": scene.panes().ok(),
+            "existingPv": scene.existing_fields().ok(),
         }}),
         Err(error) => json!({ "error": error.to_string() }),
     }
@@ -99,8 +100,8 @@ fn modules(input: &[u8]) -> String {
 }
 
 /// A grid on its face: each module's footprint, the face's outline and that outline inside the
-/// setback, corner for corner and `null` where none is left, and the footprints of the chimneys
-/// and roof windows.
+/// setback, corner for corner and `null` where none is left, and the footprints of the chimneys,
+/// roof windows and existing PV.
 fn laid(face: &RoofFace, grid: &ModuleGrid, size: Size) -> Value {
     let modules: Vec<Value> = grid
         .modules
@@ -116,7 +117,7 @@ fn laid(face: &RoofFace, grid: &ModuleGrid, size: Size) -> Value {
         "modules": modules,
         "outline": ring(&face.outline),
         "inset": face.inset(grid.setback).map(|inset| ring(&inset)),
-        "blocked": face.chimneys.iter().chain(&face.windows)
+        "blocked": face.chimneys.iter().chain(&face.windows).chain(&face.existing)
             .map(|area| face.corners(*area)).collect::<Vec<_>>(),
     })
 }
