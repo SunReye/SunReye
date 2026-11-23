@@ -38,6 +38,7 @@ function onFaces(scene, change) {
     chimneys: kept(scene.chimneys, change),
     roofWindows: kept(scene.roofWindows, change),
     faceDetails: kept(scene.faceDetails, change),
+    existingPv: kept(scene.existingPv, change),
   };
 }
 

@@ -160,3 +160,25 @@ test("splitting the first face leaves every later face its place, and each edit 
   expect(split.grids).toEqual([grid(1)]);
   expect("faces" in edited && edited.faces).toEqual([-1, 1]);
 });
+
+/** Existing PV 1 m square in the middle of face `face` of block 0. */
+const field = (face: number) => ({ block: 0, face, across: 2, up: 2, width: 1, length: 1 });
+
+test("existing PV follows its face as a grid does: a merged-away face's goes, later ones move up", () => {
+  const three = trace(
+    trace(trace(EMPTY, ...SQUARE), [4, 0], [8, 0], [8, 4], [4, 4]),
+    [8, 0],
+    [12, 0],
+    [12, 4],
+    [8, 4],
+  );
+
+  const lines = three.blocks[0]?.freeForm?.traced?.lines ?? [];
+  const points = three.blocks[0]?.freeForm?.traced?.points ?? [];
+  const between = lines.findIndex(([a = -1, b = -1]) => [a, b].every((p) => points[p]?.[0] === 4));
+  const placed: Scene = { ...three, existingPv: [field(0), field(1), field(2)] };
+
+  const merged = made(removeLine(placed, 0, between));
+
+  expect(merged.existingPv).toEqual([field(0), field(1)]);
+});
