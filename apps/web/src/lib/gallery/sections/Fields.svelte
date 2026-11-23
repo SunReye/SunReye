@@ -1,7 +1,7 @@
 <!-- The app's field primitives (#750, #751): a labelled field and the pickers built on the kit. -->
 <script lang="ts">
   import ComboboxField from "../../components/combobox-field.svelte";
-  import DateField from "../../components/date-field.svelte";
+  import DateField from "@sunreye/builder/components/date-field.svelte";
   import FormField from "../../components/form-field.svelte";
   import SelectField from "../../components/select-field.svelte";
   import TextField from "../../components/text-field.svelte";

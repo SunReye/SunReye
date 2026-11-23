@@ -8,10 +8,14 @@ import { frameKnown } from "./browser-commands.ts";
 import { SCENE } from "./scene-tests.ts";
 import { touchFiles } from "./touch-tests.ts";
 
-/** Every lucide icon the sources and the kit's package import, so each new icon is pre-bundled
- * without a list to keep. */
+/** Every lucide icon the sources, the kit's and the builder's packages import, so each new icon is
+ * pre-bundled without a list to keep. */
 function icons(): string[] {
-  const roots = [`${import.meta.dirname}/src`, `${import.meta.dirname}/../../packages/ui/src`];
+  const roots = [
+    `${import.meta.dirname}/src`,
+    `${import.meta.dirname}/../../packages/ui/src`,
+    `${import.meta.dirname}/../../packages/builder/src`,
+  ];
 
   const sources = roots.flatMap((src) =>
     readdirSync(src, { recursive: true, encoding: "utf8" })

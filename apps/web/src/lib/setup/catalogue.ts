@@ -2,7 +2,7 @@
 import type { Listing } from "../api/core.ts";
 import { m } from "../paraglide/messages.js";
 import { getLocale } from "../paraglide/runtime.js";
-import { compact, found, queryWords, tokens } from "../search.ts";
+import { compact, found, queryWords, tokens } from "@sunreye/builder/search.ts";
 
 /** A profile served, read only down to its variants. */
 export type Served = Readonly<

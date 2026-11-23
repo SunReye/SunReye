@@ -1,6 +1,6 @@
 // The time slider's instant (ADR 20): the day and time the admin picks, the sun then, the weather
 // and each string's production. It reads the draft and never writes it: nothing changes the scene.
-import { today } from "./day.ts";
+import { today } from "@sunreye/builder/builder/day.ts";
 import { load, shareAt, spanOf, wattsAt, type Day, type Reading } from "./moment.ts";
 import { sunAt, type Point } from "@sunreye/builder/builder/pv.ts";
 import { exact, type SceneWeather } from "@sunreye/builder/scene/weather.ts";

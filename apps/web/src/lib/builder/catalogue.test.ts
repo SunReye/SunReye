@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Datasheet } from "../api/core.ts";
-import { shelves } from "./catalogue.ts";
+import { shelves } from "@sunreye/builder/builder/catalogue.ts";
 
 const module = (name: string, pmax: number): Datasheet => ({
   name,

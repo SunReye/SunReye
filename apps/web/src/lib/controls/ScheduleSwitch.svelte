@@ -6,7 +6,7 @@
   import { Checkbox } from "@sunreye/ui/checkbox";
   import * as Item from "@sunreye/ui/item";
   import { FEEDBACK } from "@sunreye/ui/pressable";
-  import type { Outcome } from "../components/value-editor/editable.ts";
+  import type { Outcome } from "@sunreye/builder/components/value-editor/editable.ts";
   import WriteProblem from "../components/value-editor/write-problem.svelte";
   import { m } from "../paraglide/messages.js";
   import type { Control } from "./groups.ts";

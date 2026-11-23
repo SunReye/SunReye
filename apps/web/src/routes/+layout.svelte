@@ -6,7 +6,7 @@
   import Document from "../lib/shell/Document.svelte";
   import { provideAccess } from "../lib/shell/access.svelte.ts";
   import { stream } from "../lib/live/stream.svelte.ts";
-  import { input } from "../lib/shell/input.svelte.ts";
+  import { input } from "@sunreye/builder/shell/input.svelte.ts";
   import { connectCore } from "../lib/shell/core.ts";
   import Shell from "../lib/shell/Shell.svelte";
   import "../app.css";

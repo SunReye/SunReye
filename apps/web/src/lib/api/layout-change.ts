@@ -1,16 +1,9 @@
 // A layout change as the builder makes it and as the core's client sends it (ADR 17, 20).
-import type { Scene, StringDraft, Types } from "@sunreye/scene";
+import type { LayoutChange } from "@sunreye/builder/builder/host.ts";
+import type { Types } from "@sunreye/scene";
 import type { components } from "./schema";
 
-/** A layout change with its scene; its modules name their string by position in `strings`. */
-export interface LayoutChange {
-  /** RFC 3339. */
-  readonly appliesFrom: string;
-  readonly strings: readonly Readonly<StringDraft>[];
-  readonly scene: Scene;
-  /** Kept as the layout in force has them: a change without them removes them. */
-  readonly types?: Types | undefined;
-}
+export type { LayoutChange };
 
 /** Only the types of `layout`, which may be a whole layout: the core refuses a member it does not
  * know. */

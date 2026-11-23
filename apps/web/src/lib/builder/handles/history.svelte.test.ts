@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { connect } from "../../api/core.ts";
 import { DEVICES, house, MODULE, pv, testCore } from "../builder.harness.ts";
-import { Session } from "../session.svelte.ts";
+import { Session } from "@sunreye/builder/builder/session.svelte.ts";
 
 function session(): Session {
   let made: Session | undefined;

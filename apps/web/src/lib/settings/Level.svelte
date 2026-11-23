@@ -5,7 +5,7 @@
 <script lang="ts">
   import DrillCard from "../components/drill-in/drill-card.svelte";
   import type { Snippet } from "svelte";
-  import DrillHeader from "../components/drill-in/drill-header.svelte";
+  import DrillHeader from "@sunreye/builder/components/drill-in/drill-header.svelte";
 
   let {
     back,

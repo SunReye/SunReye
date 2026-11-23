@@ -9,7 +9,7 @@
   import * as Tooltip from "#lib/components/ui/tooltip/index.js";
   import { stream } from "../live/stream.svelte.ts";
   import Connection from "./Connection.svelte";
-  import type { ShellLayout } from "./input.svelte.ts";
+  import type { ShellLayout } from "@sunreye/builder/shell/input.svelte.ts";
   import Bar from "./Bar.svelte";
   import { DASHBOARD } from "./nav.ts";
   import Rail, { GUTTER } from "./Rail.svelte";

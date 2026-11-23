@@ -10,7 +10,7 @@
   import type { Moment } from "./moment.svelte.ts";
   import type { Draft } from "@sunreye/builder/builder/modules.ts";
   import type { Geometry, Location, RoofFace } from "@sunreye/builder/builder/pv.ts";
-  import ContextBar, { type Selected } from "./ContextBar.svelte";
+  import ContextBar, { type Selected } from "@sunreye/builder/builder/ContextBar.svelte";
   import Stage, {
     type Around,
     type Editing,

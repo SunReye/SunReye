@@ -1,7 +1,7 @@
 <!-- What a tariff version holds beside its prices: the standing charge and the date it applies from. -->
 <script lang="ts">
-  import ValueRow from "../builder/ValueRow.svelte";
-  import DateField from "../components/date-field.svelte";
+  import ValueRow from "@sunreye/builder/builder/ValueRow.svelte";
+  import DateField from "@sunreye/builder/components/date-field.svelte";
   import { m } from "../paraglide/messages.js";
 
   let {

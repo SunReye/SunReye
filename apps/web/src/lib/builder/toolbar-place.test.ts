@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { placed, type Box, type Room } from "./toolbar-place.ts";
+import { placed, type Box, type Room } from "@sunreye/builder/builder/toolbar-place.ts";
 
 /** A phone's canvas above its peeking sheet, with the zones its owners measured: the time slider,
  * the views' and the weather's buttons, and the status line. */

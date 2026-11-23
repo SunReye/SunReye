@@ -1,6 +1,6 @@
 <!-- A price in ct/kWh as a settings row that opens the value editor (ADR 21); a price not yet entered says so. -->
 <script lang="ts">
-  import ValueRow from "../builder/ValueRow.svelte";
+  import ValueRow from "@sunreye/builder/builder/ValueRow.svelte";
 
   let {
     name,

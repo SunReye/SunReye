@@ -6,7 +6,7 @@
 <script lang="ts">
   import type { Connection, ConnectionDraft, Core, Problem } from "../api/core";
   import { Button } from "@sunreye/ui/button";
-  import ValueRow from "../builder/ValueRow.svelte";
+  import ValueRow from "@sunreye/builder/builder/ValueRow.svelte";
   import { m } from "../paraglide/messages.js";
   import Refusal, { answered } from "../setup/Refusal.svelte";
   import { POLL_SECONDS, polled, portOf, secretsOf, TRANSPORTS } from "./connection-draft.ts";

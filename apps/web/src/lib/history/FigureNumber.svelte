@@ -2,7 +2,7 @@
 <script lang="ts">
   import type { ComponentProps } from "svelte";
   import AnimatedNumber from "../components/animated-number.svelte";
-  import { FIGURE_GLIDE_MS } from "../motion/values.ts";
+  import { FIGURE_GLIDE_MS } from "@sunreye/builder/motion/values.ts";
 
   let props: Omit<ComponentProps<typeof AnimatedNumber>, "duration"> = $props();
 </script>

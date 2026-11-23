@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { clock, editable, fits, wheel } from "./editable.ts";
+import { clock, editable, fits, wheel } from "@sunreye/builder/components/value-editor/editable.ts";
 
 const charge = editable({
   key: "battery.max_charge_current",

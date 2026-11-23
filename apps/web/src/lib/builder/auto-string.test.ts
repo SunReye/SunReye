@@ -1,7 +1,7 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
 import type { StringDraft } from "../api/core.ts";
-import { autoStrung, type Limit } from "./auto-string.ts";
+import { autoStrung, type Limit } from "@sunreye/builder/builder/auto-string.ts";
 import { addGrid, type Draft } from "@sunreye/builder/builder/modules.ts";
 import { place } from "@sunreye/builder/builder/placing.ts";
 import type { Scene } from "@sunreye/builder/builder/pv.ts";

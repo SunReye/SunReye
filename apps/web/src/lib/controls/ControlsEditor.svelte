@@ -2,7 +2,7 @@
 <script lang="ts">
   import { MediaQuery } from "svelte/reactivity";
   import type { Core } from "../api/core";
-  import { editable } from "../components/value-editor/editable.ts";
+  import { editable } from "@sunreye/builder/components/value-editor/editable.ts";
   import ValueEditor from "../components/value-editor/value-editor.svelte";
   import { apply } from "./apply.ts";
   import type { Control } from "./groups.ts";

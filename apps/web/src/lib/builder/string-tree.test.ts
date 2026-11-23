@@ -1,7 +1,7 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
 import type { StringDraft } from "../api/core.ts";
-import { stringTree } from "./string-tree.ts";
+import { stringTree } from "@sunreye/builder/builder/string-tree.ts";
 
 const string = (name: string, device: number, input: number): StringDraft => ({
   name,

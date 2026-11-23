@@ -43,7 +43,7 @@
   import ArrowRight from "@lucide/svelte/icons/arrow-right";
   import { Button } from "@sunreye/ui/button";
   import AnimatedNumber from "../components/animated-number.svelte";
-  import { FIGURE_GLIDE_MS } from "../motion/values.ts";
+  import { FIGURE_GLIDE_MS } from "@sunreye/builder/motion/values.ts";
 
   let {
     legend,

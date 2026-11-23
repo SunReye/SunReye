@@ -4,7 +4,7 @@ import type { StringDraft } from "../api/core.ts";
 import { addGrid, type Draft } from "@sunreye/builder/builder/modules.ts";
 import { place } from "@sunreye/builder/builder/placing.ts";
 import type { Scene } from "@sunreye/builder/builder/pv.ts";
-import { without } from "./removal.ts";
+import { without } from "@sunreye/builder/builder/removal.ts";
 import { wiredInto } from "@sunreye/builder/builder/selecting.ts";
 
 const block = {

@@ -1,12 +1,13 @@
 // Writes schema.d.ts from the core's OpenAPI document, which the crates generate (ADR 9): the
-// scene's and the layout's schemas and every schema they name, each a readonly named type.
+// scene's, the layout's and a module type's schemas and every schema they name, each a readonly
+// named type.
 // `bun run --cwd packages/scene types` rewrites it.
 
 import openapiTS, { astToString, type OpenAPI3 } from "openapi-typescript";
 import ts from "typescript";
 
 /** The schemas the package publishes; everything they name comes with them. */
-const ROOTS = ["Scene", "Layout", "LayoutChange"];
+const ROOTS = ["Scene", "Layout", "LayoutChange", "ModuleType"];
 
 /** What openapi-typescript writes for an API, which a document of schemas alone leaves empty. */
 const EMPTY = new Set(["paths", "webhooks", "$defs", "operations"]);

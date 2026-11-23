@@ -4,7 +4,7 @@ import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { closed } from "../motion/animations.harness.ts";
 import { pv } from "./builder.harness.ts";
-import BuildingLevel from "./BuildingLevel.svelte";
+import BuildingLevel from "@sunreye/builder/builder/BuildingLevel.svelte";
 import type { Opening, Scene } from "@sunreye/builder/builder/pv.ts";
 
 /** The value editor lands at once. */

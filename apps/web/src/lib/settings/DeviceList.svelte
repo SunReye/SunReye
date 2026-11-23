@@ -8,7 +8,7 @@
   import type { Connection, Core, Device, Listing } from "../api/core";
   import { Button } from "@sunreye/ui/button";
   import * as Item from "@sunreye/ui/item";
-  import DrillRow from "../components/drill-in/drill-row.svelte";
+  import DrillRow from "@sunreye/builder/components/drill-in/drill-row.svelte";
   import { m } from "../paraglide/messages.js";
   import { readAs } from "../setup/catalogue.ts";
   import AddRow from "./AddRow.svelte";

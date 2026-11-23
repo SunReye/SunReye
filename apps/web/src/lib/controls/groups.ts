@@ -1,6 +1,6 @@
 import type { Setting } from "../api/core.ts";
-import { clock, type EditableSetting } from "../components/value-editor/editable.ts";
-import { valueText } from "../settings/bounds.ts";
+import { clock, type EditableSetting } from "@sunreye/builder/components/value-editor/editable.ts";
+import { valueText } from "@sunreye/builder/components/value-editor/editable.ts";
 
 /**
  * Controls' groups (ADR 21), in order: a role namespace each, the time-of-use schedule, and

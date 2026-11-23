@@ -1,5 +1,5 @@
 import type { Attempt, Problem } from "../api/core";
-import type { Outcome } from "../components/value-editor/editable.ts";
+import type { Outcome } from "@sunreye/builder/components/value-editor/editable.ts";
 import { problemText } from "../i18n/problems";
 import { m } from "../paraglide/messages.js";
 

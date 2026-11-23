@@ -3,7 +3,7 @@
   import { Pressable } from "@sunreye/ui/pressable";
   import Plus from "@lucide/svelte/icons/plus";
   import type { Device, PointDraft } from "../api/core.ts";
-  import ResponsiveSheet from "../components/responsive-sheet.svelte";
+  import ResponsiveSheet from "@sunreye/builder/components/responsive-sheet.svelte";
   import { haptics } from "@sunreye/ui/haptics";
   import { m } from "../paraglide/messages.js";
   import { roleOf } from "./point-look.ts";

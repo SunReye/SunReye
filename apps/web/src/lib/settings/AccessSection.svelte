@@ -9,7 +9,7 @@
   import type { Problem } from "../api/core";
   import * as Item from "@sunreye/ui/item";
   import LoadingRows from "../components/loading-rows.svelte";
-  import ResponsiveSheet from "../components/responsive-sheet.svelte";
+  import ResponsiveSheet from "@sunreye/builder/components/responsive-sheet.svelte";
   import AddRow from "./AddRow.svelte";
   import Listing from "./Listing.svelte";
 

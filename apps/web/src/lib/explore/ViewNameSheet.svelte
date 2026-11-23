@@ -1,7 +1,7 @@
 <!-- Asks a saved view's name (ADR 22), as it is saved or renamed: the form overlay of ADR 21. -->
 <script lang="ts">
   import type { Problem } from "../api/client.ts";
-  import ResponsiveSheet from "../components/responsive-sheet.svelte";
+  import ResponsiveSheet from "@sunreye/builder/components/responsive-sheet.svelte";
   import ViewNameForm from "./ViewNameForm.svelte";
 
   let {

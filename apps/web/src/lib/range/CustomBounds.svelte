@@ -1,6 +1,6 @@
 <!-- A custom range's two bounds, each a date and an hour; the end's hour 24 is the end of its day. -->
 <script lang="ts">
-  import DateField from "../components/date-field.svelte";
+  import DateField from "@sunreye/builder/components/date-field.svelte";
   import SelectField from "../components/select-field.svelte";
   import { m } from "../paraglide/messages.js";
   import type { Bounds } from "./range.ts";

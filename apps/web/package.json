@@ -6,7 +6,7 @@
     "#lib/*": "./src/lib/*"
   },
   "scripts": {
-    "i18n": "bun scripts/i18n.ts",
+    "i18n": "bun scripts/i18n.ts && bun run --cwd ../../packages/builder i18n",
     "car": "bun scripts/car.ts",
     "smoothness": "bun e2e/smoothness.ts",
     "flash": "bun e2e/flash.ts",

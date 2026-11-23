@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { settle, slideMs } from "./drill.ts";
+import { settle, slideMs } from "@sunreye/builder/components/drill-in/drill.ts";
 
 test("a full slide takes ADR 21's 280–350 ms", () => {
   expect(slideMs(0, 1)).toBeGreaterThanOrEqual(280);

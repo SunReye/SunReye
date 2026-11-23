@@ -3,7 +3,7 @@
   import { Button } from "@sunreye/ui/button";
   import { Skeleton } from "#lib/components/ui/skeleton/index.js";
   import Builder, { BUILDER_SIZE } from "../../lib/builder/Builder.svelte";
-  import { inputsOf, limitsOf } from "../../lib/builder/checks";
+  import { inputsOf, limitsOf } from "../../lib/builder/capabilities.ts";
   import { emptyDraft } from "@sunreye/builder/builder/modules.ts";
   import { fetchPv } from "../../lib/builder/engine.ts";
   import { typesOf } from "../../lib/api/layout-change";

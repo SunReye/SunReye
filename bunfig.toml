@@ -1,5 +1,6 @@
 [test]
 # Component tests run in a real browser through Vitest (ADR 11).
 pathIgnorePatterns = ["**/*.svelte.test.ts", "**/node_modules/**"]
-# Compiles the SPA's messages first, so a unit test never reads stale translations (ADR 11).
-preload = ["./apps/web/scripts/i18n.ts"]
+# Compiles the SPA's and the builder's messages first, so a unit test never reads stale
+# translations (ADR 11).
+preload = ["./apps/web/scripts/i18n.ts", "./packages/builder/scripts/i18n.ts"]

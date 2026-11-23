@@ -1,7 +1,7 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { additions } from "../additions.ts";
-import { misplacedText } from "../checks.ts";
+import { additions } from "@sunreye/builder/builder/additions.ts";
+import { misplacedText } from "@sunreye/builder/builder/checks.ts";
 import { picked } from "@sunreye/builder/builder/levels.ts";
 import { addGrid, withoutBlock } from "@sunreye/builder/builder/modules.ts";
 import { place } from "@sunreye/builder/builder/placing.ts";

@@ -5,7 +5,7 @@ import "../../../app.css";
 import { HAPTICS } from "@sunreye/ui/haptics";
 import { framesUntil, realTimers } from "../../motion/clock.harness.ts";
 import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
-import { editable, type Outcome } from "./editable.ts";
+import { editable, type Outcome } from "@sunreye/builder/components/value-editor/editable.ts";
 import ValueEditor from "./value-editor.svelte";
 import { closed } from "../../motion/animations.harness.ts";
 
