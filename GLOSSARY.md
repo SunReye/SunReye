@@ -512,6 +512,68 @@ _Avoid_: Amortisation, return on investment
 The savings of the last twelve months, the rate at which payback is projected.
 _Avoid_: Savings rate, trend
 
+## Grid and market rules
+
+**Rule set**:
+SunReye's dated, sourced record of the German law and published values that decide what a plant may feed in and what it earns, with a version and a `Stand`.
+_Avoid_: Regulations, middleware, legal config
+
+**Rule**:
+One provision of the rule set: its status, the commissioning dates and plant facts it applies to, its end, one effect and its source.
+_Avoid_: Regulation, policy, constraint
+
+**Bill rule**:
+A rule taken from a bill Parliament has not passed. A figure computed from it is labelled as draft law.
+_Avoid_: Draft rule, future rule, proposal
+
+**Stand**:
+The last date the rule set's sources were checked, printed with every figure computed from it.
+_Avoid_: Version date, last updated
+
+**Commissioning date**:
+The date a plant first runs for good, which selects the rules it falls under. German UI: Inbetriebnahme.
+_Avoid_: Install date, go-live, connection date
+
+**Sale form**:
+How a plant's export is paid: partial or full feed-in at the feed-in rate, direct marketing, unpaid, or no export. German UI: Veräußerungsform.
+_Avoid_: Feed-in model, tariff (what the household pays and earns)
+
+**Size class**:
+A range of kWp that a feed-in rate or a meter cost applies to. A plant spanning size classes is paid a blend.
+_Avoid_: Band (a tariff's), tier, bracket
+
+**Feed-in rate**:
+What the law pays per kWh fed in during a term, by size class.
+_Avoid_: Export price (`price.export` is the tariff's), feed-in tariff, compensation
+
+**Export cap**:
+The share of a plant's kWp it may feed in at the grid point, met there or by a lasting limit in the inverter. German UI: Einspeisebegrenzung.
+_Avoid_: Feed-in cap, feed-in limit, curtailment (the energy it costs)
+
+**Curtailed energy**:
+Energy the plant could have fed in but did not, because of the export cap.
+_Avoid_: Clipping (what an inverter's AC rating cuts), loss
+
+**Connection limit**:
+A limit the grid operator's connection conditions set on a plant's AC side, such as the imbalance between phases or when a central grid protection is needed.
+_Avoid_: Grid code, TAB rule
+
+**Smart meter gateway**:
+The meter operator's communication unit for an intelligent meter. Its control being tested ends the export cap of 2025; its fitting starts no pay at negative prices. German UI: Smart-Meter-Gateway.
+_Avoid_: Smart meter (the meter alone), SMGW in UI copy
+
+**Market value**:
+What export earns in direct marketing before a bonus and the fee: each quarter-hour's export at that quarter-hour's spot price, none below zero.
+_Avoid_: Market price, spot price (the slot's wholesale price itself), Marktwert Solar
+
+**Marketer's fee**:
+What a direct marketer keeps per kWh it sells for a plant; an assumption, printed.
+_Avoid_: Commission, service charge
+
+**Reference spot year**:
+The last full calendar year of day-ahead prices, which an economics run reads for every year it models.
+_Avoid_: Price forecast, spot history
+
 ## Remote access
 
 **Install id**:
