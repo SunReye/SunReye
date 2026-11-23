@@ -8,6 +8,7 @@ import type { Point, Scene } from "../pv.ts";
 import type { Projector } from "../drawing.svelte.ts";
 import SceneCanvas from "../SceneCanvas.svelte";
 import { handles, type Target, type Triple } from "./grips.ts";
+import { canvasWords } from "../canvas-words.ts";
 
 const BLOCK: Target = { kind: "block", index: 0 };
 
@@ -24,6 +25,7 @@ async function stage(scene: Scene, target = BLOCK) {
   const geometry = pv.geometry(scene);
 
   const screen = await render(SceneCanvas, {
+    words: canvasWords(),
     geometry,
     view: presetView("isometric", geometry),
     onview: (view: View) => {

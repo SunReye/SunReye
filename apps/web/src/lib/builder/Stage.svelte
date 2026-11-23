@@ -5,17 +5,18 @@
 </script>
 
 <script lang="ts">
+  import { canvasWords } from "./canvas-words.ts";
   import type { Core } from "../api/core.ts";
   import { modelLoader } from "../cars/models.ts";
   import type { Parked } from "../cars/parked.ts";
   import { faceView, parseView, presetView, type View } from "./camera.ts";
-  import type { SceneWeather } from "../scene/weather.ts";
   import type { Geometry, Point, RoofFace } from "./pv.ts";
   import SceneCanvas, {
     type Around,
     type Editing,
     type Roofwork,
     type Projector,
+    type SceneWeather,
   } from "./SceneCanvas.svelte";
   import type { Hit, Panel } from "./scene.ts";
   import ViewMenu from "./ViewMenu.svelte";
@@ -89,6 +90,7 @@
 </script>
 
 <SceneCanvas
+  words={canvasWords()}
   {geometry}
   {panels}
   {around}

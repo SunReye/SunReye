@@ -4,6 +4,7 @@
   import { panels } from "../builder/modules.ts";
   import { sunAt, type Location, type Point, type Pv, type Scene } from "../builder/pv.ts";
   import SceneCanvas, {
+    type CanvasWords,
     type Plant,
     type Projector,
     type SceneWeather,
@@ -24,6 +25,7 @@
     location,
     diffuse,
     weather,
+    words,
     locked = false,
     top = 0,
     onselect,
@@ -45,6 +47,7 @@
     /** The scene's weather now for where the sun is and the share of its peak the plant makes
      * (ADR 23); none, clear and dry. */
     weather?: ((plant: Plant) => SceneWeather) | undefined;
+    words: CanvasWords;
     /** The camera stays put and a finger on the scene scrolls the page (ADR 20). */
     locked?: boolean;
     /** Pixels at the top the chips leave free: the hero's headline. */
@@ -242,6 +245,7 @@
   bind:clientHeight={height}
 >
   <SceneCanvas
+    {words}
     {geometry}
     panels={drawn}
     shares={live.shares}

@@ -8,6 +8,7 @@ import { presetView } from "./camera.ts";
 import type { Geometry, Point } from "./pv.ts";
 import SceneCanvas from "./SceneCanvas.svelte";
 import { stepUntil } from "../motion/clock.harness.ts";
+import { canvasWords } from "./canvas-words.ts";
 
 type Projector = (point: Point) => readonly [number, number] | null;
 
@@ -46,6 +47,7 @@ async function flying() {
   let project: Projector | undefined;
 
   const screen = await render(SceneCanvas, {
+    words: canvasWords(),
     geometry: house,
     view: presetView("south", house),
     onview: () => {},

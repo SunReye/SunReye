@@ -8,6 +8,7 @@ import type { Geometry, Point } from "./pv.ts";
 import type { Projector } from "./drawing.svelte.ts";
 import SceneCanvas from "./SceneCanvas.svelte";
 import type { Aerial } from "./supplied.ts";
+import { canvasWords } from "./canvas-words.ts";
 
 /** The image's quarters, each one colour: north-west red, north-east green, south-west blue,
  * south-east yellow. */
@@ -59,6 +60,7 @@ async function seen(points: readonly Point[]): Promise<Colour[]> {
   let colours: Colour[] = [];
 
   await render(SceneCanvas, {
+    words: canvasWords(),
     geometry: shed,
     around: { aerial: quarters(), neighbours: [] },
     sun: [0.3, -0.3, 0.9],

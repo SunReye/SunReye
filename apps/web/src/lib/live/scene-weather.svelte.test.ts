@@ -6,6 +6,7 @@ import { DRY, type Plant } from "../scene/weather.ts";
 import { chip, frame, layout, scene } from "./live-scene.harness.ts";
 import { feed } from "./stream.harness.ts";
 import LiveScene from "./LiveScene.svelte";
+import { canvasWords } from "../builder/canvas-words.ts";
 
 test("the scene's weather is asked with the plant's share of its peak, and a tick that leaves it as it was lights nothing anew", async () => {
   const lit = vi.spyOn(Studio.prototype, "light");
@@ -13,6 +14,7 @@ test("the scene's weather is asked with the plant's share of its peak, and a tic
   const tick = feed();
 
   await render(LiveScene, {
+    words: canvasWords(),
     onselect: () => {},
     pv,
     layout,

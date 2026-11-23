@@ -8,6 +8,7 @@ import type { Geometry } from "./pv.ts";
 import SceneCanvas from "./SceneCanvas.svelte";
 import { turn } from "../api/settled.harness.ts";
 import { settle } from "../motion/clock.harness.ts";
+import { canvasWords } from "./canvas-words.ts";
 
 const house: Geometry = {
   faces: [
@@ -64,6 +65,7 @@ test("a live tick that changes only a car's power or SOC brings no car anew", as
   const results = () => arrive.mock.settledResults;
 
   const screen = await render(SceneCanvas, {
+    words: canvasWords(),
     geometry: house,
     view: presetView("isometric", house),
     onview: () => {},

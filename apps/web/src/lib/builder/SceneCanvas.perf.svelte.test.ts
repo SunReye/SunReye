@@ -8,6 +8,7 @@ import { presetView } from "./camera.ts";
 import type { Geometry } from "./pv.ts";
 import SceneCanvas from "./SceneCanvas.svelte";
 import { settle } from "../motion/clock.harness.ts";
+import { canvasWords } from "./canvas-words.ts";
 
 // The scene's readout (ADR 21 "Measuring"): asked for with `?perf` on the URL. Asked for once,
 // it stays for the page's life, so the scene that shows none is the first here.
@@ -28,7 +29,12 @@ const house: Geometry = {
 };
 
 const shown = () =>
-  render(SceneCanvas, { geometry: house, view: presetView("isometric", house), onview: () => {} });
+  render(SceneCanvas, {
+    geometry: house,
+    view: presetView("isometric", house),
+    onview: () => {},
+    words: canvasWords(),
+  });
 
 afterEach(async () => {
   perf.trial = {};

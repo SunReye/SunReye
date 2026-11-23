@@ -1,6 +1,7 @@
 <script lang="ts">
   // The glue crate's release build, which the SPA build makes first (ADR 2, 20).
   import type { Core } from "../api/core.ts";
+  import { canvasWords } from "../builder/canvas-words.ts";
   import type { SceneFailure } from "../scene/stage.svelte.ts";
   import { warm } from "../scene/warm.ts";
   import type { SceneLayout } from "./dashboard.ts";
@@ -72,6 +73,7 @@
       {@const { LiveScene, model, pv, moduleTypes, capabilities, location } = scene}
       <LiveScene
         {pv}
+        words={canvasWords()}
         {layout}
         scene={layout.scene}
         {moduleTypes}
