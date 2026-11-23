@@ -13,7 +13,7 @@ use tokio::time::Instant;
 
 use super::{Corrections, Learner};
 use crate::bus::{Bus, DeviceId};
-use crate::layout::{Datasheet, Inverters, Layouts, StringDraft, Wiring};
+use crate::layout::{Datasheet, Draft, Inverters, Layouts, StringDraft, Wiring};
 use crate::location::Location;
 use crate::solar::SolarForecast;
 use crate::storage::{ChangePoint, Issue, Keep, Policy, Storage};
@@ -117,7 +117,7 @@ async fn plant_of(rating: Option<f64>) -> Plant {
         },
     };
     layouts
-        .change(at(0), vec![string], None, at(0))
+        .change(at(0), Draft::new(vec![string], None), at(0))
         .await
         .unwrap();
     Plant {
@@ -579,7 +579,7 @@ async fn a_layout_change_stores_the_last_30_days_again_at_once() {
             let mut string = plant.layouts.versions().await.unwrap()[0].strings[0].clone();
             string.wiring.modules = 8;
             let draft = StringDraft { id: Some(string.id), wiring: string.wiring };
-            plant.layouts.change(at(0), vec![draft], None, at(NOW)).await.unwrap();
+            plant.layouts.change(at(0), Draft::new(vec![draft], None), at(NOW)).await.unwrap();
             (before, changed(Some(before)).await)
         }) => found.expect("the last 30 days were not stored again"),
     };

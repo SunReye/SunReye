@@ -1,4 +1,6 @@
+mod catalogue;
 mod clear_sky;
+mod device_types;
 mod diode;
 mod equipment;
 mod estimate;

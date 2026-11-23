@@ -490,3 +490,39 @@ async fn a_device_on_a_retired_profile_moves_to_the_variant_that_replaces_it() {
             .changed("deye-sun15k-sg05lp3", "work_mode")
     );
 }
+
+/// A made-up datasheet catalogue entry names a bundled profile by family and variant (ADR 27).
+#[test]
+fn a_datasheet_entry_links_to_a_bundled_profile_by_model_id() {
+    let profiles = super::Catalogue::bundled().unwrap();
+    let served = |id: &str, variant: Option<&str>| {
+        profiles
+            .get(id)
+            .is_some_and(|family| variant.is_none_or(|v| family.declared(v).is_some()))
+    };
+    let sheet = |profile: Value| -> sunreye_pv::catalogue::Sheet {
+        serde_json::from_value(json!({
+            "source": { "title": "Made-up hybrid", "revision": "1", "url": "https://maker.example" },
+            "inverters": [{
+                "inverter": {
+                    "maker": "Maker", "model": "H20", "makerCountry": "CN",
+                    "maxInputVoltage": 800.0, "acRating": 20000.0, "efficiency": 97.0,
+                    "inputs": [{ "maxCurrent": 36.0, "minVoltage": 160.0, "maxVoltage": 650.0, "startVoltage": 160.0 }],
+                },
+                "profile": profile,
+            }],
+        }))
+        .unwrap()
+    };
+
+    let linked = sheet(json!({ "id": "deye-sg05lp3", "variant": "20k" }));
+    let family = sheet(json!({ "id": "deye-sg05lp3" }));
+    let undeclared = sheet(json!({ "id": "deye-sg05lp3", "variant": "99k" }));
+    let unknown = sheet(json!({ "id": "deye-sg99" }));
+
+    assert_eq!(linked.check(), Ok(()));
+    assert_eq!(linked.unlinked(served), None);
+    assert_eq!(family.unlinked(served), None);
+    assert_eq!(undeclared.unlinked(served), Some("H20"));
+    assert_eq!(unknown.unlinked(served), Some("H20"));
+}

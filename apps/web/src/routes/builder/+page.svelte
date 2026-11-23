@@ -8,6 +8,7 @@
   import { inputsOf, limitsOf } from "../../lib/builder/checks";
   import { emptyDraft } from "../../lib/builder/modules";
   import { loadPv } from "../../lib/builder/pv";
+  import { typesOf } from "../../lib/api/layout-change";
   import { m } from "../../lib/paraglide/messages.js";
 
   const core = useCore();
@@ -34,6 +35,7 @@
         "problem" in layout
           ? empty
           : { scene: layout.scene ?? empty.scene, strings: layout.strings },
+      types: "problem" in layout ? undefined : typesOf(layout),
       moduleTypes: "problem" in moduleTypes ? [] : moduleTypes,
       // A viewer lists no devices; they view and place nothing.
       devices: "problem" in devices ? [] : devices,
@@ -53,8 +55,8 @@
         role="status"
         aria-label={m.builder_loading()}
       />
-    {:then { pv, start, moduleTypes, devices, location, limits, inputs }}
-      <Builder {pv} {core} {start} {moduleTypes} {devices} {location} {limits} {inputs} />
+    {:then { pv, start, types, moduleTypes, devices, location, limits, inputs }}
+      <Builder {pv} {core} {start} {types} {moduleTypes} {devices} {location} {limits} {inputs} />
     {/await}
   {:else}
     <div class="flex flex-col items-start gap-3 p-6">

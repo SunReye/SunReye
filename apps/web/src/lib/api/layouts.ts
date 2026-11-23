@@ -8,6 +8,8 @@ import type { components } from "./schema";
 
 export type Layout = components["schemas"]["Layout"];
 
+export type { Types } from "./layout-change";
+
 export type ModuleType = components["schemas"]["ModuleType"];
 
 /** What the admin enters for a module type (ADR 17). */

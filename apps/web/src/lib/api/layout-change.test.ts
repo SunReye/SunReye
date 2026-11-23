@@ -32,3 +32,35 @@ test("a change sends every part of its scene: surfaces, fences, chimneys and ope
     openings: scene.openings,
   });
 });
+
+test("a change carries the inverter and battery types the layout's devices have", () => {
+  const scene: Scene = { north: 0, blocks: [], obstacles: [] };
+  const input = { maxCurrent: 16, minVoltage: 120, maxVoltage: 550, startVoltage: 150 };
+
+  const types = {
+    inverterTypes: {
+      "1": {
+        maker: "Maker",
+        model: "X6",
+        maxInputVoltage: 600,
+        acRating: 6000,
+        efficiency: 97.5,
+        inputs: [input],
+      },
+    },
+    batteryTypes: {
+      "2": {
+        maker: "Maker",
+        model: "B10",
+        usableCapacity: 9600,
+        chargePower: 5000,
+        dischargePower: 6000,
+        roundTripEfficiency: 95,
+      },
+    },
+  };
+
+  const sent = body({ appliesFrom: "2026-11-01T00:00:00Z", strings: [], scene, types });
+
+  expect(sent).toMatchObject(types);
+});

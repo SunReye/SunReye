@@ -10,7 +10,7 @@ use tokio::sync::broadcast;
 
 use super::StringEstimates;
 use crate::bus::{Bus, DeviceId, Reading};
-use crate::layout::{Datasheet, Inverters, Layouts, StringDraft, Wiring};
+use crate::layout::{Datasheet, Draft, Inverters, Layouts, StringDraft, Wiring};
 use crate::storage::{Issue, Keep, Storage};
 
 const INVERTER: DeviceId = DeviceId(1);
@@ -76,8 +76,10 @@ async fn plant() -> Plant {
     let version = layouts
         .change(
             at(0),
-            vec![string(1, 0.0, 16), string(1, 180.0, 16), string(2, 0.0, 14)],
-            None,
+            Draft::new(
+                vec![string(1, 0.0, 16), string(1, 180.0, 16), string(2, 0.0, 14)],
+                None,
+            ),
             at(0),
         )
         .await

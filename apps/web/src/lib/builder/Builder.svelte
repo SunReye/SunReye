@@ -24,6 +24,7 @@
     pv,
     core,
     start,
+    types,
     moduleTypes,
     devices,
     location,
@@ -34,6 +35,8 @@
     core: Core;
     /** The layout in force, or an empty one: nothing to undo before it. */
     start: Reads["start"];
+    /** The layout in force's inverter and battery types, which a save keeps. */
+    types?: Reads["types"];
     moduleTypes: readonly ModuleType[];
     /** What equipment markers may name. */
     devices: readonly Device[];
@@ -49,7 +52,16 @@
   const phone = new MediaQuery("max-width: 40rem");
   const portrait = new MediaQuery("orientation: portrait");
 
-  const session = new Session(() => ({ pv, core, start, moduleTypes, devices, limits, inputs }));
+  const session = new Session(() => ({
+    pv,
+    core,
+    start,
+    types,
+    moduleTypes,
+    devices,
+    limits,
+    inputs,
+  }));
 
   /** The time slider's instant: it reads the draft, never writes it. */
   const moment = new Moment(

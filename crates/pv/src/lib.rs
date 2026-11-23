@@ -2,8 +2,10 @@
 //!
 //! Angles are in degrees. Azimuths follow ADR 17: 0 = south, −90 = east, 90 = west.
 
+pub mod catalogue;
 mod chimney;
 mod clear_sky;
+mod device_types;
 mod diode;
 mod equipment;
 mod estimate;
@@ -26,6 +28,7 @@ mod temperature;
 
 pub use chimney::{Chimney, Footing};
 pub use clear_sky::{Irradiance, clear_sky, clear_weather};
+pub use device_types::{BatteryType, InverterType, MpptInput};
 pub use equipment::{Equipment, EquipmentKind, Mount, Wall, WallFrame};
 pub use estimate::estimate;
 pub use fitting::Unfit;
