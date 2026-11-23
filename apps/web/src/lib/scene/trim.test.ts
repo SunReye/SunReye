@@ -73,3 +73,29 @@ test("a flat roof and a wall have neither", () => {
 
   expect(edges(flat)).toEqual({ ridges: [], eaves: [], verges: [] });
 });
+
+test("where two faces meet in a valley, as on an L-shaped free-form roof, no ridge cap lies", () => {
+  // Both faces rise away from the line they share at 3 m.
+  const valley: Face[] = [
+    {
+      surface: "roof",
+      corners: [
+        [-4, 0, 5],
+        [0, 0, 3],
+        [0, 8, 3],
+        [-4, 8, 5],
+      ],
+    },
+    {
+      surface: "roof",
+      corners: [
+        [0, 0, 3],
+        [4, 0, 5],
+        [4, 8, 5],
+        [0, 8, 3],
+      ],
+    },
+  ];
+
+  expect(edges(valley).ridges).toEqual([]);
+});

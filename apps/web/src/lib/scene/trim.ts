@@ -10,6 +10,7 @@ import {
   Vector3,
 } from "three";
 import type { Face, Point } from "../builder/pv.ts";
+import { normal } from "../builder/vector.ts";
 import { TONE } from "./materials.ts";
 import { level } from "./surfaces.ts";
 
@@ -21,7 +22,7 @@ export interface Edge {
 }
 
 export interface Trim {
-  /** Where two pitched faces meet: a ridge or a hip. */
+  /** Where two pitched faces meet and fall away: a ridge or a hip, not a valley. */
   readonly ridges: readonly Edge[];
   /** A pitched face's level, lowest edge. */
   readonly eaves: readonly Edge[];
@@ -35,8 +36,20 @@ const key = (point: Point): string => point.map((v) => Math.round(v * 1000)).joi
 /** An edge's key, whichever way it runs. */
 const span = (from: Point, to: Point): string => [key(from), key(to)].toSorted().join("|");
 
-/** An edge with its face's lowest height. */
-type Side = Edge & { readonly low: number };
+/** An edge with its face's lowest height, and whether the face falls away from it. */
+type Side = Edge & { readonly low: number; readonly falls: boolean };
+
+/** Whether a face lies downhill of its edge from `from` to `to`, as from a ridge or a hip, not
+ * uphill as from a valley. */
+function fallsFrom(corners: readonly Point[], from: Point, to: Point): boolean {
+  const [east, north] = normal(corners);
+
+  const mean = (i: 0 | 1): number =>
+    corners.reduce((sum, corner) => sum + corner[i], 0) / corners.length;
+
+  // The normal leans downhill.
+  return (mean(0) - (from[0] + to[0]) / 2) * east + (mean(1) - (from[1] + to[1]) / 2) * north > 0;
+}
 
 /** Each pitched roof face's edges. */
 function sides(faces: readonly Face[]): Side[] {
@@ -50,7 +63,9 @@ function sides(faces: readonly Face[]): Side[] {
 
         if (to === undefined) return [];
 
-        return [colour === undefined ? { from, to, low } : { from, to, low, colour }];
+        const falls = fallsFrom(corners, from, to);
+
+        return [colour === undefined ? { from, to, low, falls } : { from, to, low, falls, colour }];
       });
     });
 }
@@ -69,12 +84,14 @@ export function edges(faces: readonly Face[]): Trim {
   for (const { from, to } of all) met.set(span(from, to), (met.get(span(from, to)) ?? 0) + 1);
 
   const shared = new Set<string>();
+  // Where a face rises from a line it shares, the line is a valley.
+  const valleys = new Set(all.filter(({ falls }) => !falls).map(({ from, to }) => span(from, to)));
 
   return {
     ridges: all
       .filter(({ from, to }) => {
         const at = span(from, to);
-        const first = met.get(at) === 2 && !shared.has(at);
+        const first = met.get(at) === 2 && !shared.has(at) && !valleys.has(at);
 
         shared.add(at);
 
