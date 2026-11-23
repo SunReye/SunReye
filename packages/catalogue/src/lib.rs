@@ -3,6 +3,9 @@
 
 pub mod datasheets;
 pub mod modules;
+mod sheet;
+
+pub use sheet::{Invalid, Source};
 
 #[cfg(test)]
 mod tests;

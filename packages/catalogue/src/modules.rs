@@ -6,6 +6,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::{Invalid, Source};
+
 /// The sheets, one per maker's datasheet, as `modules/` holds them at build time.
 const BUNDLED: &[&str] = &[
     include_str!("../modules/aiko-neostar-2s-plus-mah54db.json"),
@@ -133,50 +135,10 @@ pub struct Sheet {
     pub modules: Vec<Datasheet>,
 }
 
-/// The maker's datasheet every value of a sheet was copied from.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct Source {
-    /// As printed on the datasheet.
-    pub title: String,
-    /// The revision or date printed on the datasheet.
-    pub revision: String,
-    pub url: String,
-    /// Why this edition was chosen, where it matters.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub note: Option<String>,
-}
-
-#[derive(Debug)]
-pub enum Invalid {
-    Json(serde_json::Error),
-    /// It names no datasheet, or no module.
-    Source,
-    /// The named module has a value out of its range or inconsistent with another, by its
-    /// field's name.
-    Value {
-        model: String,
-        field: String,
-    },
-}
-
-impl std::fmt::Display for Invalid {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Json(error) => write!(f, "module catalogue sheet: {error}"),
-            Self::Source => f.write_str("module catalogue sheet names no datasheet or module"),
-            Self::Value { model, field } => {
-                write!(f, "module catalogue: {model} has {field} out of range")
-            }
-        }
-    }
-}
-
 /// # Errors
 /// The sheet does not parse, names no source or module, or a value is out of its range.
 pub fn parse(json: &str) -> Result<Sheet, Invalid> {
-    let sheet: Sheet = serde_json::from_str(json).map_err(Invalid::Json)?;
+    let sheet: Sheet = serde_json::from_str(json).map_err(|e| Invalid::Json(e.to_string()))?;
     let source = &sheet.source;
     if [&source.title, &source.revision, &source.url]
         .iter()
