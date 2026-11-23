@@ -4,11 +4,10 @@ import "../../app.css";
 import { expect, test } from "vitest";
 import { render } from "vitest-browser-svelte";
 import { settle } from "../motion/clock.harness.ts";
-import type { Geometry, Point } from "@sunreye/builder/builder/pv.ts";
-import type { Projector } from "@sunreye/builder/builder/drawing.svelte.ts";
+import type { Geometry, Point } from "../../../../../packages/builder/src/builder/pv.ts";
+import type { Projector } from "../../../../../packages/builder/src/builder/drawing.svelte.ts";
 import { SceneCanvas } from "@sunreye/builder";
-import type { Aerial } from "@sunreye/builder/builder/supplied.ts";
-import { canvasWords } from "./canvas-words.ts";
+import type { Aerial } from "../../../../../packages/builder/src/builder/supplied.ts";
 
 /** The image's quarters, each one colour: north-west red, north-east green, south-west blue,
  * south-east yellow. */
@@ -60,7 +59,6 @@ async function seen(points: readonly Point[]): Promise<Colour[]> {
   let colours: Colour[] = [];
 
   await render(SceneCanvas, {
-    words: canvasWords(),
     geometry: shed,
     around: { aerial: quarters(), neighbours: [] },
     sun: [0.3, -0.3, 0.9],

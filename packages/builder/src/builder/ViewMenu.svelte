@@ -4,7 +4,7 @@
   import { Button } from "@sunreye/ui/button";
   import * as DropdownMenu from "@sunreye/ui/dropdown-menu";
   import { m } from "../paraglide/messages.js";
-  import { presets, type Preset } from "@sunreye/builder/builder/camera.ts";
+  import { presets, type Preset } from "./camera.ts";
 
   let { onpick }: { onpick: (preset: Preset) => void } = $props();
 

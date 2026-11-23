@@ -2,8 +2,8 @@ import { flushSync } from "svelte";
 import { afterAll, afterEach, expect, test, vi } from "vitest";
 import { PerspectiveCamera } from "three";
 import { frames } from "../motion/clock.harness.ts";
-import { Studio } from "@sunreye/builder/scene/studio.ts";
-import { DRY, type Falling } from "@sunreye/builder/scene/weather.ts";
+import { Studio } from "../../../../../packages/builder/src/scene/studio.ts";
+import { DRY, type Falling } from "../../../../../packages/builder/src/scene/weather.ts";
 
 const SNOW: Falling = { kind: "snow", density: 1, wind: [0, 0] };
 
@@ -22,7 +22,7 @@ test("lite draws a sparse still field and never loops", async () => {
 
   vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] });
 
-  const { lit } = await import("@sunreye/builder/scene/stage.svelte.ts");
+  const { lit } = await import("../../../../../packages/builder/src/scene/stage.svelte.ts");
   const canvas = document.createElement("canvas");
   const fell = vi.spyOn(Studio.prototype, "fall");
   const drifted = vi.spyOn(Studio.prototype, "drift");

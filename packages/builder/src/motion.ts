@@ -1,12 +1,5 @@
-import { flip as svelteFlip } from "svelte/animate";
 import { motion } from "./motion/tier.svelte.ts";
-import {
-  crossfade,
-  fade as svelteFade,
-  slide as svelteSlide,
-  type FadeParams,
-  type SlideParams,
-} from "svelte/transition";
+import { fade as svelteFade, type FadeParams } from "svelte/transition";
 
 /**
  * Every animation duration, in ms: 120–250, short enough never to hold up
@@ -28,22 +21,6 @@ export const MOTION_MS = { fast: 120, base: 180, slow: 250, press: 80 } as const
  * Reduced motion doesn't change it: with a duration of 0 it never plays.
  */
 export const MOTION_EASE = "cubic-bezier(0.215, 0.61, 0.355, 1)";
-
-/**
- * The light spring, for what moves or appears (a press coming back up, an overlay's scale-in, the
- * tabs indicator): it overshoots its target by about 5% of the way and settles, once, with no
- * ringing. Never for colour, opacity or progress, and not on dense surfaces (table rows, menu
- * items, form fields). `--motion-spring` in CSS; a test keeps both equal and pins the overshoot.
- */
-export const MOTION_SPRING = "cubic-bezier(0.25, 1.4, 0.5, 1)";
-
-/**
- * The soft spring, for what should settle calmly: a button's release (a press coming back up and a
- * hover lift). It overshoots by about 1% of the way, against the light spring's 5%, so a control
- * the user hits often (Save) does not bounce. Cards, toggles, the checkbox tick and sidebar rows
- * keep `MOTION_SPRING`. `--motion-spring-soft` in CSS; a test keeps both equal and pins the overshoot.
- */
-export const MOTION_SPRING_SOFT = "cubic-bezier(0.3, 1.08, 0.5, 1)";
 
 /**
  * `ms`, or 0 on the still tier (reduced motion, low power). Every transition, animation
@@ -81,52 +58,15 @@ export const ease = (() => {
   };
 })();
 
-type Duration = { duration?: number };
-
 // svelte/transition's own, with our default duration and easing and reduced motion applied.
 
-export function fade(node: Element, params: Omit<FadeParams, "easing"> & Duration = {}) {
+export function fade(
+  node: Element,
+  params: Omit<FadeParams, "easing"> & { duration?: number } = {},
+) {
   return svelteFade(node, {
     ...params,
     duration: motionMs(params.duration ?? MOTION_MS.base),
     easing: ease,
   });
-}
-
-export function slide(node: Element, params: Omit<SlideParams, "easing"> & Duration = {}) {
-  return svelteSlide(node, {
-    ...params,
-    duration: motionMs(params.duration ?? MOTION_MS.base),
-    easing: ease,
-  });
-}
-
-export function flip(node: Element, fromTo: { from: DOMRect; to: DOMRect }, params: Duration = {}) {
-  return svelteFlip(node, fromTo, {
-    duration: motionMs(params.duration ?? MOTION_MS.slow),
-    easing: ease,
-  });
-}
-
-/**
- * For a row that takes the place of another, such as a final taking the place
- * of its live text: `leave` on the outgoing row, `arrive` on the incoming one,
- * each with the same key. A row that arrives as its key leaves appears in
- * place, at once; any other arriving row fades in, and a row that leaves
- * without a successor goes at once. A fade, not a fly: a newest row moving in
- * from below grew the scroll height under a log that follows it, and the log
- * lost the bottom.
- */
-export function handoff() {
-  const [send, receive] = crossfade({
-    duration: 0,
-    fallback: (node, _params, intro) => (intro ? fade(node) : { duration: 0 }),
-  });
-
-  return {
-    leave: (node: Element, key: string) => send(node, { key }),
-    /** With no key, the row has no predecessor and fades in. */
-    arrive: (node: Element, key: string | undefined) =>
-      key === undefined ? fade(node) : receive(node, { key }),
-  };
 }

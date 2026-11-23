@@ -4,7 +4,7 @@
 -->
 <script lang="ts">
   import AddButton from "../components/add-button.svelte";
-  import DateField from "@sunreye/builder/components/date-field.svelte";
+  import { DateField } from "@sunreye/builder/controls";
   import RemovableChip from "../components/removable-chip.svelte";
   import { m } from "../paraglide/messages.js";
   import type { OverlayPeriod } from "./overlay.ts";

@@ -2,7 +2,7 @@
 // among them.
 import { vi } from "vitest";
 import { realTimers } from "../lib/motion/clock.harness.ts";
-import { warm } from "@sunreye/builder/scene/warm.ts";
+import { warm } from "../../../../packages/builder/src/scene/warm.ts";
 
 export { eachSeries, problem, settled, tally } from "../lib/api/settled.harness.ts";
 

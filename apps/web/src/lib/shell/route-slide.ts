@@ -2,7 +2,7 @@
 // the old one leaves to the left, an earlier one the other way. A route outside the order fades.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
 import type { TransitionConfig } from "svelte/transition";
-import { ease, MOTION_MS, motionMs } from "@sunreye/builder/motion.ts";
+import { ease, MOTION_MS, motionMs } from "@sunreye/builder/motion";
 import { caught, slideAway, slideIn, slideTiming, turns } from "../motion/slide.ts";
 import { BAR, MORE } from "./nav.ts";
 

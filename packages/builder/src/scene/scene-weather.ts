@@ -1,15 +1,87 @@
-// The scene's weather (ADR 23 "Scene weather") read from the core's weather at an instant and
-// what the plant reads then. Pure.
-import { smoothstep } from "@sunreye/builder/scene/colour.ts";
-import {
-  fogAt,
-  type Falling,
-  type Glass,
-  type Plant,
-  type SceneWeather,
-} from "@sunreye/builder/scene/weather.ts";
-import { codeKind } from "../weather-code.ts";
-import { snowLies, type Weather } from "./weather.ts";
+// The scene's weather (ADR 23 "Scene weather") from an instant's weather, in the builder's own
+// shape which the consumer fills (ADR 25), and what the plant reads then. Pure.
+import { smoothstep } from "./colour.ts";
+import { fogAt, type Falling, type Glass, type Plant, type SceneWeather } from "./weather.ts";
+
+/** What is known of an instant's weather; null where nothing stored covers it. */
+export interface Weather {
+  /**
+   * How closed the sky is, on the scale of the diffuse share of the global irradiance: 0 under
+   * a clear sky to 1 under a closed one. The clear-sky index alone where it has a value; else
+   * the diffuse share with the cloud cover while the sun gives light, and the cloud cover while
+   * it gives none. Not the cloud cover itself, which an hour's `cloudCover` is.
+   */
+  readonly cloud: number | null;
+  /** The WMO weather code. */
+  readonly code: number | null;
+  /** mm/h. */
+  readonly precipitation: number | null;
+  /** cm/h. */
+  readonly snowfall: number | null;
+  /** m. */
+  readonly snowDepth: number | null;
+  /** m; forecasts alone have it. */
+  readonly visibility: number | null;
+  /** m/s. */
+  readonly wind: number | null;
+  /** Degrees it blows from: 0 north, 90 east. */
+  readonly windDirection: number | null;
+  readonly celsius: number | null;
+  /** Relative, in %. */
+  readonly humidity: number | null;
+  /** Global horizontal irradiance in W/m²: under 1 it is night. */
+  readonly ghi: number | null;
+  /** The clear-sky index that stands for the instant: null where the core measured none. */
+  readonly clearSkyIndex: number | null;
+  /** Ms since precipitation last fell, 0 while it falls; null where none fell in what was read. */
+  readonly dry: number | null;
+}
+
+/** An instant nothing stored covers. */
+export const NO_WEATHER: Weather = {
+  cloud: null,
+  code: null,
+  precipitation: null,
+  snowfall: null,
+  snowDepth: null,
+  visibility: null,
+  wind: null,
+  windDirection: null,
+  celsius: null,
+  humidity: null,
+  ghi: null,
+  clearSkyIndex: null,
+  dry: null,
+};
+
+/** Metres of snow depth from which snow lies (ADR 23), as in the core. */
+const SNOW_LIES = 0.01;
+
+/** Whether snow `depth` m deep lies; not without a depth. */
+export function snowLies(depth: number | null): depth is number {
+  return depth !== null && depth >= SNOW_LIES;
+}
+
+/** What a code says falls or hangs. */
+export type CodeKind = "fog" | "drizzle" | "rain" | "snow" | "showers" | "thunder";
+
+/** The codes from each first to each last, both included; the codes under 45 only tell the cloud. */
+const KINDS: readonly (readonly [number, number, CodeKind])[] = [
+  [45, 48, "fog"],
+  [51, 57, "drizzle"],
+  [61, 67, "rain"],
+  [71, 77, "snow"],
+  [80, 82, "showers"],
+  [85, 86, "snow"],
+  [95, 99, "thunder"],
+];
+
+/** What `code` says falls or hangs; null for a dry code, one past the table or none. */
+export function codeKind(code: number | null): CodeKind | null {
+  if (code === null) return null;
+
+  return KINDS.find(([first, last]) => code >= first && code <= last)?.[2] ?? null;
+}
 
 const UNKNOWN: Plant = { sun: null, share: null };
 

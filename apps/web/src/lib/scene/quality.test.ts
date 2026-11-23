@@ -6,7 +6,7 @@ import {
   parseSteps,
   relief,
   type Device,
-} from "@sunreye/builder/scene/quality.ts";
+} from "../../../../../packages/builder/src/scene/quality.ts";
 
 const strong: Device = { capable: true, touch: false, steps: 0, tier: "full" };
 const weak: Device = { capable: false, touch: false, steps: 0, tier: "full" };

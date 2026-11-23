@@ -12,10 +12,10 @@
 -->
 <script lang="ts" generics="T">
   import { untrack, type Snippet } from "svelte";
-  import { spring, tween } from "@sunreye/builder/animate.ts";
+  import { spring, tween } from "@sunreye/builder/motion";
   import { slideTiming } from "../motion/slide.ts";
-  import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
-  import { EXIT_MS, SPRINGS } from "@sunreye/builder/motion/values.ts";
+  import { motion } from "@sunreye/builder/motion";
+  import { EXIT_MS, SPRINGS } from "@sunreye/builder/values";
   import Pane from "./Pane.svelte";
   import type { Travel } from "./travel.svelte.ts";
   import { drag } from "./pager-drag.ts";

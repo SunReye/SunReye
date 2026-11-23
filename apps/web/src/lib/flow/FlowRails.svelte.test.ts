@@ -2,7 +2,7 @@
 import { expect, test } from "vitest";
 import { render } from "vitest-browser-svelte";
 import { finish } from "../motion/animations.harness.ts";
-import type { MotionTier } from "@sunreye/builder/motion/tier.ts";
+import type { MotionTier } from "../../../../../packages/builder/src/motion/tier.ts";
 import { BEAD_COUNT, railPulse } from "./flow-pulse.ts";
 import FlowRails from "./FlowRails.svelte";
 import type { Direction, RailLine } from "./schematic.ts";

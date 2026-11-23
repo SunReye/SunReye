@@ -1,7 +1,6 @@
 import { expect, test } from "vitest";
-import { connect } from "../../api/core.ts";
-import { DEVICES, house, MODULE, pv, testCore } from "../builder.harness.ts";
-import { Session } from "@sunreye/builder/builder/session.svelte.ts";
+import { DEVICES, hosted, house, MODULE, pv, testCore } from "../builder.harness.ts";
+import { Session } from "../../../../../../packages/builder/src/builder/session.svelte.ts";
 
 function session(): Session {
   let made: Session | undefined;
@@ -10,7 +9,7 @@ function session(): Session {
   $effect.root(() => {
     made = new Session(() => ({
       pv,
-      core: connect(testCore()),
+      ...hosted(testCore()),
       start,
       moduleTypes: [MODULE],
       devices: DEVICES,

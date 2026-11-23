@@ -1,11 +1,10 @@
 import "../../app.css";
 import { afterEach, expect, test } from "vitest";
 import { render } from "vitest-browser-svelte";
-import type { Fitted, Geometry, Point } from "@sunreye/builder/builder/pv.ts";
-import type { Projector } from "@sunreye/builder/builder/drawing.svelte.ts";
+import type { Fitted, Geometry, Point } from "../../../../../packages/builder/src/builder/pv.ts";
+import type { Projector } from "../../../../../packages/builder/src/builder/drawing.svelte.ts";
 import { SceneCanvas } from "@sunreye/builder";
 import { settle } from "../motion/clock.harness.ts";
-import { canvasWords } from "../builder/canvas-words.ts";
 
 /** Eight windows along a 20 m wall that faces south, each 1.2 m wide from 0.9 m to 2.3 m up. */
 const windows: Fitted[] = Array.from({ length: 8 }, (_, i) => {
@@ -53,7 +52,6 @@ async function wall(sun: Point): Promise<() => boolean[] | undefined> {
   let warm: boolean[] | undefined;
 
   await render(SceneCanvas, {
-    words: canvasWords(),
     geometry: street,
     sun,
     view: { position: [10, 1.6, 22], target: [10, 1.6, 0] },

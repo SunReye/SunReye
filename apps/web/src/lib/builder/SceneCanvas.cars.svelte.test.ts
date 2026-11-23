@@ -1,14 +1,13 @@
 import "../../app.css";
 import { afterEach, expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
-import type { Parked } from "@sunreye/builder/cars/parked.ts";
-import { Opening } from "@sunreye/builder/scene/opening.svelte.ts";
-import { presetView } from "@sunreye/builder/builder/camera.ts";
-import type { Geometry } from "@sunreye/builder/builder/pv.ts";
+import type { Parked } from "../../../../../packages/builder/src/cars/parked.ts";
+import { Opening } from "../../../../../packages/builder/src/scene/opening.svelte.ts";
+import { presetView } from "../../../../../packages/builder/src/builder/camera.ts";
+import type { Geometry } from "../../../../../packages/builder/src/builder/pv.ts";
 import { SceneCanvas } from "@sunreye/builder";
 import { turn } from "../api/settled.harness.ts";
 import { settle } from "../motion/clock.harness.ts";
-import { canvasWords } from "./canvas-words.ts";
 
 const house: Geometry = {
   faces: [
@@ -65,7 +64,6 @@ test("a live tick that changes only a car's power or SOC brings no car anew", as
   const results = () => arrive.mock.settledResults;
 
   const screen = await render(SceneCanvas, {
-    words: canvasWords(),
     geometry: house,
     view: presetView("isometric", house),
     onview: () => {},

@@ -3,13 +3,13 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { connect } from "../api/core.ts";
-import Builder from "./Builder.svelte";
+import Builder from "../../../../../packages/builder/src/builder/Builder.svelte";
 import {
   choose,
   desk,
   DEVICES,
   drill,
+  hosted,
   house,
   inspector,
   MODULE,
@@ -21,9 +21,9 @@ import {
   testCore,
   undesk,
 } from "./builder.harness.ts";
-import { handles } from "@sunreye/builder/builder/handles/grips.ts";
-import type { Scene } from "@sunreye/builder/builder/pv.ts";
-import { fresh } from "@sunreye/builder/builder/wall-openings.ts";
+import { handles } from "../../../../../packages/builder/src/builder/handles/grips.ts";
+import type { Scene } from "../../../../../packages/builder/src/builder/pv.ts";
+import { fresh } from "../../../../../packages/builder/src/builder/wall-openings.ts";
 
 beforeEach(async () => {
   localStorage.removeItem("sunreye.builder.view");
@@ -68,7 +68,7 @@ test("a window is added on a wall and its width arrow drags it wider, in one und
 
   await render(Builder, {
     pv,
-    core: connect(testCore()),
+    ...hosted(testCore()),
     start,
     moduleTypes: [MODULE],
     devices: DEVICES,
@@ -110,7 +110,7 @@ test("a window is set dark at night and duplicated: the copy stands picked, as d
 
   await render(Builder, {
     pv,
-    core: connect(testCore()),
+    ...hosted(testCore()),
     start,
     moduleTypes: [MODULE],
     devices: DEVICES,
@@ -148,7 +148,7 @@ test("Ctrl+C copies the picked window and Ctrl+V adds a copy beside it, picked; 
 
   await render(Builder, {
     pv,
-    core: connect(testCore()),
+    ...hosted(testCore()),
     start,
     moduleTypes: [MODULE],
     devices: DEVICES,

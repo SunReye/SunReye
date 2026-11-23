@@ -3,9 +3,9 @@
 // the browser: the image is a canvas the test paints, not a file fetched.
 import { BufferAttribute, BufferGeometry, Mesh, MeshStandardMaterial, type Object3D } from "three";
 import { expect, test } from "vitest";
-import type { Face, Geometry } from "@sunreye/builder/builder/pv.ts";
-import { buildScene } from "@sunreye/builder/builder/scene.ts";
-import type { Aerial, Around } from "@sunreye/builder/builder/supplied.ts";
+import type { Face, Geometry } from "../../../../../packages/builder/src/builder/pv.ts";
+import { buildScene } from "../../../../../packages/builder/src/builder/scene.ts";
+import type { Aerial, Around } from "../../../../../packages/builder/src/builder/supplied.ts";
 
 /** A 10 m × 8 m house, its roof rising north from the eave along the scene's x axis. */
 const house: Geometry = {

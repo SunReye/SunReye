@@ -3,11 +3,10 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { cdp, page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { connect } from "../api/core.ts";
 import { least, still } from "../contrast.harness.ts";
-import Builder from "./Builder.svelte";
+import Builder from "../../../../../packages/builder/src/builder/Builder.svelte";
 import * as builder from "./builder.harness.ts";
-import { emptyDraft, type Draft } from "@sunreye/builder/builder/modules.ts";
+import { emptyDraft, type Draft } from "../../../../../packages/builder/src/builder/modules.ts";
 import { blurred } from "./over-canvas.harness.ts";
 
 // Canvas chips (ADR 21 "Glass") in the builder: nothing that lies over the 3D canvas blurs what
@@ -37,7 +36,7 @@ async function built(start: Draft = builder.house()): Promise<void> {
 
   await render(Builder, {
     pv: builder.pv,
-    core: connect(builder.testCore()),
+    ...builder.hosted(builder.testCore()),
     start,
     moduleTypes: [builder.MODULE],
     devices: builder.DEVICES,

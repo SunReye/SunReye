@@ -5,9 +5,9 @@ import { cdp, page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import ComboboxField from "./combobox-field.svelte";
-import DateField from "@sunreye/builder/components/date-field.svelte";
+import DateField from "../../../../../packages/builder/src/components/date-field.svelte";
 import SelectField from "./select-field.svelte";
-import { editable } from "@sunreye/builder/components/value-editor/editable.ts";
+import { editable } from "../../../../../packages/builder/src/components/value-editor/editable.ts";
 import ValueEditor from "./value-editor/value-editor.svelte";
 
 const OPTIONS = [

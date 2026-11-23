@@ -1,19 +1,13 @@
 // The time slider's day (ADR 20): where each string's production comes from, and its value at an
 // instant. Pure but for the reads it is handed; nothing here touches the scene.
-import { only, type Core, type ModuleType } from "../api/core.ts";
-import type { Draft } from "@sunreye/builder/builder/modules.ts";
-import type { Location, Pv } from "@sunreye/builder/builder/pv.ts";
-import type { Neighbour } from "@sunreye/builder/builder/pv.ts";
+import type { Interval, ModuleType, Records, Span } from "./host.ts";
+import type { Draft } from "./modules.ts";
+import type { Location, Neighbour, Pv } from "./pv.ts";
+
+export type { Interval } from "./host.ts";
 
 /** Measured or estimated history, the solar forecast, or a clear sky run in the browser. */
 export type Source = "measured" | "forecast" | "clearSky";
-
-/** Watts from `from` to before `to`, in ms since 1970. */
-export interface Interval {
-  readonly from: number;
-  readonly to: number;
-  readonly watts: number;
-}
 
 /** A day's production, by string position in the draft. */
 export interface Day {
@@ -75,7 +69,7 @@ export function shareAt(
 
 /** What a day is read from and run with. */
 export interface Reading {
-  readonly core: Pick<Core, "history" | "forecasts">;
+  readonly core: Pick<Records, "production" | "weather">;
   readonly pv: Pv;
   readonly draft: Draft;
   readonly moduleTypes: readonly Readonly<ModuleType>[];
@@ -89,48 +83,24 @@ export interface Reading {
 }
 
 /** The day `YYYY-MM-DD` in the browser's calendar: its midnight and the next. */
-export function spanOf(day: string): readonly [Date, Date] {
+export function spanOf(day: string): Span {
   return [new Date(`${day}T00:00`), new Date(`${after(day, 1)}T00:00`)];
 }
 
-/** Each saved string's stored series for the day; an unsaved one has none. */
+/** Each saved string's stored series for the day; an unsaved one, or a host that stores none, has
+ * none. */
 function stored(
-  reading: Reading,
+  { core, draft, day }: Reading,
   source: "measured" | "forecast",
 ): Promise<(readonly Interval[])[]> {
-  const { core, draft, day } = reading;
-  const [from, to] = spanOf(day);
+  const { production } = core;
 
   return Promise.all(
-    draft.strings.map(async ({ id, device }) => {
-      if (id === null || id === undefined) return [];
-
-      const series = `pv.string.power[${String(id)}]`;
-
-      if (source === "measured") {
-        const history = only(await core.history(device, [series], from, to));
-
-        return "problem" in history
-          ? []
-          : history.points.map(
-              ({ start, end, mean }: Readonly<{ start: string; end: string; mean: number }>) => ({
-                from: Date.parse(start),
-                to: Date.parse(end),
-                watts: mean,
-              }),
-            );
-      }
-
-      const forecasts = only(await core.forecasts(device, [series], from, to));
-
-      return "problem" in forecasts
-        ? []
-        : forecasts.points.map(({ target, value }: Readonly<{ target: string; value: number }>) => {
-            const at = Date.parse(target);
-
-            return { from: at, to: at + STEP, watts: value };
-          });
-    }),
+    draft.strings.map(({ id, device }) =>
+      id === null || id === undefined || production === undefined
+        ? Promise.resolve([])
+        : production({ id, device }, source, spanOf(day)),
+    ),
   );
 }
 

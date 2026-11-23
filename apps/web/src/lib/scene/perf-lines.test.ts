@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { asked, readout } from "@sunreye/builder/scene/perf-lines.ts";
+import { asked, readout } from "../../../../../packages/builder/src/scene/perf-lines.ts";
 
 // The scene's readout as text (ADR 21 "Measuring").
 

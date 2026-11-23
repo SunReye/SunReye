@@ -9,9 +9,9 @@
   import LiveLegend from "../live-graph/LiveLegend.svelte";
   import type { LivePoint } from "../live-graph/series.ts";
   import { stream } from "../live/stream.svelte.ts";
-  import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
+  import { motion } from "@sunreye/builder/motion";
   import { m } from "../paraglide/messages.js";
-  import { input } from "@sunreye/builder/shell/input.svelte.ts";
+  import { input } from "@sunreye/builder/controls";
   import type { Figure } from "./figures.ts";
   import { ago } from "./readings.ts";
 

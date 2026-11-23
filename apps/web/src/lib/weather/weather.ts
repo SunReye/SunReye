@@ -4,40 +4,11 @@
 import { answerOf, settleRead, type Settled } from "../api/client.ts";
 import type { Core } from "../api/core.ts";
 import { stored } from "./stored.ts";
+import type { Weather } from "@sunreye/builder/canvas";
 
-/** What is known of an instant's weather; null where nothing stored covers it. */
-export interface Weather {
-  /**
-   * How closed the sky is, on the scale of the diffuse share of the global irradiance: 0 under
-   * a clear sky to 1 under a closed one. The clear-sky index alone where it has a value; else
-   * the diffuse share with the cloud cover while the sun gives light, and the cloud cover while
-   * it gives none. Not the cloud cover itself, which an hour's `cloudCover` is.
-   */
-  readonly cloud: number | null;
-  /** The WMO weather code. */
-  readonly code: number | null;
-  /** mm/h. */
-  readonly precipitation: number | null;
-  /** cm/h. */
-  readonly snowfall: number | null;
-  /** m. */
-  readonly snowDepth: number | null;
-  /** m; forecasts alone have it. */
-  readonly visibility: number | null;
-  /** m/s. */
-  readonly wind: number | null;
-  /** Degrees it blows from: 0 north, 90 east. */
-  readonly windDirection: number | null;
-  readonly celsius: number | null;
-  /** Relative, in %. */
-  readonly humidity: number | null;
-  /** Global horizontal irradiance in W/m²: under 1 it is night. */
-  readonly ghi: number | null;
-  /** The clear-sky index that stands for the instant: null where the core measured none. */
-  readonly clearSkyIndex: number | null;
-  /** Ms since precipitation last fell, 0 while it falls; null where none fell in what was read. */
-  readonly dry: number | null;
-}
+export type { Weather } from "@sunreye/builder/canvas";
+
+export { snowLies } from "@sunreye/builder/canvas";
 
 const MINUTE = 60_000;
 
@@ -52,14 +23,6 @@ const INDEX = { closed: 0.25, clear: 1 };
 
 /** Under this global irradiance in W/m² the light tells nothing of the clouds. */
 export const DARK = 1;
-
-/** Metres of snow depth from which snow lies (ADR 23), as in the core. */
-const SNOW_LIES = 0.01;
-
-/** Whether snow `depth` m deep lies; not without a depth. */
-export function snowLies(depth: number | null): depth is number {
-  return depth !== null && depth >= SNOW_LIES;
-}
 
 /** Each stored series the weather is read from, and where the core has it. */
 const SERIES = [

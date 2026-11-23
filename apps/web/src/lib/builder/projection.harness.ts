@@ -1,9 +1,13 @@
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- a view, only read. */
 // Where a point of the builder's scene lands on its canvas, for its component tests.
 import { PerspectiveCamera, Vector3 } from "three";
-import type { View } from "@sunreye/builder/builder/camera.ts";
+import type { View } from "../../../../../packages/builder/src/builder/camera.ts";
 
-export { faceView, presetView, type View } from "@sunreye/builder/builder/camera.ts";
+export {
+  faceView,
+  presetView,
+  type View,
+} from "../../../../../packages/builder/src/builder/camera.ts";
 
 /** Where a point lands on `canvas`, seen from `view`. */
 export function onView(

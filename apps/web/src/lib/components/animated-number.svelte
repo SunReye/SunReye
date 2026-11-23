@@ -2,9 +2,9 @@
   import { untrack, type Snippet } from "svelte";
   import { Tween } from "svelte/motion";
   import { tickGlideMs } from "../live/stream.svelte.ts";
-  import { ease } from "@sunreye/builder/motion.ts";
-  import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
-  import { COUNT_UP_MS } from "@sunreye/builder/motion/values.ts";
+  import { ease } from "@sunreye/builder/motion";
+  import { motion } from "@sunreye/builder/motion";
+  import { COUNT_UP_MS } from "@sunreye/builder/values";
   import { getLocale } from "../paraglide/runtime.js";
 
   // Live ticks glide for slightly longer than the tick (ADR 21); a halted stream steps to its last

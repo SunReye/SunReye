@@ -2,11 +2,10 @@ import "../../app.css";
 import { expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { presetView } from "@sunreye/builder/builder/camera.ts";
-import type { Geometry } from "@sunreye/builder/builder/pv.ts";
+import { presetView } from "../../../../../packages/builder/src/builder/camera.ts";
+import type { Geometry } from "../../../../../packages/builder/src/builder/pv.ts";
 import { SceneCanvas } from "@sunreye/builder";
 import { settle } from "../motion/clock.harness.ts";
-import { canvasWords } from "./canvas-words.ts";
 
 // Each canvas is a studio of its own (ADR 25): a consumer may show one scene twice.
 
@@ -35,7 +34,7 @@ test("one scene shows in two canvases at once, from above and at an angle, each 
         view: presetView(preset, house),
         onview: () => {},
         onready: ready[preset],
-        words: { ...canvasWords(), scene: preset },
+        label: preset,
       }),
     ),
   );

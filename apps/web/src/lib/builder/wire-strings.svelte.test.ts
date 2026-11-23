@@ -4,12 +4,13 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import type { StringDraft } from "../api/core.ts";
-import Builder from "./Builder.svelte";
+import Builder from "../../../../../packages/builder/src/builder/Builder.svelte";
 import {
   desk,
   DEVICES,
   drill,
   filledFace,
+  hosted,
   house,
   inspector,
   MODULE,
@@ -23,9 +24,13 @@ import {
   undesk,
 } from "./builder.harness.ts";
 import { saveFrom } from "./moment.harness.ts";
-import { connect, type Transport } from "../api/core.ts";
-import { addGrid, panels, type Draft } from "@sunreye/builder/builder/modules.ts";
-import { toThree } from "@sunreye/builder/builder/scene.ts";
+import { type Transport } from "../api/core.ts";
+import {
+  addGrid,
+  panels,
+  type Draft,
+} from "../../../../../packages/builder/src/builder/modules.ts";
+import { toThree } from "../../../../../packages/builder/src/builder/scene.ts";
 
 const OTHER = { ...MODULE, id: 8, name: "Other 300" };
 
@@ -83,7 +88,7 @@ async function opened(draft: Draft, transport: Readonly<Transport> = testCore())
 
   await render(Builder, {
     pv,
-    core: connect(transport),
+    ...hosted(transport),
     start: draft,
     moduleTypes: [MODULE, OTHER],
     devices: DEVICES,
@@ -191,7 +196,7 @@ test("from the Strings group a selection is wired into a string of the menu, or 
 
   await render(Builder, {
     pv,
-    core: connect(testCore()),
+    ...hosted(testCore()),
     start: draft,
     moduleTypes: [MODULE, OTHER],
     devices: DEVICES,

@@ -1,7 +1,7 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { nextBlock } from "@sunreye/builder/builder/draft.ts";
-import type { Block, Scene } from "@sunreye/builder/builder/pv.ts";
+import { nextBlock } from "../../../../../../packages/builder/src/builder/draft.ts";
+import type { Block, Scene } from "../../../../../../packages/builder/src/builder/pv.ts";
 import {
   drag,
   handles,
@@ -9,7 +9,7 @@ import {
   type Grip,
   type Ray,
   type Target,
-} from "@sunreye/builder/builder/handles/grips.ts";
+} from "../../../../../../packages/builder/src/builder/handles/grips.ts";
 
 const HOUSE = nextBlock([]);
 const BLOCK: Target = { kind: "block", index: 0 };

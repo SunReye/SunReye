@@ -5,12 +5,12 @@
 -->
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import type { Core, Device, ModuleType } from "../api/core.ts";
-  import { parkedNow } from "../cars/parked.svelte.ts";
+  import { parked } from "../cars/parked.ts";
+  import type { Device, Records } from "./host.ts";
   import type { Moment } from "./moment.svelte.ts";
-  import type { Draft } from "@sunreye/builder/builder/modules.ts";
-  import type { Geometry, Location, RoofFace } from "@sunreye/builder/builder/pv.ts";
-  import ContextBar, { type Selected } from "@sunreye/builder/builder/ContextBar.svelte";
+  import type { Draft } from "./modules.ts";
+  import type { Geometry, Location, RoofFace } from "./pv.ts";
+  import ContextBar, { type Selected } from "./ContextBar.svelte";
   import Stage, {
     type Around,
     type Editing,
@@ -23,7 +23,7 @@
   import TimeSlider from "./TimeSlider.svelte";
 
   let {
-    core,
+    records,
     draft,
     geometry,
     panels,
@@ -40,7 +40,7 @@
     tools,
     selected,
   }: {
-    core: Core;
+    records: Records;
     /** Read, never written: the slider changes nothing in the scene (ADR 20). */
     draft: Draft;
     geometry: Geometry;
@@ -79,7 +79,9 @@
   /** A pointer is down on the canvas: it orbits or drags, and the toolbar is out of its way. */
   let held = $state(false);
 
-  const cars = $derived(parkedNow(draft.scene.carPlaces ?? [], geometry.stands));
+  const cars = $derived(
+    parked(draft.scene.carPlaces ?? [], geometry.stands, records.live?.() ?? {}),
+  );
 </script>
 
 <!-- Edge to edge on a phone. -->
@@ -101,7 +103,7 @@
   <!-- Measured first: the first view fits the canvas, with no flight to it. -->
   {#if height > 0}
     <Stage
-      {core}
+      model={records.model}
       {geometry}
       {panels}
       {around}

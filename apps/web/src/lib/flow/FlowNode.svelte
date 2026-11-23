@@ -8,7 +8,7 @@
   import { Pressable } from "@sunreye/ui/pressable";
   import { KIND_ICONS } from "../equipment-kinds.ts";
   import PowerNumber from "../components/power-number.svelte";
-  import type { MotionTier } from "@sunreye/builder/motion/tier.ts";
+  import type { MotionTier } from "@sunreye/builder/motion";
   import { m } from "../paraglide/messages.js";
   import { nodeGlow } from "./flow-pulse.ts";
   import { ARROWS, nodeLabel, STATES } from "./node-words.ts";

@@ -7,7 +7,7 @@
   import Plus from "@lucide/svelte/icons/plus";
   import type { Connection, Core, Device, Problem } from "../api/core";
   import { Button } from "@sunreye/ui/button";
-  import ValueRow from "@sunreye/builder/builder/ValueRow.svelte";
+  import { ValueRow } from "@sunreye/builder/controls";
   import { m } from "../paraglide/messages.js";
   import ProfilePicker from "../setup/ProfilePicker.svelte";
   import Refusal, { answered } from "../setup/Refusal.svelte";

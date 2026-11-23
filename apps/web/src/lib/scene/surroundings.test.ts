@@ -1,9 +1,9 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
 import { Box3, Color, InstancedMesh, Mesh, MeshStandardMaterial, type Object3D } from "three";
-import type { Geometry, GroundFinish } from "@sunreye/builder/builder/pv.ts";
-import { buildScene } from "@sunreye/builder/builder/scene.ts";
-import { TONE } from "@sunreye/builder/scene/materials.ts";
+import type { Geometry, GroundFinish } from "../../../../../packages/builder/src/builder/pv.ts";
+import { buildScene } from "../../../../../packages/builder/src/builder/scene.ts";
+import { TONE } from "../../../../../packages/builder/src/scene/materials.ts";
 
 // Conifers, hedges, ground surfaces and fences as the scene draws them (ADR 20 Surroundings).
 

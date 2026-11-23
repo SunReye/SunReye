@@ -2,13 +2,13 @@ import "../../app.css";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { connect } from "../api/core.ts";
-import Builder from "./Builder.svelte";
+import Builder from "../../../../../packages/builder/src/builder/Builder.svelte";
 import {
   desk,
   DEVICES,
   drill,
   filledFace,
+  hosted,
   house,
   inspector,
   MODULE,
@@ -17,7 +17,7 @@ import {
   testCore,
   undesk,
 } from "./builder.harness.ts";
-import { addGrid } from "@sunreye/builder/builder/modules.ts";
+import { addGrid } from "../../../../../packages/builder/src/builder/modules.ts";
 import { saveFrom } from "./moment.harness.ts";
 
 beforeEach(desk);
@@ -36,7 +36,7 @@ test("auto-stringing proposes a face's strings on the free inputs; kept, they ar
 
   await render(Builder, {
     pv,
-    core: connect(testCore()),
+    ...hosted(testCore()),
     start: { scene: filledFace(addGrid(scene, 0, 1, MODULE.id), 0), strings: [] },
     moduleTypes: [MODULE],
     devices: DEVICES,
@@ -79,7 +79,7 @@ async function proposing() {
   const { scene } = house();
   await render(Builder, {
     pv,
-    core: connect(transport),
+    ...hosted(transport),
     start: { scene: filledFace(addGrid(scene, 0, 1, MODULE.id), 0), strings: [] },
     moduleTypes: [MODULE],
     devices: DEVICES,
@@ -145,7 +145,7 @@ test("on one free input the proposed strings are of one length: no warning of it
 
   await render(Builder, {
     pv,
-    core: connect(testCore()),
+    ...hosted(testCore()),
     start: { scene: filledFace(addGrid(scene, 0, 1, MODULE.id), 0), strings: [] },
     moduleTypes: [MODULE],
     devices: DEVICES,

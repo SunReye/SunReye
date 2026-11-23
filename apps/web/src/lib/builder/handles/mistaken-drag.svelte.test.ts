@@ -3,12 +3,12 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { connect } from "../../api/core.ts";
-import Builder from "../Builder.svelte";
+import Builder from "../../../../../../packages/builder/src/builder/Builder.svelte";
 import {
   desk,
   DEVICES,
   drill,
+  hosted,
   house,
   inspector,
   MODULE,
@@ -22,8 +22,8 @@ import {
   testCore,
   undesk,
 } from "../builder.harness.ts";
-import { handles } from "@sunreye/builder/builder/handles/grips.ts";
-import { offered } from "@sunreye/builder/builder/handles/offered.ts";
+import { handles } from "../../../../../../packages/builder/src/builder/handles/grips.ts";
+import { offered } from "../../../../../../packages/builder/src/builder/handles/offered.ts";
 
 const VIEW = "sunreye.builder.view";
 
@@ -44,7 +44,7 @@ async function picked() {
 
   await render(Builder, {
     pv,
-    core: connect(testCore()),
+    ...hosted(testCore()),
     start,
     moduleTypes: [MODULE],
     devices: DEVICES,
@@ -167,7 +167,7 @@ test("on a phone a picked house's knob lies in the canvas, clear of the sheet an
 
   await render(Builder, {
     pv,
-    core: connect(testCore()),
+    ...hosted(testCore()),
     start: house(),
     moduleTypes: [MODULE],
     devices: DEVICES,

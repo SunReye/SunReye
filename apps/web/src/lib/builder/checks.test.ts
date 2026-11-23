@@ -1,8 +1,8 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { sized } from "@sunreye/builder/builder/checks.ts";
+import { sized } from "../../../../../packages/builder/src/builder/checks.ts";
 import { inputsOf, limitsOf } from "./capabilities.ts";
-import type { Sizing } from "@sunreye/builder/builder/pv.ts";
+import type { Sizing } from "../../../../../packages/builder/src/builder/pv.ts";
 
 test("the limits are each inverter's maximum DC input voltage, by device id", () => {
   const support = { estimated: [], series: [], settings: [], writes: false };

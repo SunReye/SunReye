@@ -5,7 +5,7 @@ import {
   Pace,
   parseFrameLimit,
   type FrameLimit,
-} from "@sunreye/builder/scene/frame-limit.ts";
+} from "../../../../../packages/builder/src/scene/frame-limit.ts";
 
 // The frame limit (ADR 21 "Frame limit"): the most frames a second the 3D scene draws.
 

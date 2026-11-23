@@ -1,17 +1,18 @@
 <!-- Each MPPT input's learned correction at the slider's month and hour, and its last 30 days
   measured against the model (ADR 20): shown with the strings it judges. -->
 <script lang="ts">
-  import type { Core, Corrections, Device } from "../api/core.ts";
+  import type { Corrections, Device, Records } from "./host.ts";
   import { m } from "../paraglide/messages.js";
   import { getLocale } from "../paraglide/runtime.js";
 
   let {
-    core,
+    records,
     devices,
     month,
     hour,
   }: {
-    core: Pick<Core, "corrections">;
+    /** Without corrections the check is not shown. */
+    records: Pick<Records, "corrections">;
     /** Names the inverters; a viewer lists none. */
     devices: readonly Device[];
     /** The slider's month 1–12 and hour 0–23, whose learned factor is shown. */
@@ -24,16 +25,15 @@
   type Input = Corrections["inputs"][number];
 
   // Read once: the learner runs twice a day.
-  const loaded = $derived(core.corrections());
+  const loaded = $derived(records.corrections?.());
 
-  const locale = getLocale();
+  const locale = $derived(getLocale());
 
-  const factorFormat = new Intl.NumberFormat(locale, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  const factorFormat = $derived(
+    new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+  );
 
-  const energy = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 });
+  const energy = $derived(new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }));
 
   function line({ device, input, factors, recent }: Input): string {
     const name = devices.find(({ id }) => id === device)?.name ?? String(device);
@@ -57,7 +57,7 @@
 </script>
 
 {#await loaded then corrections}
-  {#if !("problem" in corrections) && corrections.inputs.length > 0}
+  {#if corrections !== undefined && !("problem" in corrections) && corrections.inputs.length > 0}
     <section class="flex flex-col gap-1.5 border-t border-border/60 px-4 py-3">
       <h3 id="{uid}-check" class="text-xs font-medium text-muted-foreground">
         {m.builder_model_check()}

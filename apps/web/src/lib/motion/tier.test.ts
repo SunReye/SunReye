@@ -21,7 +21,7 @@ import {
   STRAIN_RATIO,
   STRAIN_WINDOW,
   strainLeft,
-} from "@sunreye/builder/motion/tier.ts";
+} from "../../../../../packages/builder/src/motion/tier.ts";
 
 describe("resolveTier", () => {
   test("the OS's reduced-motion request outranks whatever the device manages", () => {

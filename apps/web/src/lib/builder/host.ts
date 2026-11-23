@@ -1,18 +1,22 @@
 // The builder's host as Home answers it (ADR 25): the core's refusals in the app's words, its toast,
-// and the core that stores a car body.
-import { provideHost } from "@sunreye/builder/builder/host.ts";
+// the core that stores a car body, and what the builder reads of the core and the live stream.
+import type { Host } from "@sunreye/builder/frame";
 import type { Core } from "../api/core.ts";
 import { confirmed } from "../feedback.ts";
 import { problemText } from "../i18n/problems.ts";
+import { stream } from "../live/stream.svelte.ts";
+import { homeRecords } from "./records.ts";
 
-/** Hosts the builder below the calling component, with the `core` it holds now; call it while that
- * component initialises. */
-export function hostIn(core: () => Pick<Core, "uploadCarBody">): void {
-  provideHost({
-    refusal: (code) => problemText(code),
-    confirmed: (text) => {
-      confirmed(text);
-    },
-    uploadCarBody: (glb) => core().uploadCarBody(glb),
-  });
+/** The builder's records and host as Home answers them, through `core`. */
+export function homeBuilder(core: Readonly<Core>) {
+  return {
+    records: { ...homeRecords(core), live: () => stream.values?.devices ?? {} },
+    host: {
+      refusal: (code) => problemText(code),
+      confirmed: (text) => {
+        confirmed(text);
+      },
+      uploadCarBody: (glb) => core.uploadCarBody(glb),
+    } satisfies Host,
+  };
 }

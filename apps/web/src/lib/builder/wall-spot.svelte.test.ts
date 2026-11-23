@@ -3,14 +3,14 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { connect } from "../api/core.ts";
-import { emptyDraft } from "@sunreye/builder/builder/modules.ts";
-import { fill } from "./templates.ts";
-import Builder from "./Builder.svelte";
+import { emptyDraft } from "../../../../../packages/builder/src/builder/modules.ts";
+import { fill } from "../../../../../packages/builder/src/builder/templates.ts";
+import Builder from "../../../../../packages/builder/src/builder/Builder.svelte";
 import {
   desk,
   DEVICES,
   drill,
+  hosted,
   house,
   inspector,
   MODULE,
@@ -49,7 +49,7 @@ async function bare() {
 
   await render(Builder, {
     pv,
-    core: connect(testCore()),
+    ...hosted(testCore()),
     start,
     moduleTypes: [MODULE],
     devices: DEVICES,
@@ -197,7 +197,7 @@ test("on a turned house under a turned north the window still goes in under the 
 
   await render(Builder, {
     pv,
-    core: connect(testCore()),
+    ...hosted(testCore()),
     start: { strings, scene: turnedScene },
     moduleTypes: [MODULE],
     devices: DEVICES,
@@ -233,7 +233,7 @@ test("on a phone a house of two blocks carries all four tools inside the canvas"
 
   await render(Builder, {
     pv,
-    core: connect(testCore()),
+    ...hosted(testCore()),
     start: walled,
     moduleTypes: [MODULE],
     devices: DEVICES,

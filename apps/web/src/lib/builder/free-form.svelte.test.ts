@@ -3,12 +3,13 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { connect, type Transport } from "../api/core.ts";
-import Builder from "./Builder.svelte";
+import { type Transport } from "../api/core.ts";
+import Builder from "../../../../../packages/builder/src/builder/Builder.svelte";
 import {
   desk,
   DEVICES,
   drill,
+  hosted,
   inspector,
   MODULE,
   onCanvas,
@@ -19,8 +20,8 @@ import {
   undesk,
 } from "./builder.harness.ts";
 import { saveFrom } from "./moment.harness.ts";
-import { addGrid, type Draft } from "@sunreye/builder/builder/modules.ts";
-import type { Block, Scene } from "@sunreye/builder/builder/pv.ts";
+import { addGrid, type Draft } from "../../../../../packages/builder/src/builder/modules.ts";
+import type { Block, Scene } from "../../../../../packages/builder/src/builder/pv.ts";
 
 // A free-form roof in the builder (ADR 20): drawn, its faces taking modules like any other, and
 // its block's unused rectangle offered for no edit.
@@ -69,7 +70,7 @@ async function opened(draft: Draft, transport: Readonly<Transport> = testCore())
 
   await render(Builder, {
     pv,
-    core: connect(transport),
+    ...hosted(transport),
     start: draft,
     moduleTypes: [MODULE],
     devices: DEVICES,

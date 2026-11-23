@@ -1,8 +1,8 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { nextBlock } from "@sunreye/builder/builder/draft.ts";
-import { parent, picked } from "@sunreye/builder/builder/levels.ts";
-import type { Scene } from "@sunreye/builder/builder/pv.ts";
+import { nextBlock } from "../../../../../packages/builder/src/builder/draft.ts";
+import { parent, picked } from "../../../../../packages/builder/src/builder/levels.ts";
+import type { Scene } from "../../../../../packages/builder/src/builder/pv.ts";
 
 const HOUSE = nextBlock([]);
 

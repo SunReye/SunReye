@@ -1,6 +1,7 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
 import type { Problem } from "../api/core.ts";
+import { homeRecords } from "../builder/records.ts";
 import { modelLoader } from "./models.ts";
 
 /** A GLB holding one triangle, its buffer embedded in the binary chunk. */
@@ -76,4 +77,31 @@ test("a body the core refuses or that does not parse is none", async () => {
 
   expect(await load("gone")).toBeNull();
   expect(await load("broken")).toBeNull();
+});
+
+/** A read the test does not make. */
+function unread(): Promise<never> {
+  return Promise.reject(new Error("not read here"));
+}
+
+test("the builder's records read a body through the same loader, once, as it is first asked for", async () => {
+  const asked: string[] = [];
+
+  const { model } = homeRecords({
+    history: unread,
+    forecasts: unread,
+    carBody: (id) => {
+      asked.push(id);
+
+      return Promise.resolve(triangle());
+    },
+  });
+
+  expect(asked).toEqual([]);
+
+  const [first, second] = await Promise.all([model?.("a"), model?.("a")]);
+
+  expect(asked).toEqual(["a"]);
+  expect(second).toBe(first);
+  expect(first?.getObjectsByProperty("isMesh", true)).toHaveLength(1);
 });

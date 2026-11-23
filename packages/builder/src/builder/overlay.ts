@@ -20,7 +20,7 @@ import {
   Vector3,
 } from "three";
 import { triangles } from "../scene/surfaces.ts";
-import type { Footprint, Ghost, LaidGrid, Point } from "./pv.ts";
+import type { Footprint, Ghost, LaidGrid, Point, RoofFace } from "./pv.ts";
 import { stringColour, toThree } from "./scene.ts";
 import { normal } from "./vector.ts";
 
@@ -77,6 +77,22 @@ function outline(corners: readonly Point[], colour: Color, by = LIFT): LineLoop 
     new BufferGeometry().setFromPoints(lifted(corners, by)),
     new LineBasicMaterial({ color: colour, transparent: true, toneMapped: false }),
   );
+}
+
+/** A selected roof face's outline (ADR 25 "A roof face, in and out"), over the roof. */
+export function markedFace({ origin, across, up, outline: edge }: RoofFace, colour: Color): Group {
+  const corners = edge.map(([a, u]): Point => [
+    origin[0] + a * across[0] + u * up[0],
+    origin[1] + a * across[1] + u * up[1],
+    origin[2] + a * across[2] + u * up[2],
+  ]);
+
+  const group = new Group();
+
+  group.name = "marked face";
+  group.add(outline(corners, colour, OVER));
+
+  return group;
 }
 
 /** Flat polygons filled in one colour; they never write depth, so what lies under them shows. */

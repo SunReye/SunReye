@@ -7,7 +7,7 @@
   import ControlRows from "./ControlRows.svelte";
   import ControlsHeading from "./ControlsHeading.svelte";
   import ScheduleRows from "./ScheduleRows.svelte";
-  import type { Outcome } from "@sunreye/builder/components/value-editor/editable.ts";
+  import type { Outcome } from "@sunreye/builder/values";
   import type { Control, ControlGroup } from "./groups.ts";
   import { drillGroups } from "./look.ts";
 

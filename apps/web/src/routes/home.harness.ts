@@ -4,7 +4,7 @@ import { expect } from "vitest";
 import { page } from "vitest/browser";
 import { connect, type Layout } from "../lib/api/core.ts";
 import { problem } from "../lib/api/core.harness.ts";
-import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
+import { motion } from "../../../../packages/builder/src/motion/tier.svelte.ts";
 import { setLocale } from "../lib/paraglide/runtime.js";
 import { coreContext } from "../lib/shell/core.ts";
 import { turn } from "../lib/api/settled.harness.ts";

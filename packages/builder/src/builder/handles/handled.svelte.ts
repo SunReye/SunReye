@@ -3,6 +3,7 @@
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- three.js and the DOM, used in place. */
 import { untrack } from "svelte";
 import type { Group, PerspectiveCamera, Scene as Studio } from "three";
+import { getLocale } from "../../paraglide/runtime.js";
 import type { Point } from "../pv.ts";
 import type { Panel } from "../scene.ts";
 import { Grabbing, type Editing, type Reading } from "./grabbing.ts";
@@ -41,7 +42,7 @@ export class Handled {
       : { text: valueText(reading, this.#locale()), left: beside[0], top: beside[1] };
   });
 
-  constructor(locale: () => string) {
+  constructor(locale: () => string = getLocale) {
     this.#locale = locale;
   }
 

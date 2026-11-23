@@ -11,7 +11,6 @@ export type {
   Geometry,
   Ghost,
   Ground,
-  InputLimits,
   Inverters,
   LaidGrid,
   Location,

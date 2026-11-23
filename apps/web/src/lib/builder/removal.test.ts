@@ -1,11 +1,11 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
 import type { StringDraft } from "../api/core.ts";
-import { addGrid, type Draft } from "@sunreye/builder/builder/modules.ts";
-import { place } from "@sunreye/builder/builder/placing.ts";
-import type { Scene } from "@sunreye/builder/builder/pv.ts";
-import { without } from "@sunreye/builder/builder/removal.ts";
-import { wiredInto } from "@sunreye/builder/builder/selecting.ts";
+import { addGrid, type Draft } from "../../../../../packages/builder/src/builder/modules.ts";
+import { place } from "../../../../../packages/builder/src/builder/placing.ts";
+import type { Scene } from "../../../../../packages/builder/src/builder/pv.ts";
+import { without } from "../../../../../packages/builder/src/builder/removal.ts";
+import { wiredInto } from "../../../../../packages/builder/src/builder/selecting.ts";
 
 const block = {
   x: 0,

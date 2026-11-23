@@ -1,6 +1,6 @@
 <script lang="ts">
   import { m } from "../paraglide/messages.js";
-  import { focusEffects } from "@sunreye/builder/scene/focus-effects.svelte.ts";
+  import { focusEffects } from "@sunreye/builder/settings";
   import ToggleRow from "./ToggleRow.svelte";
   import WeatherEffectsRow from "./WeatherEffectsRow.svelte";
 </script>

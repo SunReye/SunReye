@@ -1,6 +1,6 @@
 // Shared by the light's tests: a sun due south and the light a face gets.
-import type { Daylight, Rgb } from "@sunreye/builder/scene/light.ts";
-import { skylight } from "@sunreye/builder/scene/skylight.ts";
+import type { Daylight, Rgb } from "../../../../../packages/builder/src/scene/light.ts";
+import { skylight } from "../../../../../packages/builder/src/scene/skylight.ts";
 
 /** Toward the sun at `elevation` degrees, due south. */
 export function south(elevation: number): [number, number, number] {

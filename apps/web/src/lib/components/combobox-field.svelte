@@ -5,9 +5,9 @@
 <script lang="ts">
   import Check from "@lucide/svelte/icons/check";
   import ChevronsUpDown from "@lucide/svelte/icons/chevrons-up-down";
-  import { input } from "@sunreye/builder/shell/input.svelte.ts";
+  import { input } from "@sunreye/builder/controls";
   import { cn } from "@sunreye/ui/utils";
-  import DrawerSheet from "@sunreye/builder/components/drawer-sheet.svelte";
+  import { DrawerSheet } from "@sunreye/builder/controls";
   import { buttonVariants } from "@sunreye/ui/button";
   import * as Command from "./ui/command/index.js";
   import * as Popover from "@sunreye/ui/popover";

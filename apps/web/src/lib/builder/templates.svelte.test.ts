@@ -2,13 +2,13 @@ import "../../app.css";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { connect } from "../api/core.ts";
-import Builder from "./Builder.svelte";
+import Builder from "../../../../../packages/builder/src/builder/Builder.svelte";
 import { unfaded } from "../scroll-fade.harness.ts";
 import {
   desk,
   DEVICES,
   drill,
+  hosted,
   house,
   inspector,
   MODULE,
@@ -16,7 +16,7 @@ import {
   testCore,
   undesk,
 } from "./builder.harness.ts";
-import { emptyDraft, type Draft } from "@sunreye/builder/builder/modules.ts";
+import { emptyDraft, type Draft } from "../../../../../packages/builder/src/builder/modules.ts";
 
 // Templates for an empty scene (ADR 20).
 
@@ -27,7 +27,7 @@ afterEach(undesk);
 const open = (start: Draft) =>
   render(Builder, {
     pv,
-    core: connect(testCore()),
+    ...hosted(testCore()),
     start,
     moduleTypes: [MODULE],
     devices: DEVICES,

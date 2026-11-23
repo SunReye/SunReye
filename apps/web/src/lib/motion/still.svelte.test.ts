@@ -9,7 +9,7 @@ import BandChart from "../range/BandChart.svelte";
 import Pager from "../range/pager.harness.svelte";
 import Boot from "../shell/Boot.svelte";
 import Rail from "../shell/rail.harness.svelte";
-import { EXIT_MS } from "@sunreye/builder/motion/values.ts";
+import { EXIT_MS } from "../../../../../packages/builder/src/motion/values.ts";
 
 afterEach(() => {
   delete document.documentElement.dataset["motion"];

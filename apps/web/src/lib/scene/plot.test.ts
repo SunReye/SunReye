@@ -1,8 +1,8 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
 import type { Weather } from "../weather/weather.ts";
-import { Plot } from "@sunreye/builder/scene/plot.ts";
-import { sceneWeather } from "../weather/scene-weather.ts";
+import { Plot } from "../../../../../packages/builder/src/scene/plot.ts";
+import { sceneWeather } from "../../../../../packages/builder/src/scene/scene-weather.ts";
 
 const NONE: Weather = {
   cloud: null,

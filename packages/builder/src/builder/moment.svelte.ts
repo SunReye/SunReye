@@ -1,11 +1,10 @@
 // The time slider's instant (ADR 20): the day and time the admin picks, the sun then, the weather
 // and each string's production. It reads the draft and never writes it: nothing changes the scene.
-import { today } from "@sunreye/builder/builder/day.ts";
+import { today } from "./day.ts";
 import { load, shareAt, spanOf, wattsAt, type Day, type Reading } from "./moment.ts";
-import { sunAt, type Point } from "@sunreye/builder/builder/pv.ts";
-import { exact, type SceneWeather } from "@sunreye/builder/scene/weather.ts";
-import { sceneWeather } from "../weather/scene-weather.ts";
-import { readWeather, weatherAt, type Weather, type WeatherRead } from "../weather/weather.ts";
+import { sunAt, type Point } from "./pv.ts";
+import { exact, type SceneWeather } from "../scene/weather.ts";
+import { NO_WEATHER, sceneWeather, type Weather } from "../scene/scene-weather.ts";
 import { TRIAL_WEATHER, type Trial } from "./trials.ts";
 
 const MINUTE = 60_000;
@@ -22,7 +21,7 @@ export class Moment {
   trial = $state<Trial | null>(null);
 
   /** The day's stored weather once read, and when: the scene's sky. */
-  #weather = $state.raw<readonly [WeatherRead, number]>();
+  #weather = $state.raw<readonly [(at: number, asOf: number) => Weather, number]>();
 
   /** Milliseconds since 1970; NaN while the day is cleared. */
   readonly at = $derived(new Date(`${this.day}T00:00`).getTime() + this.minutes * MINUTE);
@@ -57,14 +56,14 @@ export class Moment {
 
     // Apart from the production: the weather changes with the day alone, never with the draft.
     $effect(() => {
-      const { core } = this.#reading();
+      const { weather } = this.#reading().core;
       const { day } = this;
       let current = true;
 
-      if (day !== "") {
+      if (day !== "" && weather !== undefined) {
         void (async () => {
           const asOf = Date.now();
-          const read = await readWeather(core, ...spanOf(day));
+          const read = await weather(spanOf(day));
 
           if (current) this.#weather = [read, asOf];
         })();
@@ -82,7 +81,7 @@ export class Moment {
 
     const [read, asOf] = this.#weather ?? [];
 
-    return weatherAt(read, this.at, asOf);
+    return read === undefined ? NO_WEATHER : read(this.at, asOf ?? this.at);
   }
 
   /** Toward the sun, or null without the plant's location. */

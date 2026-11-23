@@ -5,7 +5,7 @@
   import X from "@lucide/svelte/icons/x";
   import { Button } from "@sunreye/ui/button";
   import type { Core } from "../api/core.ts";
-  import ValueRow from "@sunreye/builder/builder/ValueRow.svelte";
+  import { ValueRow } from "@sunreye/builder/controls";
   import { m } from "../paraglide/messages.js";
   import type { Choice } from "./choices.ts";
   import { FIELD } from "./fields.ts";

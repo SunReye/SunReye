@@ -2,8 +2,8 @@
 <script lang="ts">
   import TextLink from "../components/text-link.svelte";
   import SegmentRow from "./SegmentRow.svelte";
-  import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
-  import { MOTION_SETTINGS, type MotionSetting } from "@sunreye/builder/motion/tier.ts";
+  import { motion } from "@sunreye/builder/motion";
+  import { MOTION_SETTINGS, type MotionSetting } from "@sunreye/builder/motion";
   import { m } from "../paraglide/messages.js";
 
   const CHOICES: Readonly<Record<MotionSetting, () => string>> = {

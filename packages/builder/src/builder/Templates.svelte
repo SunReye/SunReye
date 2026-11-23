@@ -6,8 +6,8 @@
   import * as Card from "@sunreye/ui/card";
   import Plus from "@lucide/svelte/icons/plus";
   import { m } from "../paraglide/messages.js";
-  import type { Pv } from "@sunreye/builder/builder/pv.ts";
-  import type { Draft } from "@sunreye/builder/builder/modules.ts";
+  import type { Pv } from "./pv.ts";
+  import type { Draft } from "./modules.ts";
   import { blocksOf, fill, TEMPLATES, type Template } from "./templates.ts";
   import { thumbnail } from "./thumbnail.ts";
 

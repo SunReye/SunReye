@@ -1,9 +1,14 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { picked } from "@sunreye/builder/builder/levels.ts";
+import { picked } from "../../../../../../packages/builder/src/builder/levels.ts";
 import { loadPv } from "@sunreye/pv-wasm";
-import type { Chimney, Scene } from "@sunreye/builder/builder/pv.ts";
-import { drag, handles, type Ray, type Target } from "@sunreye/builder/builder/handles/grips.ts";
+import type { Chimney, Scene } from "../../../../../../packages/builder/src/builder/pv.ts";
+import {
+  drag,
+  handles,
+  type Ray,
+  type Target,
+} from "../../../../../../packages/builder/src/builder/handles/grips.ts";
 
 const wasm = new URL(import.meta.resolve("@sunreye/pv-wasm/pv.wasm"));
 

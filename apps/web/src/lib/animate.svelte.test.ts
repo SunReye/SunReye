@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { spring } from "@sunreye/builder/animate.ts";
+import { spring } from "../../../../packages/builder/src/animate.ts";
 
 // `spring` on a hand-driven frame clock, so no real frame decides the outcome.
 describe("on a frame clock", () => {

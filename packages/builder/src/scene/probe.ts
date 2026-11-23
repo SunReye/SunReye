@@ -79,11 +79,13 @@ export class Probe {
   }
 
   /** The last frame drawn. */
+  // fallow-ignore-next-line unused-class-member -- read through a value whose type fallow does not infer.
   get last(): Frame | undefined {
     return this.#last;
   }
 
   /** Frames drawn in the last second. */
+  // fallow-ignore-next-line unused-class-member -- read by the perf overlay's Svelte markup, which fallow does not read in this package.
   get fps(): number {
     const since = this.#clock() - 1000;
 
@@ -91,6 +93,7 @@ export class Probe {
   }
 
   /** Milliseconds the GPU took over a frame; null where the browser does not measure it. */
+  // fallow-ignore-next-line unused-class-member -- read by the perf overlay's Svelte markup, which fallow does not read in this package.
   get gpu(): number | null {
     return this.#gpu.last;
   }

@@ -1,6 +1,6 @@
 import { flushSync } from "svelte";
 import { afterEach, expect, test, vi } from "vitest";
-import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
+import { motion } from "../../../../../packages/builder/src/motion/tier.svelte.ts";
 import { draws, open, RAIN, shut } from "./stage.harness.svelte.ts";
 import { settle } from "../motion/clock.harness.ts";
 

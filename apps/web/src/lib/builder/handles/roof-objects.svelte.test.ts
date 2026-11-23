@@ -2,14 +2,14 @@ import "../../../app.css";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
-import { connect } from "../../api/core.ts";
-import Builder from "../Builder.svelte";
+import Builder from "../../../../../../packages/builder/src/builder/Builder.svelte";
 import {
   choose,
   desk,
   DEVICES,
   drill,
   enter,
+  hosted,
   house,
   inspector,
   MODULE,
@@ -21,9 +21,9 @@ import {
   testCore,
   undesk,
 } from "../builder.harness.ts";
-import { addGrid } from "@sunreye/builder/builder/modules.ts";
-import { place } from "@sunreye/builder/builder/placing.ts";
-import { handles } from "@sunreye/builder/builder/handles/grips.ts";
+import { addGrid } from "../../../../../../packages/builder/src/builder/modules.ts";
+import { place } from "../../../../../../packages/builder/src/builder/placing.ts";
+import { handles } from "../../../../../../packages/builder/src/builder/handles/grips.ts";
 
 beforeEach(async () => {
   localStorage.removeItem("sunreye.builder.view");
@@ -62,7 +62,7 @@ test("a chimney dragged onto a module removes it, in the drag's undo step", asyn
 
   await render(Builder, {
     pv,
-    core: connect(testCore()),
+    ...hosted(testCore()),
     start: draft,
     moduleTypes: [MODULE],
     devices: DEVICES,
@@ -92,7 +92,7 @@ test("a roof window is added clear of the modules; moved onto one it removes it"
 
   await render(Builder, {
     pv,
-    core: connect(testCore()),
+    ...hosted(testCore()),
     start: draft,
     moduleTypes: [MODULE],
     devices: DEVICES,

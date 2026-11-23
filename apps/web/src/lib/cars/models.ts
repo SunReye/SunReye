@@ -2,7 +2,7 @@
 import type { Object3D } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import type { Core, Problem } from "../api/core.ts";
-import type { ModelLoader } from "@sunreye/builder/cars/garage.ts";
+import type { ModelLoader } from "@sunreye/builder/frame";
 
 /** The model in `bytes`; none for a refusal or a file that does not parse. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the loader takes a plain ArrayBuffer.

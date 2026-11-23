@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { begin, record, redo, undo } from "@sunreye/builder/builder/history.ts";
+import { begin, record, redo, undo } from "../../../../../packages/builder/src/builder/history.ts";
 
 test("undo steps back through each change and redo forward again", () => {
   const edited = record(record(begin("a"), "b"), "c");

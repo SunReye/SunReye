@@ -13,7 +13,7 @@ import {
   Raycaster,
   Vector3,
 } from "three";
-import type { Geometry, Point } from "@sunreye/builder/builder/pv.ts";
+import type { Geometry, Point } from "../../../../../packages/builder/src/builder/pv.ts";
 import {
   buildScene,
   strike,
@@ -21,7 +21,7 @@ import {
   tint,
   toThree,
   type Panel,
-} from "@sunreye/builder/builder/scene.ts";
+} from "../../../../../packages/builder/src/builder/scene.ts";
 
 // All placed modules are one instanced draw (ADR 20 Rendering), each where its corners lie.
 

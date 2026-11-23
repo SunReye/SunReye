@@ -1,14 +1,18 @@
-// The 3D house builder's components (ADRs 20, 25): so far the scene canvas, the one studio a
-// consumer shows its scene in. Each canvas is a studio of its own, so one scene may be shown twice.
+// The 3D house builder's scene canvas (ADRs 20, 25): the one studio a consumer shows its scene in,
+// and what it reads and answers. Each canvas is a studio of its own, so one scene may be shown
+// twice. It loads three.js, as `./frame` does; the other entries do not. The package's README
+// lists every entry; nothing else of it is public.
 
 export { default as SceneCanvas } from "./builder/SceneCanvas.svelte";
 
-export type { CanvasWords, PerfWords } from "./builder/words.ts";
+export { headingOf, parseView, presetView, type Preset, type View } from "./builder/camera.ts";
 
-export type { View } from "./builder/camera.ts";
+export type { Around, Editing, Hit, Panel, Projector, Roofwork } from "./builder/drawing.svelte.ts";
 
-export type { Around, Editing, Projector, Roofwork } from "./builder/drawing.svelte.ts";
+export type { Aerial } from "./builder/supplied.ts";
 
-export type { Hit, Panel } from "./builder/scene.ts";
+export { panels } from "./builder/modules.ts";
 
-export type { Plant, SceneWeather } from "./scene/weather.ts";
+export { sunAt } from "./builder/pv.ts";
+
+export { speak, type Locale } from "./locale.svelte.ts";

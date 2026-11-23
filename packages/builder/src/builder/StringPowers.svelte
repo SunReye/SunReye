@@ -1,11 +1,11 @@
 <!-- Where the powers come from and each string's power at the slider's instant, beside the colour
   its modules glow in (ADR 20); nothing without strings. -->
 <script lang="ts">
-  import type { StringDraft } from "../api/core.ts";
+  import type { StringDraft } from "./host.ts";
   import { m } from "../paraglide/messages.js";
   import { getLocale } from "../paraglide/runtime.js";
   import type { Source } from "./moment.ts";
-  import { stringCss } from "@sunreye/builder/builder/scene.ts";
+  import { stringCss } from "./scene.ts";
 
   let {
     strings,
@@ -19,7 +19,7 @@
     source: Source | undefined;
   } = $props();
 
-  const format = new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 0 });
+  const format = $derived(new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 0 }));
 
   const sources: Readonly<Record<Source, () => string>> = {
     measured: m.builder_source_measured,

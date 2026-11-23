@@ -12,7 +12,7 @@
 <script lang="ts">
   import type { PvModel } from "../api/model.ts";
   import { stream } from "../live/stream.svelte.ts";
-  import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
+  import { motion } from "@sunreye/builder/motion";
   import { beat as everySecond, LIGHTS, pose, pvGlow, type Beat } from "./lights.ts";
   import { watchTint } from "./spotlight.ts";
 

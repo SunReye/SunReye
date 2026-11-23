@@ -17,14 +17,14 @@ import {
   WebGLCubeRenderTarget,
   WebGLRenderer,
 } from "three";
-import { aim, sky } from "@sunreye/builder/scene/backdrop.ts";
-import { daylight, theme } from "@sunreye/builder/scene/light.ts";
-import { skylight } from "@sunreye/builder/scene/skylight.ts";
+import { aim, sky } from "../../../../../packages/builder/src/scene/backdrop.ts";
+import { daylight, theme } from "../../../../../packages/builder/src/scene/light.ts";
+import { skylight } from "../../../../../packages/builder/src/scene/skylight.ts";
 import { look } from "./probe.harness.ts";
-import type { Level } from "@sunreye/builder/scene/quality.ts";
-import { SAMPLES } from "@sunreye/builder/scene/refine.ts";
-import { Studio } from "@sunreye/builder/scene/studio.ts";
-import { backdropAt } from "@sunreye/builder/scene/vignette.ts";
+import type { Level } from "../../../../../packages/builder/src/scene/quality.ts";
+import { SAMPLES } from "../../../../../packages/builder/src/scene/refine.ts";
+import { Studio } from "../../../../../packages/builder/src/scene/studio.ts";
+import { backdropAt } from "../../../../../packages/builder/src/scene/vignette.ts";
 
 let studio: Studio | undefined;
 

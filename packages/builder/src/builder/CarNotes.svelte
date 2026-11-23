@@ -1,8 +1,8 @@
 <!-- The connected cars in the status strip: each loadpoint's charge power and its vehicle's SOC. -->
 <script lang="ts">
   import Car from "@lucide/svelte/icons/car";
-  import type { Device } from "../api/core.ts";
-  import type { Parked } from "@sunreye/builder/cars/parked.ts";
+  import type { Device } from "./host.ts";
+  import type { Parked } from "../cars/parked.ts";
   import { m } from "../paraglide/messages.js";
   import { getLocale } from "../paraglide/runtime.js";
 
@@ -15,7 +15,7 @@
     devices: readonly Device[];
   } = $props();
 
-  const format = new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 0 });
+  const format = $derived(new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 0 }));
 
   /** A connected car's charge power and its vehicle's SOC, as the live screen words them. */
   function carState({ device, watts, soc }: Parked): string {

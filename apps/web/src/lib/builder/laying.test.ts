@@ -1,8 +1,8 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { picked } from "@sunreye/builder/builder/levels.ts";
+import { picked } from "../../../../../packages/builder/src/builder/levels.ts";
 import { loadPv } from "@sunreye/pv-wasm";
-import type { GridModule, Point, Scene } from "@sunreye/builder/builder/pv.ts";
+import type { GridModule, Point, Scene } from "../../../../../packages/builder/src/builder/pv.ts";
 
 // What the crate answers while modules are laid (ADR 20 Modules), on the south face of a 10 m × 8 m
 // gable house at 35°: 10 m across and 4.883 m up the slope, behind a 0.3 m setback.

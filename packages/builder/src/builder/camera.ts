@@ -53,9 +53,25 @@ function extremes(geometry: Geometry): Triple[] {
   return [...corners, ...solids].map((point) => toThree(point));
 }
 
+/** `direction` turned `heading` degrees clockwise seen from above, about the up axis. */
+function turned([x, y, z]: Triple, heading: number): Triple {
+  const by = (heading * Math.PI) / 180;
+
+  return [x * Math.cos(by) - z * Math.sin(by), y, x * Math.sin(by) + z * Math.cos(by)];
+}
+
+/** The compass bearing `view` looks toward, degrees clockwise from north, 0 to 360: a compass
+ * drawn over it points north at its negative. */
+export function headingOf({ position, target }: View): number {
+  const bearing = (Math.atan2(target[0] - position[0], position[2] - target[2]) * 180) / Math.PI;
+
+  return (bearing + 360) % 360;
+}
+
 /** The camera at `preset` around the scene's bounding box, far enough to see all of it on a canvas
- * `aspect` (width over height) wide: a narrower canvas than square stands it back. */
-export function presetView(preset: Preset, geometry: Geometry, aspect = 1): View {
+ * `aspect` (width over height) wide: a narrower canvas than square stands it back. `heading` turns
+ * it clockwise seen from above: the view from above then looks that way up the screen. */
+export function presetView(preset: Preset, geometry: Geometry, aspect = 1, heading = 0): View {
   const found = extremes(geometry);
   // Nothing to bound: the origin, where the first block's corner will be.
   const points: Triple[] = found.length === 0 ? [[0, 0, 0]] : found;
@@ -68,7 +84,7 @@ export function presetView(preset: Preset, geometry: Geometry, aspect = 1): View
     found.length === 0 ? EMPTY : Math.hypot(...high.map((h, axis) => h - (centre[axis] ?? h)));
 
   const [x = 0, y = 0, z = 0] = centre;
-  const [dx, dy, dz] = directions[preset];
+  const [dx, dy, dz] = turned(directions[preset], heading);
   const far = (radius * DISTANCE) / Math.min(1, aspect);
 
   return {

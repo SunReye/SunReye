@@ -4,7 +4,7 @@
 -->
 <script lang="ts">
   import * as Card from "@sunreye/ui/card";
-  import ResponsiveSheet from "@sunreye/builder/components/responsive-sheet.svelte";
+  import { ResponsiveSheet } from "@sunreye/builder/controls";
   import { m } from "../paraglide/messages.js";
   import type { Explore } from "./explore.svelte.ts";
   import Picker from "./Picker.svelte";

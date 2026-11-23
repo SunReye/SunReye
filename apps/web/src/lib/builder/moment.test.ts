@@ -2,10 +2,16 @@
 import { expect, test } from "bun:test";
 import type { Core, ModuleType } from "../api/core.ts";
 import { perSeries } from "../api/core.harness.ts";
-import { emptyDraft, type Draft } from "@sunreye/builder/builder/modules.ts";
-import { load, shareAt, sourceOf, wattsAt } from "./moment.ts";
+import { homeRecords } from "./records.ts";
+import { emptyDraft, type Draft } from "../../../../../packages/builder/src/builder/modules.ts";
+import {
+  load,
+  shareAt,
+  sourceOf,
+  wattsAt,
+} from "../../../../../packages/builder/src/builder/moment.ts";
 import { loadPv } from "@sunreye/pv-wasm";
-import type { Neighbour } from "@sunreye/builder/builder/pv.ts";
+import type { Neighbour } from "../../../../../packages/builder/src/builder/pv.ts";
 
 const wasm = new URL(import.meta.resolve("@sunreye/pv-wasm/pv.wasm"));
 
@@ -107,7 +113,7 @@ function reading(history: boolean) {
     }),
   };
 
-  return { core, asked };
+  return { core: homeRecords(core), asked };
 }
 
 const context = { pv, moduleTypes: [MODULE], location: BERLIN };

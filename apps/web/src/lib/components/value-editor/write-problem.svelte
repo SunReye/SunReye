@@ -3,7 +3,7 @@
   import CircleAlert from "@lucide/svelte/icons/circle-alert";
   import { m } from "../../paraglide/messages.js";
   import TextLink from "../text-link.svelte";
-  import type { Refused } from "@sunreye/builder/components/value-editor/editable.ts";
+  import type { Refused } from "@sunreye/builder/values";
 
   let { problem }: { problem: Refused } = $props();
 </script>

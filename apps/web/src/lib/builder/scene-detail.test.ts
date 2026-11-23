@@ -3,8 +3,8 @@
 // module's body and a pitched roof's trim.
 import { expect, test } from "bun:test";
 import { Box3, BufferAttribute, BufferGeometry, InstancedMesh, Mesh } from "three";
-import type { Geometry } from "@sunreye/builder/builder/pv.ts";
-import { buildScene } from "@sunreye/builder/builder/scene.ts";
+import type { Geometry } from "../../../../../packages/builder/src/builder/pv.ts";
+import { buildScene } from "../../../../../packages/builder/src/builder/scene.ts";
 
 const house: Geometry = {
   faces: [

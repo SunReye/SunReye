@@ -19,6 +19,8 @@ export { Handled, type Editing } from "./handles/handled.svelte.ts";
 
 export { layingOf, type Roofwork } from "./gestures.ts";
 
+export { marked, selector } from "./roof-select.svelte.ts";
+
 /** Pixels from the canvas's top left corner. */
 export type Projector = (point: Point) => readonly [number, number] | null;
 
@@ -98,12 +100,15 @@ export function keep(
 /** Further than this many pixels between press and release, the pointer orbited. */
 const CLICK = 5;
 
-/** Reports a click's hit; a press that moves further orbits instead. */
+/** Reports a click's hit, null for nothing struck; a press that moves further orbits instead. */
 export function picking(
   canvas: HTMLCanvasElement,
   camera: PerspectiveCamera,
   drawn: () => Group | undefined,
-  { panels, onpick }: Pick<Source, "panels"> & { onpick: () => ((hit: Hit) => void) | undefined },
+  {
+    panels,
+    onpick,
+  }: Pick<Source, "panels"> & { onpick: () => ((hit: Hit | null) => void) | undefined },
 ): () => void {
   let down: readonly [number, number] | undefined;
 
@@ -132,7 +137,7 @@ export function picking(
       1 - (event.offsetY / canvas.clientHeight) * 2,
     ]);
 
-    if (hit !== null) pick(hit);
+    pick(hit);
   };
 
   canvas.addEventListener("pointerdown", press);

@@ -1,4 +1,4 @@
-// A refusal's haptic (ADR 21) in the builder: as Home's app plays it beside its own alerts.
+// A refusal's haptic (ADR 21), as the builder and its consumer's screens play it beside their alerts.
 import { haptics } from "@sunreye/ui/haptics";
 
 /**

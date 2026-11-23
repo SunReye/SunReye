@@ -6,7 +6,7 @@
 -->
 <script lang="ts" generics="Value extends string">
   import type { Snippet } from "svelte";
-  import { input } from "@sunreye/builder/shell/input.svelte.ts";
+  import { input } from "@sunreye/builder/controls";
   import FormField from "./form-field.svelte";
   import { sections, type Choice } from "./select/choices.ts";
   import SelectDrawer from "./select/select-drawer.svelte";

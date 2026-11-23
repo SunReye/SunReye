@@ -1,6 +1,6 @@
 // Where the band chart draws each bar, mark and gridline: plain boxes placed and sized only by
 // `transform`, so every change runs on CSS transitions (ADR 21).
-import { EXIT_MS } from "@sunreye/builder/motion/values.ts";
+import { EXIT_MS } from "@sunreye/builder/values";
 import { m } from "../paraglide/messages.js";
 import { getLocale } from "../paraglide/runtime.js";
 import type { Via } from "./range.ts";

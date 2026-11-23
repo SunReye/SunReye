@@ -4,7 +4,7 @@
 -->
 <script lang="ts">
   import { m } from "../paraglide/messages.js";
-  import type { Outcome } from "@sunreye/builder/components/value-editor/editable.ts";
+  import type { Outcome } from "@sunreye/builder/values";
   import {
     slotEnd,
     slots,

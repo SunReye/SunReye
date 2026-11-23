@@ -1,8 +1,8 @@
 import { flushSync } from "svelte";
 import { afterEach, expect, test, vi } from "vitest";
-import { buildScene, type Panel } from "@sunreye/builder/builder/scene.ts";
-import type { Geometry } from "@sunreye/builder/builder/pv.ts";
-import { frameLimit } from "@sunreye/builder/scene/frame-limit.svelte.ts";
+import { buildScene, type Panel } from "../../../../../packages/builder/src/builder/scene.ts";
+import type { Geometry } from "../../../../../packages/builder/src/builder/pv.ts";
+import { frameLimit } from "../../../../../packages/builder/src/scene/frame-limit.svelte.ts";
 import { open, RAIN, shut } from "./stage.harness.svelte.ts";
 
 // Every frame the scene draws is held to this browser's frame limit (ADR 21 "Frame limit"):

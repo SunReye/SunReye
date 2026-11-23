@@ -1,8 +1,13 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
 import { loadPv } from "@sunreye/pv-wasm";
-import type { Opening, Scene } from "@sunreye/builder/builder/pv.ts";
-import { markerAt, openingAt, spotAt, type WallSpot } from "@sunreye/builder/builder/wall-spot.ts";
+import type { Opening, Scene } from "../../../../../packages/builder/src/builder/pv.ts";
+import {
+  markerAt,
+  openingAt,
+  spotAt,
+  type WallSpot,
+} from "../../../../../packages/builder/src/builder/wall-spot.ts";
 
 const wasm = new URL(import.meta.resolve("@sunreye/pv-wasm/pv.wasm"));
 

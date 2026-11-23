@@ -2,7 +2,7 @@
 <script lang="ts">
   import Trash2 from "@lucide/svelte/icons/trash-2";
   import type { PointDraft } from "../api/core.ts";
-  import ResponsiveSheet from "@sunreye/builder/components/responsive-sheet.svelte";
+  import { ResponsiveSheet } from "@sunreye/builder/controls";
   import { Button } from "@sunreye/ui/button";
   import { Input } from "@sunreye/ui/input";
   import { m } from "../paraglide/messages.js";

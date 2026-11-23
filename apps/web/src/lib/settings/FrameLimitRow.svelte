@@ -2,8 +2,8 @@
 <script lang="ts">
   import SegmentRow from "./SegmentRow.svelte";
   import { m } from "../paraglide/messages.js";
-  import { frameLimit } from "@sunreye/builder/scene/frame-limit.svelte.ts";
-  import { FRAME_LIMITS, type FrameLimit } from "@sunreye/builder/scene/frame-limit.ts";
+  import { frameLimit } from "@sunreye/builder/settings";
+  import { FRAME_LIMITS, type FrameLimit } from "@sunreye/builder/settings";
 
   /** A limit is its number; only the display's own rate needs a word. */
   const name = (choice: FrameLimit): string =>

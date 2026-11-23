@@ -1,8 +1,8 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { measured, unmeasure } from "../scene/probe.harness.ts";
-import { stage } from "@sunreye/builder/scene/staged.ts";
-import type { Geometry } from "@sunreye/builder/builder/pv.ts";
-import { buildScene, type Panel } from "@sunreye/builder/builder/scene.ts";
+import { stage } from "../../../../../packages/builder/src/scene/staged.ts";
+import type { Geometry } from "../../../../../packages/builder/src/builder/pv.ts";
+import { buildScene, type Panel } from "../../../../../packages/builder/src/builder/scene.ts";
 
 // Every builder edit draws the scene anew (ADR 20 Rendering): what the last one held on the GPU
 // is freed, the instanced modules' own buffers too.

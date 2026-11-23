@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import { connect } from "../lib/api/core.ts";
-import { motion } from "@sunreye/builder/motion/tier.svelte.ts";
+import { motion } from "../../../../packages/builder/src/motion/tier.svelte.ts";
 import { coreContext } from "../lib/shell/core.ts";
 import "../app.css";
 import Page from "./+page.svelte";

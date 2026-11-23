@@ -2,13 +2,16 @@ import "../../../app.css";
 import { afterEach, expect, test } from "vitest";
 import { cdp, page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { presetView, type View } from "@sunreye/builder/builder/camera.ts";
+import { presetView, type View } from "../../../../../../packages/builder/src/builder/camera.ts";
 import { house, type Pointer, press, pv, settle } from "../builder.harness.ts";
-import type { Point, Scene } from "@sunreye/builder/builder/pv.ts";
-import type { Projector } from "@sunreye/builder/builder/drawing.svelte.ts";
+import type { Point, Scene } from "../../../../../../packages/builder/src/builder/pv.ts";
+import type { Projector } from "../../../../../../packages/builder/src/builder/drawing.svelte.ts";
 import { SceneCanvas } from "@sunreye/builder";
-import { handles, type Target, type Triple } from "@sunreye/builder/builder/handles/grips.ts";
-import { canvasWords } from "../canvas-words.ts";
+import {
+  handles,
+  type Target,
+  type Triple,
+} from "../../../../../../packages/builder/src/builder/handles/grips.ts";
 
 const BLOCK: Target = { kind: "block", index: 0 };
 
@@ -25,7 +28,6 @@ async function stage(scene: Scene, target = BLOCK) {
   const geometry = pv.geometry(scene);
 
   const screen = await render(SceneCanvas, {
-    words: canvasWords(),
     geometry,
     view: presetView("isometric", geometry),
     onview: (view: View) => {

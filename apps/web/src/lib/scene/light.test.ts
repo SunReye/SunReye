@@ -1,7 +1,7 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
 import { ambientOf, lightOf, luma, skyOf, south } from "./light.harness.ts";
-import { daylight, theme } from "@sunreye/builder/scene/light.ts";
+import { daylight, theme } from "../../../../../packages/builder/src/scene/light.ts";
 
 test("the light shines from the given sun and lights the day", () => {
   const noon = daylight(south(60));

@@ -1,6 +1,6 @@
 import { m } from "../paraglide/messages.js";
 import { getLocale } from "../paraglide/runtime.js";
-import { valueText } from "@sunreye/builder/components/value-editor/editable.ts";
+import { valueText } from "@sunreye/builder/values";
 
 /** What a setting's write may carry, as the admin reads it before enabling it (ADR 8). */
 export function boundsText(
