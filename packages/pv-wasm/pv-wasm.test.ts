@@ -84,6 +84,78 @@ console.log(Math.round(zenith));
   expect(printed.trim()).toBe("27");
 });
 
+/** A consumer that runs a plant over three quarter hours, with and without its inverter's type,
+ * and prints what it checked. */
+const YEAR = `
+import { loadPv } from "@sunreye/pv-wasm";
+
+const wasm = new URL(import.meta.resolve("@sunreye/pv-wasm/pv.wasm"));
+const pv = await loadPv(await Bun.file(wasm).bytes());
+const wiring = { device: 7, input: 2, loss: 2, modules: 16, name: "", optimized: 0, tilt: 35 };
+const plant = {
+  location: { latitude: 52.52, longitude: 13.38 },
+  scene: { north: 180, blocks: [], obstacles: [] },
+  moduleTypes: [{
+    id: 1, vmp: 34.5, imp: 12.17, voc: 41.5, isc: 12.95, voltageCoefficient: -0.26,
+    currentCoefficient: 0.048, width: 1.134, height: 1.722, bypassDiodes: 3,
+  }],
+  strings: [
+    { ...wiring, moduleType: 1, azimuth: 0 },
+    { ...wiring, moduleType: 2, azimuth: 0 },
+    { ...wiring, moduleType: 1, azimuth: 180 },
+  ],
+  // 2026-06-21 from 10:45 UTC, a quarter hour apart: two bright samples, then night.
+  weather: {
+    start: Date.UTC(2026, 5, 21, 10, 45) / 1000,
+    step: 900,
+    ghi: [850, 880, 0],
+    dni: [780, 800, 0],
+    dhi: [150, 150, 0],
+    temperature: [24, 25, 15],
+  },
+};
+const ran = pv.year(plant);
+const limits = (startVoltage) => ({ maxCurrent: 30, minVoltage: 150, maxVoltage: 1000, startVoltage });
+// Input 2 of device 7 starts above its strings' open-circuit voltage, 16 × 41.5 V.
+const neverStarts = pv.year({ ...plant, inverterTypes: { 7: {
+  maker: "Example", model: "Two inputs", maxInputVoltage: 1100, acRating: 10000, efficiency: 97,
+  inputs: [limits(180), limits(900)],
+} } });
+const [south, unknown, north] = ran.strings;
+const [inverter] = ran.inverters;
+const [input] = inverter.inputs;
+
+console.log(JSON.stringify({
+  device: inverter.device,
+  input: input.input,
+  southInJuneOnly: south.months.every((wh, month) => (month === 5) === wh > 0),
+  southHolds: south.total > 2 * 0.25 * 3000 && south.total < 2 * 0.25 * 9000,
+  unknown: unknown.total,
+  northBelowSouth: north.total < south.total,
+  stringsSum: Math.abs(south.total + north.total - input.energy.total) < 1e-6,
+  inputsSum: Math.abs(input.energy.total - inverter.dc.total) < 1e-6,
+  monthsSum: Math.abs(inverter.dc.months.reduce((a, b) => a + b) - inverter.dc.total) < 1e-6,
+  neverStarts: neverStarts.inverters[0].dc.total,
+}));
+`;
+
+// A year's run needs no browser: a consumer under Bun runs a plant through the engine (ADR 17).
+test("a consumer runs a plant over a year of weather", async () => {
+  const printed = await run(YEAR);
+  expect(JSON.parse(printed)).toEqual({
+    device: 7,
+    input: 2,
+    southInJuneOnly: true,
+    southHolds: true,
+    unknown: 0,
+    northBelowSouth: true,
+    stringsSum: true,
+    inputsSum: true,
+    monthsSum: true,
+    neverStarts: 0,
+  });
+});
+
 /** What the type checker says of a consumer's module; empty when it checks. */
 async function check(consumer: string): Promise<string> {
   await Bun.write(join(out, "consumer.ts"), consumer);

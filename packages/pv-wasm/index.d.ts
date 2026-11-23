@@ -1,7 +1,15 @@
 // The `pv` crate's browser build, crates/pv-wasm, and its answers' types (ADRs 17, 20, 25). It
 // reads and returns the scene as `@sunreye/scene` types it.
 
-import type { Chimney, Opening, OpeningKind, RoofWindow, Scene, Wiring } from "@sunreye/scene";
+import type {
+  Chimney,
+  InverterType,
+  Opening,
+  OpeningKind,
+  RoofWindow,
+  Scene,
+  Wiring,
+} from "@sunreye/scene";
 import type { Face, Geometry, Point, Unfit } from "./geometry.d.ts";
 import type { Ghost, Modules, OnGrid, Sizes } from "./layout.d.ts";
 
@@ -63,6 +71,55 @@ export interface ClearRun {
   readonly times: readonly number[];
 }
 
+/**
+ * Weather at a fixed step, as columns: sample `i` is at `start + i × step` and its power is held
+ * for one step. Irradiance in W/m², air temperature in °C, wind in m/s.
+ */
+export interface WeatherSteps {
+  /** Seconds since 1970, UTC. */
+  readonly start: number;
+  /** Seconds; 900 for quarter hours. */
+  readonly step: number;
+  readonly ghi: readonly number[];
+  readonly dni: readonly number[];
+  readonly dhi: readonly number[];
+  readonly temperature: readonly number[];
+  /** Null where unknown; absent where the source has none. */
+  readonly wind?: readonly (number | null)[];
+}
+
+/** A layout over a year of weather (ADR 17): the scene names its strings by position. */
+export interface YearRun {
+  readonly location: Location;
+  readonly scene: Scene;
+  /** The consumer's neighbours, shading as the scene's obstacles do. */
+  readonly neighbours?: readonly Neighbour[];
+  readonly moduleTypes: readonly ModuleType[];
+  readonly strings: readonly Wiring[];
+  /** By inverter device id: its inputs' limits. An inverter without one caps no input. */
+  readonly inverterTypes?: Readonly<Record<number, InverterType>>;
+  readonly weather: WeatherSteps;
+}
+
+/** Watt-hours by UTC month, January first, and over the whole run. */
+export interface Energy {
+  readonly months: readonly number[];
+  readonly total: number;
+}
+
+/** A year's run: each string's energy by position, each inverter's with its MPPT inputs. */
+export interface YearEnergy {
+  /** Zero for a string of an unknown module type. */
+  readonly strings: readonly Energy[];
+  readonly inverters: readonly {
+    readonly device: number;
+    /** The sum of its inputs, on the DC side. */
+    readonly dc: Energy;
+    /** By input number, from 1. */
+    readonly inputs: readonly { readonly input: number; readonly energy: Energy }[];
+  }[];
+}
+
 /** One MPPT input's limits, as the core's capabilities list them (ADR 9). */
 export interface InputLimits {
   /** Amperes. */
@@ -107,6 +164,8 @@ export interface Pv {
   readonly neighbours: (neighbours: readonly Neighbour[]) => Face[];
   /** Each string's watts under a clear sky, by time, then string position (ADR 20). */
   readonly clearSky: (run: ClearRun) => number[][];
+  /** The energy of every string, MPPT input and inverter over a year of weather (ADR 17). */
+  readonly year: (run: YearRun) => YearEnergy;
   /** Each string's open-circuit voltage at −10 °C, by position; null for an unknown module type. */
   readonly coldVoltages: (
     moduleTypes: readonly ModuleType[],

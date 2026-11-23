@@ -27,6 +27,7 @@ mod string;
 mod sun;
 mod surroundings;
 mod temperature;
+mod year;
 
 pub use chimney::{Chimney, Footing};
 pub use clear_sky::{Irradiance, clear_sky, clear_weather};
@@ -50,6 +51,7 @@ pub use surroundings::{
     Fence, FenceFinish, FencePoint, Fencing, Ground, GroundFinish, GroundSurface,
 };
 pub use temperature::cell_temperature;
+pub use year::{Energy, InputYear, InverterYear, Year, year};
 
 /// The cell temperature in °C a string's open-circuit voltage is checked at (ADR 20).
 pub const COLD: f64 = -10.0;

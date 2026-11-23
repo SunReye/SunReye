@@ -20,6 +20,7 @@ import {
   isSun,
   isVolts,
   isWatts,
+  isYear,
   unwrap,
 } from "./replies.js";
 
@@ -35,6 +36,7 @@ import {
  * @property {Answer} modules
  * @property {Answer} sun
  * @property {Answer} clear_sky
+ * @property {Answer} year
  * @property {Answer} neighbours
  * @property {Answer} cold_voltages
  * @property {Answer} sizing
@@ -71,6 +73,7 @@ const functions = [
   "modules",
   "sun",
   "clear_sky",
+  "year",
   "neighbours",
   "cold_voltages",
   "sizing",
@@ -179,6 +182,7 @@ export async function loadPv(bytes) {
     modules: (scene, sizes) => unwrap(call("modules", JSON.stringify({ scene, sizes })), isModules),
     sun: (unix, location) => unwrap(call("sun", JSON.stringify({ unix, location })), isSun),
     clearSky: (run) => unwrap(call("clear_sky", JSON.stringify(run)), isWatts),
+    year: (run) => unwrap(call("year", JSON.stringify(run)), isYear),
     neighbours: (neighbours) => unwrap(call("neighbours", JSON.stringify(neighbours)), isFaces),
     refit: (scene, index, opening) =>
       unwrap(call("refit", JSON.stringify({ scene, index, opening })), isRefit),

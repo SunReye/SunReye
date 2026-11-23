@@ -33,6 +33,18 @@ pub fn estimate(layout: &Layout, weather: &Weather) -> Estimate {
     Estimate { inverters }
 }
 
+/// 0 for January to 11 for December, for the UTC day `days` after 1970-01-01 (Hinnant's
+/// civil-from-days).
+pub fn month(days: i64) -> usize {
+    let shifted = days + 719_468;
+    let of_era = shifted - shifted.div_euclid(146_097) * 146_097;
+    let year_of_era = (of_era - of_era / 1460 + of_era / 36_524 - of_era / 146_096) / 365;
+    let of_year = of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    // From March, 0.
+    let from_march = (5 * of_year + 2) / 153;
+    usize::try_from((from_march + 2) % 12).unwrap_or(0)
+}
+
 /// 1 to 366, for the UTC day `days` after 1970-01-01 (Hinnant's civil-from-days).
 pub fn day_of_year(days: i64) -> u16 {
     let shifted = days + 719_468;

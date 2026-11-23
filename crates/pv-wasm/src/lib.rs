@@ -7,6 +7,7 @@
 mod clear;
 mod edit;
 mod sizing;
+mod year;
 
 use std::collections::HashMap;
 
@@ -167,6 +168,15 @@ fn clear_sky(input: &[u8]) -> String {
             Ok(watts) => json!({ "ok": watts }),
             Err(refused) => json!({ "error": refused.to_string() }),
         },
+        Err(error) => json!({ "error": error.to_string() }),
+    }
+    .to_string()
+}
+
+/// The energy of every string, MPPT input and inverter over a year of weather (ADR 17).
+fn year(input: &[u8]) -> String {
+    match serde_json::from_slice::<year::YearRun>(input) {
+        Ok(run) => run.reply(),
         Err(error) => json!({ "error": error.to_string() }),
     }
     .to_string()
@@ -359,6 +369,15 @@ mod exports {
         // SAFETY: the caller guarantees the buffer, written through `reserve`.
         let input = unsafe { std::slice::from_raw_parts(input, input_len) };
         leak(super::clear_sky(input))
+    }
+
+    /// # Safety
+    /// `input`/`input_len` name a live buffer from `reserve`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn year(input: *const u8, input_len: usize) -> u64 {
+        // SAFETY: the caller guarantees the buffer, written through `reserve`.
+        let input = unsafe { std::slice::from_raw_parts(input, input_len) };
+        leak(super::year(input))
     }
 
     /// # Safety
