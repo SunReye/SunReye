@@ -93,7 +93,8 @@
     () => session.editing !== undefined || session.roofwork !== undefined,
   );
 
-  // svelte-ignore state_referenced_locally -- the host is the app's, fixed for the builder's life.
+  // The host is the app's, fixed for the builder's life.
+  // svelte-ignore state_referenced_locally
   provideHost(host);
 
   const sheet = $derived(phone.current || portrait.current);
