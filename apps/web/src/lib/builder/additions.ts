@@ -124,11 +124,14 @@ const MARKERS: readonly (readonly [Equipment["kind"], () => string])[] = [
   ["battery", m.builder_place_battery],
 ];
 
-/** Markers name the first device, places the first EVCC loadpoint (ADR 10); none, none added. */
+/** Markers name the first device and hang on the first block with four walls, places the first
+ * EVCC loadpoint (ADR 10); without them, none added. A free-form block's walls take no marker
+ * (ADR 20). */
 function equipment({ draft, devices }: Plan): Addition[] {
   const markers = draft.scene.equipment ?? [];
   const places = draft.scene.carPlaces ?? [];
-  const device = devices[0]?.id;
+  const block = draft.scene.blocks.findIndex(({ freeForm }) => !freeForm);
+  const device = block < 0 ? undefined : devices[0]?.id;
   const loadpoint = devices.find(({ profile }) => profile === "evcc")?.id;
 
   const placements =
@@ -138,7 +141,7 @@ function equipment({ draft, devices }: Plan): Addition[] {
           const marker = {
             device,
             kind,
-            block: 0,
+            block,
             wall: "front",
             along: 1,
             inside: false,

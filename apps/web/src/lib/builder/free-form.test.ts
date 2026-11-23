@@ -9,6 +9,7 @@ import {
   type Group,
   type Object3D,
 } from "three";
+import { additions } from "./additions.ts";
 import { overlay } from "./overlay.ts";
 import { loadPv, type Block, type FreeForm, type Scene } from "./pv.ts";
 import { buildScene } from "./scene.ts";
@@ -236,4 +237,34 @@ test("modules laid on a non-convex free-form face are lit, and shaded as on any 
   expect(modules).toBeGreaterThan(10);
   expect(lit(sloped())).toBeGreaterThan(modules * 200);
   expect(lit(sloped(wall))).toBeLessThan(lit(sloped()) / 2);
+});
+
+/** The blocks the equipment group's markers would hang on, the first device's. */
+function markedOn(...blocks: readonly Block[]): number[] {
+  const draft = { scene: { north: 0, blocks, obstacles: [] }, strings: [] };
+
+  const plan = {
+    draft,
+    laid: pv.modules(draft.scene, {}),
+    pv,
+    sizes: {},
+    devices: [{ id: 1, name: "Deye", profile: "deye-sg05lp3", connection: 1, unit: 1 }],
+    cold: [],
+    sized: [],
+    inputs: {},
+    refused: null,
+  };
+
+  return additions("equipment", plan, 7).flatMap(
+    ({ draft: { scene: added } }) => added.equipment?.map(({ block }) => block) ?? [],
+  );
+}
+
+test("an inverter or battery marker is added to the first block with four walls, else to none", () => {
+  const free: Block = { ...freeBlock({ footprint: L, faces: [] }), width: 10, depth: 8, eave: 3 };
+  const { freeForm, ...walled } = free;
+
+  expect(freeForm).toBeDefined();
+  expect(markedOn(free, walled)).toEqual([1, 1]);
+  expect(markedOn(free)).toEqual([]);
 });
