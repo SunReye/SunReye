@@ -1,6 +1,6 @@
 // Modules on the roof faces and their wiring into strings (ADR 20). Pure: each edit returns a new scene; the
 // pv crate decides where a module lies and what fits.
-import type { Datasheet, ModuleType, Problem, StringDraft } from "../api/core.ts";
+import type { StringDraft } from "@sunreye/scene";
 import type { GridModule, LaidGrid, ModuleGrid, Scene } from "./pv.ts";
 import { following, ordered } from "./wiring.ts";
 import { withOpenings } from "./wall-openings.ts";
@@ -56,12 +56,6 @@ export function clearGrid(scene: Scene, index: number): Scene {
 
 export function removeGrid(scene: Scene, index: number): Scene {
   return withGrids(scene, (grids) => grids.toSpliced(index, 1));
-}
-
-/** Where a face's module types come from: the core, or a test's fake. */
-export interface TypeSource {
-  /** Adds a module type to the core. */
-  addModuleType(datasheet: Readonly<Datasheet>): Promise<ModuleType | Problem>;
 }
 
 /** Whether a module is in no string: it produces nothing. */
