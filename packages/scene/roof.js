@@ -4,6 +4,7 @@
 // handed to `rebuild`.
 
 import { rebuild, withoutBlock } from "./roof-faces.js";
+import { within } from "./roof-dormer.js";
 import { PLACE, along, apart, between, crossing, onSegment, touching } from "./roof-plan.js";
 import { linesOf, snap, spot } from "./roof-snap.js";
 
@@ -145,6 +146,21 @@ function crossed(scene, a, b) {
 }
 
 /**
+ * The traced block one of whose faces `at` lies inside, seen from above; a dormer is traced there.
+ * @param {Scene} scene
+ * @param {Spot} at
+ * @returns {number | undefined}
+ */
+function under(scene, at) {
+  const found = scene.blocks.findIndex(
+    (block) =>
+      block.freeForm?.traced !== undefined && block.freeForm.faces.some((face) => within(face, at)),
+  );
+
+  return found >= 0 ? found : undefined;
+}
+
+/**
  * @param {Scene} scene
  * @param {End} from
  * @param {End} to
@@ -157,7 +173,12 @@ export function addLine(scene, from, to, reach) {
 
   if (start === undefined || end === undefined) return { refused: "missing" };
 
-  const touched = [start.block, end.block, ...crossed(scene, start.at, end.at)];
+  const touched = [
+    start.block ?? under(scene, start.at),
+    end.block ?? under(scene, end.at),
+    ...crossed(scene, start.at, end.at),
+  ];
+
   const named = new Set(touched.filter((b) => b !== undefined));
 
   if (named.size > 1) return { refused: "joins" };

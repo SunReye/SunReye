@@ -2,7 +2,9 @@
 // face that stays. Pure.
 
 import { flat, follow } from "./roof-heights.js";
-import { area, loops, outline } from "./roof-plan.js";
+import { standing } from "./roof-dormer.js";
+import { outline } from "./roof-outline.js";
+import { area, loops } from "./roof-plan.js";
 
 /** @import { Block, Scene } from "./schema.d.ts" */
 /**
@@ -200,7 +202,7 @@ export function rebuild(scene, index, lines) {
   const corners = faces.map((loop) => loop.map((p) => followed.points[p] ?? []));
 
   const freeForm = {
-    footprint: outline(followed.points, faces),
+    footprint: outline(followed.points, standing(followed.points, faces)),
     faces: corners,
     traced: stored(followed, faces),
   };

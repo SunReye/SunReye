@@ -1,7 +1,9 @@
 // A traced roof's heights (ADR 20): which points are eaves and which ridges, the points that follow
 // them so faces stay flat, and whether a face is flat. Pure.
 
-import { PLACE, rim } from "./roof-plan.js";
+import { standing } from "./roof-dormer.js";
+import { rim } from "./roof-outline.js";
+import { PLACE } from "./roof-plan.js";
 
 /** @import { Lines } from "./roof-faces.js" */
 /** @import { Kind } from "./roof.d.ts" */
@@ -41,7 +43,7 @@ function turns(before, p, after) {
  * @returns {(Kind | undefined)[]}
  */
 export function kinds(lines) {
-  const loop = rim(lines.faces);
+  const loop = rim(standing(lines.points, lines.faces));
   const edges = new Set(loop.map((p, k) => key(p, loop[(k + 1) % loop.length] ?? p)));
 
   const corners = new Set(
