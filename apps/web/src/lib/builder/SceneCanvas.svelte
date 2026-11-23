@@ -100,7 +100,7 @@
 
   const roofTool = new RoofTool();
 
-  const handled = new Handled();
+  const handled = new Handled(() => words.locale);
 
   const ghost = new Ghost();
 

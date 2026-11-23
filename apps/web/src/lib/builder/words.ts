@@ -10,6 +10,8 @@ export interface PerfWords {
 }
 
 export interface CanvasWords {
+  /** The language its numbers are written in, as `Intl` takes it. */
+  readonly locale: string;
   /** The canvas's accessible name. */
   readonly scene: string;
   readonly perf: PerfWords;

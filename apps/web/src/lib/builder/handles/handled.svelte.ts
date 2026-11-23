@@ -3,7 +3,6 @@
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- three.js and the DOM, used in place. */
 import { untrack } from "svelte";
 import type { Group, PerspectiveCamera, Scene as Studio } from "three";
-import { getLocale } from "../../paraglide/runtime.js";
 import type { Point } from "../pv.ts";
 import type { Panel } from "../scene.ts";
 import { Grabbing, type Editing, type Reading } from "./grabbing.ts";
@@ -28,6 +27,8 @@ export interface Handling {
 }
 
 export class Handled {
+  /** The language the value beside the handle is written in. */
+  readonly #locale: () => string;
   #reading = $state.raw<Reading>();
   #beside = $state.raw<readonly [number, number] | null>(null);
 
@@ -37,8 +38,12 @@ export class Handled {
 
     return reading === undefined || beside === null
       ? undefined
-      : { text: valueText(reading, getLocale()), left: beside[0], top: beside[1] };
+      : { text: valueText(reading, this.#locale()), left: beside[0], top: beside[1] };
   });
+
+  constructor(locale: () => string) {
+    this.#locale = locale;
+  }
 
   /** Shows and grabs the handles; call during set-up, before the orbit controls listen. */
   attach(
