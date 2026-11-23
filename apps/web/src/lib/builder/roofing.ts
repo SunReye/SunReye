@@ -8,6 +8,14 @@ export interface Overhang {
   readonly verge: number;
 }
 
+/** In the scene's frame before the compass turns it, in metres (ADR 20). */
+export interface FreeForm {
+  /** Corners as x and z. */
+  readonly footprint: readonly (readonly number[])[];
+  /** Each face's corners as x, y and z, counter-clockwise seen from above. */
+  readonly faces: readonly (readonly (readonly number[])[])[];
+}
+
 /** What lies on a block's roof face by its centre: a chimney or a roof window. */
 export interface OnRoof {
   readonly block: number;

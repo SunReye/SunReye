@@ -32,6 +32,7 @@ fn house(north: f64, grids: Vec<ModuleGrid>) -> Scene {
             overhang: Overhang::default(),
             roof_colour: None,
             wall_colour: None,
+            free_form: None,
         }],
         obstacles: vec![],
         grids,

@@ -6,6 +6,7 @@ mod equipment;
 mod estimate;
 mod fitting;
 mod fixtures;
+mod free_form;
 mod grid;
 mod input;
 mod laying;

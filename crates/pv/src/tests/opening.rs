@@ -16,6 +16,7 @@ fn house(openings: Vec<Opening>) -> Scene {
         overhang: Overhang::default(),
         roof_colour: None,
         wall_colour: None,
+        free_form: None,
     };
     Scene {
         north: 0.0,

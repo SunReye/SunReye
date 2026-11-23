@@ -55,7 +55,15 @@ export function body({
     strings: [...strings],
     scene: {
       north: scene.north,
-      blocks: [...scene.blocks],
+      blocks: scene.blocks.map(({ freeForm, ...block }) => ({
+        ...block,
+        ...(freeForm && {
+          freeForm: {
+            footprint: freeForm.footprint.map((corner) => [...corner]),
+            faces: freeForm.faces.map((face) => face.map((corner) => [...corner])),
+          },
+        }),
+      })),
       obstacles: [...scene.obstacles],
       grids: (scene.grids ?? []).map(
         ({ block, face, moduleType, landscape, setback, modules }) => ({

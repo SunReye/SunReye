@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::parking::colour;
 use crate::{
-    CarPlace, Chimney, Equipment, Fence, GroundSurface, ModuleGrid, Occluder, Opening, Point,
-    RoofWindow,
+    CarPlace, Chimney, Equipment, Fence, FreeForm, GroundSurface, ModuleGrid, Occluder, Opening,
+    Point, RoofWindow,
 };
 
 /// A trunk's radius as a share of its crown's.
@@ -89,6 +89,10 @@ pub struct Block {
         skip_serializing_if = "Option::is_none"
     )]
     pub wall_colour: Option<String>,
+    /// A polygon footprint under free-form roof faces; with it the corner, size, eave, rotation
+    /// and roof above go unused.
+    #[serde(default, rename = "freeForm", skip_serializing_if = "Option::is_none")]
+    pub free_form: Option<FreeForm>,
 }
 
 /// Metres a roof reaches past the walls, measured level: at the eaves (Traufe) and at the gable
@@ -261,7 +265,7 @@ impl Scene {
 
     /// A block's walls, unless it is open, and its roof faces, in its colours.
     fn shell(&self, block: &Block) -> Vec<Face> {
-        let frame = self.prism(block.x, block.z, block.rotation);
+        let frame = self.frame(block);
         let walls = if block.open {
             Vec::new()
         } else {
@@ -353,7 +357,7 @@ impl Scene {
     /// direction of the block's width.
     pub(crate) fn roof_faces(&self) -> impl Iterator<Item = (usize, usize, Vec<Point>, Point)> {
         self.blocks.iter().enumerate().flat_map(|(b, block)| {
-            let frame = self.prism(block.x, block.z, block.rotation);
+            let frame = self.frame(block);
             let [east, north, _] = frame.place([1.0, 0.0, 0.0]);
             let [east0, north0, _] = frame.place([0.0; 3]);
             let width = [east - east0, north - north0, 0.0];
@@ -366,6 +370,15 @@ impl Scene {
                 })
                 .collect::<Vec<_>>()
         })
+    }
+
+    /// Where a block's own frame stands: a free-form block's is the scene's.
+    pub(crate) const fn frame(&self, block: &Block) -> Frame {
+        if block.free_form.is_some() {
+            self.prism(0.0, 0.0, 0.0)
+        } else {
+            self.prism(block.x, block.z, block.rotation)
+        }
     }
 
     pub(crate) const fn prism(&self, x: f64, z: f64, rotation: f64) -> Frame {
@@ -489,6 +502,9 @@ fn roof(block: &Block) -> Vec<Vec<Local>> {
 /// The roof faces with the overhang: the roof of a footprint widened by it, its eaves lowered
 /// down the slope, so the ridge stays where it is.
 fn sheltering(block: &Block) -> Vec<Vec<Local>> {
+    if let Some(free) = &block.free_form {
+        return free.faces.clone();
+    }
     let Overhang { eave, verge } = block.overhang;
     let (side, pitch) = match block.roof {
         Roof::Flat => (eave, 0.0),
