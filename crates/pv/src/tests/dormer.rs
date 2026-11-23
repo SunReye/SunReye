@@ -172,3 +172,8 @@ fn a_dormer_on_a_pitched_face_cuts_the_outline_it_has_seen_from_above() {
         "{middles:?}"
     );
 }
+
+#[test]
+fn a_traced_roof_with_a_dormer_is_one_the_core_saves() {
+    assert_eq!(scene(&json!([])).check_blocks(), Ok(()));
+}
