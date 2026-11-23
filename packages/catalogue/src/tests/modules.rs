@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::modules::{Invalid, bundled, parse};
+use crate::modules::{Datasheet, Invalid, bundled, parse};
 
 /// AIKO's A450 as its datasheet `DS_EN_2405_V1.5` prints it.
 fn sheet() -> Value {
@@ -44,11 +44,21 @@ fn a_value_out_of_its_range_is_refused() {
     for (field, value) in out_of_range {
         let mut bad = sheet();
         bad["modules"][0][field] = value;
+        let typed: Datasheet = serde_json::from_value(bad["modules"][0].clone()).unwrap();
+        assert_eq!(typed.implausible(), Some(field));
         assert!(
-            matches!(refused(&bad), Invalid::Value(ref name) if name == "AIKO-A450-MAH54Db"),
+            matches!(refused(&bad), Invalid::Value { ref model, field: ref named }
+                if model == "AIKO-A450-MAH54Db" && named == field),
             "{field}"
         );
     }
+}
+
+#[test]
+fn a_module_typed_from_its_datasheet_passes() {
+    let typed: Datasheet = serde_json::from_value(sheet()["modules"][0].clone()).unwrap();
+
+    assert_eq!(typed.implausible(), None);
 }
 
 #[test]
@@ -69,6 +79,9 @@ fn a_sheet_without_its_source_or_modules_is_refused() {
 #[test]
 fn every_bundled_sheet_loads_and_names_its_datasheet() {
     let sheets = bundled().unwrap();
+    let files = std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/modules")).unwrap();
+
+    assert_eq!(sheets.len(), files.count());
 
     assert!(
         sheets

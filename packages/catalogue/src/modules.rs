@@ -86,6 +86,40 @@ impl Datasheet {
         bad.or_else(|| coefficients.into_iter().find(|(_, v)| !v.is_finite()))
             .map(|(field, _)| field)
     }
+
+    /// The first value out of its range or inconsistent with another, by its field's name: what a
+    /// datasheet would not print, so a slip in copying one shows. A module typed outside the
+    /// catalogue is checked so too.
+    #[must_use]
+    pub fn implausible(&self) -> Option<&'static str> {
+        // Datasheets print Vmp and Imp rounded, so their product strays from Pmax a little.
+        let point = self.vmp * self.imp;
+        let size = |metres: f64| (0.2..=3.0).contains(&metres);
+        self.unphysical().or_else(|| {
+            [
+                ("vmp", self.vmp < self.voc),
+                ("imp", self.imp < self.isc),
+                ("pmax", (point - self.pmax).abs() <= 0.02 * self.pmax),
+                (
+                    "powerCoefficient",
+                    (-1.0..0.0).contains(&self.power_coefficient),
+                ),
+                (
+                    "voltageCoefficient",
+                    (-1.0..0.0).contains(&self.voltage_coefficient),
+                ),
+                (
+                    "currentCoefficient",
+                    (0.0..1.0).contains(&self.current_coefficient),
+                ),
+                ("width", size(self.width)),
+                ("height", size(self.height)),
+                ("bypassDiodes", (1..=6).contains(&self.bypass_diodes)),
+            ]
+            .into_iter()
+            .find_map(|(field, within)| (!within).then_some(field))
+        })
+    }
 }
 
 /// The power classes one maker's datasheet prints.
@@ -119,8 +153,12 @@ pub enum Invalid {
     Json(serde_json::Error),
     /// It names no datasheet, or no module.
     Source,
-    /// The named module has a value out of its range.
-    Value(String),
+    /// The named module has a value out of its range or inconsistent with another, by its
+    /// field's name.
+    Value {
+        model: String,
+        field: String,
+    },
 }
 
 impl std::fmt::Display for Invalid {
@@ -128,7 +166,9 @@ impl std::fmt::Display for Invalid {
         match self {
             Self::Json(error) => write!(f, "module catalogue sheet: {error}"),
             Self::Source => f.write_str("module catalogue sheet names no datasheet or module"),
-            Self::Value(name) => write!(f, "module catalogue: {name} has a value out of range"),
+            Self::Value { model, field } => {
+                write!(f, "module catalogue: {model} has {field} out of range")
+            }
         }
     }
 }
@@ -145,26 +185,15 @@ pub fn parse(json: &str) -> Result<Sheet, Invalid> {
     {
         return Err(Invalid::Source);
     }
-    if let Some(module) = sheet.modules.iter().find(|module| !plausible(module)) {
-        return Err(Invalid::Value(module.name.clone()));
+    for module in &sheet.modules {
+        if let Some(field) = module.implausible() {
+            return Err(Invalid::Value {
+                model: module.name.clone(),
+                field: field.to_owned(),
+            });
+        }
     }
     Ok(sheet)
-}
-
-/// Whether a datasheet's values hang together, so a slip in copying one shows.
-fn plausible(d: &Datasheet) -> bool {
-    let point = d.vmp * d.imp;
-    let module = (0.2..=3.0).contains(&d.width) && (0.2..=3.0).contains(&d.height);
-    d.unphysical().is_none()
-        && d.vmp < d.voc
-        && d.imp < d.isc
-        // Datasheets print Vmp and Imp rounded, so their product strays from Pmax a little.
-        && (point - d.pmax).abs() <= 0.02 * d.pmax
-        && (-1.0..0.0).contains(&d.power_coefficient)
-        && (-1.0..0.0).contains(&d.voltage_coefficient)
-        && (0.0..1.0).contains(&d.current_coefficient)
-        && module
-        && (1..=6).contains(&d.bypass_diodes)
 }
 
 /// # Errors
