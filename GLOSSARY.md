@@ -368,6 +368,10 @@ _Avoid_: Graphics tier, motion tier
 A window lying flush in one roof face; it casts no shade and no module may cover it.
 _Avoid_: Skylight, Dachfenster, roof obstacle
 
+**Existing PV**:
+Modules already on one roof face that stay, as one rectangle; drawn only, they produce nothing and no new module may cover them.
+_Avoid_: Bestandsanlage, old modules, existing array
+
 **Obstacle**:
 An opaque box, cylinder, tree or hedge standing on the ground in the scene that casts shade on the modules.
 _Avoid_: Shader, object
