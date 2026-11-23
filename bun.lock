@@ -72,6 +72,13 @@
       "name": "@sunreye/catalogue",
       "version": "5.0.0",
     },
+    "packages/pv-wasm": {
+      "name": "@sunreye/pv-wasm",
+      "version": "5.0.0",
+      "dependencies": {
+        "@sunreye/scene": "workspace:*",
+      },
+    },
     "packages/scene": {
       "name": "@sunreye/scene",
       "version": "5.0.0",
@@ -522,6 +529,8 @@
     "@standard-schema/spec": ["@standard-schema/spec@1.1.0", "", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
 
     "@sunreye/catalogue": ["@sunreye/catalogue@workspace:packages/catalogue"],
+
+    "@sunreye/pv-wasm": ["@sunreye/pv-wasm@workspace:packages/pv-wasm"],
 
     "@sunreye/scene": ["@sunreye/scene@workspace:packages/scene"],
 

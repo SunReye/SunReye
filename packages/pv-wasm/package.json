@@ -1,0 +1,26 @@
+{
+  "name": "@sunreye/pv-wasm",
+  "version": "5.0.0",
+  "private": true,
+  "description": "SunReye's PV engine, the pv crate's browser build, and its typed loader (ADRs 17, 25).",
+  "license": "SEE LICENSE IN LICENSE",
+  "files": [
+    "*.js",
+    "*.d.ts",
+    "dist/pv.wasm"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./pv.wasm": "./dist/pv.wasm"
+  },
+  "scripts": {
+    "wasm": "cargo build --locked --release -p sunreye-pv-wasm --target wasm32-unknown-unknown && mkdir -p dist && cp ../../target/wasm32-unknown-unknown/release/sunreye_pv_wasm.wasm dist/pv.wasm"
+  },
+  "dependencies": {
+    "@sunreye/scene": "workspace:*"
+  }
+}
