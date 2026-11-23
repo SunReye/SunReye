@@ -1,6 +1,16 @@
 // The pv glue crate's exports and its JSON replies, `{"ok": …}` or `{"error": "…"}`, checked
 // at the boundary.
-import type { Chimney, Geometry, Ghost, Modules, Opening, RoofWindow, Sun, Unfit } from "./pv.ts";
+import type {
+  Chimney,
+  Face,
+  Geometry,
+  Ghost,
+  Modules,
+  Opening,
+  RoofWindow,
+  Sun,
+  Unfit,
+} from "./pv.ts";
 
 export type Reply<T> = { readonly ok: T } | { readonly error: string };
 
@@ -89,6 +99,10 @@ export function isWatts(value: unknown): value is Reply<number[][]> {
   );
 }
 
+export function isFaces(value: unknown): value is Reply<Face[]> {
+  return isFailure(value) || (value instanceof Object && "ok" in value && Array.isArray(value.ok));
+}
+
 const isRecord = (value: unknown): value is object => value instanceof Object;
 
 /** An edit's answer: an object, or null where the crate has none. */
@@ -135,6 +149,7 @@ export interface Exports {
   readonly modules: (input: number, inputLen: number) => bigint;
   readonly sun: (input: number, inputLen: number) => bigint;
   readonly clear_sky: (input: number, inputLen: number) => bigint;
+  readonly neighbours: (input: number, inputLen: number) => bigint;
   readonly cold_voltages: (input: number, inputLen: number) => bigint;
   readonly sizing: (input: number, inputLen: number) => bigint;
   readonly longest: (input: number, inputLen: number) => bigint;
@@ -159,6 +174,7 @@ const functions = [
   "modules",
   "sun",
   "clear_sky",
+  "neighbours",
   "cold_voltages",
   "sizing",
   "longest",

@@ -364,6 +364,14 @@ _Avoid_: Skylight, Dachfenster, roof obstacle
 An opaque box, cylinder, tree or hedge standing on the ground in the scene that casts shade on the modules.
 _Avoid_: Shader, object
 
+**Neighbour**:
+An upright body around the plant, a footprint under a level top, that the builder's consumer supplies; it shades like an obstacle and is never saved with the scene.
+_Avoid_: Surrounding shape, context building
+
+**Aerial image**:
+A picture of the ground from above, north up over its extent, that the builder's consumer supplies; it is draped on the ground and the roof faces and never saved.
+_Avoid_: Satellite tiles, map, orthophoto
+
 **Equipment marker**:
 A place on a block's wall where an inverter or a battery stands, linked to its device; its live label hangs above it.
 _Avoid_: Pin, icon

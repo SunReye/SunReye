@@ -14,8 +14,8 @@ use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 use sunreye_pv::{
-    COLD, Face, Footing, Location, Misplaced, ModuleGrid, Occluder, RoofFace, Scene, Size, Surface,
-    WallFrame, open_circuit_voltage, sun_position,
+    COLD, Face, Footing, Location, Misplaced, ModuleGrid, Neighbour, Occluder, RoofFace, Scene,
+    Size, Surface, WallFrame, open_circuit_voltage, sun_position,
 };
 
 /// The faces, solids, equipment mounts, car stands, ground surfaces, fences, openings and roof
@@ -163,7 +163,27 @@ fn sun(input: &[u8]) -> String {
 /// Each string's watts under a clear sky at each of the run's times, by string position.
 fn clear_sky(input: &[u8]) -> String {
     match serde_json::from_slice::<clear::Run>(input) {
-        Ok(run) => json!({ "ok": run.watts() }),
+        Ok(run) => match run.watts() {
+            Ok(watts) => json!({ "ok": watts }),
+            Err(refused) => json!({ "error": refused.to_string() }),
+        },
+        Err(error) => json!({ "error": error.to_string() }),
+    }
+    .to_string()
+}
+
+/// The walls and tops of the neighbours the builder's consumer supplies, in the shading frame (ADR
+/// 20), or why one is refused.
+fn neighbours(input: &[u8]) -> String {
+    match serde_json::from_slice::<Vec<Neighbour>>(input) {
+        Ok(neighbours) => neighbours
+            .iter()
+            .map(Neighbour::faces)
+            .collect::<Result<Vec<_>, _>>()
+            .map_or_else(
+                |refused| json!({ "error": refused.to_string() }),
+                |faces| json!({ "ok": faces.iter().flatten().map(face).collect::<Vec<_>>() }),
+            ),
         Err(error) => json!({ "error": error.to_string() }),
     }
     .to_string()
@@ -321,6 +341,15 @@ mod exports {
         // SAFETY: the caller guarantees the buffer, written through `reserve`.
         let input = unsafe { std::slice::from_raw_parts(input, input_len) };
         leak(super::sun(input))
+    }
+
+    /// # Safety
+    /// `input`/`input_len` name a live buffer from `reserve`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn neighbours(input: *const u8, input_len: usize) -> u64 {
+        // SAFETY: the caller guarantees the buffer, written through `reserve`.
+        let input = unsafe { std::slice::from_raw_parts(input, input_len) };
+        leak(super::neighbours(input))
     }
 
     /// # Safety

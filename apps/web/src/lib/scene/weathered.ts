@@ -11,8 +11,9 @@ import {
 import { mix } from "./colour.ts";
 import type { SceneWeather } from "./weather.ts";
 
-/** What rain and snow lie on: roof faces, pitched and flat, ground surfaces and the studio floor. */
-const LYING: ReadonlySet<string> = new Set(["roof", "flat", "ground", "floor"]);
+/** What rain and snow lie on: roof faces, pitched and flat, ground surfaces, the aerial image and
+ * the studio floor. */
+const LYING: ReadonlySet<string> = new Set(["roof", "flat", "ground", "aerial", "floor"]);
 
 /** Snow: a hair under white, as every finish is, so a sunlit face stays under the page's. */
 const SNOW = 0xf4f6f9;
@@ -47,10 +48,17 @@ function builtOf(material: MeshStandardMaterial): Built {
   return data.built;
 }
 
-/** A roof's or the ground's finish: white under snow, else darker and smoother the wetter. */
+/** A roof's or the ground's finish, an aerial image's too: white under snow, else darker and
+ * smoother the wetter. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js recolours in place.
 function lie(material: MeshStandardMaterial, { wet, snow }: Lying): void {
   const built = builtOf(material);
+  // Snow hides an aerial image lying there.
+  const map = snow ? null : built.map;
+
+  // With or without a map is another program.
+  material.needsUpdate ||= material.map !== map;
+  material.map = map;
 
   if (snow) {
     material.color.setHex(SNOW);

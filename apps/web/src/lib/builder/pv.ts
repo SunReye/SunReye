@@ -1,5 +1,6 @@
 // The `pv` crate in the browser through its glue crate, crates/pv-wasm (ADR 2, 20).
 import type { ModuleType, StringDraft } from "../api/core.ts";
+import { suppliedCalls, type Neighbour, type Supplier } from "./supplied.ts";
 import type { Fence, Fencing, Ground, GroundSurface, Obstacle } from "./obstacles.ts";
 import { roofCalls } from "./roof-calls.ts";
 import type { Chimney, FreeForm, Overhang, RoofWindow } from "./roofing.ts";
@@ -41,6 +42,8 @@ import type { Ghost, Modules } from "./laid.ts";
 export type { GridModule, ModuleGrid, OnGrid, Sizes, Spot } from "./grids.ts";
 
 export type { Footprint, Ghost, LaidGrid, Misplaced, Modules, RoofFace } from "./laid.ts";
+
+export type { Aerial, Around, Neighbour } from "./supplied.ts";
 
 /** A string as the core's API wires it. */
 export type Wiring = Readonly<Omit<StringDraft, "id">>;
@@ -167,13 +170,15 @@ export interface Sun {
 export interface ClearRun {
   readonly location: Location;
   readonly scene: Scene;
+  /** The consumer's neighbours, shading as the scene's obstacles do. */
+  readonly neighbours?: readonly Neighbour[];
   readonly moduleTypes: readonly Readonly<ModuleType>[];
   readonly strings: readonly Wiring[];
   /** Seconds since 1970, UTC. */
   readonly times: readonly number[];
 }
 
-export interface Pv extends Sizer {
+export interface Pv extends Sizer, Supplier {
   /** The scene's faces and solids; throws the crate's reason for a scene it cannot read. */
   readonly geometry: (scene: Scene) => Geometry;
   /** The scene's module grids laid out, with module sizes by module type id. */
@@ -277,6 +282,7 @@ export async function loadPv(bytes: Uint8Array<ArrayBuffer>): Promise<Pv> {
       unwrap(call("chimney_at", JSON.stringify({ scene, point })), isIndex),
     ...roofCalls(call),
     ...sizingCalls(call),
+    ...suppliedCalls(call),
   };
 }
 

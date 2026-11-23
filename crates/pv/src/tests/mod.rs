@@ -11,6 +11,7 @@ mod grid;
 mod input;
 mod laying;
 mod lint;
+mod neighbour;
 mod opening;
 mod parking;
 mod perez;
