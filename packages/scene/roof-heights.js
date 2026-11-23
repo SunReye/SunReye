@@ -36,7 +36,7 @@ function turns(before, p, after) {
 }
 
 /**
- * Each point's kind: the person's word first; else a corner of the outline is an eave, a point an
+ * Each point's kind, none for a dormer's: the person's word first; else a corner of the outline is an eave, a point an
  * inner line ends at a ridge, unless the line only runs straight on through it, and any other point
  * on the outline an eave. Undefined: it follows.
  * @param {Lines} lines
@@ -65,9 +65,12 @@ export function kinds(lines) {
   );
 
   return lines.points.map((_, p) => {
-    if (lines.ridges.includes(p)) return "ridge";
+    // A dormer's points are the dormer's, the person's word on them too.
+    const house = !raised.has(p);
 
-    if (lines.eaves.includes(p) || corners.has(p)) return "eave";
+    if (house && lines.ridges.includes(p)) return "ridge";
+
+    if (house && (lines.eaves.includes(p) || corners.has(p))) return "eave";
 
     if (inner.has(p) && !straight(lines, p)) return "ridge";
 

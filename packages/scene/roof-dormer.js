@@ -72,8 +72,8 @@ export function pullDormer(scene, block, face, kind, height) {
     ...lines,
     faces,
     lines: lines.lines.filter((l) => l.every((p) => own.has(p))),
-    eaves: [],
-    ridges: [],
+    eaves: lines.eaves.filter((p) => own.has(p)),
+    ridges: lines.ridges.filter((p) => own.has(p)),
   });
 
   const level =

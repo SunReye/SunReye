@@ -2,7 +2,7 @@
 // around it keeps its place and its outline, and the house keeps its footprint.
 
 import { expect, test } from "bun:test";
-import { dormers, pullDormer, pullEaves, pullRidges, type Scene } from "./index.js";
+import { dormers, markLine, pullDormer, pullEaves, pullRidges, type Scene } from "./index.js";
 import { EMPTY, grid, made, outlines, trace } from "./roof.harness.ts";
 
 /** A 10 m square house, one face. */
@@ -177,4 +177,22 @@ test("the edit that cuts a face drops its grid; its existing PV and the other fa
   const regridded: Scene = { ...cut, grids: [grid(0), grid(1)] };
 
   expect(made(pullDormer(regridded, 0, 2, "eave", 4)).grids).toEqual([grid(0), grid(1)]);
+});
+
+test("a dormer's line marked a ridge is the dormer's: the house's pull leaves it, the dormer's pulls it", () => {
+  const traced = trace(PULLED, ...CORNERS, [4, 1]);
+  const points = traced.blocks[0]?.freeForm?.traced?.points ?? [];
+  const lines = traced.blocks[0]?.freeForm?.traced?.lines ?? [];
+  const front = lines.findIndex((l) => l.every((p) => points[p]?.[2] === 1));
+  const marked = made(markLine(traced, 0, front, "ridge"));
+
+  expect(heights(made(pullRidges(marked, 0, 7)), CORNERS)).toEqual([4, 6, 6, 4]);
+  expect(heights(made(pullDormer(marked, 0, 2, "ridge", 4)), CORNERS)).toEqual([4, 4.5, 4.5, 4]);
+});
+
+test("a line drawn to a raised dormer's edge leaves the dormer as it stood", () => {
+  const raised = made(pullDormer(trace(PULLED, ...CORNERS, [4, 1]), 0, 2, "eave", 4));
+  const joined = trace(raised, [5, 0], [5, 1]);
+
+  expect(heights(joined, [...CORNERS, [5, 1]])).toEqual([4, 4.5, 4.5, 4, 4]);
 });

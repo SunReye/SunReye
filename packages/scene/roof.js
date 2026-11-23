@@ -75,7 +75,11 @@ function withPoint(lines, at, set) {
     lines: {
       ...lines,
       points: [...lines.points, at],
-      set: set ? [...lines.set, point] : lines.set,
+      // A point splitting a line between two set points is set, at its height along it.
+      set:
+        set || (on >= 0 && lines.set.includes(i) && lines.set.includes(j))
+          ? [...lines.set, point]
+          : lines.set,
       lines: split,
       eaves: named(lines.eaves),
       ridges: named(lines.ridges),
