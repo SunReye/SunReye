@@ -528,3 +528,50 @@ fn a_level_face_keeps_its_frame_whichever_corner_its_corners_start_from() {
         &[30f64.to_radians().cos(), -30f64.to_radians().sin(), 0.0]
     ));
 }
+
+#[test]
+fn a_face_bent_within_the_tolerance_does_not_shade_its_own_modules() {
+    // One eave corner 7 cm up: 1.75 cm off the plane, inside the tolerance.
+    let block = free(
+        &json!([[0.0, 0.0], [10.0, 0.0], [10.0, 8.0], [0.0, 8.0]]),
+        &json!([[
+            [0.0, 3.0, 8.0],
+            [10.0, 3.0, 8.0],
+            [10.0, 3.07, 0.0],
+            [0.0, 3.0, 0.0]
+        ]]),
+    );
+    let scene = scene(0.0, &json!([block]));
+    let face = scene.roofs().remove(0);
+    let occluders = scene.occluders();
+    let small = ModuleType {
+        width: 0.4,
+        height: 0.4,
+        ..MODULE
+    };
+
+    // Half a metre in from each corner, and the middle, on the face's plane.
+    let mean = face
+        .outline
+        .iter()
+        .fold([0.0, 0.0], |[u, v], [pu, pv]| [u + pu / 4.0, v + pv / 4.0]);
+    let spots = face.outline.iter().map(|&[u, v]| {
+        let (du, dv) = (mean[0] - u, mean[1] - v);
+        let length = du.hypot(dv);
+        [(du / length).mul_add(0.5, u), (dv / length).mul_add(0.5, v)]
+    });
+    for spot in spots.chain([mean]) {
+        let place = Place {
+            centre: face.point(spot),
+            landscape: false,
+        };
+        for zenith in [10.0, 40.0, 70.0] {
+            let sun = Sun {
+                zenith,
+                azimuth: 0.0,
+            };
+            let shade = shaded_substrings(&small, face.plane, place, sun, &occluders);
+            assert_eq!(shade, 0, "{place:?} under {zenith}°");
+        }
+    }
+}
