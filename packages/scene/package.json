@@ -12,6 +12,7 @@
     "roof-plan.js",
     "roof-snap.js",
     "roof.d.ts",
+    "scene-schema.js",
     "schema.d.ts",
     "README.md"
   ],

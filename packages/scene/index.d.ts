@@ -12,3 +12,19 @@ export type RoofFaceId = Pick<ModuleGrid, "block" | "face">;
 export declare function roofFaceKey(face: RoofFaceId): string;
 
 export * from "./roof.js";
+
+/** The scene's JSON Schema (2020-12), as the core reads a stored scene: every field it knows and
+ * no other. Generated from the crates. */
+export declare const SCENE_SCHEMA: Json;
+
+/** A JSON value, as a JSON Schema is one. */
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | readonly Json[]
+  | { readonly [key: string]: Json };
+
+/** The version of @sunreye/scene the schema was generated at; the scene carries none (ADR 25). */
+export declare const SCENE_SCHEMA_VERSION: string;
