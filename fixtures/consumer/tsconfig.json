@@ -1,0 +1,9 @@
+{
+  "extends": "$app/tsconfig",
+  "compilerOptions": {
+    "strict": true,
+    // Bun links each installed file back into SunReye Home: resolve from this install.
+    "preserveSymlinks": true
+  },
+  "include": ["src", "vite.config.ts"]
+}

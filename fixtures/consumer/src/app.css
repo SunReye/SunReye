@@ -1,0 +1,6 @@
+@import "tailwindcss";
+@import "@sunreye/ui/theme.css";
+@import "@sunreye/tokens/tokens.css";
+
+@source "../node_modules/@sunreye/ui/src";
+@source "../node_modules/@sunreye/builder/src";

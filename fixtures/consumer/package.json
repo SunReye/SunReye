@@ -1,0 +1,44 @@
+{
+  "name": "sunreye-consumer",
+  "private": true,
+  "type": "module",
+  "imports": {
+    "#lib/*": "./src/lib/*"
+  },
+  "scripts": {
+    "shared": "bun run --cwd ../home/packages/builder i18n && bun run --cwd ../home/packages/pv-wasm wasm",
+    "check": "svelte-kit sync && rsvelte typecheck",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@sunreye/builder": "file:../home/packages/builder",
+    "@sunreye/catalogue": "file:../home/packages/catalogue",
+    "@sunreye/pv-wasm": "file:../home/packages/pv-wasm",
+    "@sunreye/scene": "file:../home/packages/scene",
+    "@sunreye/tokens": "file:../home/packages/tokens",
+    "@sunreye/ui": "file:../home/packages/ui"
+  },
+  "devDependencies": {
+    "@internationalized/date": "3.12.4",
+    "@lucide/svelte": "1.71.0",
+    "@rsvelte/cli": "0.5.0",
+    "@sveltejs/adapter-static": "4.0.0",
+    "@sveltejs/kit": "3.1.0",
+    "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "@tailwindcss/vite": "4.3.5",
+    "@types/three": "0.187.0",
+    "bits-ui": "2.20.6",
+    "svelte": "5.57.3",
+    "tailwindcss": "4.3.5",
+    "three": "0.187.0",
+    "tsrs": "7.1.0-beta.tsrs4",
+    "typescript": "6.0.3",
+    "vite": "8.3.5"
+  },
+  "overrides": {
+    "@sunreye/catalogue": "file:../home/packages/catalogue",
+    "@sunreye/pv-wasm": "file:../home/packages/pv-wasm",
+    "@sunreye/scene": "file:../home/packages/scene",
+    "@sunreye/ui": "file:../home/packages/ui"
+  }
+}

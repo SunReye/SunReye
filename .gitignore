@@ -16,6 +16,8 @@ node_modules
 /build
 apps/*/dist
 apps/*/build
+/fixtures/consumer/build
+/fixtures/consumer/.svelte-kit
 packages/*/dist
 packages/*/build
 *.tsbuildinfo
