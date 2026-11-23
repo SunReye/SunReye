@@ -728,3 +728,21 @@ fn a_traced_roof_keeps_the_points_the_person_made_eaves_and_ridges() {
         assert_eq!(scene(0.0, &json!([stray])).check_blocks(), Err(0));
     }
 }
+
+#[test]
+fn a_bent_traced_face_offers_no_free_roof_to_fill() {
+    let grids = json!([{
+        "block": 0, "face": 0, "moduleType": 7, "landscape": false, "setback": 0.0, "modules": [],
+    }]);
+    let sized = |id| (id == 7).then_some(SIZE);
+    let free = |block: Value| {
+        let stored = json!({ "north": 0.0, "blocks": [block], "obstacles": [], "grids": grids });
+        serde_json::from_value::<Scene>(stored)
+            .unwrap()
+            .fill(0, sized)
+            .len()
+    };
+
+    assert!(free(raised(3.0)) > 0);
+    assert_eq!(free(raised(4.0)), 0);
+}

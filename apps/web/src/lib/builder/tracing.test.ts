@@ -3,6 +3,7 @@ import { expect, test } from "bun:test";
 import { loadPv } from "@sunreye/pv-wasm";
 import {
   addLine,
+  bent,
   pullEaves,
   pullRidges,
   setHeight,
@@ -133,10 +134,51 @@ test("a gable traced on the plain ground and pulled up is two faces at its pitch
     ([x, , z]) => x === 0 && z === 8,
   );
 
-  const bent = made(setHeight({ ...pulled, grids: [ONE] }, 0, corner, 4));
+  const raised = made(setHeight({ ...pulled, grids: [ONE] }, 0, corner, 4));
 
-  expect(bent.grids).toEqual([]);
+  expect(raised.grids).toEqual([]);
   expect(
-    pv.modules({ ...bent, grids: [ONE] }, { 1: { width: 1.134, height: 1.722 } }).misplaced,
+    pv.modules({ ...raised, grids: [ONE] }, { 1: { width: 1.134, height: 1.722 } }).misplaced,
   ).not.toBeNull();
+});
+
+test("a bent traced face is drawn, offers no free roof, and bends exactly where the engine refuses it", () => {
+  const outline = ground(
+    { north: 0, blocks: [], obstacles: [] },
+    { x: 0, z: 0 },
+    [0, 8],
+    [10, 8],
+    [10, 0],
+    [0, 0],
+  );
+
+  const gable = made(
+    pullRidges(made(pullEaves(ground(outline, { x: 0, z: 4 }, [10, 4]), 0, 3)), 0, RIDGE),
+  );
+
+  const corner = (gable.blocks[0]?.freeForm?.traced?.points ?? []).findIndex(
+    ([x, , z]) => x === 0 && z === 8,
+  );
+
+  const sizes = { 1: { width: 1.134, height: 1.722 } };
+
+  const face = (gable.blocks[0]?.freeForm?.traced?.faces ?? []).findIndex((loop) =>
+    loop.includes(corner),
+  );
+
+  const on = { ...ONE, face };
+
+  // Raised by 1 cm to 20 cm: the face's corners stray from its plane by about a quarter of that.
+  for (const by of [0.01, 0.06, 0.079, 0.081, 0.1, 0.2]) {
+    const raised = made(setHeight(gable, 0, corner, 3 + by));
+    const refused = pv.modules({ ...raised, grids: [on] }, sizes).misplaced !== null;
+
+    expect([by, bent(raised, 0).includes(face)]).toEqual([by, refused]);
+  }
+
+  const bentRoof = made(setHeight(gable, 0, corner, 4));
+  const empty = { ...on, modules: [] };
+
+  expect(pv.geometry(bentRoof).faces.length).toBeGreaterThan(0);
+  expect(pv.fillFace({ scene: { ...bentRoof, grids: [empty] }, sizes, grid: 0 })).toEqual([]);
 });
