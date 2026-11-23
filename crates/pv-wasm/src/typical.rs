@@ -1,4 +1,4 @@
-//! A site's typical year and the cautious yield (ADR 17), without a browser.
+//! A rounded location's typical year and the cautious yield (ADR 17), without a browser.
 
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -8,8 +8,8 @@ use crate::Place;
 use crate::clear::{Plant, Wired};
 use crate::year::Steps;
 
-/// A place to 0.01°, the site a typical year belongs to.
-pub fn site(place: Place) -> Value {
+/// A place to 0.01°, the rounded location a typical year belongs to.
+pub fn rounded(place: Place) -> Value {
     let Location {
         latitude,
         longitude,

@@ -183,9 +183,9 @@ fn year(input: &[u8]) -> String {
     .to_string()
 }
 
-/// A place to 0.01°, the site a typical year belongs to (ADR 17).
-fn site(input: &[u8]) -> String {
-    edited(input, |place: &Place| typical::site(*place))
+/// A place to 0.01°, the rounded location a typical year belongs to (ADR 17).
+fn rounded_location(input: &[u8]) -> String {
+    edited(input, |place: &Place| typical::rounded(*place))
 }
 
 /// A site's typical year from twenty or more past years (ADR 17).
@@ -416,10 +416,10 @@ mod exports {
     /// # Safety
     /// `input`/`input_len` name a live buffer from `reserve`.
     #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn site(input: *const u8, input_len: usize) -> u64 {
+    pub unsafe extern "C" fn rounded_location(input: *const u8, input_len: usize) -> u64 {
         // SAFETY: the caller guarantees the buffer, written through `reserve`.
         let input = unsafe { std::slice::from_raw_parts(input, input_len) };
-        leak(super::site(input))
+        leak(super::rounded_location(input))
     }
 
     /// # Safety

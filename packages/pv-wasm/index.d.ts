@@ -107,7 +107,7 @@ export interface PastYears {
   readonly years: readonly WeatherSteps[];
 }
 
-/** A site's typical year, stamped in 2001 at its past years' step, and the past year each month,
+/** A rounded location's typical year, stamped in 2001 at its past years' step, and the past year each month,
  * January first, comes from. */
 export interface TypicalYear {
   readonly weather: WeatherSteps;
@@ -211,9 +211,9 @@ export interface Pv {
   readonly clearSky: (run: ClearRun) => number[][];
   /** The energy of every string, MPPT input and inverter over a year of weather (ADR 17). */
   readonly year: (run: YearRun) => YearEnergy;
-  /** `location` to 0.01°: the site a typical year belongs to, and the key to cache one by. */
-  readonly site: (location: Location) => Location;
-  /** A site's typical year from twenty or more past years (ADR 17). */
+  /** `location` to 0.01°: what a typical year belongs to, and the key to cache one by. */
+  readonly roundedLocation: (location: Location) => Location;
+  /** A rounded location's typical year from twenty or more past years (ADR 17). */
   readonly typicalYear: (past: PastYears) => TypicalYear;
   /** A layout's irradiation on its planes in Wh/m², without shade or electrics (ADR 17). */
   readonly irradiation: (run: Irradiated) => number;

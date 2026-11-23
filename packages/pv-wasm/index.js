@@ -41,7 +41,7 @@ import {
  * @property {Answer} sun
  * @property {Answer} clear_sky
  * @property {Answer} year
- * @property {Answer} site
+ * @property {Answer} rounded_location
  * @property {Answer} typical_year
  * @property {Answer} irradiation
  * @property {Answer} cautious
@@ -82,7 +82,7 @@ const functions = [
   "sun",
   "clear_sky",
   "year",
-  "site",
+  "rounded_location",
   "typical_year",
   "irradiation",
   "cautious",
@@ -195,7 +195,8 @@ export async function loadPv(bytes) {
     sun: (unix, location) => unwrap(call("sun", JSON.stringify({ unix, location })), isSun),
     clearSky: (run) => unwrap(call("clear_sky", JSON.stringify(run)), isWatts),
     year: (run) => unwrap(call("year", JSON.stringify(run)), isYear),
-    site: (location) => unwrap(call("site", JSON.stringify(location)), isLocation),
+    roundedLocation: (location) =>
+      unwrap(call("rounded_location", JSON.stringify(location)), isLocation),
     typicalYear: (past) => unwrap(call("typical_year", JSON.stringify(past)), isTypical),
     irradiation: (run) => unwrap(call("irradiation", JSON.stringify(run)), isNumber),
     cautious: (scaling) => unwrap(call("cautious", JSON.stringify(scaling)), isCautious),

@@ -1,5 +1,5 @@
-// A site's typical year and the cautious yield need no browser (ADR 17): a consumer under Bun
-// computes them through the engine and keys its cache by the site.
+// A rounded location's typical year and the cautious yield need no browser (ADR 17): a consumer under Bun
+// computes them through the engine and keys its cache by the rounded location.
 
 import { expect, test } from "bun:test";
 import type { WeatherSteps } from "./index.d.ts";
@@ -32,7 +32,7 @@ function pastYear(year: number): WeatherSteps {
 const years = Array.from({ length: 20 }, (_, i) => pastYear(2000 + i));
 
 const plant = {
-  location: pv.site({ latitude: 52.5166, longitude: 13.3749 }),
+  location: pv.roundedLocation({ latitude: 52.5166, longitude: 13.3749 }),
   scene: { north: 180, blocks: [], obstacles: [] },
   moduleTypes: [
     {
@@ -63,7 +63,7 @@ const plant = {
   ],
 };
 
-test("a site is its location to a hundredth of a degree", () => {
+test("a rounded location is to a hundredth of a degree", () => {
   expect(plant.location).toEqual({ latitude: 52.52, longitude: 13.37 });
 });
 
