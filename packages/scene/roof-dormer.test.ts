@@ -4,6 +4,7 @@
 import { expect, test } from "bun:test";
 import { dormers, markLine, pullDormer, pullEaves, pullRidges, type Scene } from "./index.js";
 import { EMPTY, grid, made, outlines, trace } from "./roof.harness.ts";
+import { height, placed as ready } from "./roof-ready.harness.ts";
 
 /** A 10 m square house, one face. */
 const HOUSE = [
@@ -195,4 +196,19 @@ test("a line drawn to a raised dormer's edge leaves the dormer as it stood", () 
   const joined = trace(raised, [5, 0], [5, 1]);
 
   expect(heights(joined, [...CORNERS, [5, 1]])).toEqual([4, 4.5, 4.5, 4, 4]);
+});
+
+test("a dormer traced on a placed Satteldach lies on its face and is pulled up from it", () => {
+  // The Satteldach's ridge runs along x at z 4: its front face rises from 3 m at z 0 to 7 m.
+  const scene = trace(ready("satteldach"), [4, 1], [4, 3], [6, 3], [6, 1], [4, 1]);
+
+  expect(dormers(scene, 0)).toHaveLength(1);
+  expect(height(scene, 4, 1)).toBeCloseTo(4);
+  expect(height(scene, 6, 3)).toBeCloseTo(6);
+
+  const own = dormers(scene, 0)[0]?.faces[0] ?? -1;
+  const pulled = made(pullDormer(scene, 0, own, "eave", 6));
+
+  expect(height(pulled, 4, 1)).toBeCloseTo(6);
+  expect(height(pulled, 6, 3)).toBeCloseTo(6);
 });
