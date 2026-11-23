@@ -184,7 +184,12 @@ fn a_module_that_overlaps_existing_pv_is_refused_and_shown_not_to_fit() {
     assert!(!ghost(1.5));
     assert!(ghost(5.0));
     // Each row's second, third and fourth module would lie on it: 1.454 m to 4.896 m across.
-    assert_eq!(scene(&json!([])).fill(0, sized).len(), 16 - 6);
+    assert_eq!(
+        scene(&json!([]))
+            .fill(0, sized, crate::FillRules::default())
+            .len(),
+        16 - 6
+    );
 }
 
 #[test]
