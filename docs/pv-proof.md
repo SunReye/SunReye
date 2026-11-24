@@ -11,7 +11,7 @@ The crate's yearly energy against pvlib's, per string and MPPT input; the tolera
 | Open roof | 6683.6 kWh | 6683.7 kWh | +0.000 % | 0.1 % | 0.1 % |
 | Two orientations on one input | 6892.4 kWh | 6892.5 kWh | +0.003 % | 0.1 % | 0.1 % |
 | Shaded roof | 5838.2 kWh | 5845.1 kWh | +0.119 % | 0.2 % | 5 % |
-| Rack field | 6354.1 kWh | 6362.2 kWh | +0.128 % | 0.2 % | 5 % |
+| Rack field | 6354.1 kWh | 6362.2 kWh | +0.128 % | 0.2 % | 3 % |
 
 The two east and west strings each keep within 0.004 % of theirs.
 

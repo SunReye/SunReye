@@ -34,9 +34,13 @@ fn tolerance(plant: &str) -> Tolerance {
         },
         // A month is off by the 2° grid the beam's shade is looked up on: traced every hour,
         // it keeps within `TRACED` (below).
-        "shaded_roof" | "rack_field" => Tolerance {
+        "shaded_roof" => Tolerance {
             year: 0.002,
             month: 0.05,
+        },
+        "rack_field" => Tolerance {
+            year: 0.002,
+            month: 0.03,
         },
         _ => panic!("unknown plant {plant}"),
     }

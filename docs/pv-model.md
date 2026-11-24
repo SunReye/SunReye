@@ -125,7 +125,7 @@ Per sun, `Casters` prepares each occluder once: a triangle's ray-dependent terms
 | `input.csv` | Shade, optimizers, parallel strings and MPPT limits on one input | 1e-6 |
 | `skyview.csv` | Sky views beside a long wall, between two, and at the foot of a row in a field of rows: closed forms and pvlib's 2D view factor | 0.002 |
 | `estimate.csv` | The whole chain for the owner's wiring through a day | 0.1 % or 0.5 W |
-| `proof.csv` | A year's run of the proof's four plants, two shaded in two dimensions ([pv-proof.md](pv-proof.md)) | Unshaded 0.1 % a year and a month; shaded 0.2 % a year, 5 % a month, 0.1 % a month with the beam traced; sky views 0.001 |
+| `proof.csv` | A year's run of the proof's four plants, two shaded in two dimensions ([pv-proof.md](pv-proof.md)) | Unshaded 0.1 % a year and a month; shaded 0.2 % a year, 5 % a month behind the wall and 3 % in the field, 0.1 % a month with the beam traced; sky views 0.001 |
 
 pvlib knows no scene. Geometry is checked by hand-worked cases (`tests/shade.rs`, `roofing.rs`, `surroundings.rs`, `grid.rs`), and `tests/profile.rs` pins a whole scene's shaded substrings and input powers at nine instants, three more with optimizers and a binding current limit, and checks the bounds that rule casters out against testing every caster.
 

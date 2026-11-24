@@ -28,9 +28,9 @@ const SYDNEY: Location = Location {
 };
 
 /// What looking shade up instead of tracing it may cost a string, of its energy: in one clear day,
-/// where a shade's edge moved by half a node weighs most, and over the run. Here a pole's thin
-/// shadow reads 3.1 % in a day and 0.44 % over the run since a substring's edge decides (#889),
-/// 1.9 % and 0.12 % before.
+/// where a shade's edge moved by half a node weighs most, and over the run. This scene reads
+/// 3.1 % in a day and 0.44 % over the run since a substring's edge decides (#889), 1.9 % and
+/// 0.12 % before; without the crown, 1.1 % in a day.
 const DAY_TOLERANCE: f64 = 0.035;
 const RUN_TOLERANCE: f64 = 0.005;
 
