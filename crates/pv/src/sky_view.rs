@@ -1,6 +1,7 @@
 //! Diffuse shading (ADR 17): the share of the isotropic sky each substring sees over the shading
 //! table's grid, above the horizon profile the caller supplies and past the scene.
 
+use crate::shade::WHOLE;
 use crate::shading::{AZIMUTHS, ELEVATIONS, STEP, sun_at};
 use crate::string::Open;
 use crate::{Horizon, Layout, Plane, ShadingTable, Sun};
@@ -19,7 +20,7 @@ pub struct SkyViews<'a> {
 
 impl<'a> SkyViews<'a> {
     /// Refreshes `table` for `layout` first: a node a substring's beam is shaded at is closed to
-    /// its diffuse light too.
+    /// its diffuse light too, by the share of the substring in shade there.
     pub fn new(layout: &Layout, table: &mut ShadingTable, horizon: Option<&'a Horizon>) -> Self {
         table.refresh(layout);
         let strings = layout
@@ -49,9 +50,10 @@ impl<'a> SkyViews<'a> {
                 .iter_mut()
                 .zip(&weights)
                 .zip(row)
-                .filter(|(_, s)| **s);
-            for ((closed, weights), _) in shut {
-                *closed += weights.open.get(node).copied().unwrap_or(0.0);
+                .filter(|(_, covered)| **covered > 0);
+            for ((closed, weights), &covered) in shut {
+                let open = weights.open.get(node).copied().unwrap_or(0.0);
+                *closed += open * f64::from(covered) / f64::from(WHOLE);
             }
         }
         let views = weights

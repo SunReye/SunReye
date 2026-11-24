@@ -2,9 +2,15 @@
 
 use crate::{ModuleType, Occluder, Place, Plane, Point, Sun};
 
-/// Sample points per substring: across its strip, and along the module's long side.
+/// Sample points per substring, edge to edge: across its strip, and along the module's long side.
 const ACROSS: u32 = 3;
 const ALONG: u32 = 9;
+/// What the samples weigh, as the trapezoid rule over the substring: a node's share of the
+/// substring's sky closed is the shaded samples' weight over this.
+pub const WHOLE: u8 = 4 * 16;
+/// Metres the samples on a substring's edge stand inside it, so a shadow that ends on the line
+/// between two substrings takes only the one it covers.
+const INSET: f64 = 1e-4;
 /// Metres a ray travels before it counts, so a module's own roof never shades it.
 const CLEARANCE: f64 = 1e-6;
 
@@ -81,6 +87,20 @@ impl Casters {
         }
     }
 
+    /// Writes how much of each of the module's substrings, `parts` of them in `covered`, lies in
+    /// shade, in samples weighed to `WHOLE`: a substring loses its beam at any, and takes the
+    /// share in its view of the sky.
+    pub fn cover(&self, module: &ModuleType, plane: Plane, at: Place, covered: &mut [u8]) {
+        let sampler = Sampler::new(self, module, plane, at, true);
+        for (part, covered) in (0..sampler.parts).zip(covered.iter_mut()) {
+            *covered = sampler
+                .samples(part)
+                .filter(|&(_, shaded)| shaded)
+                .map(|(weight, _)| weight)
+                .sum();
+        }
+    }
+
     #[cfg(test)]
     fn shaded(&self, module: &ModuleType, plane: Plane, at: Place, rule_out: bool) -> u8 {
         let shaded = self.shaded_parts(module, plane, at, rule_out).count();
@@ -95,6 +115,31 @@ impl Casters {
         at: Place,
         rule_out: bool,
     ) -> impl Iterator<Item = u8> + 'a {
+        let sampler = Sampler::new(self, module, plane, at, rule_out);
+        (0..sampler.parts).filter(move |&part| sampler.samples(part).any(|(_, shaded)| shaded))
+    }
+}
+
+/// One module's samples under one sun, against the casters that can reach it.
+struct Sampler<'a> {
+    module: &'a ModuleType,
+    toward_sun: Point,
+    centre: Point,
+    near: Vec<&'a Caster>,
+    long: Point,
+    short: Point,
+    /// Its substrings; none when no caster can reach it.
+    parts: u8,
+}
+
+impl<'a> Sampler<'a> {
+    fn new(
+        casters: &'a Casters,
+        module: &'a ModuleType,
+        plane: Plane,
+        at: Place,
+        rule_out: bool,
+    ) -> Self {
         let (tilt, azimuth) = (plane.tilt.to_radians(), plane.azimuth.to_radians());
         let up_slope = [
             azimuth.sin() * tilt.cos(),
@@ -108,10 +153,10 @@ impl Casters {
             reach: module.width.hypot(module.height) / 2.0,
         };
         // Most casters cannot shade this module under this sun: each sample tests the rest.
-        let near: Vec<&Caster> = self
+        let near: Vec<&Caster> = casters
             .casters
             .iter()
-            .filter(|c| !rule_out || c.reaches(&face, self.toward_sun))
+            .filter(|c| !rule_out || c.reaches(&face, casters.toward_sun))
             .collect();
         // Substrings are strips along the long side, side by side across the short side.
         let (long, short) = if at.landscape {
@@ -124,11 +169,23 @@ impl Casters {
         } else {
             module.bypass_diodes.max(1)
         };
-        (0..parts).filter(move |&part| {
-            samples(module, parts, part).any(|(s, l)| {
-                let origin = offset(offset(at.centre, short, s), long, l);
-                near.iter().any(|c| c.blocks(origin, self.toward_sun))
-            })
+        Self {
+            module,
+            toward_sun: casters.toward_sun,
+            centre: at.centre,
+            near,
+            long,
+            short,
+            parts,
+        }
+    }
+
+    /// Each of the `part`th substring's samples: its weight, and whether it lies in shade.
+    fn samples(&self, part: u8) -> impl Iterator<Item = (u8, bool)> + '_ {
+        samples(self.module, self.parts, part).map(move |(s, l, weight)| {
+            let origin = offset(offset(self.centre, self.short, s), self.long, l);
+            let shaded = self.near.iter().any(|c| c.blocks(origin, self.toward_sun));
+            (weight, shaded)
         })
     }
 }
@@ -249,16 +306,25 @@ impl Caster {
     }
 }
 
-/// Offsets in metres along the short and the long side of one substring's sample points.
-fn samples(module: &ModuleType, parts: u8, part: u8) -> impl Iterator<Item = (f64, f64)> + '_ {
+/// Offsets in metres along the short and the long side of one substring's sample points, and
+/// each one's weight: edge to edge, so a shadow on a substring's edge takes its beam (#889).
+fn samples(module: &ModuleType, parts: u8, part: u8) -> impl Iterator<Item = (f64, f64, u8)> + '_ {
     let strip = module.width / f64::from(parts);
     let start = strip.mul_add(f64::from(part), -module.width / 2.0);
+    // The trapezoid rule's weights: the end points count half.
+    let spread = |k: u32, n: u32, length: f64| {
+        let at = length * f64::from(k) / f64::from(n - 1);
+        match k {
+            0 => (INSET, 1),
+            _ if k + 1 == n => (at - INSET, 1),
+            _ => (at, 2),
+        }
+    };
     (0..ACROSS).flat_map(move |a| {
+        let (s, across) = spread(a, ACROSS, strip);
         (0..ALONG).map(move |b| {
-            (
-                strip.mul_add((f64::from(a) + 0.5) / f64::from(ACROSS), start),
-                module.height * ((f64::from(b) + 0.5) / f64::from(ALONG) - 0.5),
-            )
+            let (l, along) = spread(b, ALONG, module.height);
+            (start + s, l - module.height / 2.0, across * along)
         })
     })
 }

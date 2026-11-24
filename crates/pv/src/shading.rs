@@ -23,9 +23,9 @@ pub struct ShadingTable {
     /// Where each string's substrings start in a node's row, in layout order, and where the
     /// last ends.
     starts: Vec<usize>,
-    /// Row by row, elevation by azimuth: each substring shaded or not. Empty with nothing to
-    /// shade.
-    nodes: Vec<bool>,
+    /// Row by row, elevation by azimuth: how much of each substring lies in shade, of
+    /// `shade::WHOLE`. Empty with nothing to shade.
+    nodes: Vec<u8>,
 }
 
 /// What shading reads of a layout: the shade casters and each string's modules.
@@ -102,7 +102,7 @@ impl ShadingTable {
             .flat_map(|input| &input.strings)
             .flat_map(|string| string.modules.iter().map(|m| (&string.module, m)))
             .collect();
-        let mut nodes = vec![false; ELEVATIONS * AZIMUTHS * end];
+        let mut nodes = vec![0; ELEVATIONS * AZIMUTHS * end];
         for (node, row) in nodes.chunks_exact_mut(end).enumerate() {
             mark(&modules, sun_at(node), &scene.occluders, row);
         }
@@ -144,14 +144,16 @@ impl ShadingTable {
         !self.nodes.is_empty()
     }
 
-    /// Each node's row of substrings, shaded or not, in node order; none with nothing to shade.
-    pub(crate) fn rows(&self) -> impl Iterator<Item = &[bool]> {
+    /// Each node's row of substrings, how much of each lies in shade, in node order; none with
+    /// nothing to shade.
+    pub(crate) fn rows(&self) -> impl Iterator<Item = &[u8]> {
         let width = self.starts.last().copied().unwrap_or(0);
         self.nodes.chunks_exact(width.max(1))
     }
 
-    /// The substrings at the node nearest `sun`; `None` with the sun down or nothing to shade.
-    pub(crate) fn row(&self, sun: Sun) -> Option<&[bool]> {
+    /// The substrings at the node nearest `sun`, how much of each lies in shade; `None` with the
+    /// sun down or nothing to shade.
+    pub(crate) fn row(&self, sun: Sun) -> Option<&[u8]> {
         let elevation = 90.0 - sun.zenith;
         if self.nodes.is_empty() || elevation < 0.0 {
             return None;
@@ -162,8 +164,9 @@ impl ShadingTable {
     }
 }
 
-/// Marks in `row` each substring of `modules`, in their order, that loses its beam under `sun`.
-fn mark(modules: &[(&ModuleType, &Module)], sun: Sun, occluders: &[Occluder], row: &mut [bool]) {
+/// Writes in `row` how much of each substring of `modules`, in their order, lies in shade under
+/// `sun`.
+fn mark(modules: &[(&ModuleType, &Module)], sun: Sun, occluders: &[Occluder], row: &mut [u8]) {
     let casters = Casters::under(sun, occluders);
     let mut start = 0;
     for &(module_type, module) in modules {
@@ -173,7 +176,7 @@ fn mark(modules: &[(&ModuleType, &Module)], sun: Sun, occluders: &[Occluder], ro
         if let (Some(place), Some(shaded)) = (module.place, shaded)
             && cos_incidence(module.plane, sun) > 0.0
         {
-            casters.mark(module_type, module.plane, place, shaded);
+            casters.cover(module_type, module.plane, place, shaded);
         }
     }
 }
