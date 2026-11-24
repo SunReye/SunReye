@@ -391,10 +391,11 @@ struct Part {
     light: [f64; LIGHT],
 }
 
-/// A circuit's own maximum power, in watts.
+/// A circuit's own maximum power, in watts. Power is flat at its peak, so a current to 1e-8
+/// leaves it within 1e-15.
 fn peak_power(circuit: &Diode) -> f64 {
     let power = |i: f64| i * circuit.voltage(i);
-    power(golden(&power, 0.0, circuit.photocurrent)).max(0.0)
+    power(golden_within(&power, 0.0, circuit.photocurrent, 1e-8)).max(0.0)
 }
 
 /// The cell temperature of standard test conditions, in °C.
@@ -522,13 +523,18 @@ pub fn peak(points: &[f64], f: &impl Fn(f64) -> f64, admit: impl Fn(f64) -> bool
 }
 
 /// The maximum of a unimodal `f` on `[low, high]`.
-fn golden(f: &impl Fn(f64) -> f64, mut low: f64, mut high: f64) -> f64 {
+fn golden(f: &impl Fn(f64) -> f64, low: f64, high: f64) -> f64 {
+    golden_within(f, low, high, 1e-13)
+}
+
+/// The same to within `tolerance` of the current, relative.
+fn golden_within(f: &impl Fn(f64) -> f64, mut low: f64, mut high: f64, tolerance: f64) -> f64 {
     let ratio = (5.0f64.sqrt() - 1.0) / 2.0;
     let mut a = ratio.mul_add(-(high - low), high);
     let mut b = ratio.mul_add(high - low, low);
     let (mut fa, mut fb) = (f(a), f(b));
     for _ in 0..100 {
-        if (high - low).abs() <= 1e-13 * high.abs().max(1.0) {
+        if (high - low).abs() <= tolerance * high.abs().max(1.0) {
             break;
         }
         if fa < fb {

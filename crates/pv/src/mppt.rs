@@ -1,5 +1,8 @@
 //! Strings in parallel on one MPPT input, within the input's limits.
 
+use std::cell::RefCell;
+use std::collections::HashMap;
+
 use crate::shade::Casters;
 use crate::string::{Curve, Open, Shade, Tally, peak};
 use crate::{Input, InputEstimate, MpptLimits, Occluder, PvString, Sky};
@@ -41,17 +44,18 @@ pub fn tallied_point<'a>(
     if curves.iter().all(|c| c.top <= 0.0) {
         return (nothing, 0.0);
     }
-    let current = |v: f64| curves.iter().map(|c| c.current(v)).sum::<f64>();
+    // A free peak searches again where the input's peak searched: each voltage is summed once.
+    let summed = Summed {
+        curves: &curves,
+        memo: (tallying && input.limits.is_some()).then(RefCell::default),
+    };
+    let current = |v: f64| summed.at(v);
     let open_circuit = curves.iter().map(|c| c.voltage(0.0)).fold(0.0, f64::max);
     // Each curve's own samples place the candidates where its knees are.
     let mut candidates: Vec<f64> = curves.iter().flat_map(Curve::voltages).collect();
     let Some((low, high, cap)) = window(input.limits, open_circuit, &current) else {
-        let free = if tallying {
-            free_peak(candidates, open_circuit, &current)
-        } else {
-            0.0
-        };
-        return (nothing, free);
+        let free = tallying.then(|| free_peak(candidates, open_circuit, &current));
+        return (nothing, free.unwrap_or(0.0));
     };
     let free = (tallying && input.limits.is_some()).then(|| candidates.clone());
     let power = |v: f64| v * current(v).min(cap);
@@ -79,6 +83,27 @@ pub fn tallied_point<'a>(
     // Without limits the input runs at its free peak.
     let free = free.map_or(estimate.power, |c| free_peak(c, open_circuit, &current));
     (estimate, free)
+}
+
+/// The strings' currents summed at a voltage, remembered by voltage when `memo` is there.
+struct Summed<'a> {
+    curves: &'a [Curve],
+    memo: Option<RefCell<HashMap<u64, f64>>>,
+}
+
+impl Summed<'_> {
+    fn at(&self, voltage: f64) -> f64 {
+        let summed = || self.curves.iter().map(|c| c.current(voltage)).sum::<f64>();
+        let Some(memo) = &self.memo else {
+            return summed();
+        };
+        if let Some(&known) = memo.borrow().get(&voltage.to_bits()) {
+            return known;
+        }
+        let amperes = summed();
+        memo.borrow_mut().insert(voltage.to_bits(), amperes);
+        amperes
+    }
 }
 
 /// Each string's curve, tallied into its tally in `tallies`, if any.
