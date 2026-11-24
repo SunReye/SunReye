@@ -10,8 +10,8 @@ use crate::parking::colour;
 use crate::polygon::{self, Plan};
 use crate::shade::cross;
 use crate::{
-    CarPlace, Chimney, Equipment, Fence, FreeForm, GroundSurface, ModuleGrid, Occluder, Opening,
-    Point, RoofWindow,
+    CarPlace, Chimney, Equipment, ExistingPv, FaceDetail, Fence, FreeForm, GroundSurface,
+    ModuleGrid, Occluder, Opening, Point, RoofWindow,
 };
 
 /// A trunk's radius as a share of its crown's.
@@ -55,6 +55,13 @@ pub struct Scene {
     /// Windows lying flush in roof faces. Drawn only; they never shade.
     #[serde(default, rename = "roofWindows", skip_serializing_if = "Vec::is_empty")]
     pub roof_windows: Vec<RoofWindow>,
+    /// What is known of roof faces: their covering and whether their pitch is confirmed. A face
+    /// without one has an unknown covering and an estimated pitch.
+    #[serde(default, rename = "faceDetails", skip_serializing_if = "Vec::is_empty")]
+    pub face_details: Vec<FaceDetail>,
+    /// Modules already on roof faces that stay. Drawn only; they never shade and produce nothing.
+    #[serde(default, rename = "existingPv", skip_serializing_if = "Vec::is_empty")]
+    pub existing_pv: Vec<ExistingPv>,
 }
 
 /// A rectangular footprint with one roof. Its width runs along x and its depth along z from its
@@ -207,6 +214,8 @@ pub struct Face {
     pub corners: Vec<Point>,
     /// Its block's wall or roof colour, `#rrggbb`.
     pub colour: Option<String>,
+    /// The position in the scene's obstacles of the box or hedge it is a side of.
+    pub obstacle: Option<usize>,
 }
 
 impl Block {
@@ -234,33 +243,43 @@ impl Scene {
     #[must_use]
     pub fn faces(&self) -> Vec<Face> {
         let blocks = self.blocks.iter().flat_map(|block| self.shell(block));
-        let boxes = self.obstacles.iter().flat_map(|obstacle| match *obstacle {
-            Obstacle::Box {
-                x,
-                z,
-                width,
-                depth,
-                height,
-                rotation,
-            } => self.prism(x, z, rotation).faces(
-                [width, depth],
-                vec![lid(width, depth, height)],
-                [Surface::Obstacle; 2],
-            ),
-            Obstacle::Hedge {
-                x,
-                z,
-                length,
-                depth,
-                height,
-                rotation,
-            } => self.prism(x, z, rotation).faces(
-                [length, depth],
-                vec![lid(length, depth, height)],
-                [Surface::Hedge; 2],
-            ),
-            Obstacle::Cylinder { .. } | Obstacle::Tree { .. } => Vec::new(),
-        });
+        let boxes = self
+            .obstacles
+            .iter()
+            .enumerate()
+            .flat_map(|(index, obstacle)| {
+                let sides = match *obstacle {
+                    Obstacle::Box {
+                        x,
+                        z,
+                        width,
+                        depth,
+                        height,
+                        rotation,
+                    } => self.prism(x, z, rotation).faces(
+                        [width, depth],
+                        vec![lid(width, depth, height)],
+                        [Surface::Obstacle; 2],
+                    ),
+                    Obstacle::Hedge {
+                        x,
+                        z,
+                        length,
+                        depth,
+                        height,
+                        rotation,
+                    } => self.prism(x, z, rotation).faces(
+                        [length, depth],
+                        vec![lid(length, depth, height)],
+                        [Surface::Hedge; 2],
+                    ),
+                    Obstacle::Cylinder { .. } | Obstacle::Tree { .. } => Vec::new(),
+                };
+                sides.into_iter().map(move |side| Face {
+                    obstacle: Some(index),
+                    ..side
+                })
+            });
         let roofs = self.roofs();
         let chimneys = self
             .chimneys
@@ -292,6 +311,7 @@ impl Scene {
                 surface,
                 corners: corners.into_iter().map(|p| frame.place(p)).collect(),
                 colour,
+                obstacle: None,
             })
             .collect()
     }
@@ -307,32 +327,45 @@ impl Scene {
     /// carport's posts.
     #[must_use]
     pub fn solids(&self) -> Vec<Occluder> {
+        let solids = self.solids_by_obstacle().into_iter();
+        solids.map(|(_, solid)| solid).collect()
+    }
+
+    /// The solids in the same order, each with the position in the scene's obstacles of the one
+    /// it is part of; none for a carport's post.
+    #[must_use]
+    pub fn solids_by_obstacle(&self) -> Vec<(Option<usize>, Occluder)> {
         let posts = self
             .blocks
             .iter()
             .filter(|block| block.open)
-            .flat_map(|block| self.posts(block));
+            .flat_map(|block| self.posts(block))
+            .map(|post| (None, post));
         self.obstacles
             .iter()
-            .flat_map(|obstacle| match *obstacle {
-                Obstacle::Box { .. } | Obstacle::Hedge { .. } => Vec::new(),
-                Obstacle::Cylinder {
-                    x,
-                    z,
-                    radius,
-                    height,
-                } => vec![Occluder::Cylinder {
-                    base: self.prism(x, z, 0.0).place([0.0; 3]),
-                    radius,
-                    height,
-                }],
-                Obstacle::Tree {
-                    x,
-                    z,
-                    radius,
-                    height,
-                    crown,
-                } => tree(&self.prism(x, z, 0.0), radius, height, crown),
+            .enumerate()
+            .flat_map(|(index, obstacle)| {
+                let parts = match *obstacle {
+                    Obstacle::Box { .. } | Obstacle::Hedge { .. } => Vec::new(),
+                    Obstacle::Cylinder {
+                        x,
+                        z,
+                        radius,
+                        height,
+                    } => vec![Occluder::Cylinder {
+                        base: self.prism(x, z, 0.0).place([0.0; 3]),
+                        radius,
+                        height,
+                    }],
+                    Obstacle::Tree {
+                        x,
+                        z,
+                        radius,
+                        height,
+                        crown,
+                    } => tree(&self.prism(x, z, 0.0), radius, height, crown),
+                };
+                parts.into_iter().map(move |part| (Some(index), part))
             })
             .chain(posts)
             .collect()
@@ -505,6 +538,7 @@ impl Frame {
                 surface,
                 corners: corners.into_iter().map(|p| self.place(p)).collect(),
                 colour: None,
+                obstacle: None,
             })
             .collect()
     }

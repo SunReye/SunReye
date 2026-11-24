@@ -28,7 +28,13 @@ fn geometry(scene: &[u8]) -> String {
     match serde_json::from_slice::<Scene>(scene) {
         Ok(scene) => json!({ "ok": {
             "faces": scene.faces().iter().map(face).collect::<Vec<_>>(),
-            "solids": scene.solids().iter().map(solid).collect::<Vec<_>>(),
+            "solids": scene.solids_by_obstacle().iter().map(|(obstacle, occluder)| {
+                let mut drawn = solid(occluder);
+                if let (Some(index), Some(fields)) = (obstacle, drawn.as_object_mut()) {
+                    fields.insert("obstacle".into(), json!(index));
+                }
+                drawn
+            }).collect::<Vec<_>>(),
             "mounts": scene.mounts().ok().map(|mounts| {
                 mounts.iter().map(|m| json!({ "at": m.at, "above": m.above, "out": m.out })).collect::<Vec<_>>()
             }),
@@ -50,6 +56,7 @@ fn geometry(scene: &[u8]) -> String {
                     .collect::<Vec<_>>()
             }),
             "roofWindows": scene.panes().ok(),
+            "existingPv": scene.existing_fields().ok(),
         }}),
         Err(error) => json!({ "error": error.to_string() }),
     }
@@ -101,8 +108,8 @@ fn modules(input: &[u8]) -> String {
 }
 
 /// A grid on its face: each module's footprint, the face's outline and that outline inside the
-/// setback, corner for corner and `null` where none is left, and the footprints of the chimneys
-/// and roof windows.
+/// setback, corner for corner and `null` where none is left, and the footprints of the chimneys,
+/// roof windows and existing PV.
 fn laid(face: &RoofFace, grid: &ModuleGrid, size: Size) -> Value {
     let modules: Vec<Value> = grid
         .modules
@@ -118,7 +125,7 @@ fn laid(face: &RoofFace, grid: &ModuleGrid, size: Size) -> Value {
         "modules": modules,
         "outline": ring(&face.outline),
         "inset": face.inset(grid.setback).map(|inset| ring(&inset)),
-        "blocked": face.chimneys.iter().chain(&face.windows)
+        "blocked": face.chimneys.iter().chain(&face.windows).chain(&face.existing)
             .map(|area| face.corners(*area)).collect::<Vec<_>>(),
     })
 }
@@ -267,6 +274,7 @@ fn misplaced(misplaced: Misplaced, grids: &[ModuleGrid], sizes: &HashMap<u32, Si
         Misplaced::Overlap { grid, module } => ("overlap", grid, module),
         Misplaced::Chimney { grid, module } => ("chimney", grid, module),
         Misplaced::Window { grid, module } => ("window", grid, module),
+        Misplaced::Existing { grid, module } => ("existing", grid, module),
     };
     let area = grids
         .get(grid)
@@ -311,10 +319,16 @@ fn face(face: &Face) -> Value {
         Surface::Hedge => "hedge",
         Surface::Chimney => "chimney",
     };
-    face.colour.as_ref().map_or_else(
-        || json!({ "surface": surface, "corners": face.corners }),
-        |colour| json!({ "surface": surface, "corners": face.corners, "colour": colour }),
-    )
+    let mut drawn = json!({ "surface": surface, "corners": face.corners });
+    if let Some(fields) = drawn.as_object_mut() {
+        if let Some(colour) = &face.colour {
+            fields.insert("colour".into(), json!(colour));
+        }
+        if let Some(index) = face.obstacle {
+            fields.insert("obstacle".into(), json!(index));
+        }
+    }
+    drawn
 }
 
 fn solid(occluder: &Occluder) -> Value {

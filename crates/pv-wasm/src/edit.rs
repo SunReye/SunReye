@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use serde::Deserialize;
 use serde_json::{Value, json};
-use sunreye_pv::{Ghost, Opening, OpeningKind, Point, Scene, Size};
+use sunreye_pv::{FillRules, Ghost, Opening, OpeningKind, Point, Scene, Size};
 
 /// Opening `index` of a scene as it should be.
 #[derive(Deserialize)]
@@ -98,12 +98,15 @@ pub struct Laid {
     sizes: HashMap<u32, Size>,
     #[serde(default)]
     grid: usize,
+    /// How "Fill face" lays the free roof; the builder's own without.
+    #[serde(default)]
+    rules: FillRules,
 }
 
 impl Laid {
-    /// The places "Fill face" adds to the grid, across and up its face.
+    /// The places "Fill face" adds to the grid under its rules, across and up its face.
     pub fn fill(&self) -> Value {
-        json!(self.scene.fill(self.grid, sized(&self.sizes)))
+        json!(self.scene.fill(self.grid, sized(&self.sizes), self.rules))
     }
 
     /// The modules a roof chimney stands on, each its grid's index and its own in it.

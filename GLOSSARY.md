@@ -336,6 +336,10 @@ _Avoid_: Array, panel layout
 The margin along every edge of a roof face that no module may cross.
 _Avoid_: Border, margin
 
+**Fill rules**:
+How "Fill face" lays a face's free roof: the gap between modules, never under 2 cm; the alignment, from the setback's lower left or centred in it; and the keep-out margin, kept free round each roof chimney, roof window, existing PV and dormer. A call's, never stored with the scene.
+_Avoid_: Fill settings, spacing
+
 **Block**:
 A building footprint with its roof: a rectangle under one roof kind, or a polygon under free-form roof faces.
 _Avoid_: Building, house
@@ -347,6 +351,34 @@ _Avoid_: Eave depth, soffit
 **Free-form roof face**:
 A roof face given by its corners rather than by its block's roof kind; it carries module grids like any other.
 _Avoid_: Custom roof, polygon roof, LoD2 face
+
+**Roof line**:
+A line traced along a roof seen from above: an eave, ridge, hip, valley or verge. A traced roof's lines are its source; every closed loop of them is a free-form roof face.
+_Avoid_: Edge, stroke, segment
+
+**Pulling up**:
+Giving a traced roof its heights: its eave points to one height, its ridge points to another; every other point follows, so faces stay flat. A point's height may also be set by number, and no pull changes it then. German UI: Traufhöhe, Firsthöhe.
+_Avoid_: Extrude, lift
+
+**Bent face**:
+A traced roof face whose corners lie more than 2 cm off its plane, as set heights can leave it. It is kept, drawn in the warning colour, and carries no modules until it is flat.
+_Avoid_: Warped face, invalid face
+
+**Dormer**:
+A small roof traced inside a face of a traced roof: a closed loop of lines whose faces are its own. It cuts its outline out of the face it stands on, which keeps no modules there, and its front and cheeks are walls up from that face. German UI: Gaube.
+_Avoid_: Roof extension, Dachaufbau
+
+**Ready roof**:
+A common German roof, such as a Satteldach or a Mansarddach, placed in one click as the lines a person could have traced and pulled up, then edited as any traced roof.
+_Avoid_: Template, preset, roof type
+
+**Ready dormer**:
+A common German dormer, such as a Schleppgaube or a Satteldachgaube, or a Zwerchhaus, placed in one click on a face as the lines a person could have traced and pulled up, then edited as any traced roof.
+_Avoid_: Dormer template, dormer preset
+
+**Covering**:
+What a roof face is covered with: tiles, slate, sheet metal or bitumen; unknown until someone says.
+_Avoid_: Roofing, material, Eindeckung
 
 **Rack field**:
 Rows of modules tilted off a flat roof face or level ground, at their own tilt and azimuth.
@@ -363,6 +395,10 @@ _Avoid_: Graphics tier, motion tier
 **Roof window**:
 A window lying flush in one roof face; it casts no shade and no module may cover it.
 _Avoid_: Skylight, Dachfenster, roof obstacle
+
+**Existing PV**:
+Modules already on one roof face that stay, as one rectangle; drawn only, they produce nothing and no new module may cover them.
+_Avoid_: Bestandsanlage, old modules, existing array
 
 **Obstacle**:
 An opaque box, cylinder, tree or hedge standing on the ground in the scene that casts shade on the modules.

@@ -1,6 +1,7 @@
 // Writes schema.d.ts from the core's OpenAPI document, which the crates generate (ADR 9): the
 // scene's, the layout's and a module type's schemas and every schema they name, each a readonly
-// named type.
+// named type. Writes scene-schema.js from it too: the scene's JSON Schema, for a consumer that
+// validates a stored scene, and the package version it was made at (ADR 25).
 // `bun run --cwd packages/scene types` rewrites it.
 
 import openapiTS, { astToString, type OpenAPI3 } from "openapi-typescript";
@@ -39,9 +40,12 @@ function isDocument(value: unknown): value is Document {
 }
 
 /** The roots and every schema they name, by `refs`, sorted by name. */
-function reached(refs: (name: string) => readonly string[]): string[] {
+function reached(
+  refs: (name: string) => readonly string[],
+  roots: readonly string[] = ROOTS,
+): string[] {
   const kept = new Set<string>();
-  const pending = [...ROOTS];
+  const pending = [...roots];
 
   for (let name = pending.pop(); name !== undefined; name = pending.pop())
     if (!kept.has(name)) {
@@ -52,24 +56,37 @@ function reached(refs: (name: string) => readonly string[]): string[] {
   return [...kept].toSorted();
 }
 
-/** The document in `text`, keeping only the roots and every schema they name. */
-function published(text: string): Document {
+/** The OpenAPI document in `text`. */
+function parsed(text: string): Document {
   const document: unknown = JSON.parse(text);
 
   if (!isDocument(document)) throw new TypeError("crates/core/openapi.json has no schemas");
 
-  const all = document.components.schemas;
+  return document;
+}
+
+/** `roots` and every schema they name in `all`, by name. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- openapi-typescript's own types, only read.
+function named(all: Readonly<Schemas>, roots: readonly string[] = ROOTS): Schemas {
   const schemas: Schemas = {};
 
   const refs = (name: string) => JSON.stringify(all[name] ?? {}).match(REF) ?? [];
 
-  for (const name of reached(refs)) {
+  for (const name of reached(refs, roots)) {
     const schema = all[name];
 
     if (schema === undefined) throw new Error(`the OpenAPI document has no schema ${name}`);
 
     schemas[name] = schema;
   }
+
+  return schemas;
+}
+
+/** The document in `text`, keeping only the roots and every schema they name. */
+function published(text: string): Document {
+  const document = parsed(text);
+  const schemas = named(document.components.schemas);
 
   return { openapi: document.openapi, info: document.info, paths: {}, components: { schemas } };
 }
@@ -90,6 +107,39 @@ export async function generate(): Promise<string> {
   return HEADER + astToString(kept);
 }
 
+/** A number's width, which JSON Schema has no format for: it is the crates' concern. */
+const WIDTH =
+  /,"format":"(?:u?int(?:8|16|32|64)|double|float)"|"format":"(?:u?int(?:8|16|32|64)|double|float)",?/gu;
+
+/** scene-schema.js as the core's OpenAPI document generates it now. */
+export async function sceneSchema(): Promise<string> {
+  const document = parsed(await Bun.file(source).text());
+  const manifest: unknown = await Bun.file(new URL("package.json", import.meta.url)).json();
+
+  const version =
+    manifest instanceof Object && "version" in manifest ? String(manifest.version) : "";
+
+  const defs = JSON.stringify(named(document.components.schemas, ["Scene"]))
+    .replaceAll("#/components/schemas/", "#/$defs/")
+    .replaceAll(WIDTH, "");
+
+  const parsedDefs: unknown = JSON.parse(defs);
+
+  const schema = {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    $ref: "#/$defs/Scene",
+    $defs: parsedDefs,
+  };
+
+  return `${HEADER}/** The scene's JSON Schema (2020-12), as the core reads a stored scene. */
+export const SCENE_SCHEMA = ${JSON.stringify(schema, null, 2)};
+
+/** The version of @sunreye/scene the schema was generated at. */
+export const SCENE_SCHEMA_VERSION = ${JSON.stringify(version)};
+`;
+}
+
 if (import.meta.main) {
   await Bun.write(new URL("schema.d.ts", import.meta.url), await generate());
+  await Bun.write(new URL("scene-schema.js", import.meta.url), await sceneSchema());
 }

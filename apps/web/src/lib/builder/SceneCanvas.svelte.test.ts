@@ -256,7 +256,9 @@ test("a click on a module reports its grid; on the bare roof, the point it struc
 
   await covered.screen.getByLabelText("3D-Szene des Hauses").click();
 
-  await expect.poll(() => hits).toEqual([{ kind: "grid", grid: 0 }]);
+  await expect
+    .poll(() => hits.map((hit) => (hit.kind === "grid" ? [hit.grid, hit.point.length] : hit.kind)))
+    .toEqual([[0, 3]]);
   await covered.screen.unmount();
 
   const bare = await closeUp(true, false, (hit) => {

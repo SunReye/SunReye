@@ -76,7 +76,7 @@ enum Refusal {
     Setback,
     /// Two modules overlap.
     Overlap,
-    /// A module overlaps a roof chimney or a roof window.
+    /// A module overlaps a roof chimney, a roof window or existing PV.
     Covered,
 }
 

@@ -20,6 +20,68 @@ export function typesOf({ inverterTypes, batteryTypes }: Types): components["sch
   };
 }
 
+type SentBlock = components["schemas"]["Block"];
+
+/** A block as the client sends it, its free-form roof and traced lines copied. */
+function blockOf({ freeForm, ...block }: LayoutChange["scene"]["blocks"][number]): SentBlock {
+  const traced = freeForm?.traced;
+
+  return {
+    ...block,
+    ...(freeForm && {
+      freeForm: {
+        footprint: freeForm.footprint.map((corner) => [...corner]),
+        faces: freeForm.faces.map((face) => face.map((corner) => [...corner])),
+        ...(traced && {
+          traced: {
+            points: traced.points.map((point) => [...point]),
+            ...(traced.set && { set: [...traced.set] }),
+            lines: traced.lines.map((line) => [...line]),
+            faces: traced.faces.map((face) => face.slice()),
+          },
+        }),
+      },
+    }),
+  };
+}
+
+type Sent = components["schemas"]["Scene"];
+
+/** `list` copied; none for one stored without it. */
+const copied = <T>(list: readonly T[] | undefined): T[] => [...(list ?? [])];
+
+/** What stands on the roofs and the plot, each list copied. */
+function roofsAndPlot(
+  scene: LayoutChange["scene"],
+): Pick<
+  Sent,
+  | "equipment"
+  | "carPlaces"
+  | "chimneys"
+  | "surfaces"
+  | "fences"
+  | "openings"
+  | "roofWindows"
+  | "faceDetails"
+  | "existingPv"
+> {
+  return {
+    equipment: copied(scene.equipment),
+    carPlaces: copied(scene.carPlaces),
+    chimneys: copied(scene.chimneys),
+    surfaces: copied(scene.surfaces),
+    fences: copied(scene.fences).map(({ points, height, finish }) => ({
+      points: [...points],
+      height,
+      finish,
+    })),
+    openings: copied(scene.openings),
+    roofWindows: copied(scene.roofWindows),
+    faceDetails: copied(scene.faceDetails),
+    existingPv: copied(scene.existingPv),
+  };
+}
+
 /** The change as the client sends it. */
 export function body({
   appliesFrom,
@@ -33,15 +95,7 @@ export function body({
     strings: [...strings],
     scene: {
       north: scene.north,
-      blocks: scene.blocks.map(({ freeForm, ...block }) => ({
-        ...block,
-        ...(freeForm && {
-          freeForm: {
-            footprint: freeForm.footprint.map((corner) => [...corner]),
-            faces: freeForm.faces.map((face) => face.map((corner) => [...corner])),
-          },
-        }),
-      })),
+      blocks: scene.blocks.map((block) => blockOf(block)),
       obstacles: [...scene.obstacles],
       grids: (scene.grids ?? []).map(
         ({ block, face, moduleType, landscape, setback, modules }) => ({
@@ -53,16 +107,7 @@ export function body({
           modules: [...modules],
         }),
       ),
-      equipment: [...(scene.equipment ?? [])],
-      carPlaces: [...(scene.carPlaces ?? [])],
-      chimneys: [...(scene.chimneys ?? [])],
-      surfaces: [...(scene.surfaces ?? [])],
-      fences: (scene.fences ?? []).map(({ points, height, finish }) => ({
-        points: [...points],
-        height,
-        finish,
-      })),
-      openings: [...(scene.openings ?? [])],
+      ...roofsAndPlot(scene),
     },
   };
 }

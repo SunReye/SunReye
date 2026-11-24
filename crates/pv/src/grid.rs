@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::polygon;
 use crate::shade::{cross, dot, offset, sub};
-use crate::{Module, Place, Plane, Point, RoofWindow, Scene};
+use crate::{ExistingPv, Module, Place, Plane, Point, RoofWindow, Scene};
 
 /// Metres the builder keeps between neighbouring modules.
 pub const GAP: f64 = 0.02;
@@ -206,6 +206,10 @@ pub struct RoofFace {
     pub chimneys: Vec<Area>,
     /// The panes of the roof windows lying in it.
     pub windows: Vec<Area>,
+    /// The fields of the existing PV on it.
+    pub existing: Vec<Area>,
+    /// The outlines its dormers cut out of it, seen from above, across and up it (ADR 20).
+    pub holes: Vec<Vec<[f64; 2]>>,
     /// The outline's frame: its origin, and the unit directions across the slope and up it.
     pub origin: Point,
     pub across: Point,
@@ -235,6 +239,8 @@ pub enum Misplaced {
     Chimney { grid: usize, module: usize },
     /// The module overlaps a roof window.
     Window { grid: usize, module: usize },
+    /// The module overlaps existing PV.
+    Existing { grid: usize, module: usize },
 }
 
 /// Why a footprint cannot lie on a face.
@@ -243,6 +249,7 @@ pub enum Blocked {
     Setback,
     Chimney,
     Window,
+    Existing,
     Overlap,
 }
 
@@ -252,6 +259,7 @@ impl Blocked {
             Self::Setback => Misplaced::Setback { grid, module },
             Self::Chimney => Misplaced::Chimney { grid, module },
             Self::Window => Misplaced::Window { grid, module },
+            Self::Existing => Misplaced::Existing { grid, module },
             Self::Overlap => Misplaced::Overlap { grid, module },
         }
     }
@@ -344,25 +352,64 @@ impl Scene {
                     .filter(|w| (w.block, w.face) == (block, face))
                     .map(RoofWindow::area)
                     .collect();
+                roof.existing = self
+                    .existing_pv
+                    .iter()
+                    .filter(|e| (e.block, e.face) == (block, face))
+                    .map(ExistingPv::area)
+                    .collect();
+                roof.holes = self.holes(block, face, &roof);
                 roof
             })
             .collect()
     }
 
+    /// The outlines of the dormers standing on roof face `face` of block `block`, dropped onto it
+    /// from above, across and up it.
+    fn holes(&self, block: usize, face: usize, roof: &RoofFace) -> Vec<Vec<[f64; 2]>> {
+        let Some(on) = self.blocks.get(block) else {
+            return Vec::new();
+        };
+        let frame = self.frame(on);
+        on.free_form
+            .as_ref()
+            .map(|free| free.cuts(face))
+            .unwrap_or_default()
+            .into_iter()
+            .map(|corners| {
+                corners
+                    .into_iter()
+                    .map(|p| roof.project(roof.drop(frame.place(p))))
+                    .collect()
+            })
+            .collect()
+    }
+
+    /// Whether roof face `face` of block `block` is a traced one bent off its plane: it carries no
+    /// modules (ADR 20).
+    pub(crate) fn bent(&self, block: usize, face: usize) -> bool {
+        self.blocks
+            .get(block)
+            .and_then(|block| block.free_form.as_ref())
+            .is_some_and(|free| free.bent(face))
+    }
+
     /// Every module the grids hold, grid by grid.
     ///
     /// # Errors
-    /// A grid names no roof face or module type, or a module crosses the setback or overlaps a
-    /// roof chimney, a roof window or an earlier module on its face.
+    /// A grid names no roof face, or a bent one, or no module type, or a module crosses the
+    /// setback or overlaps a roof chimney, a roof window, existing PV or an earlier module on its
+    /// face.
     pub fn modules(&self, size: impl Fn(u32) -> Option<Size>) -> Result<Vec<Placed>, Misplaced> {
         let roofs = self.roofs();
         let mut placed = Vec::new();
         // Each face's footprints so far, whichever grid laid them.
         let mut taken: Vec<((usize, usize), Area)> = Vec::new();
         for (index, grid) in self.grids.iter().enumerate() {
+            let bent = self.bent(grid.block, grid.face);
             let face = roofs
                 .iter()
-                .find(|r| (r.block, r.face) == (grid.block, grid.face))
+                .find(|r| !bent && (r.block, r.face) == (grid.block, grid.face))
                 .ok_or(Misplaced::Face { grid: index })?;
             let size = size(grid.module_type).ok_or(Misplaced::ModuleType { grid: index })?;
             for (module, laid) in grid.modules.iter().enumerate() {
@@ -446,13 +493,16 @@ impl RoofFace {
             outline,
             chimneys: Vec::new(),
             windows: Vec::new(),
+            existing: Vec::new(),
+            holes: Vec::new(),
             origin: offset(offset(first, across, left), up, bottom),
             across,
             up,
         }
     }
 
-    /// Whether a footprint lies inside the setback and off every chimney and roof window.
+    /// Whether a footprint lies inside the setback and off every chimney, roof window and existing
+    /// PV.
     pub(crate) fn clear(&self, area: Area, setback: f64) -> Result<(), Blocked> {
         if !self.holds(area, setback - TOLERANCE) {
             return Err(Blocked::Setback);
@@ -462,6 +512,16 @@ impl RoofFace {
         }
         if self.windows.iter().any(|w| overlap(area, *w, 0.0)) {
             return Err(Blocked::Window);
+        }
+        if self.existing.iter().any(|e| overlap(area, *e, 0.0)) {
+            return Err(Blocked::Existing);
+        }
+        if !self
+            .holes
+            .iter()
+            .all(|hole| polygon::apart(hole, area, setback - TOLERANCE))
+        {
+            return Err(Blocked::Setback);
         }
         Ok(())
     }
@@ -512,6 +572,13 @@ impl RoofFace {
         let at = self.project(point);
         let off = sub(point, self.point(at));
         (dot(off, off).sqrt() <= ON_FACE && self.inside(at, -TOLERANCE)).then_some(at)
+    }
+
+    /// A point of the scene moved straight up or down onto the face's plane.
+    fn drop(&self, point: Point) -> Point {
+        let normal = cross(self.across, self.up);
+        let rise = dot(sub(self.origin, point), normal) / normal[2];
+        [point[0], point[1], point[2] + rise]
     }
 
     /// A point of the scene across and up the outline, dropped onto the face's plane.

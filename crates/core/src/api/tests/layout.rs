@@ -455,6 +455,57 @@ async fn a_roof_window_is_saved_with_its_scene_and_no_module_or_chimney_may_lie_
     );
 }
 
+#[tokio::test]
+async fn existing_pv_is_saved_with_its_scene_and_no_module_or_roof_window_may_lie_on_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let module = core.module_type(&set_cookie).await;
+    let strings = [string(None, "south", &module, 1, 0.0)];
+    // The first module spans 0.3 m to 1.434 m across and 0.3 m to 2.022 m up the slope.
+    let fielded = |across: f64, window: Option<f64>| {
+        let mut scene = house(&module, &[cell(0, 0, Some(0), false)]);
+        scene["existingPv"] = json!([{
+            "block": 0, "face": 1, "across": across, "up": 2.0, "width": 2.0, "length": 1.8,
+        }]);
+        if let Some(at) = window {
+            scene["roofWindows"] = json!([{
+                "block": 0, "face": 1, "across": at, "up": 2.0, "width": 0.78, "length": 1.18,
+            }]);
+        }
+        scene
+    };
+    let refused = async |scene: Value| {
+        let (status, body) = core.put_scene(&set_cookie, &strings, &scene).await;
+        (status, body["code"].as_str().unwrap_or_default().to_owned())
+    };
+    let unprocessable = |code: &str| (StatusCode::UNPROCESSABLE_ENTITY, code.to_owned());
+
+    let (status, saved) = core
+        .put_scene(&set_cookie, &strings, &fielded(5.0, None))
+        .await;
+
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    assert_eq!(saved["scene"], fielded(5.0, None));
+    let (_, read) = core.call(&set_cookie, get("/api/v1/layout")).await;
+    assert_eq!(
+        read["scene"]["existingPv"],
+        fielded(5.0, None)["existingPv"]
+    );
+    // Under the module; under a roof window; and past the verge.
+    assert_eq!(
+        refused(fielded(1.5, None)).await,
+        unprocessable("layout.covered")
+    );
+    assert_eq!(
+        refused(fielded(5.0, Some(5.5))).await,
+        unprocessable("layout.scene")
+    );
+    assert_eq!(
+        refused(fielded(9.5, None)).await,
+        unprocessable("layout.scene")
+    );
+}
+
 /// Each module's lower left corner on its face, in millimetres.
 fn corners(scene: &Value) -> Vec<(i64, i64)> {
     let mm = |metres: &Value| (metres.as_f64().unwrap() * 1000.0).round().to_string();
@@ -711,6 +762,31 @@ async fn overhangs_chimneys_and_colours_are_saved_and_a_bad_one_is_refused() {
             (StatusCode::UNPROCESSABLE_ENTITY, &json!("layout.scene"))
         );
     }
+}
+
+#[tokio::test]
+async fn a_face_detail_is_saved_and_one_naming_no_face_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let module = core.module_type(&set_cookie).await;
+    let strings = [string(None, "south", &module, 1, 0.0)];
+    let with = |face: usize| {
+        let mut scene = house(&module, &[cell(0, 0, Some(0), false)]);
+        scene["faceDetails"] =
+            json!([{ "block": 0, "face": face, "covering": "slate", "pitchConfirmed": true }]);
+        scene
+    };
+
+    let (status, saved) = core.put_scene(&set_cookie, &strings, &with(1)).await;
+    let (_, read) = core.call(&set_cookie, get("/api/v1/layout")).await;
+    let (refused, body) = core.put_scene(&set_cookie, &strings, &with(2)).await;
+
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    assert_eq!(read["scene"], with(1));
+    assert_eq!(
+        (refused, &body["code"]),
+        (StatusCode::UNPROCESSABLE_ENTITY, &json!("layout.scene"))
+    );
 }
 
 #[tokio::test]

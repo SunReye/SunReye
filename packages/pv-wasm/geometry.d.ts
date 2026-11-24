@@ -11,9 +11,11 @@ export interface Face {
   readonly corners: readonly Point[];
   /** Its block's wall or roof colour, `#rrggbb`. */
   readonly colour?: string;
+  /** The position in the scene's obstacles of the box or hedge it is a side of. */
+  readonly obstacle?: number;
 }
 
-export type Solid =
+export type Solid = (
   | { readonly kind: "sphere"; readonly centre: Point; readonly radius: number }
   | {
       /** Upright; a cone narrows from `radius` at its base to its apex `height` above. */
@@ -21,7 +23,12 @@ export type Solid =
       readonly base: Point;
       readonly radius: number;
       readonly height: number;
-    };
+    }
+) & {
+  /** The position in the scene's obstacles of the pole or tree it is part of; none for a
+   * carport's post. */
+  readonly obstacle?: number;
+};
 
 /** Where a marker is drawn, and its label's anchor straight above it, clear of its block. */
 export interface Mount {
@@ -85,4 +92,6 @@ export interface Geometry {
   readonly openings?: readonly Fitted[] | null;
   /** By roof window, its pane's corners from the lower left; null while one is refused. */
   readonly roofWindows?: readonly (readonly Point[])[] | null;
+  /** By existing PV, its field's corners from the lower left; null while one is refused. */
+  readonly existingPv?: readonly (readonly Point[])[] | null;
 }

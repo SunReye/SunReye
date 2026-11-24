@@ -151,3 +151,25 @@ test("a strike on a grid's face inside its setback drills to the face, in the se
     index: 0,
   });
 });
+
+/** Places in millimetres. */
+const mms = (places: readonly (readonly [number, number])[]): number[][] =>
+  places.map((place) => place.map((metres) => mm(metres)));
+
+test("a face fills under rules: a gap, centred, held off its chimney", () => {
+  const empty = gridded([]);
+  const on = { scene: empty, sizes, grid: 0 };
+
+  expect(pv.fillFace(on)).toHaveLength(16);
+  expect(pv.fillFace(on, { gap: 0.1 })).toHaveLength(14);
+  expect(mms(pv.fillFace(on, { alignment: "centred" })).slice(0, 1)).toEqual([[394, 710]]);
+
+  const chimneyed: Scene = {
+    ...empty,
+    chimneys: [{ block: 0, face: 1, across: 5.5, up: 1.5, width: 0.6, depth: 0.6, height: 1 }],
+  };
+
+  const near = pv.fillFace({ ...on, scene: chimneyed });
+
+  expect(pv.fillFace({ ...on, scene: chimneyed }, { keepOut: 1 }).length).toBeLessThan(near.length);
+});

@@ -30,7 +30,8 @@ export type Shown =
       readonly kind: "modules";
       /** The roof modules may not lie on. */
       readonly shade: LaidGrid;
-      readonly selected?: Footprint | undefined;
+      /** The selected modules' footprints, each outlined. */
+      readonly selected?: readonly Footprint[];
       /** The modules not laid yet. */
       readonly ghosts?: readonly Ghost[];
     }
@@ -203,9 +204,7 @@ export function overlay(shown: Shown, tints: Tints): Group {
       ? wiringMode(shown, tints)
       : [
           shaded(shown.shade),
-          ...(shown.selected === undefined
-            ? []
-            : [outline(shown.selected.corners, tints.brand, OVER)]),
+          ...(shown.selected ?? []).map(({ corners }) => outline(corners, tints.brand, OVER)),
           ...(shown.ghosts ?? []).flatMap((item) => ghost(item, tints)),
         ];
 

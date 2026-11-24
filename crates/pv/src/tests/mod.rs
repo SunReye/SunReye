@@ -1,8 +1,11 @@
 mod clear_sky;
 mod device_types;
 mod diode;
+mod dormer;
 mod equipment;
 mod estimate;
+mod existing_pv;
+mod face_detail;
 mod fitting;
 mod fixtures;
 mod free_form;

@@ -74,6 +74,7 @@ impl Neighbour {
                 surface: Surface::Obstacle,
                 corners,
                 colour: None,
+                obstacle: None,
             })
             .collect())
     }

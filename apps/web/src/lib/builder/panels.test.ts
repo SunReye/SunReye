@@ -250,22 +250,30 @@ test("under a closed sky a string that makes little keeps its cell grid: a faint
   expect(strength()).toEqual([0, 0, 0, 0]);
 });
 
-test("a click on a module tells its grid and its place in it; beside it, the roof", () => {
+test("a click on a module tells its grid, its place in it and the point struck; beside it, the roof", () => {
   const group = buildScene(house, panels);
   const camera = new PerspectiveCamera(40, 1, 0.1, 500);
 
   for (const panel of panels) {
-    const middle = point(within(panel, 0.5, 0.5));
+    const aim = within(panel, 0.5, 0.5);
+    const middle = point(aim);
 
     camera.position.copy(middle).add(new Vector3(0, 20, 6));
     camera.lookAt(middle);
     camera.updateMatrixWorld();
 
-    expect(strike(group, panels, camera, [0, 0])).toEqual({
-      kind: "grid",
-      grid: panel.grid ?? -1,
-      module: panel.module ?? -1,
-    });
+    const hit = strike(group, panels, camera, [0, 0]);
+
+    expect(hit).toMatchObject({ kind: "grid", grid: panel.grid ?? -1, module: panel.module ?? -1 });
+
+    // On the module's face, a few centimetres proud of the roof.
+    const struck = hit?.kind === "grid" ? hit.point : undefined;
+
+    expect(struck?.map((metres, i) => Math.abs(metres - (aim[i] ?? 0)) < 0.1)).toEqual([
+      true,
+      true,
+      true,
+    ]);
   }
 
   camera.position.set(11.5, 30, 7);

@@ -159,6 +159,9 @@ export function darkGlass(): MeshPhysicalMaterial {
   });
 }
 
+/** Existing PV: a matte near-black field, apart from the plant's own mirroring modules. */
+export const existingField = (): MeshStandardMaterial => matte(0x2a2f36);
+
 /** A door's leaf: a darker grey than its frame. */
 export const leaf = (): MeshStandardMaterial => matte(TONE.metal);
 

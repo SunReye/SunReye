@@ -171,7 +171,12 @@ fn a_module_that_overlaps_a_roof_window_is_refused_and_shown_not_to_fit() {
     assert!(!ghost(2.0));
     assert!(ghost(4.0));
     // Each row's third module would lie on it: 2.608 m to 3.742 m across.
-    assert_eq!(scene(&json!([])).fill(0, sized).len(), 16 - 2);
+    assert_eq!(
+        scene(&json!([]))
+            .fill(0, sized, crate::FillRules::default())
+            .len(),
+        16 - 2
+    );
 }
 
 #[test]
@@ -227,7 +232,7 @@ fn a_new_roof_window_takes_the_free_place_nearest_the_middle_of_the_first_face_w
         "block": 0, "face": 0, "moduleType": 7, "landscape": false, "setback": 0.3,
         "modules": [],
     }] }));
-    for [across, up] in full.fill(0, sized) {
+    for [across, up] in full.fill(0, sized, crate::FillRules::default()) {
         full.grids[0]
             .modules
             .push(serde_json::from_value(portrait(across, up)).unwrap());
