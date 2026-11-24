@@ -3,7 +3,7 @@
 
 export type * from "./schema.d.ts";
 
-import type { ModuleGrid } from "./schema.d.ts";
+import type { ModuleGrid, Scene } from "./schema.d.ts";
 
 /** A roof face, named as a module grid, a roof chimney and a roof window name it (ADR 20). */
 export type RoofFaceId = Pick<ModuleGrid, "block" | "face">;
@@ -12,6 +12,11 @@ export type RoofFaceId = Pick<ModuleGrid, "block" | "face">;
 export declare function roofFaceKey(face: RoofFaceId): string;
 
 export * from "./roof.js";
+
+/** How many roof faces block `block` has, as the `pv` crate lists them: a traced or free-form
+ * block its faces, a dormer's too; flat and mono-pitch one, gable two, hip four. 0 for no block.
+ * A face index below it names a face of the block. */
+export declare function faceCount(scene: Scene, block: number): number;
 
 /** The scene's JSON Schema (2020-12), as the core reads a stored scene: every field it knows and
  * no other. Generated from the crates. */

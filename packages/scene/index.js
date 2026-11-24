@@ -13,4 +13,6 @@ export { dormers, pullDormer } from "./roof-dormer.js";
 
 export { placeRoof, readyRoofs } from "./roof-ready.js";
 
+export { faceCount } from "./roof-count.js";
+
 export { SCENE_SCHEMA, SCENE_SCHEMA_VERSION } from "./scene-schema.js";
