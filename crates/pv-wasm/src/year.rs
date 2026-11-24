@@ -8,6 +8,8 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use sunreye_pv::{Energy, InverterType, ShadingTable, Weather, year_with};
 
+use crate::clear::horizon;
+
 use crate::clear::{Plant, Wired};
 
 thread_local! {
@@ -87,6 +89,9 @@ pub struct YearRun {
     #[serde(default)]
     inverter_types: HashMap<u32, InverterType>,
     weather: Steps,
+    /// The far horizon the caller supplies; never part of the plant (ADR 17).
+    #[serde(default)]
+    horizon: Option<Vec<[f64; 2]>>,
 }
 
 impl YearRun {
@@ -105,8 +110,13 @@ impl YearRun {
             Ok(wired) => wired,
             Err(refused) => return json!({ "error": refused.to_string() }),
         };
-        let run =
-            TABLE.with_borrow_mut(|table| year_with(&layout, table, &samples, self.weather.step));
+        let horizon = match horizon(self.horizon.as_deref()) {
+            Ok(horizon) => horizon,
+            Err(refused) => return json!({ "error": refused.to_string() }),
+        };
+        let step = self.weather.step;
+        let run = TABLE
+            .with_borrow_mut(|table| year_with(&layout, table, horizon.as_ref(), &samples, step));
         let mut strings = vec![energy(&Energy::default()); self.plant.strings.len()];
         let modelled = run
             .inverters

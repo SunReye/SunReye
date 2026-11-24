@@ -4,8 +4,8 @@
 use crate::estimate::{shaded, sky};
 use crate::perez::cos_incidence;
 use crate::shade::Casters;
-use crate::string::Shade;
-use crate::{Estimate, Layout, Module, ModuleType, Occluder, Place, Plane, Sun, Weather};
+use crate::string::{Open, Shade};
+use crate::{Estimate, Layout, Module, ModuleType, Occluder, Place, Plane, SkyViews, Sun, Weather};
 
 /// Degrees between nodes, in elevation and in azimuth.
 const STEP: u16 = 2;
@@ -115,7 +115,12 @@ impl ShadingTable {
 
     /// The layout's estimate with each substring's shade looked up at the node nearest the sun.
     /// The table must have been refreshed for `layout`.
-    pub(crate) fn estimate(&self, layout: &Layout, weather: &Weather) -> Estimate {
+    pub(crate) fn estimate(
+        &self,
+        layout: &Layout,
+        weather: &Weather,
+        horizon: Option<&SkyViews>,
+    ) -> Estimate {
         let sky = sky(layout, weather);
         let row = self.row(sky.sun);
         shaded(layout, &sky, |string| {
@@ -123,7 +128,8 @@ impl ShadingTable {
                 let (start, stop) = (*self.starts.get(string)?, *self.starts.get(string + 1)?);
                 row.get(start..stop)
             });
-            Shade::Looked(of_string.unwrap_or_default())
+            let open = horizon.map_or(Open::SKY, |h| h.open(sky.sun, string));
+            (Shade::Looked(of_string.unwrap_or_default()), open)
         })
     }
 
@@ -179,4 +185,43 @@ fn sun_at(node: usize) -> Sun {
         zenith: step.mul_add(-(up as f64), 90.0),
         azimuth: step.mul_add(round as f64, -180.0),
     }
+}
+
+/// The share of the isotropic sky `plane` sees: each node's band of elevation, a node wide,
+/// weighted by its cosine onto the plane and by the part of it above `open_above` at that node
+/// (its index and direction), over the same sum under an open sky. A horizon opens a node above
+/// its elevation there; the scene's diffuse shade closes a node whole, at 90.
+pub fn sky_view(plane: Plane, open_above: impl Fn(usize, Sun) -> f64) -> f64 {
+    let (tilt, facing) = (plane.tilt.to_radians(), plane.azimuth);
+    let half = f64::from(STEP) / 2.0;
+    let (mut open, mut whole) = (0.0, 0.0);
+    for node in 0..ELEVATIONS * AZIMUTHS {
+        let sun = sun_at(node);
+        let elevation = 90.0 - sun.zenith;
+        let low = (elevation - half).max(0.0);
+        let high = (elevation + half).min(90.0);
+        let across = (sun.azimuth - facing).to_radians().cos();
+        let band = |from: f64| cosine_weight(tilt, across, from.to_radians(), high.to_radians());
+        let of_node = band(low);
+        if of_node <= 0.0 {
+            continue;
+        }
+        whole += of_node;
+        let above = open_above(node, sun).max(low);
+        if above < high {
+            // Where the plane's own horizon crosses the band, cutting off its lower part can
+            // drop light the plane never saw: never more than the whole band.
+            open += band(above).clamp(0.0, of_node);
+        }
+    }
+    if whole > 0.0 { open / whole } else { 1.0 }
+}
+
+/// ∫ cos(incidence) · cos(elevation) d(elevation) from `low` to `high`, in radians, for a plane
+/// tilted `tilt` and a direction whose azimuth is `across` (its cosine) from the plane's.
+fn cosine_weight(tilt: f64, across: f64, low: f64, high: f64) -> f64 {
+    let (top, bottom) = (high.sin(), low.sin());
+    let up = top.mul_add(top, -bottom * bottom) / 2.0;
+    let level = (high - low) / 2.0 + ((2.0 * high).sin() - (2.0 * low).sin()) / 4.0;
+    tilt.cos().mul_add(up, tilt.sin() * across * level)
 }

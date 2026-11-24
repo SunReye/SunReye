@@ -59,6 +59,10 @@ export interface Neighbour {
   readonly height: number;
 }
 
+/** A run's far horizon, not the layout's (ADR 17): 360 `[azimuth, elevation]`, a degree apart from −180
+ * going east (0 = south), elevation 0–90, interpolated and wrapping; any other shape is refused. */
+export type HorizonProfile = readonly (readonly [azimuth: number, elevation: number])[];
+
 /** A layout under a clear sky: the scene names its strings by position in `strings`. */
 export interface ClearRun {
   readonly location: Location;
@@ -69,6 +73,7 @@ export interface ClearRun {
   readonly strings: readonly Wiring[];
   /** Seconds since 1970, UTC. */
   readonly times: readonly number[];
+  readonly horizon?: HorizonProfile;
 }
 
 /**
@@ -99,6 +104,7 @@ export interface YearRun {
   /** By inverter device id: its inputs' limits and AC side. An inverter without one caps no input and has no AC side. */
   readonly inverterTypes?: Readonly<Record<number, InverterType>>;
   readonly weather: WeatherSteps;
+  readonly horizon?: HorizonProfile;
 }
 
 /** Twenty or more whole UTC years at one step over a rounded location (ADR 17). A value that
@@ -118,7 +124,7 @@ export interface TypicalYear {
 }
 
 /** A layout over a year of weather, for its irradiation on its planes. */
-export type Irradiated = Omit<YearRun, "inverterTypes">;
+export type Irradiated = Omit<YearRun, "inverterTypes" | "horizon">;
 
 /** A past year's irradiation on a layout's planes, in Wh/m². */
 export interface PastIrradiation {

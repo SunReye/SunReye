@@ -160,7 +160,7 @@ fn the_table_holds_where_azimuths_wrap() {
     let weather = clear_days(SYDNEY);
     let mut table = ShadingTable::default();
 
-    let run = year_with(&layout, &mut table, &weather, QUARTER);
+    let run = year_with(&layout, &mut table, None, &weather, QUARTER);
 
     let traced = traced_in_shade(&layout, &weather);
     assert_within(&run.inverters[0].inputs[0].strings, &traced);
@@ -243,7 +243,7 @@ fn a_step_reads_its_shade_from_the_table_not_from_a_trace() {
         })
         .unwrap();
 
-    let run = year_with(&layout, &mut table, &[minute], 60);
+    let run = year_with(&layout, &mut table, None, &[minute], 60);
 
     let traced = estimate(&layout, &minute).inverters[0].power / 60.0;
     let looked_up = run.inverters[0].dc.total;
@@ -258,9 +258,9 @@ fn the_table_is_traced_again_when_the_scene_or_the_layout_changes_and_not_otherw
     let layout = shaded(BERLIN, 0.0, -1.0);
     let mut table = ShadingTable::default();
     let june = clear_weather(JANUARY_21 + 151 * DAY + 11 * 3600, BERLIN);
-    let _ = year_with(&layout, &mut table, &[june], QUARTER);
+    let _ = year_with(&layout, &mut table, None, &[june], QUARTER);
     let december = clear_weather(JANUARY_21 + 334 * DAY + 11 * 3600, BERLIN);
-    let _ = year_with(&layout, &mut table, &[december], QUARTER);
+    let _ = year_with(&layout, &mut table, None, &[december], QUARTER);
     assert!(!table.refresh(&layout), "a year's run traced it, once");
 
     let changed = |change: &dyn Fn(&mut Layout)| {

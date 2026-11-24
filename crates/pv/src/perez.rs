@@ -21,14 +21,42 @@ const BINS: [Bin; 8] = [
     Bin(6.2, [0.6780, -0.3270, -0.2500, 0.1560, -1.3770, 0.2510]),
 ];
 
+/// What a horizon leaves a module of the sky (ADR 17).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Light {
+    /// The sun stands above the horizon: beam and circumsolar light reach the module.
+    pub sun: bool,
+    /// The share of the isotropic sky the module sees.
+    pub view: f64,
+}
+
+impl Light {
+    /// No horizon.
+    pub const OPEN: Self = Self {
+        sun: true,
+        view: 1.0,
+    };
+}
+
 /// Splits the sky's irradiance onto a plane.
 #[must_use]
 pub fn plane_irradiance(plane: Plane, sky: &Sky) -> PlaneIrradiance {
+    plane_irradiance_in(plane, sky, Light::OPEN)
+}
+
+/// The same with what a horizon leaves of the sky: without the sun no beam and no circumsolar
+/// light, which come from the same patch of sky, and the isotropic sky and its horizon band by
+/// the sky view. Ground-reflected light stays.
+pub fn plane_irradiance_in(plane: Plane, sky: &Sky, light: Light) -> PlaneIrradiance {
     let cos_aoi = cos_incidence(plane, sky.sun);
 
     PlaneIrradiance {
-        beam: (sky.dni * cos_aoi).max(0.0),
-        sky_diffuse: sky_diffuse(plane, sky, cos_aoi),
+        beam: if light.sun {
+            (sky.dni * cos_aoi).max(0.0)
+        } else {
+            0.0
+        },
+        sky_diffuse: sky_diffuse(plane, sky, cos_aoi, light),
         ground_diffuse: sky.ghi * ALBEDO * (1.0 - plane.tilt.to_radians().cos()) / 2.0,
     }
 }
@@ -44,7 +72,7 @@ pub fn cos_incidence(plane: Plane, sun: Sun) -> f64 {
     projection.clamp(-1.0, 1.0)
 }
 
-fn sky_diffuse(plane: Plane, sky: &Sky, cos_aoi: f64) -> f64 {
+fn sky_diffuse(plane: Plane, sky: &Sky, cos_aoi: f64, light: Light) -> f64 {
     // Relative airmass is undefined below the horizon; pvlib yields no sky diffuse there.
     if sky.sun.zenith > 90.0 {
         return 0.0;
@@ -64,9 +92,14 @@ fn sky_diffuse(plane: Plane, sky: &Sky, cos_aoi: f64) -> f64 {
             let tilt = plane.tilt.to_radians();
             let horizon_floor = 85.0_f64.to_radians().cos();
             let isotropic = 0.5 * (1.0 - f1) * (1.0 + tilt.cos());
-            let circumsolar = f1 * cos_aoi.max(0.0) / z.cos().max(horizon_floor);
+            let circumsolar = if light.sun {
+                f1 * cos_aoi.max(0.0) / z.cos().max(horizon_floor)
+            } else {
+                0.0
+            };
+            let (band, isotropic) = (light.view * f2, light.view * isotropic);
 
-            (sky.dhi * f2.mul_add(tilt.sin(), isotropic + circumsolar)).max(0.0)
+            (sky.dhi * band.mul_add(tilt.sin(), isotropic + circumsolar)).max(0.0)
         },
     )
 }

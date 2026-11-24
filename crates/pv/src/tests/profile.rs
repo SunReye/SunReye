@@ -12,11 +12,11 @@ use crate::diode::fit;
 use crate::estimate::{SECONDS_PER_DAY, day_of_year};
 use crate::perez::cos_incidence;
 use crate::shade::Casters;
-use crate::string::{Curve, Shade};
+use crate::string::{Curve, Open, Shade};
 use crate::{
-    GridModule, Input, Inverter, Layout, Location, Module, ModuleGrid, MpptLimits, Occluder, Place,
-    Plane, Point, PvString, Scene, ShadingTable, Size, Sky, Spot, Sun, Weather, clear_weather,
-    estimate, input_output, plane_irradiance, sun_position, year, year_with,
+    GridModule, Horizon, Input, Inverter, Layout, Location, Module, ModuleGrid, MpptLimits,
+    Occluder, Place, Plane, Point, PvString, Scene, ShadingTable, Size, Sky, Spot, Sun, Weather,
+    clear_weather, estimate, input_output, plane_irradiance, sun_position, year, year_with,
 };
 
 const BERLIN: Location = Location {
@@ -374,7 +374,7 @@ fn stages(layout: &Layout, weather: &[Weather]) -> [(&'static str, f64); 7] {
     let curves = each(&|sky| {
         let casters = Casters::under(sky.sun, &layout.occluders);
         for string in strings(layout) {
-            black_box(Curve::new(string, sky, Shade::Traced(&casters)).top);
+            black_box(Curve::new(string, sky, Shade::Traced(&casters), Open::SKY).top);
         }
     });
     let operating = each(&|sky| {
@@ -433,6 +433,25 @@ fn a_years_run() {
 
     let kwh = run.inverters[0].dc.total / 1e3;
     println!("a clear 2026 at quarter hours: {elapsed:.2} s, {kwh:.0} kWh");
+
+    let profile: Vec<[f64; 2]> = (-180_i16..180)
+        .map(|azimuth| {
+            let azimuth = f64::from(azimuth);
+            [azimuth, 6.0f64.mul_add((azimuth / 30.0).sin(), 12.0)]
+        })
+        .collect();
+    let horizon = Horizon::new(&profile).unwrap();
+    let start = Instant::now();
+    let run = black_box(year_with(
+        &layout,
+        &mut ShadingTable::default(),
+        Some(&horizon),
+        &weather,
+        QUARTER,
+    ));
+    let elapsed = start.elapsed().as_secs_f64();
+    let kwh = run.inverters[0].dc.total / 1e3;
+    println!("the same under hills of 6–18°: {elapsed:.2} s, {kwh:.0} kWh");
 }
 
 #[test]
@@ -448,7 +467,7 @@ fn a_shading_table() {
     table.refresh(&layout);
     let built = start.elapsed().as_secs_f64();
     let start = Instant::now();
-    let run = black_box(year_with(&layout, &mut table, &weather, QUARTER));
+    let run = black_box(year_with(&layout, &mut table, None, &weather, QUARTER));
     let looked_up = start.elapsed().as_secs_f64();
 
     let start = Instant::now();

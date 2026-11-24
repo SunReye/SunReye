@@ -10,6 +10,7 @@ mod fitting;
 mod fixtures;
 mod free_form;
 mod grid;
+mod horizon;
 mod input;
 mod laying;
 mod lint;

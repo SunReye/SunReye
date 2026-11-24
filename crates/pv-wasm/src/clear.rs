@@ -6,8 +6,9 @@ use std::collections::{BTreeMap, HashMap};
 
 use serde::Deserialize;
 use sunreye_pv::{
-    Input, Inverter, InverterType, Layout, Module, ModuleType, Neighbour, NeighbourRefused, Plane,
-    PvString, Scene, Size, clear_weather, estimate,
+    Horizon, HorizonRefused, Input, Inverter, InverterType, Layout, Module, ModuleType, Neighbour,
+    NeighbourRefused, Plane, PvString, Scene, Size, SkyViews, clear_weather, estimate,
+    estimate_with,
 };
 
 use crate::Place;
@@ -77,20 +78,40 @@ pub struct Run {
     #[serde(flatten)]
     plant: Plant,
     times: Vec<i64>,
+    /// The far horizon the caller supplies; never part of the plant (ADR 17).
+    #[serde(default)]
+    horizon: Option<Vec<[f64; 2]>>,
+}
+
+/// The horizon a run is given, if any.
+///
+/// # Errors
+/// A profile of another shape.
+pub fn horizon(profile: Option<&[[f64; 2]]>) -> Result<Option<Horizon>, HorizonRefused> {
+    profile.map(Horizon::new).transpose()
 }
 
 impl Run {
     /// By time, then string position; 0 W for a string of an unknown module type.
     ///
     /// # Errors
-    /// A supplied neighbour's [`NeighbourRefused`].
-    pub fn watts(&self) -> Result<Vec<Vec<f64>>, NeighbourRefused> {
-        let Wired { layout, order, .. } = self.plant.layout(&HashMap::new())?;
+    /// A supplied neighbour's [`NeighbourRefused`], or a horizon of another shape.
+    pub fn watts(&self) -> Result<Vec<Vec<f64>>, String> {
+        let horizon = horizon(self.horizon.as_deref()).map_err(|r| r.to_string())?;
+        let Wired { layout, order, .. } = self
+            .plant
+            .layout(&HashMap::new())
+            .map_err(|r| r.to_string())?;
+        let views = horizon.as_ref().map(|h| SkyViews::new(&layout, h));
         Ok(self
             .times
             .iter()
             .map(|&unix| {
-                let estimated = estimate(&layout, &clear_weather(unix, layout.location));
+                let weather = clear_weather(unix, layout.location);
+                let estimated = views.as_ref().map_or_else(
+                    || estimate(&layout, &weather),
+                    |views| estimate_with(&layout, views, &weather),
+                );
                 let shares = estimated
                     .inverters
                     .iter()
