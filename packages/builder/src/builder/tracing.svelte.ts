@@ -6,16 +6,22 @@
 import {
   addLine,
   moveLine,
+  replay,
   snap,
+  type Click,
+  type DormerSize,
   type End,
   type PointRef,
   type Refusal,
+  type RoofSize,
   type Snap,
   type Spot,
+  type TraceEdit,
 } from "@sunreye/scene";
 import { haptics } from "@sunreye/ui/haptics";
 import { clickAt, type Aimed } from "./trace-aim.ts";
 import type { Scene } from "./pv.ts";
+import { faceUnder } from "./trace-place.ts";
 
 /** A traced line, by its block and its place in the block's lines. */
 export interface LineRef {
@@ -23,15 +29,15 @@ export interface LineRef {
   readonly line: number;
 }
 
-/** An edit the tracing made, as the consumer may run it again where it keeps the scene. */
-export type TraceEdit =
-  | { readonly kind: "add"; readonly from: End; readonly to: End }
-  | {
-      readonly kind: "move";
-      readonly block: number;
-      readonly line: number;
-      readonly by: { readonly x: number; readonly z: number };
-    };
+/** An edit the tracing made, named with its operation's arguments, as the consumer may replay it
+ * where it keeps the scene (`@sunreye/scene`'s `replay`). */
+export type { TraceEdit };
+
+/** A ready shape held for placing: the next tap places it, a roof centred on it, a dormer on the
+ * traced face under it, its middle there. */
+export type Placing =
+  | { readonly kind: "roof"; readonly id: string; readonly size: RoofSize }
+  | { readonly kind: "dormer"; readonly id: string; readonly size: DormerSize };
 
 /** The tracing mode: the scene traced on, and where each edit goes. */
 export interface Tracing {
@@ -41,6 +47,9 @@ export interface Tracing {
   /** The picked line: a tap on a line picks it, a tap elsewhere drops it. */
   readonly line?: LineRef | undefined;
   readonly onpickline?: ((line: LineRef | undefined) => void) | undefined;
+  /** A ready shape the next tap places, instead of tracing; reported as a `roof` or `dormer` edit,
+   * after which the consumer lets go of it. */
+  readonly placing?: Placing | undefined;
   /** Each edit's next scene, and the edit: one undo step each. */
   readonly ontrace: (scene: Scene, edit: TraceEdit) => void;
 }
@@ -215,6 +224,26 @@ export class TraceTool {
     tracing.ontrace(edited.scene, { kind: "move", ...line, by });
   }
 
+  /** A tap with a ready shape held: it is placed there, a roof centred on the tap. */
+  #placed(tracing: Tracing, placing: Placing, { x, z }: Click): void {
+    const { scene } = tracing;
+    const face = placing.kind === "dormer" ? faceUnder(scene, { x, z }) : undefined;
+
+    const edit: TraceEdit | undefined =
+      placing.kind === "roof"
+        ? {
+            ...placing,
+            at: { x: x - placing.size.width / 2, z: z - placing.size.depth / 2 },
+          }
+        : face && { ...placing, ...face, at: { x, z } };
+
+    const edited = edit === undefined ? { refused: "missing" as const } : replay(scene, edit);
+
+    this.#answered("refused" in edited ? edited.refused : undefined);
+
+    if (edit !== undefined && !("refused" in edited)) tracing.ontrace(edited.scene, edit);
+  }
+
   /** A click: with no chain, a tap on a line picks it and one elsewhere starts a chain; on the
    * chain's last point it ends the chain; anywhere else it draws the line to there. */
   #clicked(tracing: Tracing, aimed: Aimed, line: LineRef | undefined): void {
@@ -224,7 +253,8 @@ export class TraceTool {
 
     this.#refused = undefined;
 
-    if (from === undefined) this.#started(tracing, end, line);
+    if (tracing.placing !== undefined) this.#placed(tracing, tracing.placing, clickAt(aimed.at));
+    else if (from === undefined) this.#started(tracing, end, line);
     else if (samePoint(from, end)) this.end();
     // Ends picked by pixels are resolved already: the scene's snap in metres must not move them.
     else this.#joined(tracing, from, end, aimed.snap === undefined ? reach : RESOLVED);
@@ -259,6 +289,6 @@ export class TraceTool {
     this.#start = closes ? undefined : start;
     this.#from = closes ? undefined : { block: edited.block, point: edited.to };
     this.#scene = edited.scene;
-    tracing.ontrace(edited.scene, { kind: "add", from, to: end });
+    tracing.ontrace(edited.scene, { kind: "add", from, to: end, reach });
   }
 }
