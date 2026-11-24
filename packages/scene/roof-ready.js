@@ -25,7 +25,7 @@ export const readyRoofs = ROOFS.map(({ id, de, en }) => ({ id, de, en }));
  * @param {Flat} at
  * @returns {number}
  */
-function pointAt(scene, block, [x, z]) {
+export function pointAt(scene, block, [x, z]) {
   return linesOf(scene.blocks[block]).points.findIndex((p) => apart(p, [x, 0, z]) <= REACH);
 }
 
@@ -37,7 +37,7 @@ function pointAt(scene, block, [x, z]) {
  * @param {Flat} to
  * @returns {number}
  */
-function lineAt(scene, block, from, to) {
+export function lineAt(scene, block, from, to) {
   const [a, b] = [pointAt(scene, block, from), pointAt(scene, block, to)];
 
   return linesOf(scene.blocks[block]).lines.findIndex(
@@ -51,7 +51,7 @@ function lineAt(scene, block, from, to) {
  * @param {number} block
  * @returns {Edit[]}
  */
-function clicked(path, block) {
+export function clicked(path, block) {
   const [x = 0, z = 0] = path[0] ?? [];
 
   return path.slice(1).map((to, k) => (scene, last) => {

@@ -16,6 +16,8 @@
     "roof-outline.js",
     "roof-pull.js",
     "roof-ready.js",
+    "roof-ready-dormer.js",
+    "roof-ready-dormer-plans.js",
     "roof-ready-plans.js",
     "roof-snap.js",
     "roof.d.ts",

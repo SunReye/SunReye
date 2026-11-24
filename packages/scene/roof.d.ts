@@ -160,3 +160,32 @@ export declare function placeRoof(
   at: { readonly x: number; readonly z: number },
   size: RoofSize,
 ): Edited;
+
+/** The ready dormers, in the order a menu lists them. */
+export declare const readyDormers: readonly ReadyEntry[];
+
+/** A ready dormer's size: `width` metres across its face's slope and `depth` up it, seen from
+ * above, where its top meets the face; its front eave at `eave` metres, between the face and that
+ * top, halfway without one. A Flachdachgaube is level at its top and a Zwerchhaus's eaves are the
+ * house's: neither reads `eave`. A Zwerchhaus's `depth` runs from the face's eave. */
+export interface DormerSize {
+  readonly width: number;
+  readonly depth: number;
+  readonly eave?: number;
+}
+
+/** The scene with ready dormer `id` on face `face` of traced block `block`, its middle at `at`
+ * seen from above and its front toward the face's low side: the lines a person could have traced,
+ * pulled up by its own eaves and ridges. A Zwerchhaus stands on the face's eave under `at`, its
+ * ridge's ends set; it touches the outline, so it is the house's, not a dormer. Refused
+ * (`"missing"`) for an unknown id, block or face, `"short"` without a positive size, on a face
+ * without slope or with its eave not between the face and its top, `"crosses"` where it is not
+ * wholly on its face. `faces` says where the block's faces went; `from` and `to` are -1. */
+export declare function placeDormer(
+  scene: Scene,
+  block: number,
+  face: number,
+  id: string,
+  at: { readonly x: number; readonly z: number },
+  size: DormerSize,
+): Edited;

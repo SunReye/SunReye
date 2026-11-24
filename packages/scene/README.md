@@ -50,12 +50,17 @@ A dormer's points that are not set lie on the plane of its face, so one traced o
 
 A ready roof is placed in one click as the lines a person could have traced: `placeRoof` clicks them with `addLine`, marks and sets what the outline does not tell (`markLine`, `setHeight`), and pulls the eaves and ridges up. It is then a traced block like any other.
 
-- `readyRoofs: ReadyEntry[]`: the ready roofs for a menu, in order, each `{ id, de, en }`: its id and its name in German and English. Ready dormers will share `ReadyEntry`.
+- `readyRoofs: ReadyEntry[]`: the ready roofs for a menu, in order, each `{ id, de, en }`: its id and its name in German and English.
 - `placeRoof(scene, id, { x, z }, { width, depth, eave, ridge }): Edited`: ready roof `id` as a new traced block, its corner at `x`, `z`, `width` metres along x and `depth` along z; its eaves at `eave` metres and its top (a ridge, a mono-pitch roof's high side, a parapet) at `ridge`. A gable's ridge runs along x, a hip roof's along the longer side. Refused `"joins"` where it would touch a traced block, `"short"` without a positive size, `"missing"` for an unknown id.
 
 The ids: `satteldach`, `pultdach`, `versetztes-pultdach`, `flachdach`, `flachdach-attika`, `walmdach`, `krueppelwalmdach`, `zeltdach`, `mansarddach`, `mansardwalmdach`, `schleppdach`, `sheddach`, `schmetterlingsdach`, `tonnendach`. A point has one height, so a step between two roof parts (a versetztes Pultdach, a Sheddach's teeth, a parapet's inner wall) is a strip 10 cm wide seen from above; a Tonnendach is six flat strips.
 
-Ready dormers will join this module, each an edit of a block's lines whose faces `rebuild` derives (`roof-faces.js`).
+## Ready dormers
+
+A ready dormer is placed on a face in one click as the lines a person could have traced, then pulled up by its own eaves and ridges (`pullDormer`): an edit of the block, its faces derived again.
+
+- `readyDormers: ReadyEntry[]`: the ready dormers for a menu, in order: `schleppgaube`, `satteldachgaube`, `walmgaube`, `flachdachgaube`, `zwerchhaus`.
+- `placeDormer(scene, block, face, id, { x, z }, { width, depth, eave? }): Edited`: ready dormer `id` on face `face` of traced block `block`, its middle at `x`, `z` seen from above, its front toward the face's low side; `width` metres across the slope and `depth` up it, where its top (a ridge, a shed's high side, a flat roof) meets the face; its front eave at `eave` metres, halfway between the face and its top without one. A Flachdachgaube is level at its top. A Zwerchhaus stands on the face's eave under `x`, `z`, `depth` up from it: its gable is in the wall, its eaves the house's, its valleys run up the face, and its ridge's ends are set; touching the outline, it is the house's, not a dormer. `faces` says where the block's faces went. Refused `"missing"` for an unknown id, block or face, `"short"` without a positive size, on a face without slope or with an eave not between the face and the top, `"crosses"` where it is not wholly on its face.
 
 ## Face details
 
