@@ -2,9 +2,9 @@
 //! power its optimizers deliver whatever the current.
 
 use crate::diode::{BYPASS_DROP, Diode, fit};
-use crate::perez::cos_incidence;
+use crate::perez::{Light, cos_incidence, plane_irradiance_in};
 use crate::shade::Casters;
-use crate::{Module, ModuleType, PvString, Sky, cell_temperature, plane_irradiance};
+use crate::{Module, ModuleType, PvString, Sky, cell_temperature};
 
 /// Martin and Ruiz 2001, pvlib's default for glass-fronted modules.
 const MARTIN_RUIZ_AR: f64 = 0.16;
@@ -38,13 +38,14 @@ pub struct Curve {
 
 impl Curve {
     #[must_use]
-    pub fn new(string: &PvString, sky: &Sky, shade: Shade) -> Self {
+    pub fn new(string: &PvString, sky: &Sky, shade: Shade, open: Open) -> Self {
         let mut curve = Self::empty(1.0 - string.loss / 100.0);
         let Some(reference) = fit(&string.module) else {
             return curve;
         };
         for (k, module) in string.modules.iter().enumerate() {
-            let groups = substrings(&reference, &string.module, (k, module), sky, shade);
+            let light = open.of(k);
+            let groups = substrings(&reference, &string.module, (k, module), (sky, light), shade);
             if module.optimized {
                 let mut own = Self::empty(1.0);
                 own.add_all(groups);
@@ -220,15 +221,39 @@ impl Shade<'_> {
     }
 }
 
+/// What a horizon leaves a string's modules (ADR 17).
+#[derive(Clone, Copy)]
+pub struct Open<'a> {
+    /// The sun stands above the horizon.
+    pub sun: bool,
+    /// Each module's sky view; empty for the whole sky.
+    pub views: &'a [f64],
+}
+
+impl Open<'_> {
+    /// No horizon.
+    pub const SKY: Open<'static> = Open {
+        sun: true,
+        views: &[],
+    };
+
+    fn of(self, k: usize) -> Light {
+        Light {
+            sun: self.sun,
+            view: self.views.get(k).copied().unwrap_or(1.0),
+        }
+    }
+}
+
 /// A module's substrings under one sky: lit or shaded, by circuit; `None` in the dark.
 fn substrings(
     reference: &Diode,
     module_type: &ModuleType,
     (k, module): (usize, &Module),
-    sky: &Sky,
+    (sky, light): (&Sky, Light),
     shade: Shade,
 ) -> Vec<(Option<Diode>, u32)> {
-    let poa = plane_irradiance(module.plane, sky);
+    let poa = plane_irradiance_in(module.plane, sky, light);
     let diffuse_light = poa.sky_diffuse + poa.ground_diffuse;
     let beam = poa.beam * incidence_loss(cos_incidence(module.plane, sky.sun));
     let diffuse = diffuse_light * DIFFUSE_IAM;
