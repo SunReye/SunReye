@@ -89,15 +89,18 @@ impl Horizon {
     }
 }
 
-/// A horizon laid over a layout for one run: each module's sky view, in layout order.
-pub struct Trimmed<'a> {
+/// A horizon laid over a layout: each module's sky view, in layout order, computed once for
+/// every instant run under it.
+#[derive(Debug, Clone)]
+pub struct SkyViews<'a> {
     horizon: &'a Horizon,
     views: Vec<f64>,
     /// Where each string's modules start in `views`, and where the last ends.
     starts: Vec<usize>,
 }
 
-impl<'a> Trimmed<'a> {
+impl<'a> SkyViews<'a> {
+    #[must_use]
     pub fn new(layout: &Layout, horizon: &'a Horizon) -> Self {
         let strings = layout
             .inverters
@@ -121,7 +124,7 @@ impl<'a> Trimmed<'a> {
     }
 
     /// What the horizon leaves the layout's `string`th string under `sun`.
-    pub fn open(&self, sun: Sun, string: usize) -> Open<'_> {
+    pub(crate) fn open(&self, sun: Sun, string: usize) -> Open<'_> {
         let views = match (self.starts.get(string), self.starts.get(string + 1)) {
             (Some(&start), Some(&stop)) => self.views.get(start..stop).unwrap_or_default(),
             _ => &[],
@@ -138,7 +141,7 @@ fn view_of(planes: &mut Vec<(Plane, f64)>, plane: Plane, horizon: &Horizon) -> f
     if let Some(&(_, view)) = planes.iter().find(|(known, _)| *known == plane) {
         return view;
     }
-    let view = sky_view(plane, horizon);
+    let view = sky_view(plane, |_, node| horizon.elevation(node.azimuth));
     planes.push((plane, view));
     view
 }

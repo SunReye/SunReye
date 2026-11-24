@@ -2,11 +2,10 @@
 //! not on the date, so it is traced once per scene over the sky and a time step looks it up.
 
 use crate::estimate::{shaded, sky};
-use crate::horizon::Trimmed;
 use crate::perez::cos_incidence;
 use crate::shade::Casters;
 use crate::string::{Open, Shade};
-use crate::{Estimate, Horizon, Layout, Module, ModuleType, Occluder, Place, Plane, Sun, Weather};
+use crate::{Estimate, Layout, Module, ModuleType, Occluder, Place, Plane, SkyViews, Sun, Weather};
 
 /// Degrees between nodes, in elevation and in azimuth.
 const STEP: u16 = 2;
@@ -120,7 +119,7 @@ impl ShadingTable {
         &self,
         layout: &Layout,
         weather: &Weather,
-        horizon: Option<&Trimmed>,
+        horizon: Option<&SkyViews>,
     ) -> Estimate {
         let sky = sky(layout, weather);
         let row = self.row(sky.sun);
@@ -188,10 +187,11 @@ fn sun_at(node: usize) -> Sun {
     }
 }
 
-/// The share of the isotropic sky `plane` sees above `horizon`: each node's band of elevation,
-/// a node wide, weighted by its cosine onto the plane, over the same sum under an open sky.
-/// Diffuse shading by the scene adds its blocked nodes to the same sum.
-pub fn sky_view(plane: Plane, horizon: &Horizon) -> f64 {
+/// The share of the isotropic sky `plane` sees: each node's band of elevation, a node wide,
+/// weighted by its cosine onto the plane and by the part of it above `open_above` at that node
+/// (its index and direction), over the same sum under an open sky. A horizon opens a node above
+/// its elevation there; the scene's diffuse shade closes a node whole, at 90.
+pub fn sky_view(plane: Plane, open_above: impl Fn(usize, Sun) -> f64) -> f64 {
     let (tilt, facing) = (plane.tilt.to_radians(), plane.azimuth);
     let half = f64::from(STEP) / 2.0;
     let (mut open, mut whole) = (0.0, 0.0);
@@ -207,9 +207,11 @@ pub fn sky_view(plane: Plane, horizon: &Horizon) -> f64 {
             continue;
         }
         whole += of_node;
-        let above = horizon.elevation(sun.azimuth).max(low);
+        let above = open_above(node, sun).max(low);
         if above < high {
-            open += band(above).max(0.0);
+            // Where the plane's own horizon crosses the band, cutting off its lower part can
+            // drop light the plane never saw: never more than the whole band.
+            open += band(above).clamp(0.0, of_node);
         }
     }
     if whole > 0.0 { open / whole } else { 1.0 }

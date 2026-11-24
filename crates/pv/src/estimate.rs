@@ -1,10 +1,9 @@
 //! A layout's output under one weather instant: strings, then their MPPT inputs, then inverters.
 
-use crate::horizon::Trimmed;
 use crate::mppt::operating_point;
 use crate::shade::Casters;
 use crate::string::{Open, Shade};
-use crate::{Estimate, Horizon, InverterEstimate, Layout, Sky, Weather, sun_position};
+use crate::{Estimate, InverterEstimate, Layout, Sky, SkyViews, Weather, sun_position};
 
 pub const SECONDS_PER_DAY: i64 = 86_400;
 
@@ -15,14 +14,13 @@ pub fn estimate(layout: &Layout, weather: &Weather) -> Estimate {
     shaded(layout, &sky, |_| (Shade::Traced(&casters), Open::SKY))
 }
 
-/// The same under a horizon profile the caller supplies (ADR 17).
+/// The same under the horizon profile the caller supplies, laid over `layout` once (ADR 17).
 #[must_use]
-pub fn estimate_with(layout: &Layout, horizon: &Horizon, weather: &Weather) -> Estimate {
+pub fn estimate_with(layout: &Layout, views: &SkyViews, weather: &Weather) -> Estimate {
     let sky = sky(layout, weather);
     let casters = Casters::under(sky.sun, &layout.occluders);
-    let trimmed = Trimmed::new(layout, horizon);
     shaded(layout, &sky, |string| {
-        (Shade::Traced(&casters), trimmed.open(sky.sun, string))
+        (Shade::Traced(&casters), views.open(sky.sun, string))
     })
 }
 

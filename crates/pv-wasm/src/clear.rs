@@ -7,7 +7,8 @@ use std::collections::{BTreeMap, HashMap};
 use serde::Deserialize;
 use sunreye_pv::{
     Horizon, HorizonRefused, Input, Inverter, InverterType, Layout, Module, ModuleType, Neighbour,
-    NeighbourRefused, Plane, PvString, Scene, Size, clear_weather, estimate, estimate_with,
+    NeighbourRefused, Plane, PvString, Scene, Size, SkyViews, clear_weather, estimate,
+    estimate_with,
 };
 
 use crate::Place;
@@ -101,14 +102,15 @@ impl Run {
             .plant
             .layout(&HashMap::new())
             .map_err(|r| r.to_string())?;
+        let views = horizon.as_ref().map(|h| SkyViews::new(&layout, h));
         Ok(self
             .times
             .iter()
             .map(|&unix| {
                 let weather = clear_weather(unix, layout.location);
-                let estimated = horizon.as_ref().map_or_else(
+                let estimated = views.as_ref().map_or_else(
                     || estimate(&layout, &weather),
-                    |horizon| estimate_with(&layout, horizon, &weather),
+                    |views| estimate_with(&layout, views, &weather),
                 );
                 let shares = estimated
                     .inverters

@@ -2,8 +2,7 @@
 //! by UTC month and over the run.
 
 use crate::estimate::{SECONDS_PER_DAY, month};
-use crate::horizon::Trimmed;
-use crate::{AcSide, Estimate, Horizon, Layout, ShadingTable, Weather};
+use crate::{AcSide, Estimate, Horizon, Layout, ShadingTable, SkyViews, Weather};
 
 /// Watt-hours by UTC month, January first, and over the whole run.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -67,7 +66,7 @@ pub fn year_with(
     step: i64,
 ) -> Year {
     table.refresh(layout);
-    let horizon = horizon.map(|horizon| Trimmed::new(layout, horizon));
+    let horizon = horizon.map(|horizon| SkyViews::new(layout, horizon));
     let mut run = empty(layout);
     #[expect(
         clippy::cast_precision_loss,

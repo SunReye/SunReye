@@ -46,7 +46,7 @@ pub use face_detail::{Covering, FaceDetail};
 pub use fitting::Unfit;
 pub use free_form::{FreeForm, Traced};
 pub use grid::{Area, GAP, GridModule, Misplaced, ModuleGrid, Placed, RoofFace, Size, Spot};
-pub use horizon::{Horizon, HorizonRefused};
+pub use horizon::{Horizon, HorizonRefused, SkyViews};
 pub use laying::{Alignment, FillRules, Ghost};
 pub use mppt::{input_output, module_counts_differ};
 pub use neighbour::{Neighbour, NeighbourRefused};

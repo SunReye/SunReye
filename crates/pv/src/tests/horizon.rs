@@ -5,8 +5,8 @@ use super::fixtures::MODULE;
 use crate::shading::sky_view;
 use crate::{
     Horizon, HorizonRefused, Input, Inverter, Layout, Location, Module, Occluder, Place, Plane,
-    PvString, ShadingTable, Weather, clear_weather, estimate, estimate_with, sun_position, year,
-    year_with,
+    PvString, ShadingTable, SkyViews, Weather, clear_weather, estimate, estimate_with,
+    sun_position, year, year_with,
 };
 
 const QUARTER: i64 = 900;
@@ -67,7 +67,7 @@ fn watts(layout: &Layout, horizon: Option<&Horizon>, weather: &Weather) -> f64 {
     horizon
         .map_or_else(
             || estimate(layout, weather),
-            |h| estimate_with(layout, h, weather),
+            |h| estimate_with(layout, &SkyViews::new(layout, h), weather),
         )
         .inverters[0]
         .power
@@ -153,7 +153,7 @@ fn a_uniform_horizon_leaves_a_flat_module_the_square_of_its_cosine() {
     for (elevation, expected) in [(30.0, 0.75), (60.0, 0.25), (45.0, 0.5), (13.0, 0.949_397_2)] {
         let horizon = Horizon::new(&profile(|_| elevation)).unwrap();
 
-        let view = sky_view(flat, &horizon);
+        let view = sky_view(flat, |_, node| horizon.elevation(node.azimuth));
 
         assert!((view - expected).abs() < 1e-6, "at {elevation}°: {view}");
     }
@@ -163,7 +163,9 @@ fn a_uniform_horizon_leaves_a_flat_module_the_square_of_its_cosine() {
 fn an_open_horizon_leaves_the_whole_sky() {
     let horizon = Horizon::new(&profile(|_| 0.0)).unwrap();
     for (tilt, azimuth) in [(0.0, 0.0), (35.0, 0.0), (35.0, -73.0), (90.0, 180.0)] {
-        let view = sky_view(Plane { tilt, azimuth }, &horizon);
+        let view = sky_view(Plane { tilt, azimuth }, |_, node| {
+            horizon.elevation(node.azimuth)
+        });
 
         assert!((view - 1.0).abs() < 1e-15, "{tilt}° at {azimuth}°: {view}");
     }
@@ -184,7 +186,8 @@ fn a_horizon_behind_a_module_hides_none_of_its_sky_and_one_before_it_much() {
     ))
     .unwrap();
 
-    let (behind, before) = (sky_view(south, &behind), sky_view(south, &before));
+    let view = |horizon: &Horizon| sky_view(south, |_, node| horizon.elevation(node.azimuth));
+    let (behind, before) = (view(&behind), view(&before));
 
     // A plane tilted 35° south sees the northern sky only above 35°.
     assert!((behind - 1.0).abs() < 1e-12, "behind: {behind}");
@@ -265,7 +268,7 @@ fn an_open_horizon_computes_as_before() {
     assert_eq!(with, year(&layout, &clear_day(), QUARTER));
     for sample in clear_day() {
         assert_eq!(
-            estimate_with(&layout, &open, &sample),
+            estimate_with(&layout, &SkyViews::new(&layout, &open), &sample),
             estimate(&layout, &sample)
         );
     }
@@ -285,5 +288,68 @@ fn a_horizon_leaves_the_layout_and_its_shading_table_alone() {
     assert_eq!(
         year_with(&layout, &mut table, None, &clear_day(), QUARTER),
         without
+    );
+}
+
+#[test]
+fn a_horizon_never_opens_more_sky_than_none() {
+    // A south plane tilted t sees the northern sky above t: a horizon just above that, behind
+    // it, crosses the same node's band as the plane's own horizon.
+    for tilt in 1..60 {
+        let tilt = f64::from(tilt);
+        let behind = Horizon::new(&profile(|azimuth| {
+            if azimuth.abs() > 150.0 {
+                tilt + 0.4
+            } else {
+                0.0
+            }
+        }))
+        .unwrap();
+
+        let view = sky_view(Plane { tilt, azimuth: 0.0 }, |_, node| {
+            behind.elevation(node.azimuth)
+        });
+
+        assert!(view <= 1.0, "{tilt}°: {view}");
+    }
+}
+
+#[test]
+fn under_a_sun_below_the_profile_the_scene_shades_nothing_more() {
+    let morning = clear_weather(JUNE_21 + 7 * 3600, BERLIN);
+    let sun = sun_position(morning.unix, BERLIN);
+    let (zenith, azimuth) = (sun.zenith.to_radians(), sun.azimuth.to_radians());
+    let toward_sun = [
+        -azimuth.sin() * zenith.sin(),
+        -azimuth.cos() * zenith.sin(),
+        zenith.cos(),
+    ];
+    // A crown 12 m from the row's middle module, toward the sun.
+    let middle = [6.0, 0.0, 5.0];
+    let crown = Occluder::Sphere {
+        centre: [0, 1, 2].map(|k| 12.0f64.mul_add(toward_sun[k], middle[k])),
+        radius: 2.0,
+    };
+    let bare = Layout {
+        occluders: Vec::new(),
+        ..plant()
+    };
+    let crowned = Layout {
+        occluders: vec![crown],
+        ..plant()
+    };
+    let hill = Horizon::new(&profile(|a| {
+        if (a - sun.azimuth.round()).abs() <= 8.0 {
+            75.0
+        } else {
+            0.0
+        }
+    }))
+    .unwrap();
+
+    assert!(watts(&crowned, None, &morning) < watts(&bare, None, &morning));
+    assert_eq!(
+        watts(&crowned, Some(&hill), &morning),
+        watts(&bare, Some(&hill), &morning)
     );
 }
