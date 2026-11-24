@@ -205,11 +205,12 @@ pub fn year_run(
 /// The losses every inverter's chain has, in order: those a plant computes whatever its
 /// inverters, and those the run's inputs and scene bring.
 fn computed(layout: &Layout, table: &ShadingTable, inputs: &RunInputs) -> Vec<Loss> {
-    let limits = layout
+    let mut all_inputs = layout
         .inverters
         .iter()
-        .flat_map(|inverter| &inverter.inputs)
-        .any(|input| input.limits.is_some());
+        .flat_map(|inverter| &inverter.inputs);
+    let limits = all_inputs.clone().any(|input| input.limits.is_some());
+    let own = all_inputs.any(|input| input.strings.iter().any(|s| s.loss != 0.0));
     let shading = table.shades();
     let with = [
         (Loss::Horizon, inputs.horizon.is_some()),
@@ -219,7 +220,7 @@ fn computed(layout: &Layout, table: &ShadingTable, inputs: &RunInputs) -> Vec<Lo
         (Loss::Soiling, inputs.soiling.is_some()),
         (Loss::IrradianceLevel, true),
         (Loss::Temperature, true),
-        (Loss::String, true),
+        (Loss::String, own),
         (Loss::Mismatch, true),
         (Loss::MpptLimits, limits),
         (Loss::DcCable, inputs.dc_cables.iter().any(Option::is_some)),

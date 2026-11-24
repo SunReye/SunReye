@@ -217,7 +217,8 @@ pub enum Occluder {
 pub struct PvString {
     pub module: ModuleType,
     pub modules: Vec<Module>,
-    /// A loss on its current, in %: the loss chain's string loss (ADR 17).
+    /// Wiring, soiling and mismatch a run is not given otherwise, on its current, in %: the loss
+    /// chain's string loss (ADR 17).
     pub loss: f64,
 }
 

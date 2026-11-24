@@ -546,3 +546,21 @@ fn a_warranty_never_takes_a_year_below_nothing() {
         assert_near(*year, expected, "a year");
     }
 }
+
+#[test]
+fn strings_without_a_loss_of_their_own_leave_it_out() {
+    let mut layout = plant();
+    for string in layout
+        .inverters
+        .iter_mut()
+        .flat_map(|inverter| &mut inverter.inputs)
+        .flat_map(|input| &mut input.strings)
+    {
+        string.loss = 0.0;
+    }
+
+    let run = year(&layout, &days(), QUARTER);
+
+    assert!(!ids(&run.inverters[0].chain).contains(&Loss::String));
+    assert!(!ids(&run.inverters[1].chain).contains(&Loss::String));
+}
