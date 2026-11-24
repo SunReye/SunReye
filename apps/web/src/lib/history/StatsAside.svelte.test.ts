@@ -60,6 +60,9 @@ test("what stands out opens as the range's data arrives and closes when it is th
     breakdown.element().getBoundingClientRect().bottom;
 
   playFrame();
+  // The fonts this layout asked for are in before it is read: one swapped in later moves the text.
+  below();
+  await document.fonts.ready;
 
   const top = below();
 
