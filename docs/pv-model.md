@@ -68,8 +68,9 @@ Which substrings a scene shades depends on the sun's direction, not on the date 
 - The grid has a node every 2° of elevation, from the horizon to the zenith, and of azimuth, all round. It is the same at every location, so a sky view or a horizon can be laid over it.
 - At each node, every placed module facing the sun is traced as below, and each of its substrings is stored with how much of it lies in shade, its shaded samples' weight out of 64, in layout order. Any shaded sample takes its beam. With no occluders or no placed module nothing is traced.
 - A step reads the node nearest the sun; azimuths wrap at north. The sun below the horizon reads nothing.
+- Where the four nodes around the sun disagree on a substring's beam, a shadow's edge crosses between them: each module with such a substring is traced at the sun itself, and the rest are looked up (#890).
 - `refresh` compares what shading reads (the occluders; each string's module size, bypass diodes, and modules' planes and places, in order) with what the table was traced from, and traces again only when they differ.
-- Nearest-node lookup moves a shade's edge by up to a node's half-width, about 4 minutes of sun. The tests bound a string's energy at 3.5 % in a clear day and 0.5 % over a run; on the profile's plant a clear year reads at most 0.34 % off in a month and 0.01 % in the year, against tracing every instant under the same sky views. On the proof's hourly year it is what is left of a shaded plant's gap to pvlib: up to 4.4 % in a winter month, where the sun stands near a wall's top all day, and 0.04 % traced ([pv-proof.md](pv-proof.md)).
+- The tests bound a string's energy at 0.1 % in a clear day and over a run against tracing every instant under the same sky views; the test scene reads under 0.0001 %. On the profile's plant a clear year reads at most 0.004 % off in a month and 0.000 % in the year. A shadow smaller than a cell, such as a ball far off, can fall between the nodes unseen, which a test pins. The nearest node alone moved a shade's edge by up to a node's half-width, about 4 minutes of sun: 3.1 % in a clear day, 0.34 % in a month on the profile's plant and up to 4.4 % in a winter month of the proof ([pv-proof.md](pv-proof.md)). Tracing where the nodes disagree costs a clear year about 4 % more, still 1.15–1.24× the open sky's (`profile::a_clear_year_under_the_scenes_sky_costs_at_most_twice_the_open_skys`).
 
 The profile `cargo test -p sunreye-pv --release profile::a_shading_table -- --ignored --nocapture` prints the table's build time, the year's run looked up and traced, and their difference.
 
@@ -125,7 +126,7 @@ Per sun, `Casters` prepares each occluder once: a triangle's ray-dependent terms
 | `input.csv` | Shade, optimizers, parallel strings and MPPT limits on one input | 1e-6 |
 | `skyview.csv` | Sky views beside a long wall, between two, and at the foot of a row in a field of rows: closed forms and pvlib's 2D view factor | 0.002 |
 | `estimate.csv` | The whole chain for the owner's wiring through a day | 0.1 % or 0.5 W |
-| `proof.csv` | A year's run of the proof's four plants, two shaded in two dimensions ([pv-proof.md](pv-proof.md)) | Unshaded 0.1 % a year and a month; shaded 0.2 % a year, 5 % a month behind the wall and 3 % in the field, 0.1 % a month with the beam traced; sky views 0.001 |
+| `proof.csv` | A year's run of the proof's four plants, two shaded in two dimensions ([pv-proof.md](pv-proof.md)) | 0.1 % a year and a month, shaded or not, and with the beam traced at every hour; sky views 0.001 |
 
 pvlib knows no scene. Geometry is checked by hand-worked cases (`tests/shade.rs`, `roofing.rs`, `surroundings.rs`, `grid.rs`), and `tests/profile.rs` pins a whole scene's shaded substrings and input powers at nine instants, three more with optimizers and a binding current limit, and checks the bounds that rule casters out against testing every caster.
 
