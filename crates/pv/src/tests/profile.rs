@@ -609,3 +609,88 @@ fn a_day_under_the_scenes_sky() {
         );
     }
 }
+
+/// Each lit clear quarter hour of 2026 at Berlin.
+fn clear_year() -> Vec<Weather> {
+    (0..365 * 96)
+        .map(|k| clear_weather(NEW_YEAR + QUARTER * k, BERLIN))
+        .filter(|w| w.ghi > 0.0 || w.dni > 0.0 || w.dhi > 0.0)
+        .collect()
+}
+
+/// Each string's watt-hours over `weather` at quarter hours, its shade looked up in `table`.
+fn energy(
+    layout: &Layout,
+    table: &ShadingTable,
+    views: &SkyViews,
+    weather: &[Weather],
+) -> Vec<f64> {
+    let mut wh = vec![0.0; 3];
+    for w in weather {
+        let at = table.estimate(layout, w, views);
+        let watts = at.inverters[0].inputs.iter().flat_map(|i| &i.strings);
+        for (wh, watts) in wh.iter_mut().zip(watts) {
+            *wh += watts / 4.0;
+        }
+    }
+    wh
+}
+
+/// ADR 17: laying the scene's sky views at most doubles a clear year's cost over the open sky's.
+#[test]
+#[ignore = "a timing, run in release"]
+#[expect(clippy::print_stdout, reason = "a profile, read by a person")]
+fn a_clear_year_under_the_scenes_sky_costs_at_most_twice_the_open_skys() {
+    let layout = layout();
+    let weather = clear_year();
+    let mut table = ShadingTable::default();
+    let views = SkyViews::new(&layout, &mut table, None);
+    let seconds = |views: &SkyViews| {
+        let start = Instant::now();
+        black_box(energy(&layout, &table, views, &weather));
+        start.elapsed().as_secs_f64()
+    };
+
+    let open = seconds(&SkyViews::open_sky());
+    let laid = seconds(&views);
+
+    println!(
+        "a clear year: open sky {open:.2} s, sky views {laid:.2} s, {:.2}×",
+        laid / open
+    );
+    assert!(laid <= 2.0 * open, "{laid:.2} s against {open:.2} s");
+}
+
+/// ADR 17: merging substrings alike moves no string's energy by more than 0.3 % from a circuit
+/// per substring, over the 21st of each month, clear.
+#[test]
+#[ignore = "exact views cost minutes, run in release"]
+#[expect(clippy::print_stdout, reason = "a profile, read by a person")]
+fn merging_substrings_alike_keeps_each_strings_energy_within_three_permille() {
+    let layout = layout();
+    let weather: Vec<Weather> = (0..12)
+        .flat_map(|month| {
+            let day = NEW_YEAR + SECONDS_PER_DAY * (30 * month + 20);
+            (0..96).map(move |k| clear_weather(day + QUARTER * k, BERLIN))
+        })
+        .filter(|w| w.ghi > 0.0)
+        .collect();
+    let mut table = ShadingTable::default();
+    let views = SkyViews::new(&layout, &mut table, None);
+
+    let merged = energy(&layout, &table, &views, &weather);
+    crate::string::EXACT.set(true);
+    let exact = energy(&layout, &table, &views, &weather);
+    crate::string::EXACT.set(false);
+
+    let open = energy(&layout, &table, &SkyViews::open_sky(), &weather);
+    for (k, ((m, e), o)) in merged.iter().zip(&exact).zip(&open).enumerate() {
+        let off = (m - e) / e;
+        println!(
+            "string {k}: {:.4} % off a circuit each; the scene's diffuse shade takes {:.3} %",
+            100.0 * off,
+            100.0 * (o - e) / o
+        );
+        assert!(off.abs() <= 0.003, "string {k}: {m} Wh against {e} Wh");
+    }
+}
