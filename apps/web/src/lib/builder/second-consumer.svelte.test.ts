@@ -4,7 +4,7 @@
 import "../../app.css";
 import { expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
-import { layingOf, presetView, SceneCanvas, type Laying } from "@sunreye/builder";
+import { layingOf, presetView, SceneCanvas, stringCss, type Laying } from "@sunreye/builder";
 import { emptyDraft, type Draft } from "@sunreye/builder/frame";
 import type { Scene } from "@sunreye/scene";
 import { faceOnPage, MODULE, press, pv, settle, SIZES } from "./builder.harness.ts";
@@ -68,4 +68,9 @@ test("a press on the selected face lays a module through the public laying", asy
         "across" in laid ? [Math.round(laid.across * 1000), Math.round(laid.up * 1000)] : [],
       ),
   ).toEqual([[500, 500]]);
+});
+
+test("a consumer draws a string in the colour its modules glow in, grey in none", () => {
+  // The first string's blue, and again for the seventh; the scene's grey for a module in none.
+  expect([stringCss(0), stringCss(6), stringCss(null)]).toEqual(["#1f5fbf", "#1f5fbf", "#6b6f76"]);
 });

@@ -243,3 +243,7 @@ test("the canvas and values entries load no Svelte either, so a unit test reache
 
   expect(svelte).toEqual([[], []]);
 });
+
+test("its root entry gives a string's colour, so a second consumer draws its strings alike", async () => {
+  expect(await exported(FILES.get(".") ?? "")).toContain("stringCss");
+});
