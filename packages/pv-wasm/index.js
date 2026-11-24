@@ -135,7 +135,7 @@ const roofCalls = (call) => ({
   lay: (on, from, to) => unwrap(call("lay", JSON.stringify({ ...on, from, to })), isGhosts),
   slide: (on, module, from, to) =>
     unwrap(call("slide", JSON.stringify({ ...on, module, from, to })), isGhost),
-  fillFace: (on) => unwrap(call("fill", JSON.stringify(on)), isPlaces) ?? [],
+  fillFace: (on, rules) => unwrap(call("fill", JSON.stringify({ ...on, rules })), isPlaces) ?? [],
   covered: (scene, sizes) =>
     unwrap(call("covered", JSON.stringify({ scene, sizes })), isPlaces) ?? [],
   glideWindow: (scene, index, shift) =>

@@ -33,6 +33,8 @@ fn scene(blocks: Vec<Block>, obstacles: Vec<Obstacle>) -> Scene {
         fences: vec![],
         openings: vec![],
         roof_windows: vec![],
+        face_details: vec![],
+        existing_pv: vec![],
     }
 }
 
@@ -398,4 +400,54 @@ fn near(actual: &Occluder, expected: &Occluder) -> bool {
         ) => same(&[*a], &[*e]) && (ra - re).abs() < 1e-9 && (ha - he).abs() < 1e-6,
         _ => false,
     }
+}
+
+#[test]
+fn each_obstacles_faces_and_solids_name_it_and_nothing_else_does() {
+    let wall = Obstacle::Box {
+        x: 0.0,
+        z: 5.0,
+        width: 4.0,
+        depth: 0.5,
+        height: 2.0,
+        rotation: 0.0,
+    };
+    let tree = Obstacle::Tree {
+        x: -4.0,
+        z: 0.0,
+        radius: 2.0,
+        height: 10.0,
+        crown: Crown::Broadleaf,
+    };
+    let hedge = Obstacle::Hedge {
+        x: 8.0,
+        z: 8.0,
+        length: 3.0,
+        depth: 0.6,
+        height: 1.5,
+        rotation: 0.0,
+    };
+    let carport = Block {
+        open: true,
+        ..block(Roof::Flat)
+    };
+    let scene = scene(vec![carport], vec![wall, tree, hedge]);
+
+    let named = |surface: Surface| {
+        let faces = scene
+            .faces()
+            .into_iter()
+            .filter(move |f| f.surface == surface);
+        faces.map(|face| face.obstacle).collect::<Vec<_>>()
+    };
+    assert_eq!(named(Surface::Obstacle), [Some(0); 5]);
+    assert_eq!(named(Surface::Hedge), [Some(2); 5]);
+    assert!(named(Surface::Roof).iter().all(Option::is_none));
+
+    let solids = scene.solids_by_obstacle();
+    let owners: Vec<Option<usize>> = solids.iter().map(|(owner, _)| *owner).collect();
+    // The tree's trunk and crown, then the carport's four posts.
+    assert_eq!(owners, [Some(1), Some(1), None, None, None, None]);
+    let plain: Vec<Occluder> = solids.into_iter().map(|(_, solid)| solid).collect();
+    assert_eq!(plain, scene.solids());
 }

@@ -2,8 +2,11 @@
 //! drag lays, a module dragged to another place, a face filled, and the modules a roof chimney
 //! or a roof window covers. The browser asks once a step and holds no copy of this geometry.
 
+use serde::Deserialize;
+
 use crate::fitting::snap;
 use crate::grid::{Area, TOLERANCE, overlap};
+use crate::polygon;
 use crate::{GAP, ModuleGrid, Point, RoofFace, Scene, Size};
 
 /// Metres: a ghost this close to a module takes its place from it.
@@ -20,10 +23,43 @@ pub struct Ghost {
     pub across: f64,
     pub up: f64,
     pub landscape: bool,
-    /// Inside the setback, off the chimneys and roof windows and 2 cm off every other module.
+    /// Inside the setback, off the chimneys, roof windows and existing PV and 2 cm off every other
+    /// module.
     pub fits: bool,
     /// Its corners in the scene, counter-clockwise from the lower left, seen from the front.
     pub corners: [Point; 4],
+}
+
+/// How "Fill face" lays the free roof (ADR 20 Modules). The default is the builder's own.
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
+pub struct FillRules {
+    /// Metres between two modules; under 2 cm it is 2 cm, as every module keeps that apart.
+    pub gap: f64,
+    pub alignment: Alignment,
+    /// Metres kept free round each roof chimney, roof window, existing PV and dormer.
+    pub keep_out: f64,
+}
+
+impl Default for FillRules {
+    fn default() -> Self {
+        Self {
+            gap: GAP,
+            alignment: Alignment::LowerLeft,
+            keep_out: 0.0,
+        }
+    }
+}
+
+/// Where the filled rows and columns start.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Alignment {
+    /// At the setback's lower left.
+    #[default]
+    LowerLeft,
+    /// The roof the rows and columns leave over inside the setback shared out on both sides.
+    Centred,
 }
 
 /// One grid's face with the footprints of the modules on it, as a new module finds them.
@@ -45,6 +81,10 @@ impl<'a> Laying<'a> {
         moved: Option<usize>,
     ) -> Option<Self> {
         let grid = scene.grids.get(index)?;
+        // A bent face carries no modules (ADR 20): nothing is laid on it.
+        if scene.bent(grid.block, grid.face) {
+            return None;
+        }
         let on = |other: &ModuleGrid| (other.block, other.face) == (grid.block, grid.face);
         let face = roofs
             .iter()
@@ -185,28 +225,63 @@ impl Scene {
         Some(laying.ghost(corner, landscape))
     }
 
-    /// The places "Fill face" adds to grid `grid`: the free roof row by row from the setback's
-    /// lower left, in the grid's orientation, each 2 cm off the next. None fits, none.
+    /// The places "Fill face" adds to grid `grid` under `rules`: the free roof row by row from
+    /// the setback's lower left, or centred in it, in the grid's orientation, each `rules.gap`
+    /// off the next and `rules.keep_out` off what stands on the roof. None fits, none.
     #[must_use]
-    pub fn fill(&self, grid: usize, size: impl Fn(u32) -> Option<Size>) -> Vec<[f64; 2]> {
+    pub fn fill(
+        &self,
+        grid: usize,
+        size: impl Fn(u32) -> Option<Size>,
+        rules: FillRules,
+    ) -> Vec<[f64; 2]> {
         let roofs = self.roofs();
         let Some(laying) = Laying::new(self, &roofs, &size, grid, None) else {
             return Vec::new();
         };
+        let gap = rules.gap.max(GAP);
         let landscape = laying.grid.landscape;
+        let setback = laying.grid.setback;
         let [wide, high] = laying.size.laid(landscape);
-        let reach = |axis: usize| {
-            let far = laying.face.outline.iter().map(|p| pick(*p, axis));
-            far.fold(0.0, f64::max)
+        let span = |axis: usize| {
+            let along = laying.face.outline.iter().map(|p| pick(*p, axis));
+            let low = along.clone().fold(f64::INFINITY, f64::min);
+            (low, along.fold(0.0, f64::max))
         };
-        let lines = |extent: f64, reach: f64| {
+        let lines = |extent: f64, axis: usize| {
+            let (low, reach) = span(axis);
+            let start = match rules.alignment {
+                Alignment::LowerLeft => setback,
+                Alignment::Centred => {
+                    let free = 2.0f64.mul_add(-setback, reach - low);
+                    let pitch = extent + gap;
+                    let count = ((free + gap) / pitch).floor().clamp(0.0, f64::from(LIMIT));
+                    let spare = pitch.mul_add(-count, free + gap).max(0.0);
+                    low + setback + spare / 2.0
+                }
+            };
             (0..LIMIT)
-                .map(move |line| (extent + GAP).mul_add(f64::from(line), laying.grid.setback))
-                .take_while(move |low| low + extent <= reach)
+                .map(move |line| (extent + gap).mul_add(f64::from(line), start))
+                .take_while(move |near| near + extent <= reach)
         };
-        lines(high, reach(1))
-            .flat_map(|up| lines(wide, reach(0)).map(move |across| [across, up]))
-            .filter(|at| laying.ghost(*at, landscape).fits)
+        let clear = |area: Area| {
+            let face = laying.face;
+            let mut taken = face
+                .chimneys
+                .iter()
+                .chain(&face.windows)
+                .chain(&face.existing);
+            laying.face.clear(area, setback).is_ok()
+                && !laying.others.iter().any(|other| overlap(area, *other, gap))
+                && !taken.any(|taken| overlap(area, *taken, rules.keep_out))
+                && face
+                    .holes
+                    .iter()
+                    .all(|hole| polygon::apart(hole, area, rules.keep_out - TOLERANCE))
+        };
+        lines(high, 1)
+            .flat_map(|up| lines(wide, 0).map(move |across| [across, up]))
+            .filter(|at| clear(laying.area(*at, landscape)))
             .collect()
     }
 
@@ -238,7 +313,11 @@ impl Scene {
                 let area = grid.footprint(size?, laid.spot);
                 let on = |taken: &Area| overlap(area, *taken, 0.0);
                 let face = face?;
-                let mut taken = face.chimneys.iter().chain(&face.windows);
+                let mut taken = face
+                    .chimneys
+                    .iter()
+                    .chain(&face.windows)
+                    .chain(&face.existing);
                 taken.any(on).then_some((at, module))
             })
         });

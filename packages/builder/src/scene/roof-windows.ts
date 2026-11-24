@@ -1,5 +1,5 @@
-// Roof windows as the scene draws them (ADR 20 Roof windows): a framed glass pane lying flush in
-// its roof face, placed by the pv crate, drawn only, never shading. Pure: no DOM.
+// Roof windows and existing PV as the scene draws them (ADR 20): a framed pane lying flush in its
+// roof face, placed by the pv crate, drawn only, never shading. Pure: no DOM.
 import {
   BufferGeometry,
   DoubleSide,
@@ -9,7 +9,7 @@ import {
 } from "three";
 import type { Point } from "../builder/pv.ts";
 import { normal, unit, type Vector } from "../builder/vector.ts";
-import { clay, darkGlass } from "./materials.ts";
+import { clay, darkGlass, existingField } from "./materials.ts";
 
 /** Metres: the frame's width, and how far the frame and the glass stand over the roof. */
 const FRAME = 0.06;
@@ -55,8 +55,9 @@ function ring([a, b, c, d]: Quad, inset: number, proud: number): Quad {
   return [at(a, 1, 1), at(b, -1, 1), at(c, -1, -1), at(d, 1, -1)];
 }
 
-/** One roof window: its frame, standing a little over the roof, round its glass. */
-function framed(pane: Quad): Mesh {
+/** One pane named `name`: its frame, standing a little over the roof, round `inner`. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- set up, then drawn.
+function framed(pane: Quad, inner: MeshStandardMaterial, name: string): Mesh {
   const foot = ring(pane, 0, 0);
   const rim = ring(pane, 0, PROUD.frame);
   const lip = ring(pane, FRAME, PROUD.frame);
@@ -74,21 +75,34 @@ function framed(pane: Quad): Mesh {
 
   const frame = mesh(sides, clay());
 
-  const glass = mesh([ring(pane, FRAME, PROUD.glass)], darkGlass());
+  const glass = mesh([ring(pane, FRAME, PROUD.glass)], inner);
 
-  glass.name = "roofWindow";
+  glass.name = name;
   frame.add(glass);
-  frame.name = "roofWindow";
+  frame.name = name;
 
   return frame;
 }
 
-/** Each roof window as a mesh named "roofWindow", in order; a pane without four corners is left
- * out. */
-export function roofWindows(panes: readonly (readonly Point[])[]): Mesh[] {
-  return panes.flatMap(([a, b, c, d]) =>
+/** Each pane framed round `inner` as a mesh named `name`, in order; one without four corners is
+ * left out. */
+function panes(
+  quads: readonly (readonly Point[])[],
+  inner: () => MeshStandardMaterial,
+  name: string,
+): Mesh[] {
+  return quads.flatMap(([a, b, c, d]) =>
     a === undefined || b === undefined || c === undefined || d === undefined
       ? []
-      : [framed([a, b, c, d])],
+      : [framed([a, b, c, d], inner(), name)],
   );
 }
+
+/** Each roof window as a mesh named "roofWindow", in order. */
+export const roofWindows = (quads: readonly (readonly Point[])[]): Mesh[] =>
+  panes(quads, darkGlass, "roofWindow");
+
+/** Each existing PV as a mesh named "existingPv", in order: its matte field in the same frame
+ * (ADR 20 Existing PV). */
+export const existingPv = (quads: readonly (readonly Point[])[]): Mesh[] =>
+  panes(quads, existingField, "existingPv");

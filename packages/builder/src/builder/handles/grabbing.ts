@@ -6,8 +6,8 @@
 import { type Group, type PerspectiveCamera, Raycaster, Vector2, Vector3 } from "three";
 import { haptics } from "@sunreye/ui/haptics";
 import { picked } from "../levels.ts";
-import type { Pv, Scene } from "../pv.ts";
-import { strike, toThree, type Panel } from "../scene.ts";
+import type { Point, Pv, Scene } from "../pv.ts";
+import { strike, toThree, type Hit, type Panel } from "../scene.ts";
 import { PER_PIXEL, sense, turnOf } from "./dial.ts";
 import { handleOf } from "./gizmo.ts";
 import {
@@ -85,6 +85,15 @@ interface Held {
 const same = (a: Target, b: { readonly kind: string; readonly index?: number }): boolean =>
   a.kind === b.kind && a.index === b.index;
 
+/** Where a press `hit` the selected object's own surface; none for anything else. */
+function bodyAt(hit: Hit | null | undefined, editing: Editing): Point | undefined {
+  if (hit?.kind !== "point" && hit?.kind !== "obstacle") return undefined;
+
+  const level = picked(editing.scene, hit, editing.pv);
+
+  return level !== null && same(editing.target, level) ? hit.point : undefined;
+}
+
 function rayAt(camera: PerspectiveCamera, at: readonly [number, number]): Ray {
   const caster = new Raycaster();
 
@@ -158,13 +167,9 @@ export class Grabbing {
         : undefined;
     }
 
-    if (hit?.kind !== "point") return undefined;
+    const point = bodyAt(hit, editing);
 
-    const level = picked(editing.scene, hit, editing.pv);
-
-    return level !== null && same(editing.target, level)
-      ? { grip: "move", ray, height: hit.point[2], at: toThree(hit.point) }
-      : undefined;
+    return point && { grip: "move", ray, height: point[2], at: toThree(point) };
   }
 
   readonly #press = (event: PointerEvent): void => {

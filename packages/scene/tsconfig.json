@@ -1,0 +1,6 @@
+{
+  // The package ships JavaScript with its types beside it; its checks read the JavaScript too.
+  "extends": "../../tsconfig.json",
+  "compilerOptions": { "allowJs": true, "checkJs": true },
+  "include": ["*.js", "*.ts"]
+}

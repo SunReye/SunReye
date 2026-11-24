@@ -6,6 +6,7 @@
   import type { Snippet } from "svelte";
   import DrillHeader from "../components/drill-in/drill-header.svelte";
   import DrillPush from "../components/drill-in/drill-push.svelte";
+  import TraceButton from "./TraceButton.svelte";
   import Editor from "./Editor.svelte";
   import { depth, parent, type Level } from "./levels.ts";
   import { title, type Plan } from "./outline.ts";
@@ -89,6 +90,13 @@
               session.change(draft);
             }}
           />
+          {#if at.kind === "section" && at.section === "buildings"}
+            <TraceButton
+              onclick={() => {
+                session.tracing.enter();
+              }}
+            />
+          {/if}
         {/if}
       </section>
     {/snippet}

@@ -256,3 +256,36 @@ test("a tap picks a chimney in 3D; a drag slides it along its face, never off it
   ]);
   await expect.element(across.getByText(/^9,7$/u)).toBeVisible();
 });
+
+test("a press on a picked box drags it by its own surface, one undo step", async () => {
+  const draws = vi.spyOn(EffectComposer.prototype, "render");
+  const start = house();
+
+  const scene: Scene = {
+    ...start.scene,
+    obstacles: [{ kind: "box", x: -6, z: 10, width: 2, depth: 2, height: 2, rotation: 0 }],
+  };
+
+  localStorage.setItem("sunreye.builder.view", JSON.stringify(ABOVE));
+
+  await render(Builder, {
+    pv,
+    ...hosted(testCore()),
+    start: { ...start, scene },
+    moduleTypes: [MODULE],
+    devices: DEVICES,
+  });
+
+  await drill("Umgebung", "Quader 1");
+  await settle(() => draws.mock.calls.length > 0);
+
+  // The box's top, 2 m up: the strike names the obstacle, and the drag moves it 2 m south.
+  await mouseDrag(scene, [-5, 2, 11], [-5, 2, 13]);
+
+  const z = inspector().getByRole("button", { name: starts("Position z (m)") });
+
+  await expect.element(z.getByText(/^1[12](,\d)?$/u)).toBeVisible();
+
+  await inspector().getByRole("button", { name: "Rückgängig" }).click();
+  await expect.element(z.getByText(/^10$/u)).toBeVisible();
+});

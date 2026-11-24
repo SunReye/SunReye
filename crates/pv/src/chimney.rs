@@ -70,10 +70,11 @@ impl Chimney {
         face.holds(self.area(face), 0.0)
     }
 
-    /// Whether it stands on none of the face's roof windows.
+    /// Whether it stands on one of the face's roof windows or existing PV.
     fn glazed(&self, face: &RoofFace) -> bool {
         let area = self.area(face);
-        face.windows.iter().any(|pane| overlap(area, *pane, 0.0))
+        let mut lying = face.windows.iter().chain(&face.existing);
+        lying.any(|pane| overlap(area, *pane, 0.0))
     }
 
     fn footing(&self, face: &RoofFace) -> Footing {
@@ -117,6 +118,7 @@ impl Chimney {
                     surface: Surface::Chimney,
                     corners,
                     colour: None,
+                    obstacle: None,
                 })
                 .collect(),
         )
@@ -171,7 +173,8 @@ impl Scene {
     }
 
     /// Chimney `index` moved by a level `east` and `north` metres, seen from above, along its
-    /// face: in 10 cm steps, stopped at the face's edge or a roof window and sliding along it.
+    /// face: in 10 cm steps, stopped at the face's edge, a roof window or existing PV and sliding
+    /// along it.
     /// One already off its face goes where it is moved. None without the chimney or its face.
     #[must_use]
     pub fn glide(&self, index: usize, shift: [f64; 2]) -> Option<Chimney> {

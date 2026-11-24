@@ -11,7 +11,7 @@ import type {
   Wiring,
 } from "@sunreye/scene";
 import type { Face, Geometry, Point, Unfit } from "./geometry.d.ts";
-import type { Ghost, Modules, OnGrid, Sizes } from "./layout.d.ts";
+import type { FillRules, Ghost, Modules, OnGrid, Sizes } from "./layout.d.ts";
 
 export type * from "./geometry.d.ts";
 
@@ -59,9 +59,8 @@ export interface Neighbour {
   readonly height: number;
 }
 
-/** A run's far horizon, never stored with the layout (ADR 17): 360 `[azimuth, elevation]` pairs, one
- * per degree from −180 going east (0 = south), elevations 0–90, interpolated and wrapping at north.
- * A sun below it gives no beam; it trims each module's sky view. Any other shape is refused. */
+/** A run's far horizon, not the layout's (ADR 17): 360 `[azimuth, elevation]`, a degree apart from −180
+ * going east (0 = south), elevation 0–90, interpolated and wrapping; any other shape is refused. */
 export type HorizonProfile = readonly (readonly [azimuth: number, elevation: number])[];
 
 /** A layout under a clear sky: the scene names its strings by position in `strings`. */
@@ -275,8 +274,9 @@ export interface Pv {
   /** Module `module` of a grid dragged from `from` to `to`: where it would lie, snapped like a
    * ghost, and whether it fits there; null without it. */
   readonly slide: (on: OnGrid, module: number, from: Point, to: Point) => Ghost | null;
-  /** The places "Fill face" adds to a grid: across and up its face. */
-  readonly fillFace: (on: OnGrid) => (readonly [number, number])[];
+  /** The places "Fill face" adds to a grid under `rules`, the builder's own without: across and
+   * up its face. */
+  readonly fillFace: (on: OnGrid, rules?: FillRules) => (readonly [number, number])[];
   /** The modules a roof chimney or roof window covers: each its grid's index and its own in it. */
   readonly covered: (scene: Scene, sizes: Sizes) => (readonly [number, number])[];
   /** Roof window `index` moved like a chimney, stopped at a chimney or another roof window too. */

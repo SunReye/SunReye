@@ -1,17 +1,17 @@
 <script lang="ts" module>
-  export type { Around, Editing, Roofwork, Projector } from "./drawing.svelte.ts";
+  export type { Around, Editing, Roofwork, Projector, Tracing } from "./drawing.svelte.ts";
 
   export type { Hit, Panel } from "./scene.ts";
 </script>
 
 <script lang="ts">
+  import { untrack } from "svelte";
   import type { ModelLoader } from "../cars/garage.ts";
   import type { Parked } from "../cars/parked.ts";
   import { faceView, parseView, presetView, type View } from "./camera.ts";
   import type { Geometry, Point, RoofFace } from "./pv.ts";
-  import SceneCanvas from "./SceneCanvas.svelte";
-  import type { Around, Editing, Roofwork, Projector } from "./drawing.svelte.ts";
-  import type { SceneWeather } from "../scene/weather.ts";
+  import SceneCanvas, { type SceneWeather } from "./SceneCanvas.svelte";
+  import type { Around, Editing, Roofwork, Projector, Tracing } from "./drawing.svelte.ts";
   import type { Hit, Panel } from "./scene.ts";
   import ViewMenu from "./ViewMenu.svelte";
   import WeatherMenu, { type Trial } from "./WeatherMenu.svelte";
@@ -28,6 +28,7 @@
     onpick,
     editing,
     roofwork,
+    tracing,
     onrender,
     onto,
     aspect = 1,
@@ -54,6 +55,8 @@
     editing?: Editing | undefined;
     /** The selected face's laying, or the wiring mode's selecting. */
     roofwork?: Roofwork | undefined;
+    /** The tracing mode, seen from above. */
+    tracing?: Tracing | undefined;
     /** The face the camera flies onto while it is given; it returns to the kept view after. */
     onto?: RoofFace | undefined;
     /** The canvas's width over its height: preset views fit the scene across it. */
@@ -80,6 +83,16 @@
     view = next;
     localStorage.setItem(KEPT, JSON.stringify(next));
   }
+
+  // Tracing is done from above: entering it turns the camera down onto the plot.
+  const tracingOn = $derived(tracing !== undefined);
+
+  $effect(() => {
+    if (tracingOn)
+      untrack(() => {
+        keep(presetView("top", geometry, aspect));
+      });
+  });
 </script>
 
 <SceneCanvas
@@ -97,6 +110,7 @@
   {onrender}
   {editing}
   {roofwork}
+  {tracing}
 />
 <div data-canvas-zone class="absolute top-3 right-3 flex flex-col gap-2">
   <ViewMenu

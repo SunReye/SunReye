@@ -227,3 +227,14 @@ pub fn crossing((a, b): (Plan, Plan), (c, d): (Plan, Plan)) -> Option<f64> {
     let onto = cu.mul_add(sv, -(cv * su)) / spun;
     ((0.0..=1.0).contains(&along) && (-EPSILON..=1.0 + EPSILON).contains(&onto)).then_some(along)
 }
+
+/// Whether the rectangle from its lower left to its upper right corner shares no area with the
+/// polygon and keeps at least `margin` from its edges.
+pub fn apart(polygon: &[Plan], [[l, b], [r, t]]: [Plan; 2], margin: f64) -> bool {
+    let rectangle = [[l, b], [r, b], [r, t], [l, t]];
+    let near = edges(polygon)
+        .flat_map(|edge| rectangle.map(|p| reach(p, edge)))
+        .chain(edges(&rectangle).flat_map(|side| polygon.iter().map(move |&p| reach(p, side))))
+        .fold(f64::INFINITY, f64::min);
+    !overlap(polygon, &rectangle) && near >= margin - EPSILON
+}

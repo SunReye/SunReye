@@ -60,11 +60,12 @@ impl RoofWindow {
         sized && face.holds(self.area(), clear)
     }
 
-    /// Whether it lies on `face` off its chimneys and off `others`, the face's other windows.
+    /// Whether it lies on `face` off its chimneys, its existing PV and `others`, the face's other
+    /// windows.
     fn fits(&self, face: &RoofFace, others: &[Area]) -> bool {
         let area = self.area();
         let free = |taken: &[Area]| !taken.iter().any(|other| overlap(area, *other, 0.0));
-        self.lies(face, 0.0) && free(&face.chimneys) && free(others)
+        self.lies(face, 0.0) && free(&face.chimneys) && free(&face.existing) && free(others)
     }
 }
 
@@ -131,9 +132,9 @@ impl Scene {
     }
 
     /// Roof window `index` moved by a level `east` and `north` metres, seen from above, along
-    /// its face: in 10 cm steps, stopped at the face's edge, a chimney or another roof window and
-    /// sliding along it. One that does not fit where it is goes where it is moved. None without
-    /// the window or its face.
+    /// its face: in 10 cm steps, stopped at the face's edge, a chimney, existing PV or another roof
+    /// window and sliding along it. One that does not fit where it is goes where it is moved. None
+    /// without the window or its face.
     #[must_use]
     pub fn glide_window(&self, index: usize, shift: [f64; 2]) -> Option<RoofWindow> {
         let window = self.roof_windows.get(index)?;
@@ -150,8 +151,9 @@ impl Scene {
     }
 
     /// A new roof window `width` across and `length` up in the free place nearest the middle of
-    /// the first roof face with room: off the face's edges, its chimneys, its roof windows and
-    /// the modules of the grids whose module type `size` knows. None where no face has room.
+    /// the first roof face with room: off the face's edges, its chimneys, its existing PV, its
+    /// roof windows and the modules of the grids whose module type `size` knows. None where no
+    /// face has room.
     #[must_use]
     pub fn place_window(
         &self,

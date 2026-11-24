@@ -29,12 +29,16 @@
     picking,
     projector,
     selector,
+    TraceLayer,
+    TracePress,
+    TraceTool,
     type Around,
     type Editing,
     type Hit,
     type Roofwork,
     type Panel,
     type Projector,
+    type Tracing,
   } from "./drawing.svelte.ts";
 
   let {
@@ -61,6 +65,7 @@
     onerror,
     editing,
     roofwork,
+    tracing,
   }: {
     geometry: Geometry;
     /** The placed modules. */
@@ -106,7 +111,15 @@
     /** The selected face, whose roof a press lays modules on, or the picked string, which a drag
      * across modules wires. */
     roofwork?: Roofwork | undefined;
+    /** The tracing mode: seen from above, clicks trace a roof's lines over what is drawn, the
+     * aerial image included, and each edit's next scene goes to `ontrace` (ADR 20). */
+    tracing?: Tracing | undefined;
   } = $props();
+
+  const traceTool = new TraceTool();
+
+  /** Where a point of the scene lands on the canvas, as last drawn. */
+  let projected = $state.raw<Projector>();
 
   const roofTool = new RoofTool();
 
@@ -178,9 +191,10 @@
           const project = projector(canvas, camera.clone());
 
           handled.place(project);
+          projected = project;
           onrender?.(project);
         },
-        () => editing !== undefined || roofwork !== undefined,
+        () => editing !== undefined || roofwork !== undefined || tracing !== undefined,
       );
     } catch {
       onerror?.("webgl2");
@@ -232,7 +246,8 @@
     const resize = fit(canvas, studio, camera, render);
     const kept = keep(scene, source, render);
     const handling = { editing: () => editing, drawn: kept.drawn, panels: source.panels };
-    // Before the picking and the orbit controls: a press on a handle never reaches them.
+    // Before the picking and the orbit controls: a press on a handle or a trace never reaches them.
+    const tracePress = new TracePress(canvas, camera, traceTool, () => tracing);
     const unhandle = handled.attach(canvas, camera, studio.scene, handling, render);
     const unlay = overlaid(studio.scene, () => roofTool.shown(roofwork), render);
     const roofSources = { roofwork: () => roofwork, drawn: kept.drawn, panels: source.panels };
@@ -259,6 +274,7 @@
 
     return () => {
       resize.disconnect();
+      tracePress.dispose();
       unhandle();
       roofPress.dispose();
       unlay();
@@ -279,6 +295,9 @@
     aria-hidden="true"
   ></canvas>
   <PerfOverlay />
+  {#if tracing !== undefined && projected !== undefined}
+    <TraceLayer {tracing} shown={traceTool.shown} project={projected} />
+  {/if}
   {#if handled.label !== undefined}
     {@const { text, left, top } = handled.label}
     <!-- The same canvas chip as the live scene's labels; it never takes the pointer. -->

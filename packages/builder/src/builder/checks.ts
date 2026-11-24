@@ -149,6 +149,8 @@ export function misplacedText(at: Misplaced): string {
 
   if (at.kind === "window") return m.misplaced_window(module);
 
+  if (at.kind === "existing") return m.misplaced_existing(module);
+
   return at.kind === "setback" ? m.misplaced_setback(module) : m.misplaced_overlap(module);
 }
 

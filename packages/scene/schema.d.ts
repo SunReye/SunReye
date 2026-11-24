@@ -122,6 +122,11 @@ export interface components {
             readonly width: number;
         };
         /**
+         * @description What a roof face is covered with.
+         * @enum {string}
+         */
+        readonly Covering: "tiles" | "slate" | "metal" | "bitumen";
+        /**
          * @description A tree's crown, by its leaves.
          * @enum {string}
          */
@@ -191,6 +196,40 @@ export interface components {
          * @enum {string}
          */
         readonly EquipmentKind: "inverter" | "battery";
+        /**
+         * @description Modules already on a block's roof face, placed in the face's outline like a roof window:
+         *     metres across the slope and up it from the face's lowest corner on the left.
+         */
+        readonly ExistingPv: {
+            /**
+             * Format: double
+             * @description Its centre on the face.
+             */
+            readonly across: number;
+            /** @description The block's index in the scene. */
+            readonly block: number;
+            /** @description The roof face's index in its block, as module grids name it. */
+            readonly face: number;
+            /** Format: double */
+            readonly length: number;
+            /** Format: double */
+            readonly up: number;
+            /**
+             * Format: double
+             * @description Its size: across the slope, and up it.
+             */
+            readonly width: number;
+        };
+        /** @description A roof face's covering and pitch, named by block and face as a module grid names it. */
+        readonly FaceDetail: {
+            /** @description The block's index in the scene. */
+            readonly block: number;
+            readonly covering?: components["schemas"]["Covering"] | null;
+            /** @description The roof face's index in its block, as module grids name it. */
+            readonly face: number;
+            /** @description Its pitch was confirmed, not estimated. */
+            readonly pitchConfirmed?: boolean;
+        };
         /** @description A polyline on the ground through `points`. */
         readonly Fence: {
             readonly finish: components["schemas"]["FenceFinish"];
@@ -213,6 +252,7 @@ export interface components {
             readonly faces: readonly (readonly (readonly number[])[])[];
             /** @description Corners as x and z, in metres. */
             readonly footprint: readonly (readonly number[])[];
+            readonly traced?: components["schemas"]["Traced"] | null;
         };
         /** @description A module on a roof face. */
         readonly GridModule: {
@@ -517,6 +557,13 @@ export interface components {
             readonly chimneys?: readonly components["schemas"]["Chimney"][];
             /** @description Markers for inverters and batteries. */
             readonly equipment?: readonly components["schemas"]["Equipment"][];
+            /** @description Modules already on roof faces that stay. Drawn only; they never shade and produce nothing. */
+            readonly existingPv?: readonly components["schemas"]["ExistingPv"][];
+            /**
+             * @description What is known of roof faces: their covering and whether their pitch is confirmed. A face
+             *     without one has an unknown covering and an estimated pitch.
+             */
+            readonly faceDetails?: readonly components["schemas"]["FaceDetail"][];
             /** @description Drawn only; they never shade. */
             readonly fences?: readonly components["schemas"]["Fence"][];
             /** @description At most one per roof face. */
@@ -540,6 +587,21 @@ export interface components {
              * @description A string kept from an earlier version; absent for a new string.
              */
             readonly id?: number | null;
+        };
+        /** @description A traced roof's source (ADR 20): its points and lines, and the points each face's corners are. */
+        readonly Traced: {
+            /** @description The points the person made eaves: a pull of the eaves raises them. */
+            readonly eaves?: readonly number[];
+            /** @description For each face, in the order of the faces, the points its corners are. */
+            readonly faces: readonly (readonly number[])[];
+            /** @description Each line's two points. */
+            readonly lines: readonly (readonly number[])[];
+            /** @description Each point as x, y and z, in metres; y is its height now. */
+            readonly points: readonly (readonly number[])[];
+            /** @description The points the person made ridges: a pull of the ridges raises them. */
+            readonly ridges?: readonly number[];
+            /** @description The points whose height was set, by the person or by a surface: no pull changes it. */
+            readonly set?: readonly number[];
         };
         /**
          * @description The inverter and battery types a version's devices carry, by device id, copied by value
@@ -631,10 +693,13 @@ export type BatteryType = components['schemas']['BatteryType'];
 export type Block = components['schemas']['Block'];
 export type CarPlace = components['schemas']['CarPlace'];
 export type Chimney = components['schemas']['Chimney'];
+export type Covering = components['schemas']['Covering'];
 export type Crown = components['schemas']['Crown'];
 export type Datasheet = components['schemas']['Datasheet'];
 export type Equipment = components['schemas']['Equipment'];
 export type EquipmentKind = components['schemas']['EquipmentKind'];
+export type ExistingPv = components['schemas']['ExistingPv'];
+export type FaceDetail = components['schemas']['FaceDetail'];
 export type Fence = components['schemas']['Fence'];
 export type FenceFinish = components['schemas']['FenceFinish'];
 export type FencePoint = components['schemas']['FencePoint'];
@@ -658,6 +723,7 @@ export type Roof = components['schemas']['Roof'];
 export type RoofWindow = components['schemas']['RoofWindow'];
 export type Scene = components['schemas']['Scene'];
 export type StringDraft = components['schemas']['StringDraft'];
+export type Traced = components['schemas']['Traced'];
 export type Types = components['schemas']['Types'];
 export type Wall = components['schemas']['Wall'];
 export type Warning = components['schemas']['Warning'];

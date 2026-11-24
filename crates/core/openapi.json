@@ -916,6 +916,16 @@
         ],
         "type": "object"
       },
+      "Covering": {
+        "description": "What a roof face is covered with.",
+        "enum": [
+          "tiles",
+          "slate",
+          "metal",
+          "bitumen"
+        ],
+        "type": "string"
+      },
       "Created": {
         "allOf": [
           {
@@ -1422,6 +1432,85 @@
         ],
         "type": "string"
       },
+      "ExistingPv": {
+        "additionalProperties": false,
+        "description": "Modules already on a block's roof face, placed in the face's outline like a roof window:\nmetres across the slope and up it from the face's lowest corner on the left.",
+        "properties": {
+          "across": {
+            "description": "Its centre on the face.",
+            "format": "double",
+            "type": "number"
+          },
+          "block": {
+            "description": "The block's index in the scene.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "face": {
+            "description": "The roof face's index in its block, as module grids name it.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "length": {
+            "format": "double",
+            "type": "number"
+          },
+          "up": {
+            "format": "double",
+            "type": "number"
+          },
+          "width": {
+            "description": "Its size: across the slope, and up it.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "block",
+          "face",
+          "across",
+          "up",
+          "width",
+          "length"
+        ],
+        "type": "object"
+      },
+      "FaceDetail": {
+        "additionalProperties": false,
+        "description": "A roof face's covering and pitch, named by block and face as a module grid names it.",
+        "properties": {
+          "block": {
+            "description": "The block's index in the scene.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "covering": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Covering",
+                "description": "Unknown without one."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "face": {
+            "description": "The roof face's index in its block, as module grids name it.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "pitchConfirmed": {
+            "description": "Its pitch was confirmed, not estimated.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "block",
+          "face"
+        ],
+        "type": "object"
+      },
       "Fence": {
         "additionalProperties": false,
         "description": "A polyline on the ground through `points`.",
@@ -1733,6 +1822,17 @@
               "type": "array"
             },
             "type": "array"
+          },
+          "traced": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Traced",
+                "description": "The lines a traced roof's faces are derived from; none for faces entered as they are."
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -3836,6 +3936,20 @@
             },
             "type": "array"
           },
+          "existingPv": {
+            "description": "Modules already on roof faces that stay. Drawn only; they never shade and produce nothing.",
+            "items": {
+              "$ref": "#/components/schemas/ExistingPv"
+            },
+            "type": "array"
+          },
+          "faceDetails": {
+            "description": "What is known of roof faces: their covering and whether their pitch is confirmed. A face\nwithout one has an unknown covering and an estimated pitch.",
+            "items": {
+              "$ref": "#/components/schemas/FaceDetail"
+            },
+            "type": "array"
+          },
           "fences": {
             "description": "Drawn only; they never shade.",
             "items": {
@@ -4470,6 +4584,75 @@
         "required": [
           "appliesFrom",
           "points"
+        ],
+        "type": "object"
+      },
+      "Traced": {
+        "additionalProperties": false,
+        "description": "A traced roof's source (ADR 20): its points and lines, and the points each face's corners are.",
+        "properties": {
+          "eaves": {
+            "description": "The points the person made eaves: a pull of the eaves raises them.",
+            "items": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "faces": {
+            "description": "For each face, in the order of the faces, the points its corners are.",
+            "items": {
+              "items": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "type": "array"
+          },
+          "lines": {
+            "description": "Each line's two points.",
+            "items": {
+              "items": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "type": "array"
+          },
+          "points": {
+            "description": "Each point as x, y and z, in metres; y is its height now.",
+            "items": {
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array"
+          },
+          "ridges": {
+            "description": "The points the person made ridges: a pull of the ridges raises them.",
+            "items": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "set": {
+            "description": "The points whose height was set, by the person or by a surface: no pull changes it.",
+            "items": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "points",
+          "lines",
+          "faces"
         ],
         "type": "object"
       },
