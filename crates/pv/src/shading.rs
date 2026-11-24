@@ -1,11 +1,11 @@
 //! Shading as a table (ADR 17): which substrings a scene shades depends on where the sun stands,
 //! not on the date, so it is traced once per scene over the sky and a time step looks it up.
 
-use crate::estimate::{shaded, sky};
+use crate::estimate::{Tallies, sky, tallied};
 use crate::perez::cos_incidence;
 use crate::shade::Casters;
-use crate::string::Shade;
-use crate::{Estimate, Layout, Module, ModuleType, Occluder, Place, Plane, SkyViews, Sun, Weather};
+use crate::string::{Open, Shade};
+use crate::{Estimate, Layout, Module, ModuleType, Occluder, Place, Plane, Sun, Weather};
 
 /// Degrees between nodes, in elevation and in azimuth.
 pub const STEP: u16 = 2;
@@ -113,25 +113,35 @@ impl ShadingTable {
         }
     }
 
-    /// The layout's estimate under `views`, each substring's shade looked up at the node nearest
-    /// the sun.
+    /// The layout's estimate under what `open` leaves each string by its place in the layout's
+    /// order under a sun, each substring's shade looked up at the node nearest the sun, tallying
+    /// into `tallies`, if any.
     /// The table must have been refreshed for `layout`.
-    pub(crate) fn estimate(
+    pub(crate) fn estimate<'a>(
         &self,
         layout: &Layout,
         weather: &Weather,
-        views: &SkyViews,
+        open: impl Fn(Sun, usize) -> Open<'a>,
+        tallies: Option<&mut Tallies>,
     ) -> Estimate {
         let sky = sky(layout, weather);
         let row = self.row(sky.sun);
-        shaded(layout, &sky, |string| {
+        let shade = |string| {
             let of_string = row.and_then(|row| {
                 let (start, stop) = (*self.starts.get(string)?, *self.starts.get(string + 1)?);
                 row.get(start..stop)
             });
-            let open = views.open(sky.sun, string);
-            (Shade::Looked(of_string.unwrap_or_default()), open)
-        })
+            (
+                Shade::Looked(of_string.unwrap_or_default()),
+                open(sky.sun, string),
+            )
+        };
+        tallied(layout, &sky, shade, tallies)
+    }
+
+    /// Whether the scene shades anything: without, no shading loss is computed.
+    pub(crate) const fn shades(&self) -> bool {
+        !self.nodes.is_empty()
     }
 
     /// Each node's row of substrings, shaded or not, in node order; none with nothing to shade.

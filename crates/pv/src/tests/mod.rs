@@ -14,6 +14,7 @@ mod horizon;
 mod input;
 mod laying;
 mod lint;
+mod loss_chain;
 mod neighbour;
 mod opening;
 mod parking;

@@ -4,8 +4,8 @@
 use super::fixtures::MODULE;
 use crate::sky_view::sky_view;
 use crate::{
-    Horizon, HorizonRefused, Input, Inverter, Layout, Location, Module, Occluder, Place, Plane,
-    PvString, ShadingTable, SkyViews, Weather, clear_weather, estimate, estimate_with,
+    Horizon, HorizonRefused, Input, Inverter, Layout, Location, Loss, Module, Occluder, Place,
+    Plane, PvString, ShadingTable, SkyViews, Weather, clear_weather, estimate, estimate_with,
     sun_position, year, year_with,
 };
 
@@ -269,7 +269,13 @@ fn an_open_horizon_computes_as_before() {
         QUARTER,
     );
 
-    assert_eq!(with, year(&layout, &clear_day(), QUARTER));
+    let mut without = year(&layout, &clear_day(), QUARTER);
+    // A horizon supplied is a loss computed, even at nothing.
+    let horizon = with.inverters[0].chain.steps[0];
+    assert_eq!(horizon.loss, Loss::Horizon);
+    assert_eq!(horizon.after, without.inverters[0].chain.planes);
+    without.inverters[0].chain.steps.insert(0, horizon);
+    assert_eq!(with, without);
     let (open, none) = (views(&layout, Some(&open)), views(&layout, None));
     for sample in clear_day() {
         assert_eq!(

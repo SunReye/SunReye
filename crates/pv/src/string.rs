@@ -40,15 +40,121 @@ pub struct Curve {
     sampled: Vec<(f64, f64)>,
 }
 
+/// A string's watts at each stage of the loss chain before its own curve (ADR 17).
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub struct Tally {
+    /// Light at the datasheet's efficiency: on the planes, past the horizon, past the scene's
+    /// beam shade, past its diffuse shade, through the glass, past the dirt.
+    pub light: [f64; LIGHT],
+    /// Every lit substring at its own maximum power point at 25 °C, then at its cells'
+    /// temperature, then after the string's loss.
+    pub cool: f64,
+    pub warm: f64,
+    pub kept: f64,
+}
+
+impl Tally {
+    /// Several tallies added stage by stage.
+    pub fn sum(tallies: &[Self]) -> Self {
+        tallies.iter().fold(Self::default(), |sum, t| Self {
+            light: std::array::from_fn(|n| {
+                sum.light.get(n).copied().unwrap_or(0.0) + t.light.get(n).copied().unwrap_or(0.0)
+            }),
+            cool: sum.cool + t.cool,
+            warm: sum.warm + t.warm,
+            kept: sum.kept + t.kept,
+        })
+    }
+}
+
+/// The optical stages a tally holds.
+pub const LIGHT: usize = 6;
+
+/// Solves a string's substrings at their own maximum power points for its tally.
+struct Owner<'a> {
+    reference: &'a Diode,
+    module: &'a ModuleType,
+    /// Each substring's datasheet watts per W/m².
+    nominal: f64,
+    keep: f64,
+    /// Solved: the own maximum power at 25 °C and at the cells' temperature by effective
+    /// irradiance and cell temperature, so substrings alike are solved once.
+    owns: Vec<((u64, u64), f64, f64)>,
+}
+
+impl Owner<'_> {
+    /// Adds a module's substrings, `lit`, to `tally`.
+    fn add(&mut self, tally: &mut Tally, lit: &Lit) {
+        for part in &lit.parts {
+            for (sum, light) in tally.light.iter_mut().zip(part.light) {
+                *sum = self.nominal.mul_add(light, *sum);
+            }
+            let (cool, warm) = self.own(part, lit.cell);
+            tally.cool += cool;
+            tally.warm += warm;
+            tally.kept = self.keep.mul_add(warm, tally.kept);
+        }
+    }
+
+    /// A substring's own maximum power at 25 °C and at `cell`.
+    fn own(&mut self, part: &Part, cell: f64) -> (f64, f64) {
+        let Some(circuit) = part.circuit else {
+            return (0.0, 0.0);
+        };
+        let key = (part.effective.to_bits(), cell.to_bits());
+        if let Some(&(_, cool, warm)) = self.owns.iter().find(|(k, _, _)| *k == key) {
+            return (cool, warm);
+        }
+        let parts = self.module.bypass_diodes.max(1);
+        let cool = self
+            .reference
+            .substring(self.module, parts, part.effective, STC_CELL)
+            .map_or(0.0, |d| peak_power(&d));
+        let warm = peak_power(&circuit);
+        self.owns.push((key, cool, warm));
+        (cool, warm)
+    }
+}
+
 impl Curve {
+    #[cfg(test)]
     #[must_use]
     pub fn new(string: &PvString, sky: &Sky, shade: Shade, open: Open) -> Self {
-        let mut curve = Self::empty(1.0 - string.loss / 100.0);
+        Self::tallied(string, sky, shade, open, None)
+    }
+
+    /// The same, adding the string's stages of the loss chain to `tally`, if any.
+    #[must_use]
+    pub fn tallied(
+        string: &PvString,
+        sky: &Sky,
+        shade: Shade,
+        open: Open,
+        mut tally: Option<&mut Tally>,
+    ) -> Self {
+        let keep = 1.0 - string.loss / 100.0;
+        let mut curve = Self::empty(keep);
         let Some(reference) = fit(&string.module) else {
             return curve;
         };
+        let parts = string.module.bypass_diodes.max(1);
+        let mut owner = Owner {
+            reference: &reference,
+            module: &string.module,
+            nominal: string.module.vmp * string.module.imp / f64::from(parts) / 1000.0,
+            keep,
+            owns: Vec::new(),
+        };
         for (k, module) in string.modules.iter().enumerate() {
-            let groups = substrings(&reference, &string.module, (k, module), (sky, open), shade);
+            let lit = substrings(&reference, &string.module, (k, module), (sky, open), shade);
+            if let Some(tally) = tally.as_deref_mut() {
+                owner.add(tally, &lit);
+            }
+            let groups: Vec<_> = lit
+                .parts
+                .into_iter()
+                .map(|part| (part.circuit, 1))
+                .collect();
             if module.optimized {
                 let mut own = Self::empty(1.0);
                 own.add_all(groups);
@@ -237,6 +343,8 @@ pub struct Open<'a> {
     /// Each substring's plane's view above the horizon alone, the same indexing: what its cells
     /// warm by, and what the scene's share is closed from.
     pub warming: &'a [f64],
+    /// What soiling leaves of the light reaching the cells, of 1.
+    pub clean: f64,
 }
 
 impl Open<'_> {
@@ -245,6 +353,7 @@ impl Open<'_> {
         sun: true,
         views: &[],
         warming: &[],
+        clean: 1.0,
     };
 
     /// The sky view of each of the `k`th module's `parts` substrings: the share the scene closes
@@ -261,11 +370,35 @@ impl Open<'_> {
         })
     }
 
-    /// The view the `k`th module's cells warm by.
+    /// The view the `k`th module's cells warm by, which is also its plane's view above the
+    /// horizon alone.
     fn warming(self, k: usize, parts: usize) -> f64 {
         self.warming.get(k * parts).copied().unwrap_or(1.0)
     }
 }
+
+/// A module's substrings under one sky and their cells' temperature.
+struct Lit {
+    parts: Vec<Part>,
+    cell: f64,
+}
+
+/// A substring's circuit, `None` in the dark; its effective irradiance; and its light at each
+/// optical stage of the loss chain, in W/m².
+struct Part {
+    circuit: Option<Diode>,
+    effective: f64,
+    light: [f64; LIGHT],
+}
+
+/// A circuit's own maximum power, in watts.
+fn peak_power(circuit: &Diode) -> f64 {
+    let power = |i: f64| i * circuit.voltage(i);
+    power(golden(&power, 0.0, circuit.photocurrent)).max(0.0)
+}
+
+/// The cell temperature of standard test conditions, in °C.
+const STC_CELL: f64 = 25.0;
 
 /// A module's substrings under one sky, each with its own sky view: lit or shaded, by circuit;
 /// `None` in the dark. A shaded substring loses its beam and the circumsolar part of its diffuse
@@ -276,7 +409,7 @@ fn substrings(
     (k, module): (usize, &Module),
     (sky, open): (&Sky, Open),
     shade: Shade,
-) -> Vec<(Option<Diode>, u32)> {
+) -> Lit {
     let split = Split::of(module.plane, sky);
     let parts = module_type.bypass_diodes.max(1);
     let views: Vec<f64> = open.of(k, usize::from(parts)).collect();
@@ -294,16 +427,35 @@ fn substrings(
         if open.sun { split.beam } else { 0.0 } + split.sky_diffuse(open_sky) + split.ground;
     let cell = cell_temperature(warming, sky.temperature, sky.wind);
     let circuit = |effective| reference.substring(module_type, parts, effective, cell);
-    views
+    let horizon_view = open_sky.view;
+    let parts = views
         .iter()
         .zip(&shaded)
         .map(|(&view, &shaded)| {
             let sun = open.sun && !shaded;
             let diffuse = (split.sky_diffuse(Light { sun, view }) + split.ground) * DIFFUSE_IAM;
-            let effective = if sun { beam + diffuse } else { diffuse };
-            (circuit(effective), 1)
+            let glass = if sun { beam + diffuse } else { diffuse };
+            let effective = glass * open.clean;
+            let seen = |sun: bool, view| {
+                (if sun { split.beam } else { 0.0 })
+                    + split.sky_diffuse(Light { sun, view })
+                    + split.ground
+            };
+            Part {
+                circuit: circuit(effective),
+                effective,
+                light: [
+                    seen(true, 1.0),
+                    seen(open.sun, horizon_view),
+                    seen(sun, horizon_view),
+                    seen(sun, view),
+                    glass,
+                    effective,
+                ],
+            }
         })
-        .collect()
+        .collect();
+    Lit { parts, cell }
 }
 
 /// The fraction of beam light the glass lets through.

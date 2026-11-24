@@ -3,6 +3,7 @@
 //! Angles are in degrees. Azimuths follow ADR 17: 0 = south, −90 = east, 90 = west.
 
 mod cautious;
+mod chain;
 mod chimney;
 mod clear_sky;
 mod device_types;
@@ -38,6 +39,7 @@ mod typical;
 mod year;
 
 pub use cautious::{Basis, Cautious, cautious, irradiation};
+pub use chain::{Chain, Loss, Step};
 pub use chimney::{Chimney, Footing};
 pub use clear_sky::{Irradiance, clear_sky, clear_weather};
 pub use device_types::{BatteryType, InverterType, MpptInput};
@@ -71,7 +73,10 @@ pub use temperature::cell_temperature;
 pub use typical::{
     FEWEST_YEARS, TYPICAL_YEAR, Typical, TypicalRefused, quarter_hours, typical_year,
 };
-pub use year::{AcYear, Energy, InputYear, InverterYear, Year, year, year_with};
+pub use year::{
+    AcCable, AcYear, Cable, Energy, InputYear, InverterYear, RunInputs, Year, year, year_run,
+    year_with,
+};
 
 /// The cell temperature in °C a string's open-circuit voltage is checked at (ADR 20).
 pub const COLD: f64 = -10.0;
@@ -210,7 +215,7 @@ pub enum Occluder {
 pub struct PvString {
     pub module: ModuleType,
     pub modules: Vec<Module>,
-    /// Wiring, soiling and mismatch, in %.
+    /// A loss on its current, in %: the loss chain's string loss (ADR 17).
     pub loss: f64,
 }
 

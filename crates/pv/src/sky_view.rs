@@ -76,6 +76,7 @@ impl<'a> SkyViews<'a> {
                 .is_none_or(|h| 90.0 - sun.zenith >= h.elevation(sun.azimuth)),
             views: self.of(string),
             warming: self.part(&self.warming, string),
+            clean: 1.0,
         }
     }
 

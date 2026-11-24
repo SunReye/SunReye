@@ -1,7 +1,7 @@
 //! Strings in parallel on one MPPT input, within the input's limits.
 
 use crate::shade::Casters;
-use crate::string::{Curve, Open, Shade, peak};
+use crate::string::{Curve, Open, Shade, Tally, peak};
 use crate::{Input, InputEstimate, MpptLimits, Occluder, PvString, Sky};
 
 /// The input's operating point: the peak of its strings' summed currents at a shared voltage,
@@ -19,15 +19,19 @@ pub fn operating_point<'a>(
     sky: &Sky,
     shade: impl Fn(usize) -> (Shade<'a>, Open<'a>),
 ) -> InputEstimate {
-    let curves: Vec<Curve> = input
-        .strings
-        .iter()
-        .enumerate()
-        .map(|(k, s)| {
-            let (shade, open) = shade(k);
-            Curve::new(s, sky, shade, open)
-        })
-        .collect();
+    tallied_point(input, sky, shade, None).0
+}
+
+/// The same, adding each string's stages of the loss chain to its tally in `tallies`, if any,
+/// with the watts at the peak of the strings' summed curve free of the input's limits.
+pub fn tallied_point<'a>(
+    input: &Input,
+    sky: &Sky,
+    shade: impl Fn(usize) -> (Shade<'a>, Open<'a>),
+    tallies: Option<&mut [Tally]>,
+) -> (InputEstimate, f64) {
+    let tallying = tallies.is_some();
+    let curves = curves(input, sky, shade, tallies);
     let nothing = InputEstimate {
         current: 0.0,
         voltage: 0.0,
@@ -35,23 +39,29 @@ pub fn operating_point<'a>(
         strings: vec![0.0; curves.len()],
     };
     if curves.iter().all(|c| c.top <= 0.0) {
-        return nothing;
+        return (nothing, 0.0);
     }
     let current = |v: f64| curves.iter().map(|c| c.current(v)).sum::<f64>();
     let open_circuit = curves.iter().map(|c| c.voltage(0.0)).fold(0.0, f64::max);
-    let Some((low, high, cap)) = window(input.limits, open_circuit, &current) else {
-        return nothing;
-    };
-    let power = |v: f64| v * current(v).min(cap);
     // Each curve's own samples place the candidates where its knees are.
     let mut candidates: Vec<f64> = curves.iter().flat_map(Curve::voltages).collect();
+    let Some((low, high, cap)) = window(input.limits, open_circuit, &current) else {
+        let free = if tallying {
+            free_peak(candidates, open_circuit, &current)
+        } else {
+            0.0
+        };
+        return (nothing, free);
+    };
+    let free = (tallying && input.limits.is_some()).then(|| candidates.clone());
+    let power = |v: f64| v * current(v).min(cap);
     candidates.extend([low, high]);
     candidates.retain(|v| v.is_finite());
     candidates.sort_by(f64::total_cmp);
     let voltage = peak(&candidates, &power, |v| v >= low && v <= high);
     let total = current(voltage);
     let flowing = total.min(cap);
-    InputEstimate {
+    let estimate = InputEstimate {
         current: flowing,
         voltage,
         power: voltage * flowing,
@@ -65,7 +75,39 @@ pub fn operating_point<'a>(
                 }
             })
             .collect(),
-    }
+    };
+    // Without limits the input runs at its free peak.
+    let free = free.map_or(estimate.power, |c| free_peak(c, open_circuit, &current));
+    (estimate, free)
+}
+
+/// Each string's curve, tallied into its tally in `tallies`, if any.
+fn curves<'a>(
+    input: &Input,
+    sky: &Sky,
+    shade: impl Fn(usize) -> (Shade<'a>, Open<'a>),
+    mut tallies: Option<&mut [Tally]>,
+) -> Vec<Curve> {
+    input
+        .strings
+        .iter()
+        .enumerate()
+        .map(|(k, s)| {
+            let (shade, open) = shade(k);
+            let tally = tallies.as_deref_mut().and_then(|t| t.get_mut(k));
+            Curve::tallied(s, sky, shade, open, tally)
+        })
+        .collect()
+}
+
+/// The watts at the peak of `current`'s curve at any voltage up to `open_circuit`, searched
+/// among `candidates`.
+fn free_peak(mut candidates: Vec<f64>, open_circuit: f64, current: &impl Fn(f64) -> f64) -> f64 {
+    candidates.push(open_circuit);
+    candidates.retain(|v| v.is_finite());
+    candidates.sort_by(f64::total_cmp);
+    let power = |v: f64| v * current(v);
+    power(peak(&candidates, &power, |v| v >= 0.0)).max(0.0)
 }
 
 /// The voltages the input may run at and its current limit; `None` when its strings cannot
