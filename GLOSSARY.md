@@ -332,6 +332,10 @@ _Avoid_: Array, panel layout
 The margin along every edge of a roof face that no module may cross.
 _Avoid_: Border, margin
 
+**Fill rules**:
+How "Fill face" lays a face's free roof: the gap between modules, never under 2 cm; the alignment, from the setback's lower left or centred in it; and the keep-out margin, kept free round each roof chimney, roof window, existing PV and dormer. A call's, never stored with the scene.
+_Avoid_: Fill settings, spacing
+
 **Block**:
 A building footprint with its roof: a rectangle under one roof kind, or a polygon under free-form roof faces.
 _Avoid_: Building, house
