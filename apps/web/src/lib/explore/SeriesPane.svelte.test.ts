@@ -3,6 +3,7 @@ import { cdp, page, userEvent } from "vitest/browser";
 // The screen is laid out by the SPA's utilities.
 import "../../app.css";
 import { PLANT, WEATHER } from "../api/computed-devices.ts";
+import { finish } from "../motion/animations.harness.ts";
 import { plant, reset, show } from "./explore.harness.ts";
 
 afterEach(reset);
@@ -25,7 +26,9 @@ test("a 7th series cannot be added, and the picker says why", async () => {
     )
     .toBeVisible();
   await expect.element(seventh).toBeDisabled();
-
+  // A forced click scrolls once and does not wait for the list to stand still. Mid-glide the card
+  // clips the list and scrolls itself; its glide ending puts the button back below the screen.
+  await finish();
   await seventh.click({ force: true });
 
   expect(went).toEqual([]);
