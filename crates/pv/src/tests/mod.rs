@@ -20,6 +20,7 @@ mod opening;
 mod parking;
 mod perez;
 mod profile;
+mod proof;
 mod roof_window;
 mod roofing;
 mod scene;
