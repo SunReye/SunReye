@@ -1,8 +1,9 @@
 // Component tests run side by side under load, so none may wait on the wall clock or on the
-// browser's frames: a file that needs time to pass fakes it (`vi.useFakeTimers`) and advances it,
-// and a wait has no budget beyond vitest's own, nor a test beyond its 15 s but in the named slow
-// scene files (`SLOW`). A gate step; `bun scripts/fake-time.ts` lists the real-time calls in
-// component tests and their harnesses.
+// browser's frames: a file that needs time to pass fakes it (`vi.useFakeTimers`) and advances it.
+// No wait or test gives itself a budget: the one hang guard per suite is the config's
+// (`apps/web/vite.config.ts`), so a test asserts outcomes and order, never how long they took. A
+// gate step; `bun scripts/fake-time.ts` lists the real-time calls in component tests and their
+// harnesses.
 //
 // It reads source text, a block at a time, so it cannot see: a timer reached through a helper in
 // another file, a budget computed at run time, or a wait a library makes on its own clock.
@@ -48,27 +49,8 @@ const CALLS: readonly Call[] = [
   { call: "waitForTimeout", found: /\.waitForTimeout\(/u },
 ];
 
-/**
- * The serial scene files whose tests need more than vitest's 15 s under software WebGL, by path
- * under `lib/`, with what was measured: they alone may raise a test's budget.
- */
-export const SLOW = {
-  "builder/lay-modules.svelte.test.ts":
-    "Its wiring test took 13.9 s alone and 15.6 s in the full suite: eleven presses and drills through the canvas.",
-} satisfies Readonly<Record<string, string>>;
-
-/** Vitest's own budget for a wait (`expect.poll`, `expect.element`, `vi.waitFor`), in ms. */
-const WAIT_MS = 1000;
-
-/** Vitest's own budget for a test in the browser, in ms. */
-const TEST_MS = 15_000;
-
-/** A `timeout` option, with what it is given when not shorthand. */
-const BUDGET = /(?<=[{,]\s*)timeout\s*(?::\s*([^,}\n]+?))?\s*(?=[,}\n])/gu;
-
-/** Whether a budget is above `ms`: one given by a name or a sum cannot be read, so is. */
-const over = (given = "", ms = WAIT_MS) =>
-  !/^[\d_]+$/u.test(given) || Number(given.replaceAll("_", "")) > ms;
+/** A `timeout` option. */
+const BUDGET = /(?<=[{,]\s*)timeout\s*(?::\s*[^,}\n]+?)?\s*(?=[,}\n])/gu;
 
 /** A test's call up to its name and the comma after it. */
 const TEST_NAMED = /\b(?:test|it)(?:\.\w+)*\(\s*(["'`])(?:\\.|(?!\1)[^\\])*\1\s*,\s*$/u;
@@ -95,26 +77,16 @@ function givenAt(source: string, at: number): number[] {
   return exported === undefined ? uses : [at, ...uses];
 }
 
-/**
- * Every budget above vitest's given to a wait or a test, inline or by name, with the line it is
- * given on.
- */
+/** Every budget given to a wait or a test, inline or by name, with the line it is given on. */
 function budgets(source: string): RealTime[] {
   return (
     [...source.matchAll(BUDGET)]
       // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- a match, only read.
-      .flatMap((match) => {
-        const at = givenAt(source, source.lastIndexOf("{", match.index));
-
-        return at.map((index) => ({ index, given: match[1] }));
-      })
-      .flatMap(({ index, given }: Readonly<{ index: number; given: string | undefined }>) => {
-        const own = testsOwn(source.slice(0, index));
-
-        if (!over(given, own ? TEST_MS : WAIT_MS)) return [];
-
-        return [{ call: own ? "test budget" : "timeout", line: lineAt(source, index) }];
-      })
+      .flatMap((match) => givenAt(source, source.lastIndexOf("{", match.index)))
+      .map((index) => ({
+        call: testsOwn(source.slice(0, index)) ? "test budget" : "timeout",
+        line: lineAt(source, index),
+      }))
   );
 }
 
@@ -158,15 +130,13 @@ function trailing(source: string): RealTime[] {
     // A test's last argument is its body unless it is a budget.
     if (!waits && !/^(?:[\d_]+|[A-Z][\w$]*)$/u.test(given)) return [];
 
-    if (!over(given, waits ? WAIT_MS : TEST_MS)) return [];
-
     const line = lineAt(source, closing(source, open));
 
     return [{ call: waits ? "timeout" : "test budget", line }];
   });
 }
 
-/** A raised budget for every test or hook of the file, or of a project. */
+/** A budget for every test or hook of the file, or of a project. */
 function raised(source: string): RealTime[] {
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- a match, only read.
   return [...source.matchAll(/\b(?:testTimeout|hookTimeout)\s*:/gu)].map((match) => ({
@@ -232,13 +202,13 @@ export function realTime(path: string, source: string): RealTime[] {
     real.flatMap(({ call, found }) => (found.test(text) ? [{ call, line: index + 1 }] : [])),
   );
 
-  const slow = Object.hasOwn(SLOW, path.slice(`${SRC}lib/`.length));
-
-  const all = [...calls, ...budgets(source), ...trailing(source), ...raised(source)].filter(
-    (found) => !(slow && found.call === "test budget"),
-  );
-
-  return [...all, ...afterReal(source)].toSorted((a, b) => a.line - b.line);
+  return [
+    ...calls,
+    ...budgets(source),
+    ...trailing(source),
+    ...raised(source),
+    ...afterReal(source),
+  ].toSorted((a, b) => a.line - b.line);
 }
 
 if (import.meta.main) {
