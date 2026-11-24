@@ -37,8 +37,8 @@ export interface Laying extends Steps {
   readonly roof: RoofFace;
   /** The roof modules may not lie on. */
   readonly shade: LaidGrid;
-  /** The selected module's footprint. */
-  readonly selected?: Footprint | undefined;
+  /** The selected modules' footprints, each marked. */
+  readonly selected?: readonly Footprint[];
   /** The modules not laid yet, under the pointer. */
   readonly ghosts?: readonly Ghost[];
   /** What a press at `from` dragged to `to` would lay on `scene`'s grid; null off its face. */

@@ -30,6 +30,17 @@ export interface OnGrid {
   readonly grid: number;
 }
 
+/** How "Fill face" lays the free roof (ADR 20 Modules); each left out is the builder's own. */
+export interface FillRules {
+  /** Metres between two modules: 0.02 without; under 0.02 it is 0.02. */
+  readonly gap?: number;
+  /** Rows and columns from the setback's lower left, as without, or the spare roof shared out on
+   * both sides. */
+  readonly alignment?: "lowerLeft" | "centred";
+  /** Metres kept free round each roof chimney, roof window, existing PV and dormer: 0 without. */
+  readonly keepOut?: number;
+}
+
 /** A roof face as a module grid sees it. */
 export interface RoofFace {
   readonly block: number;

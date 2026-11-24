@@ -4,7 +4,8 @@
 
 use serde_json::{Value, json};
 
-use crate::{Ghost, Point, Scene, Size};
+use crate::grid::overlap;
+use crate::{Alignment, FillRules, Ghost, Point, Scene, Size};
 
 const SIZE: Size = Size {
     width: 1.134,
@@ -210,7 +211,7 @@ fn filling_a_face_lays_the_free_roof_row_by_row_from_the_lower_left() {
     let empty = scene(&json!([]), &json!([]));
 
     // 0.3 + c × 1.154 + 1.134 ≤ 9.7 and 0.3 + r × 1.742 + 1.722 ≤ 4.583: 8 across, 2 up.
-    let filled = empty.fill(0, sized);
+    let filled = empty.fill(0, sized, FillRules::default());
 
     assert_eq!(filled.len(), 16);
     let mm = |[across, up]: [f64; 2]| ((across * 1000.0).round(), (up * 1000.0).round());
@@ -224,7 +225,7 @@ fn filling_a_face_keeps_2_cm_off_its_modules_and_off_its_chimneys() {
     // The module at 0.5 m, 0.5 m lies over two cells of each row; the chimney over one.
     let taken = scene(&json!([portrait(0.5, 0.5)]), &json!([chimney()]));
 
-    let filled = taken.fill(0, sized);
+    let filled = taken.fill(0, sized, FillRules::default());
 
     assert_eq!(filled.len(), 16 - 4 - 1);
     let mut all = taken;
@@ -238,7 +239,10 @@ fn filling_a_face_keeps_2_cm_off_its_modules_and_off_its_chimneys() {
         Ok(12)
     );
     // A face filled once has no room left.
-    assert_eq!(all.fill(0, sized), Vec::<[f64; 2]>::new());
+    assert_eq!(
+        all.fill(0, sized, FillRules::default()),
+        Vec::<[f64; 2]>::new()
+    );
 }
 
 #[test]
@@ -262,4 +266,97 @@ fn a_strike_inside_a_grids_setback_lands_on_the_grid() {
     assert_eq!(empty.grid_at(on_face(0.2, 2.0)), None);
     assert_eq!(empty.grid_at([5.0, -2.0, 4.4]), None);
     assert_eq!(empty.grid_at([5.0, -6.0, 9.0]), None);
+}
+
+#[test]
+fn a_wider_gap_fills_fewer_columns_and_none_comes_under_2_cm() {
+    let empty = scene(&json!([]), &json!([]));
+    let mm = |[across, up]: [f64; 2]| ((across * 1000.0).round(), (up * 1000.0).round());
+
+    // 0.3 + c × 1.234 + 1.134 ≤ 9.7: 7 across, 2 up.
+    let wide = empty.fill(
+        0,
+        sized,
+        FillRules {
+            gap: 0.1,
+            ..FillRules::default()
+        },
+    );
+    assert_eq!(wide.len(), 14);
+    assert_eq!(mm(wide[1]), (1534.0, 300.0));
+    assert_eq!(mm(wide[7]), (300.0, 2122.0));
+
+    let tight = empty.fill(
+        0,
+        sized,
+        FillRules {
+            gap: 0.0,
+            ..FillRules::default()
+        },
+    );
+    assert_eq!(tight, empty.fill(0, sized, FillRules::default()));
+}
+
+#[test]
+fn a_centred_fill_shares_the_spare_roof_out_on_both_sides() {
+    let empty = scene(&json!([]), &json!([]));
+    let mm = |[across, up]: [f64; 2]| ((across * 1000.0).round(), (up * 1000.0).round());
+    let rules = FillRules {
+        alignment: Alignment::Centred,
+        ..FillRules::default()
+    };
+
+    let filled = empty.fill(0, sized, rules);
+
+    // 9.4 m across holds 8 modules in 9.212 m; 4.283 m up holds 2 in 3.464 m.
+    assert_eq!(filled.len(), 16);
+    assert_eq!(mm(filled[0]), (394.0, 710.0));
+    assert_eq!(mm(filled[15]), (8472.0, 2452.0));
+}
+
+#[test]
+fn a_keep_out_margin_holds_modules_off_a_chimney() {
+    let taken = scene(&json!([]), &json!([chimney()]));
+    let roofs = taken.roofs();
+    let face = roofs.iter().find(|r| r.face == 1).unwrap();
+    let chimney = face.chimneys[0];
+    let rules = FillRules {
+        keep_out: 0.5,
+        ..FillRules::default()
+    };
+
+    let filled = taken.fill(0, sized, rules);
+
+    assert!(filled.len() < taken.fill(0, sized, FillRules::default()).len());
+    assert_ne!(filled.len(), 0);
+    let area = |[across, up]: [f64; 2]| [[across, up], [across + 1.134, up + 1.722]];
+    assert!(
+        filled
+            .iter()
+            .all(|at| !overlap(area(*at), chimney, 0.5 - 1e-6))
+    );
+}
+
+#[test]
+fn fill_rules_read_from_json_and_default_to_the_builders() {
+    let rules: FillRules =
+        serde_json::from_value(json!({ "gap": 0.05, "alignment": "centred", "keepOut": 0.3 }))
+            .unwrap();
+    assert_eq!(
+        rules,
+        FillRules {
+            gap: 0.05,
+            alignment: Alignment::Centred,
+            keep_out: 0.3
+        }
+    );
+    let none: FillRules = serde_json::from_value(json!({})).unwrap();
+    assert_eq!(
+        none,
+        FillRules {
+            gap: 0.02,
+            alignment: Alignment::LowerLeft,
+            keep_out: 0.0
+        }
+    );
 }

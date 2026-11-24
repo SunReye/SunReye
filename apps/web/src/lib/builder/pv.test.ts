@@ -35,10 +35,10 @@ test("the pv crate draws a gable house's ridge 4 m above its eave, east and nort
   expect(faces.filter((face) => face.surface === "wall")).toHaveLength(4);
 });
 
-test("a tree reaches the browser as a trunk under a sphere crown", () => {
+test("a tree reaches the browser as a trunk under a sphere crown, both naming it", () => {
   expect(pv.geometry(house).solids).toEqual([
-    { kind: "cylinder", base: [-4, 0, 0], radius: 0.2, height: 8 },
-    { kind: "sphere", centre: [-4, 0, 8], radius: 2 },
+    { kind: "cylinder", base: [-4, 0, 0], radius: 0.2, height: 8, obstacle: 0 },
+    { kind: "sphere", centre: [-4, 0, 8], radius: 2, obstacle: 0 },
   ]);
 });
 
@@ -55,10 +55,12 @@ test("a conifer reaches the browser as a trunk under a cone, a hedge as faces dr
   const { faces, solids } = pv.geometry(garden);
 
   expect(solids).toEqual([
-    { kind: "cylinder", base: [-4, 0, 0], radius: 0.2, height: 2 },
-    { kind: "cone", base: [-4, 0, 2], radius: 2, height: 8 },
+    { kind: "cylinder", base: [-4, 0, 0], radius: 0.2, height: 2, obstacle: 0 },
+    { kind: "cone", base: [-4, 0, 2], radius: 2, height: 8, obstacle: 0 },
   ]);
-  expect(faces.map(({ surface }) => surface)).toEqual(Array.from({ length: 5 }, () => "hedge"));
+  expect(faces.map(({ surface, obstacle }) => [surface, obstacle])).toEqual(
+    Array.from({ length: 5 }, () => ["hedge", 1]),
+  );
 });
 
 test("ground surfaces lie on the ground and fences run through their points; refused, none", () => {

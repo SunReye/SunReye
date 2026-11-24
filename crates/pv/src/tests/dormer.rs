@@ -86,7 +86,7 @@ fn a_dormer_cuts_its_outline_out_of_its_faces_module_area() {
 #[test]
 fn filling_a_face_leaves_its_dormer_free() {
     let sized = |id| (id == 7).then_some(SIZE);
-    let filled = scene(&json!([grid(0, 0.0, &[])])).fill(0, sized);
+    let filled = scene(&json!([grid(0, 0.0, &[])])).fill(0, sized, crate::FillRules::default());
 
     assert!(filled.len() > 50, "{}", filled.len());
     assert!(
@@ -153,7 +153,7 @@ fn a_dormer_on_a_pitched_face_cuts_the_outline_it_has_seen_from_above() {
     .unwrap();
     let face = scene.roofs().remove(0);
     let sized = |id| (id == 7).then_some(SIZE);
-    let filled = scene.fill(0, sized);
+    let filled = scene.fill(0, sized, crate::FillRules::default());
     // Each module's middle seen from above: x east, z south (north is 0).
     let middles: Vec<[f64; 2]> = filled
         .iter()
@@ -176,4 +176,23 @@ fn a_dormer_on_a_pitched_face_cuts_the_outline_it_has_seen_from_above() {
 #[test]
 fn a_traced_roof_with_a_dormer_is_one_the_core_saves() {
     assert_eq!(scene(&json!([])).check_blocks(), Ok(()));
+}
+
+#[test]
+fn a_keep_out_margin_holds_a_fill_off_a_dormer() {
+    let sized = |id| (id == 7).then_some(SIZE);
+    let rules = crate::FillRules {
+        keep_out: 0.5,
+        ..crate::FillRules::default()
+    };
+    let filled = scene(&json!([grid(0, 0.0, &[])])).fill(0, sized, rules);
+
+    assert!(filled.len() > 40, "{}", filled.len());
+    assert!(
+        filled.iter().all(|&[u, v]| u + 1.0 <= 3.5 + 1e-6
+            || u >= 6.5 - 1e-6
+            || v + 1.0 <= 3.5 + 1e-6
+            || v >= 6.5 - 1e-6),
+        "{filled:?}"
+    );
 }

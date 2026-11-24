@@ -739,7 +739,7 @@ fn a_bent_traced_face_offers_no_free_roof_to_fill() {
         let stored = json!({ "north": 0.0, "blocks": [block], "obstacles": [], "grids": grids });
         serde_json::from_value::<Scene>(stored)
             .unwrap()
-            .fill(0, sized)
+            .fill(0, sized, crate::FillRules::default())
             .len()
     };
 

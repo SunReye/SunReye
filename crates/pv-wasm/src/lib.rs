@@ -26,7 +26,13 @@ fn geometry(scene: &[u8]) -> String {
     match serde_json::from_slice::<Scene>(scene) {
         Ok(scene) => json!({ "ok": {
             "faces": scene.faces().iter().map(face).collect::<Vec<_>>(),
-            "solids": scene.solids().iter().map(solid).collect::<Vec<_>>(),
+            "solids": scene.solids_by_obstacle().iter().map(|(obstacle, occluder)| {
+                let mut drawn = solid(occluder);
+                if let (Some(index), Some(fields)) = (obstacle, drawn.as_object_mut()) {
+                    fields.insert("obstacle".into(), json!(index));
+                }
+                drawn
+            }).collect::<Vec<_>>(),
             "mounts": scene.mounts().ok().map(|mounts| {
                 mounts.iter().map(|m| json!({ "at": m.at, "above": m.above, "out": m.out })).collect::<Vec<_>>()
             }),
@@ -270,10 +276,16 @@ fn face(face: &Face) -> Value {
         Surface::Hedge => "hedge",
         Surface::Chimney => "chimney",
     };
-    face.colour.as_ref().map_or_else(
-        || json!({ "surface": surface, "corners": face.corners }),
-        |colour| json!({ "surface": surface, "corners": face.corners, "colour": colour }),
-    )
+    let mut drawn = json!({ "surface": surface, "corners": face.corners });
+    if let Some(fields) = drawn.as_object_mut() {
+        if let Some(colour) = &face.colour {
+            fields.insert("colour".into(), json!(colour));
+        }
+        if let Some(index) = face.obstacle {
+            fields.insert("obstacle".into(), json!(index));
+        }
+    }
+    drawn
 }
 
 fn solid(occluder: &Occluder) -> Value {

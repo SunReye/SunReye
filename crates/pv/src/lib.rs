@@ -40,7 +40,7 @@ pub use face_detail::{Covering, FaceDetail};
 pub use fitting::Unfit;
 pub use free_form::{FreeForm, Traced};
 pub use grid::{Area, GAP, GridModule, Misplaced, ModuleGrid, Placed, RoofFace, Size, Spot};
-pub use laying::Ghost;
+pub use laying::{Alignment, FillRules, Ghost};
 pub use mppt::{input_output, module_counts_differ};
 pub use neighbour::{Neighbour, NeighbourRefused};
 pub use opening::{Fitted, Light, Opening, OpeningKind};

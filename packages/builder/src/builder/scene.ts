@@ -2,7 +2,6 @@
 // component only adds the group to its renderer.
 import {
   BufferGeometry,
-  CylinderGeometry,
   DoubleSide,
   Float32BufferAttribute,
   Group,
@@ -11,15 +10,15 @@ import {
   type Object3D,
   type MeshStandardMaterial,
 } from "three";
-import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import * as finish from "../scene/materials.ts";
 import { aerialGround, drape, fence, ground, photo } from "../scene/surroundings.ts";
-import { conifer, crown, level, triangles as cut } from "../scene/surfaces.ts";
+import { level, triangles as cut } from "../scene/surfaces.ts";
 import { existingPv, roofWindows } from "../scene/roof-windows.ts";
 import { openings } from "../scene/wall-openings.ts";
 import { trim } from "../scene/trim.ts";
 import { modules, toThree, type Panel } from "./panels.ts";
-import type { Around, Face, Geometry, Mount, Solid } from "./pv.ts";
+import { marker, ownEach, solid } from "./bodies.ts";
+import type { Around, Face, Geometry } from "./pv.ts";
 
 /** Each face as triangles, convex or not. */
 function triangles(faces: readonly Face[]): number[] {
@@ -44,6 +43,12 @@ function surface(
   const mesh = new Mesh(geometry, material);
 
   mesh.name = name;
+  ownEach(
+    mesh,
+    faces.flatMap(({ corners, obstacle = -1 }) =>
+      Array.from({ length: cut(corners).length / 3 }, () => obstacle),
+    ),
+  );
 
   return mesh;
 }
@@ -65,70 +70,9 @@ function behind(wall: Mesh): Mesh {
   return wall;
 }
 
-/** Whether a cylinder carries a crown straight above it: a trunk. */
-function trunk(
-  { base, radius }: Readonly<Solid & { kind: "cylinder" | "cone" }>,
-  solids: readonly Solid[],
-): boolean {
-  return solids.some((other) => {
-    const above =
-      other.kind === "sphere" ? other.centre : other.kind === "cone" ? other.base : null;
-
-    return (
-      above !== null && Math.hypot(above[0] - base[0], above[1] - base[1]) <= Math.max(radius, 0.01)
-    );
-  });
-}
-
-/** A crown or a trunk, a chimney or a pole. */
-function solid(obstacle: Solid, solids: readonly Solid[]): Mesh {
-  if (obstacle.kind !== "cylinder") {
-    const top =
-      obstacle.kind === "sphere"
-        ? crown(obstacle.radius)
-        : conifer(obstacle.radius, obstacle.height);
-
-    top.position.set(...toThree(obstacle.kind === "sphere" ? obstacle.centre : obstacle.base));
-    top.name = "solid";
-
-    return top;
-  }
-
-  const { base, radius } = obstacle;
-  // Drawn its radius short: a carport's post reaches its roof's highest corner over it, and
-  // would stand through the roof's slope.
-  const height = Math.max(obstacle.height - radius, 0);
-
-  const upright = new Mesh(
-    // A trunk tapers toward its crown.
-    trunk(obstacle, solids)
-      ? new CylinderGeometry(radius * 0.6, radius, height, 14)
-      : new CylinderGeometry(radius, radius, height, 16),
-    trunk(obstacle, solids) ? finish.trunk() : finish.clay(),
-  );
-
-  // three.js centres a cylinder on its position.
-  upright.position.set(...toThree([base[0], base[1], base[2] + height / 2]));
-  upright.name = "solid";
-
-  return upright;
-}
-
 /** Hedges: plain bodies in the crowns' tone. */
 function hedges(faces: readonly Face[]): Mesh[] {
   return faces.length === 0 ? [] : [surface("hedge", faces, finish.foliage())];
-}
-
-/** A marker's body, its back to its wall: it turns with its house (ADR 20). */
-function marker({ at, out }: Mount): Mesh {
-  const box = new Mesh(new RoundedBoxGeometry(0.5, 0.6, 0.5, 3, 0.03), finish.equipment());
-  const [x, , z] = toThree(out);
-
-  box.position.set(...toThree(at));
-  box.rotation.y = Math.atan2(x, z);
-  box.name = "equipment";
-
-  return box;
 }
 
 /** Faces by their colour, the finish's own first; at least one group, so a kind is always drawn. */
@@ -199,7 +143,7 @@ function sections(
       ...(geometry.ground ?? []).map((item, i) => ground(item, i)),
       ...(geometry.fences ?? []).map((item) => fence(item)),
     ],
-    () => geometry.solids.map((obstacle) => solid(obstacle, geometry.solids)),
+    () => geometry.solids.map((item) => solid(item, geometry.solids)),
     () => modules(panels),
     () => (geometry.mounts ?? []).map((mount) => marker(mount)),
     () => openings(geometry.openings ?? [], roofs),

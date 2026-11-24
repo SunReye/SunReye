@@ -215,6 +215,8 @@ export function picked(
 
   if (hit.kind === "opening") return { kind: "opening", index: hit.index };
 
+  if (hit.kind === "obstacle") return { kind: "obstacle", index: hit.index };
+
   if (hit.kind === "point") return at(scene, pv, hit.point);
 
   const grid = scene.grids?.[hit.grid];
@@ -248,7 +250,7 @@ export function gridOn(scene: Readonly<Scene>, face: RoofFaceId): number {
 }
 
 /** A selected face's or module's grid: its position in the scene, how the crate laid it out, and
- * the selected module's footprint; null for a face without a grid or its module type. */
+ * the selected module's footprint, if any; null for a face without a grid or its module type. */
 export function faceGrid(
   scene: Readonly<Scene>,
   { grids }: Readonly<Pick<Modules, "grids">>,
@@ -256,7 +258,7 @@ export function faceGrid(
 ): {
   readonly grid: number;
   readonly shade: LaidGrid;
-  readonly selected: LaidGrid["modules"][number] | undefined;
+  readonly selected: LaidGrid["modules"];
 } | null {
   const grid = gridOn(scene, level);
 
@@ -267,7 +269,7 @@ export function faceGrid(
   return {
     grid,
     shade,
-    selected: level.kind === "module" ? shade.modules[level.module] : undefined,
+    selected: shade.modules.filter((_, i) => level.kind === "module" && i === level.module),
   };
 }
 
