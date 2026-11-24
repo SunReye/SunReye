@@ -130,7 +130,7 @@ export interface TypicalYear {
 }
 
 /** A layout over a year of weather, for its irradiation on its planes. */
-export type Irradiated = Omit<YearRun, "inverterTypes" | "horizon">;
+export type Irradiated = Omit<YearRun, "inverterTypes" | "horizon" | keyof RunLosses>;
 
 /** A past year's irradiation on a layout's planes, in Wh/m². */
 export interface PastIrradiation {
