@@ -1,7 +1,7 @@
 // Every test file's page runs in one tab of one origin: what a test leaves behind there steers the
 // files after it.
-import { afterEach, beforeAll, inject } from "vitest";
-import { commands } from "vitest/browser";
+import { afterEach, beforeAll, beforeEach, inject } from "vitest";
+import { cdp, commands } from "vitest/browser";
 import { watchAnimations } from "./lib/motion/animations.harness.ts";
 import { watchFrames } from "./lib/motion/clock.harness.ts";
 import { watchDraws } from "./scene-draws.ts";
@@ -30,6 +30,12 @@ beforeAll(() => {
     throw new Error(
       "This file starts without a mouse: a file before it in this tab emulated touch. touch-tests.ts gives such a file a tab of its own.",
     );
+});
+
+// Each test starts with the pointer off the page. Left at rest where an earlier test or file put
+// it, it hovers what this test renders there, a frame later: an interactive card rises (#888).
+beforeEach(async () => {
+  await cdp().send("Input.dispatchMouseEvent", { type: "mouseMoved", x: -1, y: -1 });
 });
 
 // Outside the scene project nothing draws with WebGL: every page shares one software renderer.
