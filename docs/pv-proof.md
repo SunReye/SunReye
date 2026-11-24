@@ -1,6 +1,6 @@
 # PV model: the proof against pvlib
 
-How close a year's run of `sunreye_pv` comes to pvlib on four reference plants. Decision: ADR 17. Model: [pv-model.md](pv-model.md). Test: `crates/pv/src/tests/proof.rs`. Reference: `crates/pv/fixtures/proof.py`, pvlib 0.16.1.
+How close a year's run of `sunreye_pv` comes to pvlib on four plants. Decision: ADR 17. Model: [pv-model.md](pv-model.md). Test: `crates/pv/src/tests/proof.rs`. Reference: `crates/pv/fixtures/proof.py`, pvlib 0.16.1.
 
 ## Result
 
@@ -24,7 +24,7 @@ By UTC month, in %:
 | Shaded roof | +1.44 | +1.74 | −0.71 | −1.07 | −1.17 | −1.12 | −1.15 | −1.07 | −1.00 | +3.62 | +3.60 | −3.56 |
 | Rack field | +7.09 | +0.40 | −0.42 | −0.44 | −0.47 | −0.45 | −0.46 | −0.44 | −0.42 | −0.19 | +6.75 | +1.44 |
 
-Unshaded, the crate is pvlib's chain. Shaded, a year agrees within 1 % and a month within 7 %, for the two reasons below.
+Without shade the crate matches pvlib's chain. With shade a year agrees within 1 %, but a month can be off by up to 7 %. Two differences in where the crate looks at a substring explain most of it (below).
 
 ## The plants
 
@@ -56,14 +56,27 @@ The rules for which light shade takes are ADR 17's, since pvlib has no rule for 
 
 ## Why the shaded plants differ
 
-- **Sky view at a substring's edge, not its mean.** The crate closes a node of its 2° grid whole when any of the substring's sample points is shaded there (ADR 17). Its view is therefore about the lowest sample point's view, while pvlib averages along the strip. Beside the wall the lower row sees 0.816 of the open sky in the crate and 0.849 in pvlib. In the field the three substrings see 0.917, 0.959 and 0.986 against pvlib's 0.933, 0.969 and 0.992. This makes the crate read about 1.1 % low through the summer on the shaded roof and 0.45 % low on the rack field, conservative on both.
-- **When the beam goes.** The crate decides shade by 27 sample points per substring, inset from its edges, at the 2° node nearest the sun. pvlib decides it at the substring's edge, at the sun's exact position. At hourly samples, an hour that one side counts as shaded and the other as lit moves a whole hour's beam. In the winter months, with few lit hours, that swings a month by up to 7 %, in both directions. Over the year these swings largely offset the summer's view.
+The crate judges a substring at its sample points: 27 per substring, 3 across and 9 along, each inset half a spacing from the edges (ADR 17, `shade.rs`). pvlib judges the substring at its edge (beam) and averaged along it (diffuse). Both choices are ADR 17's, and pvlib's are the physical ones.
+
+- **Sky view: the crate is lower, all year.** The crate closes a node of its 2° grid whole when any sample point is shaded there, so a substring takes about its lowest sample point's view. pvlib averages along the strip. Beside the wall, the lower row sees 0.816 of the open sky in the crate and 0.849 in pvlib. In the field the three substrings see 0.917, 0.959 and 0.986, against pvlib's 0.933, 0.969 and 0.992. The shaded roof reads about 1.1 % low through the summer and the rack field about 0.45 % low. Both are conservative.
+- **Beam: the crate is higher in winter.** A substring loses its beam in the crate only once the shadow reaches its lowest sample point, and pvlib takes the beam as soon as the shadow reaches its edge. In portrait the lowest sample point sits 0.096 m above the module's edge; in landscape it sits 0.063 m above each substring's edge. With the sun low, the shadow's edge creeps across that inset for an hour or more. The rack field therefore reads high in every winter month, up to 7 %, which is optimistic for an offer.
+
+Over a year the two offset each other: −0.6 % on the shaded roof and +0.006 % on the rack field. The 1 % tolerance bounds the year only. A month is not tested.
+
+Rerunning pvlib with its view and its beam threshold both taken at the crate's lowest sample point confirms the split:
+
+| Plant | pvlib as published | Beam at the sample point | View at the sample point | Both |
+| --- | --- | --- | --- | --- |
+| Shaded roof, year | −0.615 % | −0.984 % | +0.586 % | +0.208 % |
+| Rack field, year | +0.006 % | −0.480 % | +0.465 % | −0.025 % |
+
+With both, summer months agree within 0.02 %. What remains, up to 3.3 % in a winter month (roof +1.9 % in October and +3.3 % in November, rack field −1.8 % in January), is not yet attributed. Candidates are the 2° nearest-node lookup and the sample points across the strip, where an hour that one side counts shaded and the other lit moves a whole hour's beam.
 
 ## Not compared
 
-- **The AC side.** It is pvlib's `inverter.pvwatts` by construction and is tested on its own (`tests/year.rs`).
+- **The AC side.** It is pvlib's `inverter.pvwatts` by construction and has its own tests.
 - **Cables, soiling, degradation, the loss chain and the typical year.** These are arithmetic on the run, each with its own test.
-- **The horizon profile.** Its sky views are checked against closed forms (`skyview.csv`).
+- **The horizon profile.** It is checked by its own tests (`tests/horizon.rs`).
 - **A three-dimensional scene.** pvlib has none. The crate's shade is checked by hand-worked cases (`tests/shade.rs`, `roofing.rs`, `surroundings.rs`).
 - **Measured production.** Checking the model against plants on SunReye Home is the other half of ADR 17's proof, and it is still open.
 

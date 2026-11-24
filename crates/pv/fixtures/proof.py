@@ -1,4 +1,4 @@
-"""Writes the proof against pvlib (ADR 17): a year of weather and four reference plants' energy.
+"""Writes the proof against pvlib (ADR 17): a year of weather and four plants' energy.
 
 Run with pvlib 0.16.1: `uv run --with pvlib==0.16.1 python proof.py`. Write-up:
 `docs/pv-proof.md`; the crate's side: `src/tests/proof.rs`.

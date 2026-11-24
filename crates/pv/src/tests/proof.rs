@@ -1,4 +1,4 @@
-//! The proof against pvlib (ADR 17): four reference plants run over one year of weather, their
+//! The proof against pvlib (ADR 17): four plants run over one year of weather, their
 //! energy computed offline by `fixtures/proof.py` and committed. Write-up: `docs/pv-proof.md`.
 //!
 //! pvlib knows no scene, so shade comes from two long obstacles it can model in two dimensions:
