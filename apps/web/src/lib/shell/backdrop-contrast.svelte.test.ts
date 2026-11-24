@@ -2,10 +2,11 @@
 // The ambient glass is thin so the backdrop's lights show through it; its text must stay readable
 // wherever a light is brightest (ADR 21).
 import { toast } from "svelte-sonner";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { Toaster } from "../components/ui/sonner/index.js";
+import { stepUntil } from "../motion/clock.harness.ts";
 import Backdrop from "./Backdrop.svelte";
 import {
   drifts,
@@ -20,7 +21,10 @@ import {
 } from "./backdrop.harness.ts";
 import "../../app.css";
 
-afterEach(teardown);
+afterEach(() => {
+  vi.useRealTimers();
+  teardown();
+});
 
 type Rgb = readonly [number, number, number];
 
@@ -148,6 +152,8 @@ type Ink = (typeof INKS)[number] | (typeof STATUSES)[number];
 
 /** The colour of each status toast's icon, per theme: a toast is ambient glass too (#760). */
 async function statusInks(): Promise<Record<Theme, Record<(typeof STATUSES)[number], Rgb>>> {
+  // A toast's time is the test's: it closes, and leaves once dismissed, as the clock is run on.
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   await render(Toaster);
 
   const read = async (theme: Theme) => {
@@ -182,7 +188,13 @@ async function statusInks(): Promise<Record<Theme, Record<(typeof STATUSES)[numb
 
   // The toasts are out of the picture before it is measured.
   toast.dismiss();
-  await expect.poll(() => document.querySelectorAll("[data-sonner-toast]").length).toBe(0);
+  await stepUntil(
+    () => document.querySelectorAll("[data-sonner-toast]").length === 0,
+    () => {
+      vi.advanceTimersByTime(100);
+    },
+  );
+  vi.useRealTimers();
 
   return inks;
 }
