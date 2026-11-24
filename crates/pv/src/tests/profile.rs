@@ -587,4 +587,25 @@ fn a_day_under_the_scenes_sky() {
             ms / 96.0
         );
     }
+    // What the browser's clear sky runs: each instant traced, under views laid once.
+    let hills: Vec<[f64; 2]> = (-180_i16..180)
+        .map(|azimuth| [f64::from(azimuth), 15.0])
+        .collect();
+    let hills = Horizon::new(&hills).unwrap();
+    for (what, weather, horizon) in [
+        ("clear", &clear, None),
+        ("overcast", &overcast, None),
+        ("clear under hills of 15°", &clear, Some(&hills)),
+    ] {
+        let views = SkyViews::new(&layout, &mut table.borrow_mut(), horizon);
+        let ms = time(|| {
+            for w in weather {
+                black_box(estimate_with(&layout, &views, w));
+            }
+        });
+        println!(
+            "March, {what}, estimate_with: {:.4} ms per instant",
+            ms / 96.0
+        );
+    }
 }

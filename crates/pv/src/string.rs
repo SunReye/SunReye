@@ -12,8 +12,9 @@ const MARTIN_RUIZ_AR: f64 = 0.16;
 const DIFFUSE_IAM: f64 = 0.95;
 /// ADR 17: an optimized module delivers its own maximum power less 1 %.
 const OPTIMIZER: f64 = 0.99;
-/// Sky views reach the circuit to this step, so substrings that see nearly as much sky share
-/// one circuit: each distinct circuit costs a diode solve wherever the curve is read.
+/// The share of sky the scene closes reaches the circuit to this step, so substrings that see
+/// nearly as much sky share one circuit: each distinct circuit costs a diode solve wherever the
+/// curve is read.
 pub const VIEW_STEP: f64 = 0.02;
 /// Points per curve before refining; a shaded curve has one peak per shade level.
 const SAMPLES: u32 = 128;
@@ -233,7 +234,8 @@ pub struct Open<'a> {
     pub sun: bool,
     /// Each substring's sky view, module by module; empty for the whole sky.
     pub views: &'a [f64],
-    /// Each substring's plane's view above the horizon alone, the same indexing.
+    /// Each substring's plane's view above the horizon alone, the same indexing: what its cells
+    /// warm by, and what the scene's share is closed from.
     pub warming: &'a [f64],
 }
 
@@ -245,16 +247,17 @@ impl Open<'_> {
         warming: &[],
     };
 
-    /// The sky view of each of the `k`th module's `parts` substrings, to the circuit's step.
+    /// The sky view of each of the `k`th module's `parts` substrings: the share the scene closes
+    /// of its plane's view to the circuit's step, the horizon's exactly.
     fn of(self, k: usize, parts: usize) -> impl Iterator<Item = f64> {
-        let views = self
-            .views
-            .get(k * parts..(k + 1) * parts)
-            .unwrap_or_default();
-        (0..parts).map(move |part| {
-            views
-                .get(part)
-                .map_or(1.0, |&view| (view / VIEW_STEP).round() * VIEW_STEP)
+        let range = k * parts..(k + 1) * parts;
+        let views = self.views.get(range.clone()).unwrap_or_default();
+        let planes = self.warming.get(range).unwrap_or_default();
+        (0..parts).map(move |part| match (views.get(part), planes.get(part)) {
+            (Some(&view), Some(&plane)) => ((plane - view) / VIEW_STEP)
+                .round()
+                .mul_add(-VIEW_STEP, plane),
+            _ => 1.0,
         })
     }
 

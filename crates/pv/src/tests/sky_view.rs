@@ -5,8 +5,8 @@
 use super::fixtures::{MODULE, rows};
 use crate::string::VIEW_STEP;
 use crate::{
-    Input, Inverter, Layout, Location, Module, ModuleType, Occluder, Place, Plane, Point, PvString,
-    ShadingTable, SkyViews, Weather, estimate, estimate_with, sun_position,
+    Horizon, Input, Inverter, Layout, Location, Module, ModuleType, Occluder, Place, Plane, Point,
+    PvString, ShadingTable, SkyViews, Weather, estimate, estimate_with, sun_position,
 };
 
 const BERLIN: Location = Location {
@@ -95,8 +95,8 @@ fn a_substring_beside_a_tall_wall_receives_less_diffuse_light_by_its_sky_view() 
     );
     let open = layout(WHOLE, FLAT, &[[0.0, 0.0, 0.0]], Vec::new());
     let view = views(&beside).of(0)[0];
-    // To the step it reaches the circuit at.
-    let circuit = (view / VIEW_STEP).round() * VIEW_STEP;
+    // The share the wall closes, to the step it reaches the circuit at.
+    let circuit = ((1.0 - view) / VIEW_STEP).round().mul_add(-VIEW_STEP, 1.0);
 
     let shaded = watts(&beside, &overcast(60.0));
     let scaled = watts(&open, &overcast(60.0 * circuit));
@@ -280,4 +280,26 @@ fn simple_geometries_match_their_golden_sky_views() {
             "{case} {tilt}° {size} m at {distance} m: {view} != golden {expected}"
         );
     }
+}
+
+#[test]
+fn a_horizon_alone_reaches_the_circuit_unrounded() {
+    // 13° all round leaves a flat module cos² 13° of the sky, between two steps.
+    let profile: Vec<[f64; 2]> = (-180..180).map(|a| [f64::from(a), 13.0]).collect();
+    let horizon = Horizon::new(&profile).unwrap();
+    let open = layout(WHOLE, FLAT, &[[0.0, 0.0, 0.0]], Vec::new());
+    let views = SkyViews::new(&open, &mut ShadingTable::default(), Some(&horizon));
+    let view = views.of(0)[0];
+
+    let under = estimate_with(&open, &views, &overcast(60.0)).inverters[0].power;
+    let scaled = watts(&open, &overcast(60.0 * view));
+
+    assert!(
+        (view / VIEW_STEP).round().mul_add(VIEW_STEP, -view).abs() > 0.002,
+        "{view}"
+    );
+    assert!(
+        (under - scaled).abs() <= 1e-9 * scaled,
+        "{under} W under the horizon, {scaled} W under the diffuse it sees"
+    );
 }
