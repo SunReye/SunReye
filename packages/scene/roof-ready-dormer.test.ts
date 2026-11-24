@@ -172,3 +172,31 @@ test("a dormer off its face, too high, on a flat face or unknown is refused", ()
 
   expect(placeDormer(flat, 0, 0, "schleppgaube", at, SIZE)).toEqual({ refused: "short" });
 });
+
+test("a second dormer on the same face is pulled up, and leaves the first as it stood", () => {
+  const first = made(placeDormer(HOUSE, 0, FRONT, "schleppgaube", { x: 3, z: 2 }, SIZE));
+  const edited = placeDormer(first, 0, FRONT, "satteldachgaube", { x: 7, z: 2 }, SIZE);
+  const both = made(edited);
+
+  expect("refused" in edited ? edited.refused : edited.faces).toEqual([0, 1, 2]);
+  expect(dormers(both, 0)).toHaveLength(2);
+  expect([height(both, 2, 1), height(both, 4, 3)]).toEqual([5, 6]);
+  expect(height(both, 7, 1)).toBeCloseTo(6);
+  expect(height(both, 8, 1)).toBeCloseTo(5);
+  expect(bent(both, 0)).toEqual([]);
+});
+
+test("a dormer on a Walmdach's hip end looks down its slope, along x", () => {
+  // The hip end rises from x 0, at 3 m, a metre each metre in, to the ridge's start at x 4.
+  const house = placed("walmdach");
+  const end = faceAt(house, 1.5, 4);
+
+  const scene = made(
+    placeDormer(house, 0, end, "schleppgaube", { x: 1.5, z: 4 }, { width: 2, depth: 1 }),
+  );
+
+  expect(height(scene, 1, 3)).toBeCloseTo(4.5);
+  expect(height(scene, 2, 5)).toBeCloseTo(5);
+  expect(dormers(scene, 0)).toHaveLength(1);
+  expect(bent(scene, 0)).toEqual([]);
+});
