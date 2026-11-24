@@ -1,13 +1,24 @@
 // The `pv` crate's browser build, crates/pv-wasm, and its answers' types (ADRs 17, 20, 25). It
 // reads and returns the scene as `@sunreye/scene` types it.
 
-import type { Chimney, Opening, OpeningKind, RoofWindow, Scene, Wiring } from "@sunreye/scene";
+import type {
+  Chimney,
+  InverterType,
+  Opening,
+  OpeningKind,
+  RoofWindow,
+  Scene,
+  Wiring,
+} from "@sunreye/scene";
 import type { Face, Geometry, Point, Unfit } from "./geometry.d.ts";
 import type { FillRules, Ghost, Modules, OnGrid, Sizes } from "./layout.d.ts";
+import type { InputLimits, Inverters, Sizing, Stringing, Strung } from "./stringing.d.ts";
 
 export type * from "./geometry.d.ts";
 
 export type * from "./layout.d.ts";
+
+export type * from "./stringing.d.ts";
 
 /** North and east positive, in degrees. */
 export interface Location {
@@ -63,64 +74,104 @@ export interface ClearRun {
   readonly times: readonly number[];
 }
 
-/** One MPPT input's limits, as the core's capabilities list them (ADR 9). */
-export interface InputLimits {
-  /** Amperes. */
-  readonly maxCurrent: number;
-  /** Volts: its window, and where it starts. */
-  readonly minVoltage: number;
-  readonly maxVoltage: number;
-  readonly startVoltage: number;
+/**
+ * Weather at a fixed step, as columns: sample `i` is at `start + i × step` and its power is held
+ * for one step. Irradiance in W/m², air temperature in °C, wind in m/s.
+ */
+export interface WeatherSteps {
+  /** Seconds since 1970, UTC. */
+  readonly start: number;
+  /** Seconds; 900 for quarter hours. */
+  readonly step: number;
+  readonly ghi: readonly number[];
+  readonly dni: readonly number[];
+  readonly dhi: readonly number[];
+  readonly temperature: readonly number[];
+  /** Null where unknown; absent where the source has none. */
+  readonly wind?: readonly (number | null)[];
 }
 
-/** Each inverter's inputs' limits in the inputs' order, by device id. */
-export type Inverters = Readonly<Record<number, readonly InputLimits[]>>;
-
-/** A string as auto-stringing reads and makes it. */
-export type Strand = Readonly<Pick<Wiring, "moduleType" | "device" | "input" | "modules">>;
-
-/** What auto-stringing reads (ADR 20): the scene, its module types, the inverter the new strings
- * go to by device, each of its limits where known, and the layout's strings so far, which the new
- * ones follow. */
-export interface Stringing {
+/** A layout over a year of weather (ADR 17): the scene names its strings by position. */
+export interface YearRun {
+  readonly location: Location;
   readonly scene: Scene;
+  /** The consumer's neighbours, shading as the scene's obstacles do. */
+  readonly neighbours?: readonly Neighbour[];
   readonly moduleTypes: readonly ModuleType[];
-  readonly device: number;
-  readonly inverter: {
-    /** Volts. */
-    readonly maxInputVoltage: number | null;
-    /** In the inputs' order; null where the inverter lists none. */
-    readonly inputs: readonly InputLimits[] | null;
+  readonly strings: readonly Wiring[];
+  /** By inverter device id: its inputs' limits and AC side. An inverter without one caps no input and has no AC side. */
+  readonly inverterTypes?: Readonly<Record<number, InverterType>>;
+  readonly weather: WeatherSteps;
+}
+
+/** Twenty or more whole UTC years at one step over a rounded location (ADR 17). A value that
+ * averages the step before its time is stamped at the step's middle; `start` is the first such
+ * stamp. Hourly years give a typical year at quarter hours. */
+export interface PastYears {
+  readonly location: Location;
+  readonly years: readonly WeatherSteps[];
+}
+
+/** A rounded location's typical year, stamped in 2001, and the past year each month, January first,
+ * comes from. Made from hourly years it comes at quarter hours: each hour's mean split along the
+ * clear sky's shape, its energy kept; otherwise at the years' step. */
+export interface TypicalYear {
+  readonly weather: WeatherSteps;
+  readonly sources: readonly number[];
+}
+
+/** A layout over a year of weather, for its irradiation on its planes. */
+export type Irradiated = Omit<YearRun, "inverterTypes">;
+
+/** A past year's irradiation on a layout's planes, in Wh/m². */
+export interface PastIrradiation {
+  readonly year: number;
+  readonly irradiation: number;
+}
+
+/** The simulated typical year's energy, its irradiation in Wh/m² and each past year's. */
+export interface Scaling {
+  readonly simulated: number;
+  readonly typical: number;
+  readonly years: readonly PastIrradiation[];
+}
+
+/** P50 and P90 in the simulated energy's unit, and how they were made: P50 is the simulated typical
+ * year itself; P90, exceeded in nine years of ten, is P50 × (1 − 1.2816 σ), σ the sample deviation
+ * of each past year's irradiation over the typical year's. */
+export interface Cautious {
+  readonly p50: number;
+  readonly p90: number;
+  readonly basis: {
+    readonly method: "irradiationScaling";
+    readonly typical: number;
+    readonly years: readonly PastIrradiation[];
+    /** The mean and the sample deviation of the ratios; P50 does not read the mean. */
+    readonly mean: number;
+    readonly deviation: number;
   };
-  readonly taken: readonly Strand[];
 }
 
-/** A proposal: the scene with modules wired into the new strings, and how many stay in none. */
-export interface Strung {
-  readonly scene: Scene;
-  readonly strings: Strand[];
-  readonly left: number;
+/** Watt-hours by UTC month, January first, and over the whole run. */
+export interface Energy {
+  readonly months: readonly number[];
+  readonly total: number;
 }
 
-/** Where a layout leaves an MPPT input's limits; a string by its position in the layout. */
-export type Sizing =
-  | {
-      /** Never starts in the cold, held under the window when hot, clipped over it in the cold;
-       * open-circuit over the inverter's maximum in the cold. */
-      readonly kind: "start" | "low" | "high" | "open";
-      readonly string: number;
-      readonly volts: number;
-      readonly limit: number;
-    }
-  | {
-      readonly kind: "current";
-      readonly device: number;
-      readonly input: number;
-      readonly amperes: number;
-      readonly limit: number;
-    }
-  | { readonly kind: "uneven"; readonly device: number; readonly input: number }
-  | { readonly kind: "noInput"; readonly string: number };
+/** A year's run: each string's energy by position, each inverter's with its MPPT inputs. */
+export interface YearEnergy {
+  /** Zero for a string of an unknown module type. */
+  readonly strings: readonly Energy[];
+  readonly inverters: readonly {
+    readonly device: number;
+    /** The sum of its inputs, on the DC side. */
+    readonly dc: Energy;
+    /** After its type's efficiency curve, capped at its AC rating, and what the cap cut; absent without a type. */
+    readonly ac?: { readonly energy: Energy; readonly clipped: Energy };
+    /** By input number, from 1. */
+    readonly inputs: readonly { readonly input: number; readonly energy: Energy }[];
+  }[];
+}
 
 /** The engine. Each call throws the crate's reason for an input it cannot read. */
 export interface Pv {
@@ -134,6 +185,16 @@ export interface Pv {
   readonly neighbours: (neighbours: readonly Neighbour[]) => Face[];
   /** Each string's watts under a clear sky, by time, then string position (ADR 20). */
   readonly clearSky: (run: ClearRun) => number[][];
+  /** The energy of every string, MPPT input and inverter over a year of weather (ADR 17). */
+  readonly year: (run: YearRun) => YearEnergy;
+  /** `location` to 0.01°: what a typical year belongs to, and the key to cache one by. */
+  readonly roundedLocation: (location: Location) => Location;
+  /** A rounded location's typical year from twenty or more past years (ADR 17). */
+  readonly typicalYear: (past: PastYears) => TypicalYear;
+  /** A layout's irradiation on its planes in Wh/m², without shade or electrics (ADR 17). */
+  readonly irradiation: (run: Irradiated) => number;
+  /** P50 and P90 of a simulated typical year (ADR 17). */
+  readonly cautious: (scaling: Scaling) => Cautious;
   /** Each string's open-circuit voltage at −10 °C, by position; null for an unknown module type. */
   readonly coldVoltages: (
     moduleTypes: readonly ModuleType[],

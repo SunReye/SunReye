@@ -38,13 +38,13 @@ pub struct Curve {
 
 impl Curve {
     #[must_use]
-    pub fn new(string: &PvString, sky: &Sky, casters: &Casters) -> Self {
+    pub fn new(string: &PvString, sky: &Sky, shade: Shade) -> Self {
         let mut curve = Self::empty(1.0 - string.loss / 100.0);
         let Some(reference) = fit(&string.module) else {
             return curve;
         };
-        for module in &string.modules {
-            let groups = substrings(&reference, &string.module, module, sky, casters);
+        for (k, module) in string.modules.iter().enumerate() {
+            let groups = substrings(&reference, &string.module, (k, module), sky, shade);
             if module.optimized {
                 let mut own = Self::empty(1.0);
                 own.add_all(groups);
@@ -194,13 +194,39 @@ fn illinois(f: &impl Fn(f64) -> f64, ends: [(f64, f64); 2], tolerance: f64) -> f
     x
 }
 
+/// Where a string's shaded substrings come from.
+#[derive(Clone, Copy)]
+pub enum Shade<'a> {
+    /// Traced toward the sky's sun.
+    Traced(&'a Casters),
+    /// Looked up: each of the string's substrings, module by module, shaded or not.
+    Looked(&'a [bool]),
+}
+
+impl Shade<'_> {
+    /// How many substrings of the string's `k`th module lose their beam.
+    fn of(self, module_type: &ModuleType, (k, module): (usize, &Module)) -> u8 {
+        match self {
+            Self::Traced(casters) => module.place.map_or(0, |place| {
+                casters.shaded_substrings(module_type, module.plane, place)
+            }),
+            Self::Looked(shaded) => {
+                let parts = usize::from(module_type.bypass_diodes.max(1));
+                let of_module = shaded.get(k * parts..(k + 1) * parts).unwrap_or_default();
+                let count = of_module.iter().filter(|&&s| s).count();
+                u8::try_from(count).unwrap_or(u8::MAX)
+            }
+        }
+    }
+}
+
 /// A module's substrings under one sky: lit or shaded, by circuit; `None` in the dark.
 fn substrings(
     reference: &Diode,
     module_type: &ModuleType,
-    module: &Module,
+    (k, module): (usize, &Module),
     sky: &Sky,
-    casters: &Casters,
+    shade: Shade,
 ) -> Vec<(Option<Diode>, u32)> {
     let poa = plane_irradiance(module.plane, sky);
     let diffuse_light = poa.sky_diffuse + poa.ground_diffuse;
@@ -209,9 +235,7 @@ fn substrings(
     let cell = cell_temperature(poa.beam + diffuse_light, sky.temperature, sky.wind);
     let parts = module_type.bypass_diodes.max(1);
     let shaded = if beam > 0.0 {
-        module.place.map_or(0, |place| {
-            casters.shaded_substrings(module_type, module.plane, place)
-        })
+        shade.of(module_type, (k, module))
     } else {
         0
     };

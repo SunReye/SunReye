@@ -1,7 +1,7 @@
 //! Strings in parallel on one MPPT input, within the input's limits.
 
 use crate::shade::Casters;
-use crate::string::{Curve, peak};
+use crate::string::{Curve, Shade, peak};
 use crate::{Input, InputEstimate, MpptLimits, Occluder, PvString, Sky};
 
 /// The input's operating point: the peak of its strings' summed currents at a shared voltage,
@@ -9,10 +9,20 @@ use crate::{Input, InputEstimate, MpptLimits, Occluder, PvString, Sky};
 #[must_use]
 pub fn input_output(input: &Input, sky: &Sky, occluders: &[Occluder]) -> InputEstimate {
     let casters = Casters::under(sky.sun, occluders);
+    operating_point(input, sky, |_| Shade::Traced(&casters))
+}
+
+/// The same with each string's shade, by its place on the input, from `shade`.
+pub fn operating_point<'a>(
+    input: &Input,
+    sky: &Sky,
+    shade: impl Fn(usize) -> Shade<'a>,
+) -> InputEstimate {
     let curves: Vec<Curve> = input
         .strings
         .iter()
-        .map(|s| Curve::new(s, sky, &casters))
+        .enumerate()
+        .map(|(k, s)| Curve::new(s, sky, shade(k)))
         .collect();
     let nothing = InputEstimate {
         current: 0.0,

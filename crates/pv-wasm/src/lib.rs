@@ -8,6 +8,8 @@ mod clear;
 mod edit;
 mod sizing;
 mod stringing;
+mod typical;
+mod year;
 
 use std::collections::HashMap;
 
@@ -175,6 +177,47 @@ fn clear_sky(input: &[u8]) -> String {
             Ok(watts) => json!({ "ok": watts }),
             Err(refused) => json!({ "error": refused.to_string() }),
         },
+        Err(error) => json!({ "error": error.to_string() }),
+    }
+    .to_string()
+}
+
+/// The energy of every string, MPPT input and inverter over a year of weather (ADR 17).
+fn year(input: &[u8]) -> String {
+    match serde_json::from_slice::<year::YearRun>(input) {
+        Ok(run) => run.reply(),
+        Err(error) => json!({ "error": error.to_string() }),
+    }
+    .to_string()
+}
+
+/// A place to 0.01°, the rounded location a typical year belongs to (ADR 17).
+fn rounded_location(input: &[u8]) -> String {
+    edited(input, |place: &Place| typical::rounded(*place))
+}
+
+/// A site's typical year from twenty or more past years (ADR 17).
+fn typical_year(input: &[u8]) -> String {
+    match serde_json::from_slice::<typical::PastYears>(input) {
+        Ok(years) => years.reply(),
+        Err(error) => json!({ "error": error.to_string() }),
+    }
+    .to_string()
+}
+
+/// A plant's irradiation on its planes over a year of weather (ADR 17).
+fn irradiation(input: &[u8]) -> String {
+    match serde_json::from_slice::<typical::Irradiated>(input) {
+        Ok(run) => run.reply(),
+        Err(error) => json!({ "error": error.to_string() }),
+    }
+    .to_string()
+}
+
+/// P50 and P90 of a simulated typical year (ADR 17).
+fn cautious(input: &[u8]) -> String {
+    match serde_json::from_slice::<typical::Scaling>(input) {
+        Ok(scaling) => scaling.reply(),
         Err(error) => json!({ "error": error.to_string() }),
     }
     .to_string()
@@ -374,6 +417,51 @@ mod exports {
         // SAFETY: the caller guarantees the buffer, written through `reserve`.
         let input = unsafe { std::slice::from_raw_parts(input, input_len) };
         leak(super::clear_sky(input))
+    }
+
+    /// # Safety
+    /// `input`/`input_len` name a live buffer from `reserve`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn year(input: *const u8, input_len: usize) -> u64 {
+        // SAFETY: the caller guarantees the buffer, written through `reserve`.
+        let input = unsafe { std::slice::from_raw_parts(input, input_len) };
+        leak(super::year(input))
+    }
+
+    /// # Safety
+    /// `input`/`input_len` name a live buffer from `reserve`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn rounded_location(input: *const u8, input_len: usize) -> u64 {
+        // SAFETY: the caller guarantees the buffer, written through `reserve`.
+        let input = unsafe { std::slice::from_raw_parts(input, input_len) };
+        leak(super::rounded_location(input))
+    }
+
+    /// # Safety
+    /// `input`/`input_len` name a live buffer from `reserve`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn typical_year(input: *const u8, input_len: usize) -> u64 {
+        // SAFETY: the caller guarantees the buffer, written through `reserve`.
+        let input = unsafe { std::slice::from_raw_parts(input, input_len) };
+        leak(super::typical_year(input))
+    }
+
+    /// # Safety
+    /// `input`/`input_len` name a live buffer from `reserve`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn irradiation(input: *const u8, input_len: usize) -> u64 {
+        // SAFETY: the caller guarantees the buffer, written through `reserve`.
+        let input = unsafe { std::slice::from_raw_parts(input, input_len) };
+        leak(super::irradiation(input))
+    }
+
+    /// # Safety
+    /// `input`/`input_len` name a live buffer from `reserve`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn cautious(input: *const u8, input_len: usize) -> u64 {
+        // SAFETY: the caller guarantees the buffer, written through `reserve`.
+        let input = unsafe { std::slice::from_raw_parts(input, input_len) };
+        leak(super::cautious(input))
     }
 
     /// # Safety

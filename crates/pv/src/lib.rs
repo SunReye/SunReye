@@ -2,6 +2,7 @@
 //!
 //! Angles are in degrees. Azimuths follow ADR 17: 0 = south, −90 = east, 90 = west.
 
+mod cautious;
 mod chimney;
 mod clear_sky;
 mod device_types;
@@ -24,13 +25,17 @@ mod polygon;
 mod roof_window;
 mod scene;
 mod shade;
+mod shading;
 mod sizing;
 mod string;
 mod stringing;
 mod sun;
 mod surroundings;
 mod temperature;
+mod typical;
+mod year;
 
+pub use cautious::{Basis, Cautious, cautious, irradiation};
 pub use chimney::{Chimney, Footing};
 pub use clear_sky::{Irradiance, clear_sky, clear_weather};
 pub use device_types::{BatteryType, InverterType, MpptInput};
@@ -49,6 +54,7 @@ pub use parking::{CarPlace, Stand};
 pub use perez::plane_irradiance;
 pub use roof_window::RoofWindow;
 pub use scene::{Block, Crown, Face, Obstacle, Overhang, Roof, Scene, Surface};
+pub use shading::ShadingTable;
 pub use sizing::{
     HOT, InverterLimits, Sizing, Wired, longest_string, peak_voltage, window_warnings,
 };
@@ -58,6 +64,10 @@ pub use surroundings::{
     Fence, FenceFinish, FencePoint, Fencing, Ground, GroundFinish, GroundSurface,
 };
 pub use temperature::cell_temperature;
+pub use typical::{
+    FEWEST_YEARS, TYPICAL_YEAR, Typical, TypicalRefused, quarter_hours, typical_year,
+};
+pub use year::{AcYear, Energy, InputYear, InverterYear, Year, year, year_with};
 
 /// The cell temperature in °C a string's open-circuit voltage is checked at (ADR 20).
 pub const COLD: f64 = -10.0;
@@ -91,6 +101,19 @@ pub struct Sun {
 pub struct Location {
     pub latitude: f64,
     pub longitude: f64,
+}
+
+impl Location {
+    /// To 0.01° (about 1 km): what a plant's location is stored at and leaves the home at, and
+    /// the rounded location a typical year belongs to (ADR 17).
+    #[must_use]
+    pub fn rounded(self) -> Self {
+        let round = |degrees: f64| (degrees * 100.0).round() / 100.0;
+        Self {
+            latitude: round(self.latitude),
+            longitude: round(self.longitude),
+        }
+    }
 }
 
 /// The weather at one instant, irradiance in W/m².
@@ -237,6 +260,17 @@ pub struct Layout {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Inverter {
     pub inputs: Vec<Input>,
+    /// From its inverter type; without one a year's run reports no AC side (ADR 27).
+    pub ac: Option<AcSide>,
+}
+
+/// An inverter type's AC rating and efficiency, which a year's run turns DC into AC with.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AcSide {
+    /// Watts.
+    pub rating: f64,
+    /// The European weighted efficiency, in %.
+    pub efficiency: f64,
 }
 
 /// One MPPT input and its strings in parallel.

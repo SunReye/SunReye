@@ -1,6 +1,6 @@
 //! A plant like the owner's under a saved scene: a guard on its shaded output, and the model's
-//! cost by stage (`docs/pv-model.md`), printed by
-//! `cargo test -p sunreye-pv --release cost_by_stage -- --ignored --nocapture`.
+//! cost by stage (`docs/pv-model.md`) and a year's run's, printed by
+//! `cargo test -p sunreye-pv --release profile:: -- --ignored --nocapture`.
 
 use std::hint::black_box;
 use std::time::Instant;
@@ -12,17 +12,19 @@ use crate::diode::fit;
 use crate::estimate::{SECONDS_PER_DAY, day_of_year};
 use crate::perez::cos_incidence;
 use crate::shade::Casters;
-use crate::string::Curve;
+use crate::string::{Curve, Shade};
 use crate::{
     GridModule, Input, Inverter, Layout, Location, Module, ModuleGrid, MpptLimits, Occluder, Place,
-    Plane, Point, PvString, Scene, Size, Sky, Spot, Sun, Weather, clear_weather, estimate,
-    input_output, plane_irradiance, sun_position,
+    Plane, Point, PvString, Scene, ShadingTable, Size, Sky, Spot, Sun, Weather, clear_weather,
+    estimate, input_output, plane_irradiance, sun_position, year, year_with,
 };
 
 const BERLIN: Location = Location {
     latitude: 52.52,
     longitude: 13.38,
 };
+/// 00:00 UTC on 2026-01-01.
+const NEW_YEAR: i64 = 1_767_225_600;
 /// 00:00 UTC on 2026-06-21, 2026-03-21 and 2026-12-21.
 const JUNE: i64 = 1_782_000_000;
 const MARCH: i64 = 1_774_051_200;
@@ -129,6 +131,7 @@ fn plant(optimized: impl Fn(usize) -> bool, max_current: f64) -> Layout {
                     strings: vec![string(2)],
                 },
             ],
+            ac: None,
         }],
         occluders: scene.occluders(),
     }
@@ -371,7 +374,7 @@ fn stages(layout: &Layout, weather: &[Weather]) -> [(&'static str, f64); 7] {
     let curves = each(&|sky| {
         let casters = Casters::under(sky.sun, &layout.occluders);
         for string in strings(layout) {
-            black_box(Curve::new(string, sky, &casters).top);
+            black_box(Curve::new(string, sky, Shade::Traced(&casters)).top);
         }
     });
     let operating = each(&|sky| {
@@ -414,4 +417,74 @@ fn cost_by_stage() {
             println!("  {stage:<18} {:.4}", milliseconds / 96.0);
         }
     }
+}
+
+#[test]
+#[ignore = "a profile, read by a person"]
+#[expect(clippy::print_stdout, reason = "a profile, read by a person")]
+fn a_years_run() {
+    let layout = layout();
+    let weather: Vec<Weather> = (0..365 * 96)
+        .map(|k| clear_weather(NEW_YEAR + QUARTER * k, BERLIN))
+        .collect();
+    let start = Instant::now();
+    let run = black_box(year(&layout, &weather, QUARTER));
+    let elapsed = start.elapsed().as_secs_f64();
+
+    let kwh = run.inverters[0].dc.total / 1e3;
+    println!("a clear 2026 at quarter hours: {elapsed:.2} s, {kwh:.0} kWh");
+}
+
+#[test]
+#[ignore = "a profile, read by a person"]
+#[expect(clippy::print_stdout, reason = "a profile, read by a person")]
+fn a_shading_table() {
+    let layout = layout();
+    let weather: Vec<Weather> = (0..365 * 96)
+        .map(|k| clear_weather(NEW_YEAR + QUARTER * k, BERLIN))
+        .collect();
+    let mut table = ShadingTable::default();
+    let start = Instant::now();
+    table.refresh(&layout);
+    let built = start.elapsed().as_secs_f64();
+    let start = Instant::now();
+    let run = black_box(year_with(&layout, &mut table, &weather, QUARTER));
+    let looked_up = start.elapsed().as_secs_f64();
+
+    let start = Instant::now();
+    let mut traced = [[0.0; 12]; 2];
+    for sample in weather
+        .iter()
+        .filter(|w| w.ghi > 0.0 || w.dni > 0.0 || w.dhi > 0.0)
+    {
+        let month = crate::estimate::month(sample.unix.div_euclid(SECONDS_PER_DAY));
+        let at = estimate(&layout, sample);
+        for (input, at) in traced.iter_mut().zip(&at.inverters[0].inputs) {
+            input[month] += at.power / 4.0;
+        }
+    }
+    let by_tracing = start.elapsed().as_secs_f64();
+
+    let inputs = &run.inverters[0].inputs;
+    let off = |looked: f64, traced: f64| (looked - traced).abs() / traced;
+    let monthly = inputs.iter().zip(&traced).flat_map(|(input, traced)| {
+        input
+            .energy
+            .months
+            .iter()
+            .zip(traced)
+            .map(|(&l, &t)| off(l, t))
+    });
+    let yearly = inputs
+        .iter()
+        .zip(&traced)
+        .map(|(input, traced)| off(input.energy.total, traced.iter().sum()));
+    println!(
+        "a shading table: traced in {built:.2} s; a clear year looked up {looked_up:.2} s, traced {by_tracing:.2} s"
+    );
+    println!(
+        "  off by at most {:.3} % in a month and {:.3} % in the year, per input",
+        100.0 * monthly.fold(0.0, f64::max),
+        100.0 * yearly.fold(0.0, f64::max),
+    );
 }

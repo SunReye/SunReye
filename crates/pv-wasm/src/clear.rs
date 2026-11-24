@@ -1,12 +1,13 @@
-//! A clear-sky run of a layout in the browser (ADR 20), for dates without weather. MPPT limits
-//! are the inverter profile's, which the browser does not read, so no input is capped.
+//! A clear-sky run of a layout in the browser (ADR 20), for dates without weather, and the plant
+//! both it and a year's run read. A clear-sky run caps no input: MPPT limits are the inverter
+//! profile's, which the browser does not read.
 
 use std::collections::{BTreeMap, HashMap};
 
 use serde::Deserialize;
 use sunreye_pv::{
-    Input, Inverter, Layout, Module, ModuleType, Neighbour, NeighbourRefused, Plane, PvString,
-    Scene, Size, clear_weather, estimate,
+    Input, Inverter, InverterType, Layout, Module, ModuleType, Neighbour, NeighbourRefused, Plane,
+    PvString, Scene, Size, clear_weather, estimate,
 };
 
 use crate::Place;
@@ -61,13 +62,20 @@ pub struct Wiring {
 /// around it, which shade as its obstacles do (ADR 20).
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Run {
+pub struct Plant {
     location: Place,
     scene: Scene,
     #[serde(default)]
     neighbours: Vec<Neighbour>,
     module_types: Vec<Datasheet>,
-    strings: Vec<Wiring>,
+    pub strings: Vec<Wiring>,
+}
+
+/// A plant under a clear sky at each of `times`.
+#[derive(Deserialize)]
+pub struct Run {
+    #[serde(flatten)]
+    plant: Plant,
     times: Vec<i64>,
 }
 
@@ -77,12 +85,7 @@ impl Run {
     /// # Errors
     /// A supplied neighbour's [`NeighbourRefused`].
     pub fn watts(&self) -> Result<Vec<Vec<f64>>, NeighbourRefused> {
-        let types: HashMap<u32, ModuleType> = self
-            .module_types
-            .iter()
-            .map(|d| (d.id, d.model()))
-            .collect();
-        let (layout, order) = self.layout(&types)?;
+        let Wired { layout, order, .. } = self.plant.layout(&HashMap::new())?;
         Ok(self
             .times
             .iter()
@@ -95,20 +98,84 @@ impl Run {
                     .flat_map(|input| &input.strings);
                 let by_position: HashMap<usize, f64> =
                     order.iter().copied().zip(shares.copied()).collect();
-                (0..self.strings.len())
+                (0..self.plant.strings.len())
                     .map(|i| by_position.get(&i).copied().unwrap_or(0.0))
                     .collect()
             })
             .collect())
     }
+}
 
-    /// The model's layout, and the string position of each of its strings in its order.
-    fn layout(
-        &self,
-        types: &HashMap<u32, ModuleType>,
-    ) -> Result<(Layout, Vec<usize>), NeighbourRefused> {
-        let placed = self.placed(types);
-        // By inverter, then input.
+/// A plant's model layout and where its parts came from.
+pub struct Wired {
+    pub layout: Layout,
+    /// The string position of each of the layout's strings, in its order.
+    pub order: Vec<usize>,
+    /// The device id of each of the layout's inverters, and the input number of each of its inputs.
+    pub devices: Vec<(u32, Vec<u32>)>,
+}
+
+impl Plant {
+    /// The model's layout, each inverter's MPPT limits and AC side from its type in `types` by
+    /// device id, read whole; strings of an unknown module type are left out.
+    ///
+    /// # Errors
+    /// A supplied neighbour's [`NeighbourRefused`].
+    pub fn layout(&self, types: &HashMap<u32, InverterType>) -> Result<Wired, NeighbourRefused> {
+        let wired = self.by_input();
+        let order = wired
+            .values()
+            .flat_map(BTreeMap::values)
+            .flatten()
+            .map(|(i, _)| *i)
+            .collect();
+        let devices = wired
+            .iter()
+            .map(|(&device, inputs)| (device, inputs.keys().copied().collect()))
+            .collect();
+        let inverters = wired
+            .into_iter()
+            .map(|(device, inputs)| {
+                let datasheet = types.get(&device);
+                let limits = datasheet.map(InverterType::limits).unwrap_or_default();
+                Inverter {
+                    inputs: inputs
+                        .into_iter()
+                        .map(|(input, strings)| Input {
+                            limits: usize::try_from(input)
+                                .ok()
+                                .and_then(|i| i.checked_sub(1))
+                                .and_then(|i| limits.get(i))
+                                .copied(),
+                            strings: strings.into_iter().map(|(_, s)| s).collect(),
+                        })
+                        .collect(),
+                    ac: datasheet.map(InverterType::ac_side),
+                }
+            })
+            .collect();
+        let mut occluders = self.scene.occluders();
+        occluders.extend(Neighbour::occluders(&self.neighbours)?);
+        let layout = Layout {
+            location: self.location.into(),
+            inverters,
+            occluders,
+        };
+        Ok(Wired {
+            layout,
+            order,
+            devices,
+        })
+    }
+
+    /// Each string with its position, by inverter, then input.
+    fn by_input(&self) -> BTreeMap<u32, BTreeMap<u32, Vec<(usize, PvString)>>> {
+        let types: HashMap<u32, ModuleType> = self
+            .module_types
+            .iter()
+            .map(|d| (d.id, d.model()))
+            .collect();
+        let placed = self.placed(&types);
         let mut wired: BTreeMap<u32, BTreeMap<u32, Vec<(usize, PvString)>>> = BTreeMap::new();
         for (i, w) in self.strings.iter().enumerate() {
             let Some(&module) = types.get(&w.module_type) else {
@@ -122,32 +189,7 @@ impl Run {
                 .or_default()
                 .push((i, string(w, module, painted)));
         }
-        let order = wired
-            .values()
-            .flat_map(BTreeMap::values)
-            .flatten()
-            .map(|(i, _)| *i)
-            .collect();
-        let inverters = wired
-            .into_values()
-            .map(|inputs| Inverter {
-                inputs: inputs
-                    .into_values()
-                    .map(|strings| Input {
-                        limits: None,
-                        strings: strings.into_iter().map(|(_, s)| s).collect(),
-                    })
-                    .collect(),
-            })
-            .collect();
-        let mut occluders = self.scene.occluders();
-        occluders.extend(Neighbour::occluders(&self.neighbours)?);
-        let layout = Layout {
-            location: self.location.into(),
-            inverters,
-            occluders,
-        };
-        Ok((layout, order))
+        wired
     }
 
     /// The scene's modules by string position.

@@ -51,6 +51,45 @@ flowchart LR
 11. **MPPT window** (`mppt.rs`). Without limits nothing is capped. With them: an open-circuit voltage under the window's bottom or the start voltage yields nothing; the search stays inside the window; the current is capped at the input's maximum.
 12. **Shares and sum** (`mppt.rs`, `estimate.rs`). An input's power is split among its strings by their modelled current at the operating point. An inverter is the sum of its inputs. The AC rating is not applied here: the solar forecast caps, so the learner sees what a clipped hour would have produced (ADR 17).
 
+## A year's run
+
+`sunreye_pv::year(layout, weather, step)` runs the model at each weather sample, its shade looked up in a shading table, and holds its watts for `step` seconds: energy in Wh for every string, MPPT input and inverter, by UTC month and over the run. Months are UTC because the crate knows no time zone; at a quarter-hour step the plant-local boundary moves only night hours. A sample with no irradiance is skipped. Strings sum to their input and inputs to their inverter, as each instant's estimate does.
+
+An inverter with an AC side, its inverter type's AC rating and European weighted efficiency, also gets its AC energy and the energy its rating clipped. Each sample's DC watts pass pvlib's `inverter.pvwatts`: the type's efficiency is the nominal one and its rating over that efficiency the DC rating, so efficiency falls at part load; AC watts above the rating are clipped. AC and clipped energy sum to the curve's output. Without an AC side an inverter reports neither, and nothing on the DC side changes with one (ADR 17).
+
+`year_with(layout, table, weather, step)` does the same with a `ShadingTable` the caller keeps, which it traces again first only when what shading reads changed.
+
+`@sunreye/pv-wasm`'s `year` takes the plant as `clearSky` does, each inverter's inverter type for its MPPT limits and AC side, and the weather as columns at a fixed step from a start instant. It returns each string's energy by position and each inverter's by device id with its inputs by number, and a typed inverter's `ac`: its AC and clipped energy. It keeps the last plant's shading table, so a run that changes only the weather or the electrics traces no shade.
+
+### Shading table
+
+Which substrings a scene shades depends on the sun's direction, not on the date (ADR 17, `shading.rs`).
+
+- The grid has a node every 2° of elevation, from the horizon to the zenith, and of azimuth, all round. It is the same at every location, so a sky view or a horizon can be laid over it.
+- At each node, every placed module facing the sun is traced as below, and each of its substrings is stored as shaded or not, in layout order. With no occluders or no placed module nothing is traced.
+- A step reads the node nearest the sun; azimuths wrap at north. The sun below the horizon reads nothing.
+- `refresh` compares what shading reads (the occluders; each string's module size, bypass diodes, and modules' planes and places, in order) with what the table was traced from, and traces again only when they differ.
+- Nearest-node lookup moves a shade's edge by up to a node's half-width, about 4 minutes of sun. The tests bound a string's energy at 2 % in a clear day and 0.5 % over a run; on the profile's plant a clear year reads at most 0.34 % off in a month and 0.04 % in the year, against tracing every instant.
+
+The profile `cargo test -p sunreye-pv --release profile::a_shading_table -- --ignored --nocapture` prints the table's build time, the year's run looked up and traced, and their difference.
+
+## A typical year and the cautious yield
+
+`sunreye_pv::typical_year(years, step)` takes twenty or more whole UTC years of weather and keeps each calendar month whole from the past year whose daily global and direct normal irradiation and mean temperature are closest to all years' (weighted Finkelstein–Schafer statistic, ½, ¼, ¼, its distributions compared by value at every day of all years), restamped into 2001; 29 February is dropped. A sample that averages the step before its time is stamped at the step's middle, where the sun's mean position lies.
+
+The archive is hourly, so the typical year is picked at the hour and then split: `quarter_hours(hourly, location)` turns each hourly mean into four quarter hours stamped at their middles (ADR 17).
+
+- Global, direct normal and diffuse irradiance each take the shape of their Ineichen clear sky (`clear_sky.rs`) at the four quarters' middles, scaled so the quarters' mean is the hour's: the hour's energy is kept, and a clear day's hourly means split back into its quarter hours.
+- In a sunrise or sunset hour the quarters with the sun below the horizon get nothing.
+- An hour whose clear sky is dark throughout, twilight in the archive, is spread evenly.
+- Temperature and wind are held for the hour.
+
+The split stays inside each hour, so the months picked are the same.
+
+`irradiation(layout, weather, step)` is Perez on the layout's planes in Wh/m², weighted by each module's Vmp × Imp, without shade or electrics. `cautious(simulated, typical, years)` takes each past year's irradiation over the typical year's: P50 is the simulated typical year's energy itself, P90 = P50 × (1 − 1.2816 σ), σ the ratios' sample deviation. Its `basis` says how the figure was made: each past year's irradiation, the typical year's, and the ratios' mean and deviation; the mean moves neither figure.
+
+`@sunreye/pv-wasm` exposes them as `typicalYear`, which takes the rounded location and returns a typical year made from hourly years at 900 s steps, `irradiation` and `cautious`, and `Location::rounded` as `roundedLocation`: a consumer caching a typical year per rounded location keys it with that.
+
 ## How shade reaches the electrics
 
 - A module has one substring per bypass diode: strips along its long side, side by side across its short side.

@@ -300,6 +300,10 @@ _Avoid_: Sizing error, string error
 The cells of one module behind one bypass diode. Shade bypasses a substring, not the whole module.
 _Avoid_: Cell string, diode group
 
+**Shading table**:
+Which substrings a scene shades at each sun position of a grid over the sky, traced once per scene and looked up by a year's run.
+_Avoid_: Shade map, shadow cache
+
 **Module type**:
 The datasheet values of one PV module model.
 _Avoid_: Panel model
@@ -503,6 +507,14 @@ _Avoid_: Condition, weather type
 **Trial weather**:
 A whole instant's weather the builder's weather button shows the plant in, in place of the stored weather; held by the page, never saved. German UI: the button's words (Klar, Regen, …).
 _Avoid_: Sample (a reading), preset (a camera view), demo weather
+
+**Typical year**:
+One year of weather for a rounded location, each calendar month taken whole from the past year closest to twenty or more of them, at quarter hours; the year an offer's expected yield (P50) is simulated on.
+_Avoid_: TMY, average year, reference year
+
+**Cautious yield**:
+The yearly yield exceeded in nine years of ten (P90): the simulated typical year less 1.2816 deviations of past years' irradiation on the planes over the typical year's.
+_Avoid_: Worst case, minimum yield
 
 **Correction**:
 A multiplier the plant learns per MPPT input, plant-local month and hour: measured over modelled PV power on past weather.

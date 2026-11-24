@@ -71,7 +71,28 @@ impl Casters {
         self.shaded(module, plane, at, false)
     }
 
+    /// Marks each of the module's substrings, `parts` of them in `shaded`, that loses its beam.
+    pub fn mark(&self, module: &ModuleType, plane: Plane, at: Place, shaded: &mut [bool]) {
+        for part in self.shaded_parts(module, plane, at, true) {
+            if let Some(mark) = shaded.get_mut(usize::from(part)) {
+                *mark = true;
+            }
+        }
+    }
+
     fn shaded(&self, module: &ModuleType, plane: Plane, at: Place, rule_out: bool) -> u8 {
+        let shaded = self.shaded_parts(module, plane, at, rule_out).count();
+        u8::try_from(shaded).unwrap_or(u8::MAX)
+    }
+
+    /// Each of the module's substrings that loses its beam.
+    fn shaded_parts<'a>(
+        &'a self,
+        module: &'a ModuleType,
+        plane: Plane,
+        at: Place,
+        rule_out: bool,
+    ) -> impl Iterator<Item = u8> + 'a {
         let (tilt, azimuth) = (plane.tilt.to_radians(), plane.azimuth.to_radians());
         let up_slope = [
             azimuth.sin() * tilt.cos(),
@@ -90,25 +111,23 @@ impl Casters {
             .iter()
             .filter(|c| !rule_out || c.reaches(&face, self.toward_sun))
             .collect();
-        if near.is_empty() {
-            return 0;
-        }
         // Substrings are strips along the long side, side by side across the short side.
         let (long, short) = if at.landscape {
             (across_slope, up_slope)
         } else {
             (up_slope, across_slope)
         };
-        let parts = module.bypass_diodes.max(1);
-        let shaded = (0..parts)
-            .filter(|&part| {
-                samples(module, parts, part).any(|(s, l)| {
-                    let origin = offset(offset(at.centre, short, s), long, l);
-                    near.iter().any(|c| c.blocks(origin, self.toward_sun))
-                })
+        let parts = if near.is_empty() {
+            0
+        } else {
+            module.bypass_diodes.max(1)
+        };
+        (0..parts).filter(move |&part| {
+            samples(module, parts, part).any(|(s, l)| {
+                let origin = offset(offset(at.centre, short, s), long, l);
+                near.iter().any(|c| c.blocks(origin, self.toward_sun))
             })
-            .count();
-        u8::try_from(shaded).unwrap_or(parts)
+        })
     }
 }
 

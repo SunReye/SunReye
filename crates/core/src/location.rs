@@ -52,10 +52,17 @@ impl Location {
     /// To 0.01° (about 1 km), as it is stored and may leave the home.
     #[must_use]
     pub fn rounded(self) -> Self {
-        let round = |degrees: f64| (degrees * 100.0).round() / 100.0;
+        let sunreye_pv::Location {
+            latitude,
+            longitude,
+        } = sunreye_pv::Location {
+            latitude: self.latitude,
+            longitude: self.longitude,
+        }
+        .rounded();
         Self {
-            latitude: round(self.latitude),
-            longitude: round(self.longitude),
+            latitude,
+            longitude,
         }
     }
 }
