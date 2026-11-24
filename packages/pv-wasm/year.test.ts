@@ -1,8 +1,8 @@
 // The engine keeps one shading table between runs of `year` (ADR 17): each run is shaded by the
-// scene it is given, whatever ran before.
+// scene and the horizon it is given, whatever ran before.
 
 import { expect, test } from "bun:test";
-import { loadPv, type Neighbour, type YearRun } from "./index.js";
+import { type HorizonProfile, loadPv, type Neighbour, type YearRun } from "./index.js";
 
 const pv = await loadPv(await Bun.file(new URL("dist/pv.wasm", import.meta.url)).bytes());
 
@@ -93,4 +93,35 @@ test("a run is shaded by the scene it is given, whatever ran before", () => {
 
   expect(walled).toBeLessThan(open / 2);
   expect(total(plant)).toBe(open);
+});
+
+/** One elevation per degree from −180 going east, by azimuth (0 = south, −90 = east). */
+function horizon(at: (azimuth: number) => number): HorizonProfile {
+  return Array.from({ length: 360 }, (_, k) => [k - 180, at(k - 180)] as const);
+}
+
+/** 70° high across the south, where the late-morning sun stands. */
+const hill = horizon((azimuth) => (Math.abs(azimuth) <= 30 ? 70 : 0));
+
+test("a sun below the horizon gives no beam, and a run without one computes as before", () => {
+  const open = total(plant);
+  const hidden = total({ ...plant, horizon: hill });
+
+  expect(hidden).toBeGreaterThan(0);
+  expect(hidden).toBeLessThan(open / 2);
+  expect(total(plant)).toBe(open);
+});
+
+test("a clear-sky run takes the horizon too", () => {
+  const { weather: _, ...rest } = plant;
+  const times = [Date.UTC(2026, 5, 21, 10, 45) / 1000];
+  const [[open = 0] = []] = pv.clearSky({ ...rest, times });
+  const [[hidden = 0] = []] = pv.clearSky({ ...rest, times, horizon: hill });
+
+  expect(hidden).toBeGreaterThan(0);
+  expect(hidden).toBeLessThan(open / 2);
+});
+
+test("a horizon of any other shape is refused", () => {
+  expect(() => pv.year({ ...plant, horizon: hill.slice(1) })).toThrow("360");
 });

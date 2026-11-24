@@ -167,7 +167,7 @@ fn clear_sky(input: &[u8]) -> String {
     match serde_json::from_slice::<clear::Run>(input) {
         Ok(run) => match run.watts() {
             Ok(watts) => json!({ "ok": watts }),
-            Err(refused) => json!({ "error": refused.to_string() }),
+            Err(refused) => json!({ "error": refused }),
         },
         Err(error) => json!({ "error": error.to_string() }),
     }
