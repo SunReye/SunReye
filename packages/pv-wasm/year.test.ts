@@ -195,6 +195,7 @@ test("a run returns its loss chain from the planes to the grid, with what the ca
     "ac_cable",
   ]);
   expect(steps[3]).toMatchObject({ en: "Soiling", de: "Verschmutzung" });
+  expect(steps.at(-2)).toMatchObject({ en: "Clipping", de: "Kappung am Wechselrichter" });
 
   const planes = inverter.chain.planes.total;
   const lost = steps.reduce((sum, step) => sum + step.lost.total, 0);

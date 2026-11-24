@@ -528,6 +528,10 @@ _Avoid_: Worst case, minimum yield
 The energy a year's run leaves after each named loss, from irradiation on the planes at the datasheet's efficiency to what an inverter delivers; the losses sum to the whole. A loss the run did not compute is absent. German UI: Verlustkette.
 _Avoid_: Loss tree, waterfall (a chart of it), performance ratio
 
+**Clipping**:
+The loss of the chain the inverter's AC rating cuts from its DC power. German UI: Kappung am Wechselrichter.
+_Avoid_: Curtailment, Abregelung (both the feed-in an export cap holds back)
+
 **Correction**:
 A multiplier the plant learns per MPPT input, plant-local month and hour: measured over modelled PV power on past weather.
 _Avoid_: Calibration, bias factor

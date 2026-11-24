@@ -220,7 +220,7 @@ fn every_loss_has_a_stable_id_and_its_names() {
                 "Inverter efficiency",
                 "Wechselrichter-Wirkungsgrad"
             ),
-            ("clipping", "Clipping", "Abregelung"),
+            ("clipping", "Clipping", "Kappung am Wechselrichter"),
             ("ac_cable", "AC cable", "AC-Leitung"),
         ]
     );

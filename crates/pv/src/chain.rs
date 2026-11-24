@@ -30,7 +30,7 @@ pub enum Loss {
     DcCable,
     /// The inverter's efficiency curve.
     Inverter,
-    /// What the inverter's AC rating cuts.
+    /// What the inverter's AC rating cuts. Not feed-in curtailment, which an export cap makes.
     Clipping,
     AcCable,
 }
@@ -109,7 +109,7 @@ impl Loss {
             Self::MpptLimits => "MPPT-Grenzen",
             Self::DcCable => "DC-Leitung",
             Self::Inverter => "Wechselrichter-Wirkungsgrad",
-            Self::Clipping => "Abregelung",
+            Self::Clipping => "Kappung am Wechselrichter",
             Self::AcCable => "AC-Leitung",
         }
     }
