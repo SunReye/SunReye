@@ -39,15 +39,15 @@ flowchart LR
 ```
 
 1. **Sun position** (`sun.rs`). Meeus's low-precision coordinates give zenith and azimuth from the time and the location: geometric, unrefracted. Everything below needs the sun's direction.
-2. **Transposition: irradiance on the plane** (`perez.rs`), per module. Perez 1990 splits GHI, DNI and DHI into beam, sky diffuse and ground diffuse (albedo 0.25) on the module's plane. Weather sources deliver plain irradiance, so any source fits (ADR 17).
+2. **Transposition: irradiance on the plane** (`perez.rs`), per module. Perez 1990 splits GHI, DNI and DHI into beam, sky diffuse and ground diffuse (albedo 0.25) on the module's plane, and the sky diffuse into its circumsolar part and the rest, which a sky view scales (below). Weather sources deliver plain irradiance, so any source fits (ADR 17).
 3. **Incidence loss** (`string.rs`). Martin and Ruiz on the beam; a constant 0.95 on diffuse. Glass reflects more at flat angles.
-4. **Cell temperature** (`temperature.rs`). Faiman with wind, the NOCT rise without, from the unshaded irradiance on the plane. Heat lowers voltage.
-5. **Shade** (`shade.rs`), per placed module with beam on its front. See below.
+4. **Cell temperature** (`temperature.rs`). Faiman with wind, the NOCT rise without, from the irradiance on the plane, its beam unshaded and its sky diffuse by its plane's view above the horizon alone: shade sets no modules apart by temperature. Heat lowers voltage.
+5. **Shade** (`shade.rs`), per placed module with beam or circumsolar light on its front. See below.
 6. **Datasheet fit** (`diode.rs`), per string. De Soto's five parameters at standard test conditions, by Newton's method on the datasheet, as pvlib's `fit_desoto`. A datasheet that fits no circuit yields a string of 0 W.
-7. **Substring circuit** (`diode.rs`). The fitted circuit moved to the substring's effective irradiance and the cell temperature, split into equal substrings, as pvlib's `calcparams_desoto`. A lit substring sees beam and diffuse, a shaded one diffuse only, one without light none.
+7. **Substring circuit** (`diode.rs`). The fitted circuit moved to the substring's effective irradiance and the cell temperature, split into equal substrings, as pvlib's `calcparams_desoto`. A lit substring sees beam and diffuse, a shaded one diffuse without its circumsolar part, one without light none. Each takes the sky diffuse by its own sky view, the scene's share of it to the nearest 0.02.
 8. **String curve** (`string.rs`). Equal substrings are grouped. The string's voltage at a current is the sum of its substrings' voltages, each from its single-diode equation by Newton's method and held at −0.5 V once its bypass diode conducts. The curve keeps this voltage at 129 evenly spaced currents from zero to its highest photocurrent. The string's loss scales its current.
 9. **Optimizers** (`string.rs`). An optimized module is taken out of the series: its own peak, found on its own curve, less 1 %, is delivered at any string current, so it adds power ÷ current volts.
-10. **Operating point** (`mppt.rs`), per MPPT input. Parallel strings share one voltage and their currents add. A string's current at a voltage inverts its curve: the Illinois method between the two samples around that voltage. The input's power is tried at every string's sample voltages and at the window's ends; each local peak is refined by golden section, and the highest wins. Shade makes several peaks, which is why the whole curve is scanned.
+10. **Operating point** (`mppt.rs`), per MPPT input. Parallel strings share one voltage and their currents add. A string's current at a voltage inverts its curve: the Illinois method between the two samples around that voltage. The input's power is tried at every string's sample voltages, each voltage once, and at the window's ends; each local peak is refined by golden section, and the highest wins. Equal strings in parallel, as under diffuse light alone, share every sample voltage: tried twice, each pair would pass for a peak. Shade makes several peaks, which is why the whole curve is scanned.
 11. **MPPT window** (`mppt.rs`). Without limits nothing is capped. With them: an open-circuit voltage under the window's bottom or the start voltage yields nothing; the search stays inside the window; the current is capped at the input's maximum.
 12. **Shares and sum** (`mppt.rs`, `estimate.rs`). An input's power is split among its strings by their modelled current at the operating point. An inverter is the sum of its inputs. The AC rating is not applied here: the solar forecast caps, so the learner sees what a clipped hour would have produced (ADR 17).
 
@@ -57,9 +57,9 @@ flowchart LR
 
 An inverter with an AC side, its inverter type's AC rating and European weighted efficiency, also gets its AC energy and the energy its rating clipped. Each sample's DC watts pass pvlib's `inverter.pvwatts`: the type's efficiency is the nominal one and its rating over that efficiency the DC rating, so efficiency falls at part load; AC watts above the rating are clipped. AC and clipped energy sum to the curve's output. Without an AC side an inverter reports neither, and nothing on the DC side changes with one (ADR 17).
 
-`year_with(layout, table, weather, step)` does the same with a `ShadingTable` the caller keeps, which it traces again first only when what shading reads changed.
+`year_with(layout, table, horizon, weather, step)` does the same with a `ShadingTable` the caller keeps, which it traces again first only when what shading reads changed, under the horizon profile the caller supplies, if any, and the scene's sky views, laid once.
 
-`@sunreye/pv-wasm`'s `year` takes the plant as `clearSky` does, each inverter's inverter type for its MPPT limits and AC side, and the weather as columns at a fixed step from a start instant. It returns each string's energy by position and each inverter's by device id with its inputs by number, and a typed inverter's `ac`: its AC and clipped energy. It keeps the last plant's shading table, so a run that changes only the weather or the electrics traces no shade.
+`@sunreye/pv-wasm`'s `year` takes the plant as `clearSky` does, each inverter's inverter type for its MPPT limits and AC side, and the weather as columns at a fixed step from a start instant. It returns each string's energy by position and each inverter's by device id with its inputs by number, and a typed inverter's `ac`: its AC and clipped energy. It keeps the last plant's shading table, shared with `clearSky`, so a run that changes only the weather or the electrics traces no shade.
 
 ### Shading table
 
@@ -69,9 +69,19 @@ Which substrings a scene shades depends on the sun's direction, not on the date 
 - At each node, every placed module facing the sun is traced as below, and each of its substrings is stored as shaded or not, in layout order. With no occluders or no placed module nothing is traced.
 - A step reads the node nearest the sun; azimuths wrap at north. The sun below the horizon reads nothing.
 - `refresh` compares what shading reads (the occluders; each string's module size, bypass diodes, and modules' planes and places, in order) with what the table was traced from, and traces again only when they differ.
-- Nearest-node lookup moves a shade's edge by up to a node's half-width, about 4 minutes of sun. The tests bound a string's energy at 2 % in a clear day and 0.5 % over a run; on the profile's plant a clear year reads at most 0.34 % off in a month and 0.04 % in the year, against tracing every instant.
+- Nearest-node lookup moves a shade's edge by up to a node's half-width, about 4 minutes of sun. The tests bound a string's energy at 2 % in a clear day and 0.5 % over a run; on the profile's plant a clear year reads at most 0.47 % off in a month and 0.06 % in the year, against tracing every instant under the same sky views.
 
 The profile `cargo test -p sunreye-pv --release profile::a_shading_table -- --ignored --nocapture` prints the table's build time, the year's run looked up and traced, and their difference.
+
+### Sky views
+
+How much of the isotropic sky and its horizon band each substring sees (ADR 17, `sky_view.rs`).
+
+- Over the shading table's grid, each node's band of elevation is weighted by its cosine onto the plane, and by the part of it above the horizon profile, if any. The view is the sum over the same sum under an open sky.
+- A node at which the table shades the substring's beam is closed whole: what hides the sun there hides that patch of sky. With no occluders nothing is closed.
+- `SkyViews::new(layout, table, horizon)` refreshes the table and lays the views once; every instant of a run reads them.
+- The share of sky the scene closes reaches the circuit to the nearest 0.02; a horizon's view stays exact. Exact views give almost every substring a circuit of its own, and each costs a diode solve wherever the curve is read: a clear March instant of the profile's plant took 12 ms, against 1.2 ms at 0.02 and 0.46 ms under the open sky (`profile::a_day_under_the_scenes_sky`). The step moves a string's energy by at most 0.3 %.
+- `estimate` lays none: it shades diffuse light only by the circumsolar part.
 
 ## A typical year and the cautious yield
 
@@ -95,7 +105,7 @@ The split stays inside each hour, so the months picked are the same.
 - A module has one substring per bypass diode: strips along its long side, side by side across its short side.
 - Each substring has 27 sample points, 3 across its strip and 9 along it. From each a ray runs toward the sun.
 - A ray that meets an occluder further than 1 µm away is blocked. The clearance keeps a module's own roof from shading it.
-- A substring with any blocked sample loses its whole beam: its most shaded cell limits its current. It keeps its diffuse light.
+- A substring with any blocked sample loses its whole beam: its most shaded cell limits its current. It loses the circumsolar part of its diffuse light too, from the same patch of sky, and keeps the rest by its sky view.
 - The shaded substring's circuit has a lower photocurrent. In series with lit substrings it either drags the string's current down or is bypassed at −0.5 V. Both show on the string's curve as a step, and on the input's power as a second peak. The operating point takes whichever peak is higher inside the MPPT window.
 - An optimized module keeps its shade to itself: only its own peak drops.
 
@@ -113,6 +123,7 @@ Per sun, `Casters` prepares each occluder once: a triangle's ray-dependent terms
 | `desoto.csv` | The datasheet fit against `fit_desoto` | 1e-7 |
 | `string.csv` | One string's power, voltage, current at its peak | 1e-6 |
 | `input.csv` | Shade, optimizers, parallel strings and MPPT limits on one input | 1e-6 |
+| `skyview.csv` | Sky views beside a long wall, between two, and at the foot of a row in a field of rows: closed forms and pvlib's 2D view factor | 0.002 |
 | `estimate.csv` | The whole chain for the owner's wiring through a day | 0.1 % or 0.5 W |
 
 pvlib knows no scene. Geometry is checked by hand-worked cases (`tests/shade.rs`, `roofing.rs`, `surroundings.rs`, `grid.rs`), and `tests/profile.rs` pins a whole scene's shaded substrings and input powers at nine instants, three more with optimizers and a binding current limit, and checks the bounds that rule casters out against testing every caster.

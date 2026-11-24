@@ -3,10 +3,6 @@
 
 use std::fmt;
 
-use crate::shading::sky_view;
-use crate::string::Open;
-use crate::{Layout, Plane, Sun};
-
 /// One per degree.
 const DEGREES: usize = 360;
 
@@ -87,61 +83,4 @@ impl Horizon {
         let share = from_north - below;
         share.mul_add(at(k + 1) - at(k), at(k))
     }
-}
-
-/// A horizon laid over a layout: each module's sky view, in layout order, computed once for
-/// every instant run under it.
-#[derive(Debug, Clone)]
-pub struct SkyViews<'a> {
-    horizon: &'a Horizon,
-    views: Vec<f64>,
-    /// Where each string's modules start in `views`, and where the last ends.
-    starts: Vec<usize>,
-}
-
-impl<'a> SkyViews<'a> {
-    #[must_use]
-    pub fn new(layout: &Layout, horizon: &'a Horizon) -> Self {
-        let strings = layout
-            .inverters
-            .iter()
-            .flat_map(|inverter| &inverter.inputs)
-            .flat_map(|input| &input.strings);
-        let mut planes: Vec<(Plane, f64)> = Vec::new();
-        let mut views = Vec::new();
-        let mut starts = vec![0];
-        for string in strings {
-            for module in &string.modules {
-                views.push(view_of(&mut planes, module.plane, horizon));
-            }
-            starts.push(views.len());
-        }
-        Self {
-            horizon,
-            views,
-            starts,
-        }
-    }
-
-    /// What the horizon leaves the layout's `string`th string under `sun`.
-    pub(crate) fn open(&self, sun: Sun, string: usize) -> Open<'_> {
-        let views = match (self.starts.get(string), self.starts.get(string + 1)) {
-            (Some(&start), Some(&stop)) => self.views.get(start..stop).unwrap_or_default(),
-            _ => &[],
-        };
-        Open {
-            sun: 90.0 - sun.zenith >= self.horizon.elevation(sun.azimuth),
-            views,
-        }
-    }
-}
-
-/// `plane`'s sky view under `horizon`, computed once per plane: most modules share a few.
-fn view_of(planes: &mut Vec<(Plane, f64)>, plane: Plane, horizon: &Horizon) -> f64 {
-    if let Some(&(_, view)) = planes.iter().find(|(known, _)| *known == plane) {
-        return view;
-    }
-    let view = sky_view(plane, |_, node| horizon.elevation(node.azimuth));
-    planes.push((plane, view));
-    view
 }

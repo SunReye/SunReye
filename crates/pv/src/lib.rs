@@ -28,6 +28,7 @@ mod scene;
 mod shade;
 mod shading;
 mod sizing;
+mod sky_view;
 mod string;
 mod sun;
 mod surroundings;
@@ -46,7 +47,7 @@ pub use face_detail::{Covering, FaceDetail};
 pub use fitting::Unfit;
 pub use free_form::{FreeForm, Traced};
 pub use grid::{Area, GAP, GridModule, Misplaced, ModuleGrid, Placed, RoofFace, Size, Spot};
-pub use horizon::{Horizon, HorizonRefused, SkyViews};
+pub use horizon::{Horizon, HorizonRefused};
 pub use laying::{Alignment, FillRules, Ghost};
 pub use mppt::{input_output, module_counts_differ};
 pub use neighbour::{Neighbour, NeighbourRefused};
@@ -57,6 +58,7 @@ pub use roof_window::RoofWindow;
 pub use scene::{Block, Crown, Face, Obstacle, Overhang, Roof, Scene, Surface};
 pub use shading::ShadingTable;
 pub use sizing::{HOT, Sizing, Wired, longest_string, window_warnings};
+pub use sky_view::SkyViews;
 pub use sun::sun_position;
 pub use surroundings::{
     Fence, FenceFinish, FencePoint, Fencing, Ground, GroundFinish, GroundSurface,

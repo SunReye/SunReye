@@ -2,7 +2,7 @@
 //! power its optimizers deliver whatever the current.
 
 use crate::diode::{BYPASS_DROP, Diode, fit};
-use crate::perez::{Light, cos_incidence, plane_irradiance_in};
+use crate::perez::{Light, Split, cos_incidence};
 use crate::shade::Casters;
 use crate::{Module, ModuleType, PvString, Sky, cell_temperature};
 
@@ -12,6 +12,10 @@ const MARTIN_RUIZ_AR: f64 = 0.16;
 const DIFFUSE_IAM: f64 = 0.95;
 /// ADR 17: an optimized module delivers its own maximum power less 1 %.
 const OPTIMIZER: f64 = 0.99;
+/// The share of sky the scene closes reaches the circuit to this step, so substrings that see
+/// nearly as much sky share one circuit: each distinct circuit costs a diode solve wherever the
+/// curve is read.
+pub const VIEW_STEP: f64 = 0.02;
 /// Points per curve before refining; a shaded curve has one peak per shade level.
 const SAMPLES: u32 = 128;
 /// Powers this close are equal: an optimized string delivers the same at any current.
@@ -44,8 +48,7 @@ impl Curve {
             return curve;
         };
         for (k, module) in string.modules.iter().enumerate() {
-            let light = open.of(k);
-            let groups = substrings(&reference, &string.module, (k, module), (sky, light), shade);
+            let groups = substrings(&reference, &string.module, (k, module), (sky, open), shade);
             if module.optimized {
                 let mut own = Self::empty(1.0);
                 own.add_all(groups);
@@ -205,70 +208,102 @@ pub enum Shade<'a> {
 }
 
 impl Shade<'_> {
-    /// How many substrings of the string's `k`th module lose their beam.
-    fn of(self, module_type: &ModuleType, (k, module): (usize, &Module)) -> u8 {
+    /// Marks each substring of the string's `k`th module, in `shaded`, that loses its beam.
+    fn mark(self, module_type: &ModuleType, (k, module): (usize, &Module), shaded: &mut [bool]) {
         match self {
-            Self::Traced(casters) => module.place.map_or(0, |place| {
-                casters.shaded_substrings(module_type, module.plane, place)
-            }),
-            Self::Looked(shaded) => {
-                let parts = usize::from(module_type.bypass_diodes.max(1));
-                let of_module = shaded.get(k * parts..(k + 1) * parts).unwrap_or_default();
-                let count = of_module.iter().filter(|&&s| s).count();
-                u8::try_from(count).unwrap_or(u8::MAX)
+            Self::Traced(casters) => {
+                if let Some(place) = module.place {
+                    casters.mark(module_type, module.plane, place, shaded);
+                }
+            }
+            Self::Looked(looked) => {
+                let parts = shaded.len();
+                let of_module = looked.get(k * parts..(k + 1) * parts).unwrap_or_default();
+                for (mark, &looked) in shaded.iter_mut().zip(of_module) {
+                    *mark = looked;
+                }
             }
         }
     }
 }
 
-/// What a horizon leaves a string's modules (ADR 17).
+/// What a horizon and the scene leave a string's substrings of the sky (ADR 17).
 #[derive(Clone, Copy)]
 pub struct Open<'a> {
     /// The sun stands above the horizon.
     pub sun: bool,
-    /// Each module's sky view; empty for the whole sky.
+    /// Each substring's sky view, module by module; empty for the whole sky.
     pub views: &'a [f64],
+    /// Each substring's plane's view above the horizon alone, the same indexing: what its cells
+    /// warm by, and what the scene's share is closed from.
+    pub warming: &'a [f64],
 }
 
 impl Open<'_> {
-    /// No horizon.
+    /// No horizon, and no diffuse shade.
     pub const SKY: Open<'static> = Open {
         sun: true,
         views: &[],
+        warming: &[],
     };
 
-    fn of(self, k: usize) -> Light {
-        Light {
-            sun: self.sun,
-            view: self.views.get(k).copied().unwrap_or(1.0),
-        }
+    /// The sky view of each of the `k`th module's `parts` substrings: the share the scene closes
+    /// of its plane's view to the circuit's step, the horizon's exactly.
+    fn of(self, k: usize, parts: usize) -> impl Iterator<Item = f64> {
+        let range = k * parts..(k + 1) * parts;
+        let views = self.views.get(range.clone()).unwrap_or_default();
+        let planes = self.warming.get(range).unwrap_or_default();
+        (0..parts).map(move |part| match (views.get(part), planes.get(part)) {
+            (Some(&view), Some(&plane)) => ((plane - view) / VIEW_STEP)
+                .round()
+                .mul_add(-VIEW_STEP, plane),
+            _ => 1.0,
+        })
+    }
+
+    /// The view the `k`th module's cells warm by.
+    fn warming(self, k: usize, parts: usize) -> f64 {
+        self.warming.get(k * parts).copied().unwrap_or(1.0)
     }
 }
 
-/// A module's substrings under one sky: lit or shaded, by circuit; `None` in the dark.
+/// A module's substrings under one sky, each with its own sky view: lit or shaded, by circuit;
+/// `None` in the dark. A shaded substring loses its beam and the circumsolar part of its diffuse
+/// light, which come from the same patch of sky.
 fn substrings(
     reference: &Diode,
     module_type: &ModuleType,
     (k, module): (usize, &Module),
-    (sky, light): (&Sky, Light),
+    (sky, open): (&Sky, Open),
     shade: Shade,
 ) -> Vec<(Option<Diode>, u32)> {
-    let poa = plane_irradiance_in(module.plane, sky, light);
-    let diffuse_light = poa.sky_diffuse + poa.ground_diffuse;
-    let beam = poa.beam * incidence_loss(cos_incidence(module.plane, sky.sun));
-    let diffuse = diffuse_light * DIFFUSE_IAM;
-    let cell = cell_temperature(poa.beam + diffuse_light, sky.temperature, sky.wind);
+    let split = Split::of(module.plane, sky);
     let parts = module_type.bypass_diodes.max(1);
-    let shaded = if beam > 0.0 {
-        shade.of(module_type, (k, module))
-    } else {
-        0
+    let views: Vec<f64> = open.of(k, usize::from(parts)).collect();
+    let beam = split.beam * incidence_loss(cos_incidence(module.plane, sky.sun));
+    let mut shaded = vec![false; usize::from(parts)];
+    if open.sun && (beam > 0.0 || split.circumsolar > 0.0) {
+        shade.mark(module_type, (k, module), &mut shaded);
+    }
+    // The scene's shade, of beam or of sky, leaves the cells' warmth: modules alike stay alike.
+    let open_sky = Light {
+        sun: open.sun,
+        view: open.warming(k, usize::from(parts)),
     };
+    let warming =
+        if open.sun { split.beam } else { 0.0 } + split.sky_diffuse(open_sky) + split.ground;
+    let cell = cell_temperature(warming, sky.temperature, sky.wind);
     let circuit = |effective| reference.substring(module_type, parts, effective, cell);
-    vec![
-        (circuit(beam + diffuse), u32::from(parts - shaded)),
-        (circuit(diffuse), u32::from(shaded)),
-    ]
+    views
+        .iter()
+        .zip(&shaded)
+        .map(|(&view, &shaded)| {
+            let sun = open.sun && !shaded;
+            let diffuse = (split.sky_diffuse(Light { sun, view }) + split.ground) * DIFFUSE_IAM;
+            let effective = if sun { beam + diffuse } else { diffuse };
+            (circuit(effective), 1)
+        })
+        .collect()
 }
 
 /// The fraction of beam light the glass lets through.
@@ -300,7 +335,9 @@ fn samples(top: f64) -> Vec<f64> {
 /// Where `f` peaks among ascending `points` admitted by `admit`, each local peak refined by
 /// golden section between its neighbours. Ties go to the first point.
 pub fn peak(points: &[f64], f: &impl Fn(f64) -> f64, admit: impl Fn(f64) -> bool) -> f64 {
-    let points: Vec<f64> = points.iter().copied().filter(|p| admit(*p)).collect();
+    let mut points: Vec<f64> = points.iter().copied().filter(|p| admit(*p)).collect();
+    // Equal strings in parallel offer each point twice, and each pair would pass for a peak.
+    points.dedup();
     let values: Vec<f64> = points.iter().map(|p| f(*p)).collect();
     let mut best = (f64::NAN, f64::NEG_INFINITY);
     for (k, (&x, &y)) in points.iter().zip(&values).enumerate() {

@@ -109,3 +109,27 @@ fn a_dark_string_has_no_current_or_voltage() {
         [0.0; 4]
     );
 }
+
+/// Equal strings in parallel, as under diffuse light alone, offer every candidate voltage twice:
+/// the search refines their one peak once, not once per pair.
+#[test]
+fn a_candidate_offered_twice_is_searched_once() {
+    let calls = std::cell::Cell::new(0_u32);
+    let power = |v: f64| {
+        calls.set(calls.get() + 1);
+        v * (10.0 - v)
+    };
+    let once: Vec<f64> = (0..=100).map(|k| f64::from(k) / 10.0).collect();
+    let twice: Vec<f64> = once.iter().flat_map(|&v| [v, v]).collect();
+
+    let at_once = crate::string::peak(&once, &power, |_| true);
+    let searched_once = calls.replace(0);
+    let at_twice = crate::string::peak(&twice, &power, |_| true);
+
+    assert!((at_twice - at_once).abs() < 1e-9, "{at_twice} != {at_once}");
+    assert!(
+        calls.get() <= searched_once + 2,
+        "{} calls offered twice, {searched_once} once",
+        calls.get()
+    );
+}

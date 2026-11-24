@@ -1,12 +1,14 @@
 //! Shading as a table (ADR 17): a year's run looks up which substrings a scene shades by the sun's
-//! position. `estimate` traces every instant and is the oracle.
+//! position. `estimate_with` traces every instant's beam shade, under the same sky views, and is
+//! the oracle.
 
 use super::fixtures::MODULE;
 use crate::perez::cos_incidence;
 use crate::shade::Casters;
 use crate::{
-    Energy, Input, Inverter, Layout, Location, Module, MpptLimits, Occluder, Place, Plane,
-    PvString, ShadingTable, Sun, Weather, clear_weather, estimate, sun_position, year, year_with,
+    Energy, Estimate, Input, Inverter, Layout, Location, Module, MpptLimits, Occluder, Place,
+    Plane, PvString, ShadingTable, SkyViews, Sun, Weather, clear_weather, estimate_with,
+    sun_position, year, year_with,
 };
 
 const QUARTER: i64 = 900;
@@ -97,12 +99,22 @@ fn clear_days(location: Location) -> Vec<Weather> {
         .collect()
 }
 
+/// The estimate with its beam shade traced, under the sky views the table gives.
+fn traced(layout: &Layout, weather: &Weather) -> Estimate {
+    estimate_with(
+        layout,
+        &SkyViews::new(layout, &mut ShadingTable::default(), None),
+        weather,
+    )
+}
+
 /// Each string's energy by month, every instant traced.
 fn traced_months(layout: &Layout, weather: &[Weather]) -> Vec<[f64; 12]> {
+    let views = SkyViews::new(layout, &mut ShadingTable::default(), None);
     let mut strings = vec![[0.0; 12]; 2];
     for sample in weather {
         let month = crate::estimate::month(sample.unix.div_euclid(DAY));
-        let at = estimate(layout, sample);
+        let at = estimate_with(layout, &views, sample);
         for (string, watts) in strings.iter_mut().zip(&at.inverters[0].inputs[0].strings) {
             string[month] += watts / 4.0;
         }
@@ -245,7 +257,7 @@ fn a_step_reads_its_shade_from_the_table_not_from_a_trace() {
 
     let run = year_with(&layout, &mut table, None, &[minute], 60);
 
-    let traced = estimate(&layout, &minute).inverters[0].power / 60.0;
+    let traced = traced(&layout, &minute).inverters[0].power / 60.0;
     let looked_up = run.inverters[0].dc.total;
     assert!(
         (looked_up - traced).abs() > 1e-6 * traced,

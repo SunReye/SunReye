@@ -2,16 +2,23 @@
 //! both it and a year's run read. A clear-sky run caps no input: MPPT limits are the inverter
 //! profile's, which the browser does not read.
 
+use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 
 use serde::Deserialize;
 use sunreye_pv::{
     Horizon, HorizonRefused, Input, Inverter, InverterType, Layout, Module, ModuleType, Neighbour,
-    NeighbourRefused, Plane, PvString, Scene, Size, SkyViews, clear_weather, estimate,
+    NeighbourRefused, Plane, PvString, Scene, ShadingTable, Size, SkyViews, clear_weather,
     estimate_with,
 };
 
 use crate::Place;
+
+thread_local! {
+    /// The last plant's shading table: runs that change only the weather, the times or the
+    /// electrics reuse it (ADR 17).
+    pub static TABLE: RefCell<ShadingTable> = RefCell::default();
+}
 
 /// A module type's datasheet, as the core's API names it.
 #[derive(Deserialize)]
@@ -102,16 +109,13 @@ impl Run {
             .plant
             .layout(&HashMap::new())
             .map_err(|r| r.to_string())?;
-        let views = horizon.as_ref().map(|h| SkyViews::new(&layout, h));
+        let views = TABLE.with_borrow_mut(|table| SkyViews::new(&layout, table, horizon.as_ref()));
         Ok(self
             .times
             .iter()
             .map(|&unix| {
                 let weather = clear_weather(unix, layout.location);
-                let estimated = views.as_ref().map_or_else(
-                    || estimate(&layout, &weather),
-                    |views| estimate_with(&layout, views, &weather),
-                );
+                let estimated = estimate_with(&layout, &views, &weather);
                 let shares = estimated
                     .inverters
                     .iter()
