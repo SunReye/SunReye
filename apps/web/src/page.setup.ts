@@ -2,6 +2,7 @@
 // files after it.
 import { afterEach, beforeAll, beforeEach, inject } from "vitest";
 import { cdp, commands } from "vitest/browser";
+import { cleanup } from "vitest-browser-svelte/pure";
 import { watchAnimations } from "./lib/motion/animations.harness.ts";
 import { watchFrames } from "./lib/motion/clock.harness.ts";
 import { watchDraws } from "./scene-draws.ts";
@@ -34,7 +35,10 @@ beforeAll(() => {
 
 // Each test starts with the pointer off the page. Left at rest where an earlier test or file put
 // it, it hovers what this test renders there, a frame later: an interactive card rises (#888).
+// The last test's screen leaves first: still mounted while the pointer moves, it would answer
+// what that test's own afterEach put back.
 beforeEach(async () => {
+  cleanup();
   await cdp().send("Input.dispatchMouseEvent", { type: "mouseMoved", x: -1, y: -1 });
 });
 
