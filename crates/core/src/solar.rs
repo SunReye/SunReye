@@ -6,6 +6,7 @@
 //! `pv.power`.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::sync::PoisonError;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use sunreye_pv as pv;
@@ -223,11 +224,12 @@ pub(crate) async fn estimates(
         .collect();
     let versions = versions.to_vec();
     let inverters = layouts.inverters().clone();
+    let shading = layouts.shading();
     // Seconds of work on a slow device: on tokio's blocking pool, the I/O thread stays free (ADR 2).
     tokio::task::spawn_blocking(move || {
         // The scene's sky views, which close diffuse light as the builder's do (ADR 17), are laid
-        // once per version: targets come in order.
-        let mut table = pv::ShadingTable::default();
+        // once per version: targets come in order. A run that panicked left the table whole.
+        let mut table = shading.lock().unwrap_or_else(PoisonError::into_inner);
         let mut laid: Option<(SystemTime, Model, pv::SkyViews<'static>)> = None;
         let mut modelled = Vec::with_capacity(weather.len());
         for (target, sky) in weather {
@@ -248,6 +250,7 @@ pub(crate) async fn estimates(
                 model.values(&pv::estimate_with(&model.layout, views, &sky)),
             ));
         }
+        drop(table);
         modelled
     })
     .await

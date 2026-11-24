@@ -7,7 +7,7 @@
 //! inverter and battery types are copied into it by value (ADR 27).
 
 use std::collections::{BTreeMap, HashMap};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::Json;
@@ -352,6 +352,7 @@ pub struct Layouts {
     database: Database,
     inverters: Inverters,
     changed: Arc<watch::Sender<()>>,
+    shading: Arc<Mutex<pv::ShadingTable>>,
 }
 
 impl Layouts {
@@ -361,7 +362,15 @@ impl Layouts {
             database,
             inverters,
             changed: Arc::new(watch::channel(()).0),
+            shading: Arc::default(),
         }
+    }
+
+    /// The shading table every run of the model shares (ADR 17): traced again only for a scene
+    /// other than the last one run.
+    #[must_use]
+    pub fn shading(&self) -> Arc<Mutex<pv::ShadingTable>> {
+        Arc::clone(&self.shading)
     }
 
     /// Marked changed by each layout change.
