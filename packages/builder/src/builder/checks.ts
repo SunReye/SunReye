@@ -81,7 +81,13 @@ function sizedText(warning: Sizing, draft: Draft): string {
   if (warning.kind === "noInput") return m.sizing_no_input({ name, input: string?.input ?? 0 });
 
   const figures = { name, voltage: Math.round(warning.volts), limit: Math.round(warning.limit) };
-  const texts = { start: m.sizing_start, low: m.sizing_low, high: m.sizing_high };
+
+  const texts = {
+    start: m.sizing_start,
+    low: m.sizing_low,
+    high: m.sizing_high,
+    open: m.builder_cold_voltage,
+  };
 
   return texts[warning.kind](figures);
 }

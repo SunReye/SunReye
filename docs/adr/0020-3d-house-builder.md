@@ -1,6 +1,6 @@
 # 20. 3D house builder
 
-Status: accepted (2026-11-09), amended (2026-11-10, 2026-11-12, 2026-11-13, 2026-11-14, 2026-11-15, 2026-11-17, 2026-11-19, 2026-11-20, 2026-11-22, 2026-11-23)
+Status: accepted (2026-11-09), amended (2026-11-10, 2026-11-12, 2026-11-13, 2026-11-14, 2026-11-15, 2026-11-17, 2026-11-19, 2026-11-20, 2026-11-22, 2026-11-23, 2026-11-24)
 
 ## Context
 
@@ -192,6 +192,7 @@ Energy flow shows as tint and label arrows.
     - more strings than free inputs: all of one length, the fewest that leave no module over, shared out over the free inputs, no more in parallel on an input than its maximum input current carries;
     - where no equal cut holds every module, the fewest strings of the longest equal length, and the modules left over stay in no string, which the proposal says;
     - no free input: nothing is proposed, and the reason is said.
+    The `pv` crate holds the cut as `auto_string_face`, and `auto_string` runs it over a whole roof for a consumer that strings a plant without the builder (ADR 25): face by face, the one with the most modules in no string first, each on the inputs the faces before left free (2026-11-24).
     The result is a proposal: listed in the group and drawn on the roof in place of the recorded layout, until it is kept, one undo step, or dropped. Picking modules, an undo or a redo, or leaving the roof face and the wiring mode drops it; so does any other edit made while it shows, and that edit is not made, because it was made of the proposal (2026-11-19, later: such an edit recorded the proposal with it). Saving saves what is shown, the proposal with it. It never changes a module that is already wired.
   - *The Strings group* lists each inverter, under it each of its MPPT inputs with the input's warnings, and under each input its strings with colour, module count and warnings; an input without a string says so. A last row counts the modules in no string and selects them. A string's MPPT input is chosen from the inputs its inverter has (ADR 9), from 1 to 16 where the profile lists none.
 - **Context toolbar** (2026-11-19). What is selected carries its commonest actions on the canvas, so most are done without opening the inspector; every one of them stays in the inspector too. Nothing selected, no toolbar.
@@ -223,7 +224,7 @@ Energy flow shows as tint and label arrows.
 - **The full textured car model (2.5 MB).** Rejected: about 2.5 minutes over a slow link, for detail nobody sees from the yard.
 - **Wiring by a drag into the picked string** (until 2026-11-19). Rejected after use: see Strings.
 - **A free lasso around modules.** Waits: the modules a drag crosses already carry the wiring order, which a lasso would have to guess.
-- **Auto-stringing the whole plant at once.** Waits: a face at a time keeps the result small enough to judge in the preview.
+- **Auto-stringing the whole plant at once.** Waits in the builder: a face at a time keeps the result small enough to judge in the preview. The crate offers it to a consumer without a preview (2026-11-24).
 - **Refusing a layout outside an MPPT window.** Rejected: the plant may already exist, as with the cold voltage.
 - **A 3D quality step of its own for phones.** Rejected: it would differ from Mittel only in its occlusion, for a sixth choice in the setting. Mittel takes the lighter occlusion instead, and Auto starts touch devices there.
 - **Hoch on every capable GPU** (until 2026-11-19). Rejected after measuring a phone: a 4096 shadow map, contact shadows and occlusion at 1.5 on a screen of pixel ratio 3 cost most of each frame.

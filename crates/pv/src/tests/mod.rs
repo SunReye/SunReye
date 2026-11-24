@@ -24,6 +24,7 @@ mod scene;
 mod shade;
 mod sizing;
 mod string;
+mod stringing;
 mod sun;
 mod surroundings;
 mod temperature;

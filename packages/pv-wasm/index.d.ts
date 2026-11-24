@@ -76,11 +76,38 @@ export interface InputLimits {
 /** Each inverter's inputs' limits in the inputs' order, by device id. */
 export type Inverters = Readonly<Record<number, readonly InputLimits[]>>;
 
+/** A string as auto-stringing reads and makes it. */
+export type Strand = Readonly<Pick<Wiring, "moduleType" | "device" | "input" | "modules">>;
+
+/** What auto-stringing reads (ADR 20): the scene, its module types, the inverter the new strings
+ * go to by device, each of its limits where known, and the layout's strings so far, which the new
+ * ones follow. */
+export interface Stringing {
+  readonly scene: Scene;
+  readonly moduleTypes: readonly ModuleType[];
+  readonly device: number;
+  readonly inverter: {
+    /** Volts. */
+    readonly maxInputVoltage: number | null;
+    /** In the inputs' order; null where the inverter lists none. */
+    readonly inputs: readonly InputLimits[] | null;
+  };
+  readonly taken: readonly Strand[];
+}
+
+/** A proposal: the scene with modules wired into the new strings, and how many stay in none. */
+export interface Strung {
+  readonly scene: Scene;
+  readonly strings: Strand[];
+  readonly left: number;
+}
+
 /** Where a layout leaves an MPPT input's limits; a string by its position in the layout. */
 export type Sizing =
   | {
-      /** Never starts in the cold, held under the window when hot, clipped over it in the cold. */
-      readonly kind: "start" | "low" | "high";
+      /** Never starts in the cold, held under the window when hot, clipped over it in the cold;
+       * open-circuit over the inverter's maximum in the cold. */
+      readonly kind: "start" | "low" | "high" | "open";
       readonly string: number;
       readonly volts: number;
       readonly limit: number;
@@ -118,6 +145,16 @@ export interface Pv {
     strings: readonly Wiring[],
     inverters: Inverters,
   ) => Sizing[];
+  /** Grid `grid`'s modules in no string as new strings, in a serpentine cut as few as the
+   * inverter's limits allow; `refused` where it has no free input, null where the grid holds no
+   * module in no string. */
+  readonly autoStringFace: (
+    stringing: Stringing,
+    grid: number,
+  ) => Strung | { readonly refused: "input" } | null;
+  /** Every face strung so, the one with the most modules in no string first, each on the inputs
+   * the faces before left free. */
+  readonly autoString: (stringing: Stringing) => Strung;
   /** The most modules of `moduleType` in series that stay under the inverter's maximum DC input
    * voltage and the input's window at −10 °C; null without either limit. */
   readonly longest: (

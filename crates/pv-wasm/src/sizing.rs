@@ -13,7 +13,7 @@ use crate::clear::{Datasheet, Wiring};
 /// One MPPT input's limits, as the core's capabilities list them (ADR 9).
 #[derive(Deserialize, Clone, Copy)]
 #[serde(rename_all = "camelCase")]
-struct Limits {
+pub struct Limits {
     max_current: f64,
     min_voltage: f64,
     max_voltage: f64,
@@ -21,7 +21,7 @@ struct Limits {
 }
 
 impl Limits {
-    const fn model(self) -> MpptLimits {
+    pub const fn model(self) -> MpptLimits {
         MpptLimits {
             max_current: self.max_current,
             min_voltage: self.min_voltage,

@@ -2,7 +2,7 @@
 // glue crate's own shape is trusted past the top level.
 
 /** @import { Chimney, Opening, RoofWindow } from "@sunreye/scene" */
-/** @import { Face, Geometry, Ghost, Modules, Sizing, Sun, Unfit } from "./index.d.ts" */
+/** @import { Face, Geometry, Ghost, Modules, Sizing, Strung, Sun, Unfit } from "./index.d.ts" */
 
 /**
  * @template T
@@ -120,7 +120,7 @@ export const isWatts = (value) =>
     Array.isArray(value.ok) &&
     value.ok.every((row) => Array.isArray(row)));
 
-const KINDS = new Set(["start", "low", "high", "current", "uneven", "noInput"]);
+const KINDS = new Set(["start", "low", "high", "open", "current", "uneven", "noInput"]);
 
 /**
  * @param {unknown} item
@@ -135,6 +135,40 @@ const isWarning = (item) => isRecord(item) && "kind" in item && KINDS.has(String
 export const isSizing = (value) =>
   isFailure(value) ||
   (isRecord(value) && "ok" in value && Array.isArray(value.ok) && value.ok.every(isWarning));
+
+/**
+ * A proposal of auto-stringing.
+ * @param {unknown} ok
+ * @returns {ok is Strung}
+ */
+const isProposal = (ok) =>
+  isRecord(ok) &&
+  "scene" in ok &&
+  isRecord(ok.scene) &&
+  "strings" in ok &&
+  Array.isArray(ok.strings) &&
+  "left" in ok &&
+  Number.isInteger(ok.left);
+
+/**
+ * @param {unknown} value
+ * @returns {value is Reply<Strung>}
+ */
+export const isStrung = (value) =>
+  isFailure(value) || (isRecord(value) && "ok" in value && isProposal(value.ok));
+
+/**
+ * A face's proposal, its refusal, or null where it holds no module in no string.
+ * @param {unknown} value
+ * @returns {value is Reply<Strung | { readonly refused: "input" } | null>}
+ */
+export const isStrungFace = (value) =>
+  isFailure(value) ||
+  (isRecord(value) &&
+    "ok" in value &&
+    (value.ok === null ||
+      isProposal(value.ok) ||
+      (isRecord(value.ok) && "refused" in value.ok && value.ok.refused === "input")));
 
 /**
  * An index or a count, or null where the crate has none.

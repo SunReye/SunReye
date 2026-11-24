@@ -17,6 +17,8 @@ import {
   isRefit,
   isRoofWindow,
   isSizing,
+  isStrung,
+  isStrungFace,
   isSun,
   isVolts,
   isWatts,
@@ -39,6 +41,8 @@ import {
  * @property {Answer} cold_voltages
  * @property {Answer} sizing
  * @property {Answer} longest
+ * @property {Answer} auto_string_face
+ * @property {Answer} auto_string
  * @property {Answer} refit
  * @property {Answer} place
  * @property {Answer} glide
@@ -75,6 +79,8 @@ const functions = [
   "cold_voltages",
   "sizing",
   "longest",
+  "auto_string_face",
+  "auto_string",
   "refit",
   "place",
   "glide",
@@ -134,7 +140,7 @@ const roofCalls = (call) => ({
 /**
  * What the crate answers of the strings and the inverters' inputs, through `call`.
  * @param {Call} call
- * @returns {Pick<Pv, "coldVoltages" | "sizing" | "longest">}
+ * @returns {Pick<Pv, "coldVoltages" | "sizing" | "longest" | "autoStringFace" | "autoString">}
  */
 const stringCalls = (call) => ({
   coldVoltages: (moduleTypes, strings) =>
@@ -143,6 +149,9 @@ const stringCalls = (call) => ({
     unwrap(call("sizing", JSON.stringify({ moduleTypes, strings, inverters })), isSizing),
   longest: (moduleType, maxInputVoltage, limits) =>
     unwrap(call("longest", JSON.stringify({ moduleType, maxInputVoltage, limits })), isIndex),
+  autoStringFace: (stringing, grid) =>
+    unwrap(call("auto_string_face", JSON.stringify({ ...stringing, grid })), isStrungFace),
+  autoString: (stringing) => unwrap(call("auto_string", JSON.stringify(stringing)), isStrung),
 });
 
 /**
