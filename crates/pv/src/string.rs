@@ -300,7 +300,9 @@ fn samples(top: f64) -> Vec<f64> {
 /// Where `f` peaks among ascending `points` admitted by `admit`, each local peak refined by
 /// golden section between its neighbours. Ties go to the first point.
 pub fn peak(points: &[f64], f: &impl Fn(f64) -> f64, admit: impl Fn(f64) -> bool) -> f64 {
-    let points: Vec<f64> = points.iter().copied().filter(|p| admit(*p)).collect();
+    let mut points: Vec<f64> = points.iter().copied().filter(|p| admit(*p)).collect();
+    // Equal strings in parallel offer each point twice, and each pair would pass for a peak.
+    points.dedup();
     let values: Vec<f64> = points.iter().map(|p| f(*p)).collect();
     let mut best = (f64::NAN, f64::NEG_INFINITY);
     for (k, (&x, &y)) in points.iter().zip(&values).enumerate() {

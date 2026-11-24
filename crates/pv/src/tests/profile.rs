@@ -507,3 +507,44 @@ fn a_shading_table() {
         100.0 * yearly.fold(0.0, f64::max),
     );
 }
+
+/// Diffuse light alone, as under overcast or a sun below a horizon, against the same day clear.
+#[test]
+#[ignore = "a profile, read by a person"]
+#[expect(clippy::print_stdout, reason = "a profile, read by a person")]
+fn diffuse_only() {
+    let layout = layout();
+    let clear: Vec<Weather> = (0..96)
+        .map(|k| clear_weather(MARCH + QUARTER * k, BERLIN))
+        .filter(|w| w.ghi > 0.0)
+        .collect();
+    let overcast: Vec<Weather> = clear
+        .iter()
+        .map(|w| Weather {
+            ghi: w.dhi,
+            dni: 0.0,
+            ..*w
+        })
+        .collect();
+    for (what, weather) in [("clear", &clear), ("overcast", &overcast)] {
+        let n = f64::from(u32::try_from(weather.len()).unwrap());
+        let skies: Vec<Sky> = weather.iter().map(|w| sky(&layout, w)).collect();
+        let curves = time(|| {
+            for sky in &skies {
+                let casters = Casters::under(sky.sun, &layout.occluders);
+                let shade = Shade::Traced(&casters);
+                strings(&layout).for_each(|s| _ = black_box(Curve::new(s, sky, shade, Open::SKY)));
+            }
+        });
+        let whole = time(|| {
+            for w in weather {
+                black_box(estimate(&layout, w));
+            }
+        });
+        println!(
+            "March, {what}: ms per instant: curves {:.4}, estimate {:.4}",
+            curves / n,
+            whole / n
+        );
+    }
+}
