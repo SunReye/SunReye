@@ -335,8 +335,8 @@ fn illinois(f: &impl Fn(f64) -> f64, ends: [(f64, f64); 2], tolerance: f64) -> f
 pub enum Shade<'a> {
     /// Traced toward the sky's sun.
     Traced(&'a Casters),
-    /// Looked up: each of the string's substrings, module by module, shaded or not.
-    Looked(&'a [bool]),
+    /// Looked up: how much of each of the string's substrings, module by module, lies in shade.
+    Looked(&'a [u8]),
 }
 
 impl Shade<'_> {
@@ -352,7 +352,7 @@ impl Shade<'_> {
                 let parts = shaded.len();
                 let of_module = looked.get(k * parts..(k + 1) * parts).unwrap_or_default();
                 for (mark, &looked) in shaded.iter_mut().zip(of_module) {
-                    *mark = looked;
+                    *mark = looked > 0;
                 }
             }
         }

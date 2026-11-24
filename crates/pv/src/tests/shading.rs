@@ -28,9 +28,10 @@ const SYDNEY: Location = Location {
 };
 
 /// What looking shade up instead of tracing it may cost a string, of its energy: in one clear day,
-/// where a shade's edge moved by half a node weighs most, and over the run. The full scene's
-/// profile reads at most 0.34 % in a month and 0.04 % in a year.
-const DAY_TOLERANCE: f64 = 0.02;
+/// where a shade's edge moved by half a node weighs most, and over the run. Here a pole's thin
+/// shadow reads 3.1 % in a day and 0.44 % over the run since a substring's edge decides (#889),
+/// 1.9 % and 0.12 % before.
+const DAY_TOLERANCE: f64 = 0.035;
 const RUN_TOLERANCE: f64 = 0.005;
 
 /// A row of `count` portrait modules 1.2 m apart at 5 m, facing `azimuth` at 35°.
@@ -196,6 +197,11 @@ fn traced_at(layout: &Layout, sun: Sun) -> Vec<bool> {
         .collect()
 }
 
+/// Whether each substring of a table's row loses its beam.
+fn beams(row: &[u8]) -> Vec<bool> {
+    row.iter().map(|&covered| covered > 0).collect()
+}
+
 fn sun(elevation: f64, azimuth: f64) -> Sun {
     Sun {
         zenith: 90.0 - elevation,
@@ -228,7 +234,7 @@ fn a_sun_reads_the_nearest_node_on_either_side_of_north() {
     );
 
     for (at, node) in cases {
-        let row = table.row(at).unwrap();
+        let row = beams(table.row(at).unwrap());
 
         assert_eq!(row, traced_at(&layout, node), "the sun at {at:?}");
     }
@@ -251,7 +257,7 @@ fn a_step_reads_its_shade_from_the_table_not_from_a_trace() {
             south
                 && table
                     .row(sun)
-                    .is_some_and(|row| row != traced_at(&layout, sun))
+                    .is_some_and(|row| beams(row) != traced_at(&layout, sun))
         })
         .unwrap();
 

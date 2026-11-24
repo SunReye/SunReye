@@ -7,7 +7,7 @@
 use super::fixtures::{MODULE, rows};
 use crate::{
     Energy, Input, Inverter, Layout, Location, Module, MpptLimits, Occluder, Place, Plane, Point,
-    PvString, Weather, year,
+    PvString, ShadingTable, SkyViews, Weather, estimate_with, year,
 };
 
 const BERLIN: Location = Location {
@@ -15,6 +15,7 @@ const BERLIN: Location = Location {
     longitude: 13.38,
 };
 const HOUR: i64 = 3600;
+const DAY: i64 = 86_400;
 /// Half the length of a wall or row that stands for an endless one, in metres.
 const ENDLESS: f64 = 300.0;
 /// Between modules side by side, in metres.
@@ -23,13 +24,27 @@ const GAP: f64 = 0.02;
 /// The plants, by the names the fixture gives them.
 const PLANTS: [&str; 4] = ["open_roof", "shaded_roof", "east_west", "rack_field"];
 
-/// How far each plant's yearly energy may stand from pvlib's, as a share of it (ADR 17).
-fn tolerance(plant: &str) -> f64 {
+/// How far each plant's yearly and monthly energy may stand from pvlib's, as a share of it
+/// (ADR 17).
+fn tolerance(plant: &str) -> Tolerance {
     match plant {
-        "open_roof" | "east_west" => 0.001,
-        "shaded_roof" | "rack_field" => 0.01,
+        "open_roof" | "east_west" => Tolerance {
+            year: 0.001,
+            month: 0.001,
+        },
+        // A month is off by the 2° grid the beam's shade is looked up on: traced every hour,
+        // it keeps within `TRACED` (below).
+        "shaded_roof" | "rack_field" => Tolerance {
+            year: 0.002,
+            month: 0.05,
+        },
         _ => panic!("unknown plant {plant}"),
     }
+}
+
+struct Tolerance {
+    year: f64,
+    month: f64,
 }
 
 fn weather() -> Vec<Weather> {
@@ -229,13 +244,23 @@ fn check(plant: &str, weather: &[Weather]) {
             100.0 * off,
             months.join(" ")
         );
+        let tolerance = tolerance(plant);
         assert!(
-            off.abs() <= tolerance(plant),
+            off.abs() <= tolerance.year,
             "{plant} {name}: {:.1} Wh against pvlib's {:.1} Wh, {:+.3} %",
             energy.total,
             expected.total,
             100.0 * off
         );
+        for (m, (&ours, theirs)) in energy.months.iter().zip(expected.months).enumerate() {
+            let off = deviation(ours, theirs);
+            assert!(
+                off.abs() <= tolerance.month,
+                "{plant} {name}, month {}: {ours:.1} Wh against pvlib's {theirs:.1} Wh, {:+.2} %",
+                m + 1,
+                100.0 * off
+            );
+        }
     }
 }
 
@@ -257,6 +282,85 @@ fn two_orientations_on_one_input_match_pvlib_over_a_year() {
 #[test]
 fn a_rack_fields_year_matches_pvlib() {
     check("rack_field", &weather());
+}
+
+/// Each substring's view of the sky averaged over it, as pvlib has it: beside the wall the 2D
+/// closed form along each row's strip, in the field `vf_row_sky_2d_integ` over each substring's
+/// strip, each over the open sky's (`fixtures/proof.py`).
+#[test]
+#[expect(clippy::print_stdout, reason = "the views `docs/pv-proof.md` quotes")]
+fn a_substrings_sky_view_is_pvlibs_mean_over_its_strip() {
+    let cases: [(&str, &[f64]); 2] = [
+        ("shaded_roof", &[0.84871, 0.90979]),
+        ("rack_field", &[0.93321, 0.96947, 0.99180]),
+    ];
+    for (plant, expected) in cases {
+        let layout = layout(plant);
+        let views = SkyViews::new(&layout, &mut ShadingTable::default(), None);
+        let views = views.of(0);
+        // The roof's lower row is its first 8 modules, all substrings alike; in the field, each
+        // module's substrings run up the slope.
+        let pairs: Vec<(usize, f64)> = if plant == "shaded_roof" {
+            vec![(4 * 3 + 1, expected[0]), (12 * 3 + 1, expected[1])]
+        } else {
+            (0..3).map(|j| (8 * 3 + j, expected[j])).collect()
+        };
+        for (k, pvlib) in pairs {
+            let view = views[k];
+            println!("{plant} substring {k}: {view:.5}, pvlib {pvlib:.5}");
+            assert!(
+                (view - pvlib).abs() <= SKY_VIEW_TOLERANCE,
+                "{plant} substring {k}: {view:.5} against pvlib's {pvlib:.5}"
+            );
+        }
+    }
+}
+
+/// How far a substring's view may stand from pvlib's.
+const SKY_VIEW_TOLERANCE: f64 = 0.001;
+
+/// How far a shaded plant's month may stand from pvlib's with its beam's shade traced at every
+/// hour instead of looked up on the shading table's grid.
+const TRACED: f64 = 0.001;
+
+/// The shaded plants' months with the beam's shade traced at each hour's own sun, under the same
+/// sky views: what is left of the looked-up months' gap to pvlib is the grid's (#889).
+#[test]
+#[expect(
+    clippy::print_stdout,
+    reason = "the deviations `docs/pv-proof.md` quotes, read with --nocapture"
+)]
+fn traced_every_hour_a_shaded_plants_months_match_pvlib() {
+    for plant in ["shaded_roof", "rack_field"] {
+        let layout = layout(plant);
+        let views = SkyViews::new(&layout, &mut ShadingTable::default(), None);
+        let mut months = [0.0; 12];
+        for sample in weather() {
+            let month = crate::estimate::month(sample.unix.div_euclid(DAY));
+            let at = estimate_with(&layout, &views, &sample);
+            // Watts held for the hour: watt-hours.
+            months[month] += at.inverters[0].inputs[0].power;
+        }
+        let expected = pvlib(plant, "input");
+        let offs: Vec<f64> = months
+            .iter()
+            .zip(expected.months)
+            .map(|(&ours, theirs)| deviation(ours, theirs))
+            .collect();
+        let shown: Vec<String> = offs
+            .iter()
+            .map(|off| format!("{:+.2}", 100.0 * off))
+            .collect();
+        println!("{plant} traced, by month % {}", shown.join(" "));
+        for (m, off) in offs.iter().enumerate() {
+            assert!(
+                off.abs() <= TRACED,
+                "{plant}, month {}, traced: {:+.3} %",
+                m + 1,
+                100.0 * off
+            );
+        }
+    }
 }
 
 #[test]

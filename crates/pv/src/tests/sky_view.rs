@@ -216,10 +216,11 @@ fn rows_of_a_rack_field_take_each_others_diffuse_light() {
         .strings
         .clone();
 
-    // Nothing stands before the front row; each row behind it sees less of the southern sky.
+    // Nothing stands before the front row; each row behind it sees less of the southern sky,
+    // averaged up each substring's strip.
     assert!(least(0) > 0.99, "front: {:?}", views.of(0));
     assert!(
-        most(1) < 0.97 && most(2) < 0.97,
+        most(1) < 0.975 && most(2) < 0.975,
         "{:?} {:?}",
         views.of(1),
         views.of(2)
@@ -271,6 +272,7 @@ const ENDLESS: f64 = 300.0;
 /// The golden view's geometry around a point at the origin.
 fn golden(case: &str, tilt: f64, size: f64, distance: f64) -> Layout {
     let along = |x: f64| wall([x, -ENDLESS, 0.0], [x, ENDLESS, 0.0], size);
+    let mut centre = [0.0, 0.0, 0.0];
     let (plane, occluders): (Plane, Vec<Occluder>) = match case {
         "wall" => (FLAT, along(distance).into()),
         "street" => (FLAT, [along(distance), along(-distance)].concat()),
@@ -283,11 +285,15 @@ fn golden(case: &str, tilt: f64, size: f64, distance: f64) -> Layout {
                 Occluder::Triangle([foot(-ENDLESS), foot(ENDLESS), top(ENDLESS)]),
                 Occluder::Triangle([foot(-ENDLESS), top(ENDLESS), top(-ENDLESS)]),
             ];
+            // The point's foot at the origin, level with the row's: below it, its lower edge
+            // would see under the row along the horizon.
+            let half = POINT.height / 2.0;
+            centre = [0.0, half * run, half * rise];
             (Plane { tilt, azimuth: 0.0 }, row.into())
         }
         _ => panic!("unknown case {case}"),
     };
-    layout(POINT, plane, &[[0.0, 0.0, 0.0]], occluders)
+    layout(POINT, plane, &[centre], occluders)
 }
 
 /// Golden values from closed forms and pvlib (`fixtures/generate.py`): a point beside a long wall,

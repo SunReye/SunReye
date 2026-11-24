@@ -149,6 +149,29 @@ fn a_band_along_the_eaves_shades_every_portrait_substring_but_one_landscape_subs
 }
 
 #[test]
+fn a_shadow_on_a_substrings_edge_alone_takes_its_beam() {
+    // 3 cm deep: the shadow covers a substring's edge and none of its inner cells (#889).
+    let portrait_eaves = rectangle(
+        [-1.0, 1.0],
+        [-MODULE.height / 2.0, 0.03 - MODULE.height / 2.0],
+    );
+    // Landscape: just above the boundary between the first and second substrings up the slope.
+    let boundary = -MODULE.width / 6.0;
+    let landscape_edge = rectangle([-1.0, 1.0], [boundary, boundary + 0.03]);
+
+    assert_peak(
+        power(&string(false), &portrait_eaves),
+        case("one module fully shaded").get("power"),
+        "portrait",
+    );
+    assert_peak(
+        power(&string(true), &landscape_edge),
+        case("one module with one substring shaded").get("power"),
+        "landscape",
+    );
+}
+
+#[test]
 fn a_pole_between_the_sun_and_a_substring_shades_it() {
     let [x, y, z] = on_roof(0.0, 0.0, 2.0);
     let pole = Occluder::Cylinder {
