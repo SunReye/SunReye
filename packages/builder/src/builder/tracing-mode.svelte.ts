@@ -4,14 +4,17 @@
 // ridges to a height, the picked line made an eave or a ridge, a point of it given a height, a
 // picked dormer raised. A ready shape is held here until the canvas places it. Every edit is a
 // named `TraceEdit`, made by `replay`, as a consumer keeping the scene elsewhere makes it.
-import { bent, dormers, lineKind, replay, type Kind, type TraceEdit } from "@sunreye/scene";
+import { bent, lineKind, replay, type Kind, type TraceEdit } from "@sunreye/scene";
 import type { Draft } from "./modules.ts";
+import { dormerOf, type Picked } from "./trace-place.ts";
 import type { LineRef, Placing, Tracing } from "./tracing.svelte.ts";
 
 /** The session the mode reads and edits. */
 export interface Traced {
   readonly draft: Draft;
   change(draft: Draft): void;
+  /** Tells the frame's consumer of an edit made. */
+  traced(edit: TraceEdit): void;
 }
 
 export class TracingMode {
@@ -125,32 +128,9 @@ export class TracingMode {
       this.#emit({ kind: "height", block: line.block, point, height });
   }
 
-  /** The dormer the picked line is a line of: its first face, and its lowest and highest points'
-   * heights, its eaves' and its ridges'. */
-  get dormer(): { face: number; eave: number; ridge: number } | undefined {
-    const { line } = this;
-    const scene = this.#session.draft.scene;
-
-    if (line === undefined) return undefined;
-
-    const traced = scene.blocks[line.block]?.freeForm?.traced;
-    const ends = traced?.lines[line.line];
-
-    if (traced === undefined || traced === null || ends === undefined) return undefined;
-
-    const of = dormers(scene, line.block).find((d) =>
-      d.faces.some((f) => ends.every((p) => traced.faces[f]?.includes(p) === true)),
-    );
-
-    const heights = [...new Set(of?.faces.flatMap((f) => traced.faces[f] ?? []))].map(
-      (p) => traced.points[p]?.[1] ?? 0,
-    );
-
-    const [face] = of?.faces ?? [];
-
-    return face === undefined
-      ? undefined
-      : { face, eave: Math.min(...heights), ridge: Math.max(...heights) };
+  /** The dormer the picked line is a line of. */
+  get dormer(): Picked | undefined {
+    return this.line && dormerOf(this.#session.draft.scene, this.line);
   }
 
   /** Pulls the picked dormer's eaves, or ridges, to `height` metres: one undo step. */
@@ -165,8 +145,10 @@ export class TracingMode {
   #emit(edit: TraceEdit): void {
     const edited = replay(this.#session.draft.scene, edit);
 
-    if (!("refused" in edited))
-      this.#session.change({ ...this.#session.draft, scene: edited.scene });
+    if ("refused" in edited) return;
+
+    this.#session.change({ ...this.#session.draft, scene: edited.scene });
+    this.#session.traced(edit);
   }
 
   /** The canvas's tracing while the mode is on. */
@@ -188,6 +170,7 @@ export class TracingMode {
         if (edit.kind === "roof" || edit.kind === "dormer") this.placing = undefined;
 
         this.#session.change({ ...this.#session.draft, scene });
+        this.#session.traced(edit);
       },
     };
   }

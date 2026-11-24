@@ -3,7 +3,7 @@
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- three.js and the DOM, used in place. */
 import type { Click, Snap, Spot } from "@sunreye/scene";
 import { type PerspectiveCamera, Raycaster, Vector2 } from "three";
-import { inScene, level, world } from "./handles/frame.ts";
+import { inScene, level, world, type Ray } from "./handles/frame.ts";
 import { ndc } from "./pointer.ts";
 import type { Point } from "./pv.ts";
 
@@ -14,6 +14,8 @@ export interface Aimed {
   /** What it picks by its pixels, as drawn: a traced point, a line, or free. Without one, it
    * snaps by the ground under it. */
   readonly snap?: Snap | undefined;
+  /** The pointer's ray in the scene's frame, which finds what is drawn under it. */
+  readonly ray?: Ray | undefined;
 }
 
 /** Metres a click snaps within where the ground cannot be measured. */
@@ -26,14 +28,14 @@ export function pvPoint(north: number, spot: readonly number[]): Point {
   return [east, 0 - south, up];
 }
 
-/** Where the canvas point `shift` pixels off `event` lands on the plain ground; null off it. */
-function ground(
+/** The ray through the canvas point `shift` pixels off `event`, in the scene's frame. */
+function rayAt(
   canvas: HTMLCanvasElement,
   camera: PerspectiveCamera,
   north: number,
   event: PointerEvent,
   [dx, dy]: readonly [number, number],
-): Spot | null {
+): Ray {
   // A press may come before the first draw has placed the camera's matrices.
   camera.updateMatrixWorld();
 
@@ -44,7 +46,13 @@ function ground(
   ray.setFromCamera(new Vector2(x + (dx / box.width) * 2, y - (dy / box.height) * 2), camera);
 
   const { origin, direction } = ray.ray;
-  const on = level(inScene(north, { origin: origin.toArray(), direction: direction.toArray() }), 0);
+
+  return inScene(north, { origin: origin.toArray(), direction: direction.toArray() });
+}
+
+/** Where a ray lands on the plain ground; null off it. */
+function ground(ray: Ray): Spot | null {
+  const on = level(ray, 0);
 
   return on && [on[0], on[1], on[2]];
 }
@@ -59,14 +67,15 @@ export function aim(
   event: PointerEvent,
   pixels: number,
 ): Aimed | null {
-  const at = ground(canvas, camera, north, event, [0, 0]);
-  const beside = ground(canvas, camera, north, event, [pixels, 0]);
+  const ray = rayAt(canvas, camera, north, event, [0, 0]);
+  const at = ground(ray);
+  const beside = ground(rayAt(canvas, camera, north, event, [pixels, 0]));
 
   if (at === null) return null;
 
   const reach = beside === null ? FALLBACK : Math.hypot(beside[0] - at[0], beside[2] - at[2]);
 
-  return { at, reach };
+  return { at, reach, ray };
 }
 
 /** A spot as a click: its height only when a surface gave one. */

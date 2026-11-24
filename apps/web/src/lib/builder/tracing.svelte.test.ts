@@ -41,7 +41,7 @@ async function tracing(
   start: Scene = EMPTY,
   held?: Placing,
 ): Promise<{
-  readonly at: (x: number, z: number) => [number, number];
+  readonly at: (x: number, z: number, height?: number) => [number, number];
   readonly scenes: Scene[];
   readonly edits: TraceEdit[];
 }> {
@@ -77,9 +77,9 @@ async function tracing(
 
   return {
     // Scene x and z to page pixels: north 0, so east is x and north is −z.
-    at: (x, z) => {
+    at: (x, z, height = 0) => {
       const { left, top } = canvas.getBoundingClientRect();
-      const [px = 0, py = 0] = project?.([x, -z, 0]) ?? [];
+      const [px = 0, py = 0] = project?.([x, -z, height]) ?? [];
 
       return [left + px, top + py];
     },
@@ -188,11 +188,16 @@ test("a ready dormer held is placed on the face under the next click", async () 
     size: dormer,
   });
 
-  await press("mouse", [at(5, 4)]);
+  // Tapped where the face is drawn, 4.5 m up near the house's corner, not over the ground under it.
+  await press("mouse", [at(3, 4, 4.5)]);
   await settle(() => scenes.length === 1);
 
   const [edit] = edits;
 
   expect(edit).toMatchObject({ kind: "dormer", block: 0, id: "schleppgaube", size: dormer });
+  expect(edit?.kind === "dormer" && [edit.at.x, edit.at.z].map((v) => v.toFixed(1))).toEqual([
+    "3.0",
+    "4.0",
+  ]);
   expect(edit && replay(start, edit)).toMatchObject({ scene: scenes[0] });
 });

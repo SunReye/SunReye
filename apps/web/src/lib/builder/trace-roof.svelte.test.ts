@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import Builder from "../../../../../packages/builder/src/builder/Builder.svelte";
+import type { TraceEdit } from "@sunreye/scene";
 import { parseView } from "../../../../../packages/builder/src/builder/camera.ts";
 import {
   DEVICES,
@@ -36,10 +37,11 @@ afterEach(async () => {
 });
 
 /** The builder on the template house, in the tracing mode once the canvas has turned down. */
-async function tracing(): Promise<void> {
+async function tracing(ontrace?: (edit: TraceEdit) => void): Promise<void> {
   const draws = vi.spyOn(EffectComposer.prototype, "render");
 
   await render(Builder, {
+    ontrace,
     pv,
     ...hosted(testCore()),
     start: house(),
@@ -164,7 +166,11 @@ async function ready(name: string): Promise<void> {
 }
 
 test("a ready roof and a ready dormer are placed by a click each, and the dormer is raised", async () => {
-  await tracing();
+  const edits: TraceEdit[] = [];
+
+  await tracing((edit) => {
+    edits.push(edit);
+  });
 
   const view = parseView(localStorage.getItem("sunreye.builder.view"));
   const canvas = page.getByLabelText("3D-Szene des Hauses").element().getBoundingClientRect();
@@ -184,16 +190,24 @@ test("a ready roof and a ready dormer are placed by a click each, and the dormer
   await ready("Schleppgaube");
   await expect.element(bar().getByText("Tippe auf die Dachfläche für: Schleppgaube")).toBeVisible();
 
-  // 2 m by 1.5 m, centred on (6, 2): its front at z 1.25 on the face at 4.25 m, its eave at 5 m.
-  await press("mouse", [at([6, 0, 2])]);
+  // 2 m by 1.5 m, tapped where the face is drawn at (6, 2), 5 m up: its front at z 1.25 on the face
+  // at 4.25 m, its eave at 5 m. A shed dormer has no ridge to raise.
+  await press("mouse", [at([6, 5, 2])]);
   await expect.element(bar().getByText(/Tippe auf/u)).not.toBeInTheDocument();
 
   await press("mouse", [at([6, 5, 1.25])]);
   await expect.element(bar().getByRole("button", { name: /^Gaube Traufe 5 m/u })).toBeVisible();
+  await expect
+    .element(bar().getByRole("button", { name: /^Gaube First/u }))
+    .not.toBeInTheDocument();
 
   await height("Gaube Traufe", "4,5");
 
   await expect.element(bar().getByRole("button", { name: /^Gaube Traufe 4,5 m/u })).toBeVisible();
+
+  // The consumer heard each edit, named, as it may replay it.
+  expect(edits.map((edit) => edit.kind)).toEqual(["roof", "dormer", "pullDormer"]);
+  expect(edits.at(-1)).toMatchObject({ block: 1, which: "eave", height: 4.5 });
 });
 
 test("a ready shape held is let go by Abbrechen, and nothing is placed", async () => {

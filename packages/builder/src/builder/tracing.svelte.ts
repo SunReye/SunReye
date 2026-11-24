@@ -8,7 +8,6 @@ import {
   moveLine,
   replay,
   snap,
-  type Click,
   type DormerSize,
   type End,
   type PointRef,
@@ -224,10 +223,14 @@ export class TraceTool {
     tracing.ontrace(edited.scene, { kind: "move", ...line, by });
   }
 
-  /** A tap with a ready shape held: it is placed there, a roof centred on the tap. */
-  #placed(tracing: Tracing, placing: Placing, { x, z }: Click): void {
+  /** A tap with a ready shape held: it is placed there, a roof centred on the ground under it, a
+   * dormer on the face drawn under it. */
+  #placed(tracing: Tracing, placing: Placing, aimed: Aimed): void {
     const { scene } = tracing;
-    const face = placing.kind === "dormer" ? faceUnder(scene, { x, z }) : undefined;
+    const { x, z } = clickAt(aimed.at);
+    const face = placing.kind === "dormer" ? faceUnder(scene, { x, z }, aimed.ray) : undefined;
+
+    this.end();
 
     const edit: TraceEdit | undefined =
       placing.kind === "roof"
@@ -235,7 +238,7 @@ export class TraceTool {
             ...placing,
             at: { x: x - placing.size.width / 2, z: z - placing.size.depth / 2 },
           }
-        : face && { ...placing, ...face, at: { x, z } };
+        : face && { ...placing, ...face };
 
     const edited = edit === undefined ? { refused: "missing" as const } : replay(scene, edit);
 
@@ -253,7 +256,7 @@ export class TraceTool {
 
     this.#refused = undefined;
 
-    if (tracing.placing !== undefined) this.#placed(tracing, tracing.placing, clickAt(aimed.at));
+    if (tracing.placing !== undefined) this.#placed(tracing, tracing.placing, aimed);
     else if (from === undefined) this.#started(tracing, end, line);
     else if (samePoint(from, end)) this.end();
     // Ends picked by pixels are resolved already: the scene's snap in metres must not move them.

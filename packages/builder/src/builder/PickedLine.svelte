@@ -56,13 +56,15 @@
       mode.raiseDormer("eave", height);
     }}
   />
-  <HeightButton
-    name={m.builder_trace_dormer_ridge()}
-    value={mode.dormer.ridge}
-    onchange={(height) => {
-      mode.raiseDormer("ridge", height);
-    }}
-  />
+  {#if mode.dormer.ridged}
+    <HeightButton
+      name={m.builder_trace_dormer_ridge()}
+      value={mode.dormer.ridge}
+      onchange={(height) => {
+        mode.raiseDormer("ridge", height);
+      }}
+    />
+  {/if}
 {/if}
 <Button
   variant="ghost"
