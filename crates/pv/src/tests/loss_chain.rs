@@ -548,6 +548,27 @@ fn a_warranty_never_takes_a_year_below_nothing() {
 }
 
 #[test]
+fn a_lone_evenly_lit_string_loses_nothing_to_mismatch_and_parallel_planes_do() {
+    let mut lone = plant();
+    lone.inverters.truncate(1);
+    lone.inverters[0].inputs = vec![Input {
+        limits: None,
+        strings: vec![string(0.0, 14)],
+    }];
+    let mut mixed = lone.clone();
+    mixed.inverters[0].inputs[0].strings.push(string(180.0, 14));
+
+    let mismatch = |layout: &Layout| {
+        let chain = year(layout, &days(), QUARTER).inverters[0].chain.clone();
+        find(&chain, Loss::Mismatch).total / chain.end().total
+    };
+
+    let (lone, mixed) = (mismatch(&lone), mismatch(&mixed));
+    assert!(lone.abs() < 1e-9, "{lone}");
+    assert!(mixed > 1e-4, "south and north share one voltage: {mixed}");
+}
+
+#[test]
 fn strings_without_a_loss_of_their_own_leave_it_out() {
     let mut layout = plant();
     for string in layout
