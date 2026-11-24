@@ -15,6 +15,8 @@ const QUARTER: i64 = 900;
 /// 00:00 UTC on 2026-01-21.
 const JANUARY_21: i64 = 1_768_953_600;
 const DAY: i64 = 86_400;
+const JUNE_21: i64 = JANUARY_21 + 151 * DAY;
+const DECEMBER_21: i64 = JANUARY_21 + 334 * DAY;
 
 const BERLIN: Location = Location {
     latitude: 52.52,
@@ -28,11 +30,11 @@ const SYDNEY: Location = Location {
 };
 
 /// What looking shade up instead of tracing it may cost a string, of its energy: in one clear day,
-/// where a shade's edge moved by half a node weighs most, and over the run. This scene reads
-/// 3.1 % in a day and 0.44 % over the run since a substring's edge decides (#889), 1.9 % and
-/// 0.12 % before; without the crown, 1.1 % in a day.
-const DAY_TOLERANCE: f64 = 0.035;
-const RUN_TOLERANCE: f64 = 0.005;
+/// where a shade's edge moved by half a node weighs most, and over the run. Since a step traces
+/// a module whose substrings the nodes around the sun disagree on (#890) this scene reads under
+/// 0.0001 % in both; at the nearest node alone it read 3.1 % in a day and 0.44 % over the run.
+const DAY_TOLERANCE: f64 = 0.001;
+const RUN_TOLERANCE: f64 = 0.001;
 
 /// A row of `count` portrait modules 1.2 m apart at 5 m, facing `azimuth` at 35°.
 fn row(azimuth: f64, count: u8) -> PvString {
@@ -241,32 +243,105 @@ fn a_sun_reads_the_nearest_node_on_either_side_of_north() {
     assert_eq!(table.row(sun(-0.1, 180.0)), None, "the sun down");
 }
 
-#[test]
-fn a_step_reads_its_shade_from_the_table_not_from_a_trace() {
-    let layout = shaded(BERLIN, 0.0, -1.0);
-    let mut table = ShadingTable::default();
-    table.refresh(&layout);
-    // A minute of 21 December, the sun in the south on every module, where the true sun and its
-    // node disagree on a substring.
-    let december = JANUARY_21 + 334 * DAY;
-    let minute = (0..1440)
-        .map(|m| clear_weather(december + 60 * m, BERLIN))
+/// A minute of `day` where the node nearest the sun and the sun itself disagree on a substring's
+/// beam, the sun's azimuth within `azimuths`.
+fn minute_off_its_node(
+    layout: &Layout,
+    table: &ShadingTable,
+    day: i64,
+    azimuths: fn(f64) -> bool,
+) -> Weather {
+    (0..1440)
+        .map(|m| clear_weather(day + 60 * m, layout.location))
         .find(|w| {
-            let sun = sun_position(w.unix, BERLIN);
-            let south = sun.zenith < 85.0 && sun.azimuth.abs() < 60.0;
-            south
+            let sun = sun_position(w.unix, layout.location);
+            sun.zenith < 85.0
+                && azimuths(sun.azimuth)
                 && table
                     .row(sun)
-                    .is_some_and(|row| beams(row) != traced_at(&layout, sun))
+                    .is_some_and(|row| beams(row) != traced_at(layout, sun))
+        })
+        .unwrap()
+}
+
+/// One minute's energy, its shade looked up, against the same minute traced.
+fn looked_up_and_traced(layout: &Layout, table: &mut ShadingTable, minute: &Weather) -> (f64, f64) {
+    let run = year_with(layout, table, None, std::slice::from_ref(minute), 60);
+    let traced = traced(layout, minute).inverters[0].power / 60.0;
+    (run.inverters[0].dc.total, traced)
+}
+
+/// A layout, a day, and the azimuths to find a minute at.
+type Case = (Layout, i64, fn(f64) -> bool);
+
+#[test]
+fn where_the_nodes_around_the_sun_disagree_a_step_traces_its_beam() {
+    let cases: [Case; 2] = [
+        (shaded(BERLIN, 0.0, -1.0), DECEMBER_21, |azimuth| {
+            azimuth.abs() < 60.0
+        }),
+        // In the cells either side of north, where azimuths wrap.
+        (shaded(SYDNEY, 180.0, 1.0), JUNE_21, |azimuth| {
+            azimuth.abs() > 178.0
+        }),
+    ];
+    for (layout, day, azimuths) in cases {
+        let mut table = ShadingTable::default();
+        table.refresh(&layout);
+        let minute = minute_off_its_node(&layout, &table, day, azimuths);
+
+        let (looked_up, traced) = looked_up_and_traced(&layout, &mut table, &minute);
+
+        assert!(
+            (looked_up - traced).abs() <= 1e-9 * traced,
+            "{looked_up} Wh looked up, {traced} Wh traced at {}",
+            minute.unix
+        );
+    }
+}
+
+/// A ball 200 m from a module, along the sun's ray: its shadow, 0.5 m across, misses the module
+/// under the suns at the nodes around.
+#[test]
+fn a_step_reads_a_shade_no_node_around_it_sees_from_the_table() {
+    let mut layout = shaded(BERLIN, 0.0, -1.0);
+    layout.inverters[0].inputs[0].strings = vec![row(0.0, 1)];
+    // A sun near the middle of its cell, in both elevation and azimuth.
+    let middle = |degrees: f64| (degrees.rem_euclid(2.0) - 1.0).abs() < 0.3;
+    let minute = (0..1440)
+        .map(|m| clear_weather(DECEMBER_21 + 60 * m, BERLIN))
+        .find(|w| {
+            let sun = sun_position(w.unix, BERLIN);
+            sun.azimuth.abs() < 30.0 && middle(90.0 - sun.zenith) && middle(sun.azimuth)
         })
         .unwrap();
-
-    let run = year_with(&layout, &mut table, None, &[minute], 60);
-
-    let traced = traced(&layout, &minute).inverters[0].power / 60.0;
-    let looked_up = run.inverters[0].dc.total;
+    let sun = sun_position(minute.unix, BERLIN);
+    let (zenith, azimuth) = (sun.zenith.to_radians(), sun.azimuth.to_radians());
+    let toward = [
+        -azimuth.sin() * zenith.sin(),
+        -azimuth.cos() * zenith.sin(),
+        zenith.cos(),
+    ];
+    let module = [0.0, 0.0, 5.0];
+    layout.occluders = vec![Occluder::Sphere {
+        centre: std::array::from_fn(|k| 200.0f64.mul_add(toward[k], module[k])),
+        radius: 0.25,
+    }];
+    let mut table = ShadingTable::default();
+    table.refresh(&layout);
     assert!(
-        (looked_up - traced).abs() > 1e-6 * traced,
+        traced_at(&layout, sun).contains(&true),
+        "the ball shades the module"
+    );
+    assert!(
+        !beams(table.row(sun).unwrap()).contains(&true),
+        "the nearest node sees no shade"
+    );
+
+    let (looked_up, traced) = looked_up_and_traced(&layout, &mut table, &minute);
+
+    assert!(
+        looked_up > traced * (1.0 + 1e-6),
         "{looked_up} Wh looked up, {traced} Wh traced"
     );
 }
@@ -275,9 +350,9 @@ fn a_step_reads_its_shade_from_the_table_not_from_a_trace() {
 fn the_table_is_traced_again_when_the_scene_or_the_layout_changes_and_not_otherwise() {
     let layout = shaded(BERLIN, 0.0, -1.0);
     let mut table = ShadingTable::default();
-    let june = clear_weather(JANUARY_21 + 151 * DAY + 11 * 3600, BERLIN);
+    let june = clear_weather(JUNE_21 + 11 * 3600, BERLIN);
     let _ = year_with(&layout, &mut table, None, &[june], QUARTER);
-    let december = clear_weather(JANUARY_21 + 334 * DAY + 11 * 3600, BERLIN);
+    let december = clear_weather(DECEMBER_21 + 11 * 3600, BERLIN);
     let _ = year_with(&layout, &mut table, None, &[december], QUARTER);
     assert!(!table.refresh(&layout), "a year's run traced it, once");
 

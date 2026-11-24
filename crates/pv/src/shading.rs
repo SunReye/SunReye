@@ -1,6 +1,8 @@
 //! Shading as a table (ADR 17): which substrings a scene shades depends on where the sun stands,
 //! not on the date, so it is traced once per scene over the sky and a time step looks it up.
 
+use std::borrow::Cow;
+
 use crate::estimate::{Tallies, sky, tallied};
 use crate::perez::cos_incidence;
 use crate::shade::Casters;
@@ -95,13 +97,7 @@ impl ShadingTable {
                 nodes: Vec::new(),
             };
         }
-        let modules: Vec<_> = layout
-            .inverters
-            .iter()
-            .flat_map(|inverter| &inverter.inputs)
-            .flat_map(|input| &input.strings)
-            .flat_map(|string| string.modules.iter().map(|m| (&string.module, m)))
-            .collect();
+        let modules: Vec<_> = modules(layout).collect();
         let mut nodes = vec![0; ELEVATIONS * AZIMUTHS * end];
         for (node, row) in nodes.chunks_exact_mut(end).enumerate() {
             mark(&modules, sun_at(node), &scene.occluders, row);
@@ -114,8 +110,8 @@ impl ShadingTable {
     }
 
     /// The layout's estimate under what `open` leaves each string by its place in the layout's
-    /// order under a sun, each substring's shade looked up at the node nearest the sun, tallying
-    /// into `tallies`, if any.
+    /// order under a sun, each substring's shade as `exact_row` has it, tallying into `tallies`,
+    /// if any.
     /// The table must have been refreshed for `layout`.
     pub(crate) fn estimate<'a>(
         &self,
@@ -125,7 +121,8 @@ impl ShadingTable {
         tallies: Option<&mut Tallies>,
     ) -> Estimate {
         let sky = sky(layout, weather);
-        let row = self.row(sky.sun);
+        let row = self.exact_row(layout, sky.sun);
+        let row = row.as_deref();
         let shade = |string| {
             let of_string = row.and_then(|row| {
                 let (start, stop) = (*self.starts.get(string)?, *self.starts.get(string + 1)?);
@@ -137,6 +134,39 @@ impl ShadingTable {
             )
         };
         tallied(layout, &sky, shade, tallies)
+    }
+
+    /// The substrings at the node nearest `sun`, how much of each lies in shade, except each
+    /// module with a substring on whose beam the four nodes around the sun disagree: a shadow's
+    /// edge crosses it between them, so it is traced at the sun itself (#890). `None` as `row`.
+    fn exact_row(&self, layout: &Layout, sun: Sun) -> Option<Cow<'_, [u8]>> {
+        let nearest = self.row(sun)?;
+        let width = nearest.len();
+        let around = around(90.0 - sun.zenith, sun.azimuth).map(|node| {
+            self.nodes
+                .get(node * width..(node + 1) * width)
+                .unwrap_or_default()
+        });
+        let disagree = |k: usize| {
+            let lit = around.map(|row| row.get(k).is_some_and(|&covered| covered == 0));
+            lit.contains(&true) && lit.contains(&false)
+        };
+        if !(0..width).any(disagree) {
+            return Some(Cow::Borrowed(nearest));
+        }
+        let casters = Casters::under(sun, &layout.occluders);
+        let mut row = nearest.to_vec();
+        let mut start = 0;
+        for (module_type, module) in modules(layout) {
+            let stop = start + usize::from(module_type.bypass_diodes.max(1));
+            if (start..stop).any(disagree)
+                && let Some(shaded) = row.get_mut(start..stop)
+            {
+                cover(&casters, (module_type, module), sun, shaded);
+            }
+            start = stop;
+        }
+        Some(Cow::Owned(row))
     }
 
     /// Whether the scene shades anything: without, no shading loss is computed.
@@ -164,20 +194,43 @@ impl ShadingTable {
     }
 }
 
+/// The layout's modules with their type, in layout order: a node's row.
+fn modules(layout: &Layout) -> impl Iterator<Item = (&ModuleType, &Module)> {
+    layout
+        .inverters
+        .iter()
+        .flat_map(|inverter| &inverter.inputs)
+        .flat_map(|input| &input.strings)
+        .flat_map(|string| string.modules.iter().map(move |m| (&string.module, m)))
+}
+
 /// Writes in `row` how much of each substring of `modules`, in their order, lies in shade under
 /// `sun`.
 fn mark(modules: &[(&ModuleType, &Module)], sun: Sun, occluders: &[Occluder], row: &mut [u8]) {
     let casters = Casters::under(sun, occluders);
     let mut start = 0;
-    for &(module_type, module) in modules {
-        let parts = usize::from(module_type.bypass_diodes.max(1));
-        let shaded = row.get_mut(start..start + parts);
-        start += parts;
-        if let (Some(place), Some(shaded)) = (module.place, shaded)
-            && cos_incidence(module.plane, sun) > 0.0
-        {
-            casters.cover(module_type, module.plane, place, shaded);
+    for &module in modules {
+        let parts = usize::from(module.0.bypass_diodes.max(1));
+        if let Some(shaded) = row.get_mut(start..start + parts) {
+            cover(&casters, module, sun, shaded);
         }
+        start += parts;
+    }
+}
+
+/// Writes in `shaded` how much of each of the module's substrings lies in shade under `sun`:
+/// none when it is not placed or faces away.
+fn cover(
+    casters: &Casters,
+    (module_type, module): (&ModuleType, &Module),
+    sun: Sun,
+    shaded: &mut [u8],
+) {
+    shaded.fill(0);
+    if let Some(place) = module.place
+        && cos_incidence(module.plane, sun) > 0.0
+    {
+        casters.cover(module_type, module.plane, place, shaded);
     }
 }
 
@@ -191,6 +244,26 @@ fn nearest(elevation: f64, azimuth: f64) -> usize {
     let up = (elevation / step).round().clamp(0.0, 90.0 / step) as usize;
     let round = ((azimuth + 180.0) / step).round().rem_euclid(360.0 / step) as usize;
     up * AZIMUTHS + round
+}
+
+/// The four nodes around a sun at `elevation` and `azimuth`: the corners of its cell of the grid.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "floored and kept within the grid first"
+)]
+fn around(elevation: f64, azimuth: f64) -> [usize; 4] {
+    let step = f64::from(STEP);
+    let top = ELEVATIONS - 1;
+    let below = ((elevation / step).floor().max(0.0) as usize).min(top);
+    let before = ((azimuth + 180.0) / step).floor().rem_euclid(360.0 / step) as usize;
+    let (above, after) = ((below + 1).min(top), (before + 1) % AZIMUTHS);
+    [
+        below * AZIMUTHS + before,
+        below * AZIMUTHS + after,
+        above * AZIMUTHS + before,
+        above * AZIMUTHS + after,
+    ]
 }
 
 /// The sun at a node: azimuths from north, −180, round through east.

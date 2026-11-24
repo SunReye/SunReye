@@ -25,31 +25,9 @@ const GAP: f64 = 0.02;
 const PLANTS: [&str; 4] = ["open_roof", "shaded_roof", "east_west", "rack_field"];
 
 /// How far each plant's yearly and monthly energy may stand from pvlib's, as a share of it
-/// (ADR 17).
-fn tolerance(plant: &str) -> Tolerance {
-    match plant {
-        "open_roof" | "east_west" => Tolerance {
-            year: 0.001,
-            month: 0.001,
-        },
-        // A month is off by the 2° grid the beam's shade is looked up on: traced every hour,
-        // it keeps within `TRACED` (below).
-        "shaded_roof" => Tolerance {
-            year: 0.002,
-            month: 0.05,
-        },
-        "rack_field" => Tolerance {
-            year: 0.002,
-            month: 0.03,
-        },
-        _ => panic!("unknown plant {plant}"),
-    }
-}
-
-struct Tolerance {
-    year: f64,
-    month: f64,
-}
+/// (ADR 17), shaded or not: a step traces the beam's shade wherever the shading table's nodes
+/// around the sun disagree (#890).
+const TOLERANCE: f64 = 0.001;
 
 fn weather() -> Vec<Weather> {
     rows(include_str!("../../fixtures/proof-weather.csv"))
@@ -248,9 +226,8 @@ fn check(plant: &str, weather: &[Weather]) {
             100.0 * off,
             months.join(" ")
         );
-        let tolerance = tolerance(plant);
         assert!(
-            off.abs() <= tolerance.year,
+            off.abs() <= TOLERANCE,
             "{plant} {name}: {:.1} Wh against pvlib's {:.1} Wh, {:+.3} %",
             energy.total,
             expected.total,
@@ -259,7 +236,7 @@ fn check(plant: &str, weather: &[Weather]) {
         for (m, (&ours, theirs)) in energy.months.iter().zip(expected.months).enumerate() {
             let off = deviation(ours, theirs);
             assert!(
-                off.abs() <= tolerance.month,
+                off.abs() <= TOLERANCE,
                 "{plant} {name}, month {}: {ours:.1} Wh against pvlib's {theirs:.1} Wh, {:+.2} %",
                 m + 1,
                 100.0 * off
@@ -323,12 +300,8 @@ fn a_substrings_sky_view_is_pvlibs_mean_over_its_strip() {
 /// How far a substring's view may stand from pvlib's.
 const SKY_VIEW_TOLERANCE: f64 = 0.001;
 
-/// How far a shaded plant's month may stand from pvlib's with its beam's shade traced at every
-/// hour instead of looked up on the shading table's grid.
-const TRACED: f64 = 0.001;
-
 /// The shaded plants' months with the beam's shade traced at each hour's own sun, under the same
-/// sky views: what is left of the looked-up months' gap to pvlib is the grid's (#889).
+/// sky views, as `estimate_with` serves the solar forecast.
 #[test]
 #[expect(
     clippy::print_stdout,
@@ -358,7 +331,7 @@ fn traced_every_hour_a_shaded_plants_months_match_pvlib() {
         println!("{plant} traced, by month % {}", shown.join(" "));
         for (m, off) in offs.iter().enumerate() {
             assert!(
-                off.abs() <= TRACED,
+                off.abs() <= TOLERANCE,
                 "{plant}, month {}, traced: {:+.3} %",
                 m + 1,
                 100.0 * off

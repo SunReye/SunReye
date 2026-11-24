@@ -10,8 +10,8 @@ The crate's yearly energy against pvlib's, per string and MPPT input; the tolera
 | --- | --- | --- | --- | --- | --- |
 | Open roof | 6683.6 kWh | 6683.7 kWh | +0.000 % | 0.1 % | 0.1 % |
 | Two orientations on one input | 6892.4 kWh | 6892.5 kWh | +0.003 % | 0.1 % | 0.1 % |
-| Shaded roof | 5838.2 kWh | 5845.1 kWh | +0.119 % | 0.2 % | 5 % |
-| Rack field | 6354.1 kWh | 6362.2 kWh | +0.128 % | 0.2 % | 3 % |
+| Shaded roof | 5838.2 kWh | 5839.0 kWh | +0.013 % | 0.1 % | 0.1 % |
+| Rack field | 6354.1 kWh | 6355.8 kWh | +0.027 % | 0.1 % | 0.1 % |
 
 The two east and west strings each keep within 0.004 % of theirs.
 
@@ -21,12 +21,10 @@ By UTC month, in %:
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Open roof | −0.00 | −0.00 | +0.00 | +0.00 | +0.00 | +0.00 | +0.00 | +0.00 | +0.00 | +0.00 | −0.00 | −0.00 |
 | Two orientations | +0.00 | +0.01 | +0.01 | +0.00 | +0.00 | +0.00 | +0.00 | +0.00 | +0.00 | +0.00 | +0.00 | +0.00 |
-| Shaded roof | +4.37 | +2.78 | −0.07 | +0.01 | +0.01 | +0.01 | +0.01 | +0.01 | +0.02 | −1.56 | +3.01 | +0.00 |
-| Rack field | +1.94 | +0.04 | +0.04 | +0.03 | +0.03 | +0.02 | +0.03 | +0.03 | +0.03 | −0.00 | +2.43 | −0.55 |
-| Shaded roof, beam traced | +0.00 | +0.01 | +0.02 | +0.01 | +0.01 | +0.01 | +0.01 | +0.01 | +0.02 | +0.01 | +0.00 | +0.00 |
-| Rack field, beam traced | +0.02 | +0.04 | +0.03 | +0.03 | +0.03 | +0.02 | +0.03 | +0.03 | +0.03 | +0.03 | +0.03 | +0.02 |
+| Shaded roof | +0.00 | +0.01 | +0.02 | +0.01 | +0.01 | +0.01 | +0.01 | +0.01 | +0.02 | +0.01 | +0.00 | +0.00 |
+| Rack field | +0.02 | +0.04 | +0.03 | +0.03 | +0.03 | +0.02 | +0.03 | +0.03 | +0.03 | +0.03 | +0.03 | +0.02 |
 
-Without shade the crate matches pvlib's chain. With shade a year agrees within 0.13 % and every month from March to September within 0.07 %. A winter month can be off by up to 4.4 %, and that is the shading table's 2° grid: with the beam's shade traced at each hour's own sun instead of looked up, every month keeps within 0.04 % (below).
+Without shade the crate matches pvlib's chain. With shade a year agrees within 0.03 % and every month within 0.04 %. With the beam's shade traced at every hour's own sun (`traced_every_hour_a_shaded_plants_months_match_pvlib`, as the solar forecast runs) the months are the same.
 
 ## The plants
 
@@ -60,7 +58,7 @@ The rules for which light shade takes are ADR 17's, since pvlib has no rule for 
 
 The crate judges a substring at its sample points: 27 per substring, 3 across and 9 along, edge to edge, the outer ones 0.1 mm inside its edges (ADR 17, `shade.rs`).
 
-- **Beam:** a substring loses its beam when any sample point is shaded, so as soon as the shadow reaches its edge, as pvlib has it.
+- **Beam:** a substring loses its beam when any sample point is shaded, so as soon as the shadow reaches its edge, as pvlib has it. A year's run looks this up at the 2° grid's node nearest the sun, and traces it at the sun itself wherever the four nodes around the sun disagree, so a shadow's edge falls where the sun puts it (#890).
 - **Sky view:** at each node of the 2° grid a substring's view is closed by its shaded sample points' share, weighed by the trapezoid rule, so its view is its mean, as pvlib's along its strip. Each substring's view, against pvlib's:
 
 | Substring | Crate | pvlib |
@@ -71,9 +69,16 @@ The crate judges a substring at its sample points: 27 per substring, 3 across an
 | Rack field, middle | 0.96912 | 0.96947 |
 | Rack field, highest | 0.99166 | 0.99180 |
 
-## Why winter months still differ
+## Before #890
 
-A year's run looks a substring's beam shade up at the grid node nearest the sun, which moves the shadow's edge by up to a node's half-width. Tracing the beam at each hour's own sun under the same sky views (`traced_every_hour_a_shaded_plants_months_match_pvlib`) closes every month to within 0.04 %, so the grid accounts for all of the gap. It weighs most where the sun stands near an obstacle's top for hours: the upper row's lower edge sees the wall's top at 17.7°, and the noon sun stands between 14° and 20° from December to January. An hour that the grid counts lit and pvlib shaded moves that whole hour's beam, so the gap is a matter of where the threshold falls between nodes, not a lean in the model: October reads low, the other winter months high.
+A year's run looked a substring's beam shade up at the grid node nearest the sun, which moved the shadow's edge by up to a node's half-width. It weighed most where the sun stands near an obstacle's top for hours: the upper row's lower edge sees the wall's top at 17.7°, and the noon sun stands between 14° and 20° from December to January. An hour that the grid counted lit and pvlib shaded moved that whole hour's beam, so October read low and the other winter months high. Now a step traces, at the sun itself, each module with a substring on whose beam the four nodes around the sun disagree (ADR 17).
+
+| Plant | Year | Jan | Feb | Oct | Nov | Dec |
+| --- | --- | --- | --- | --- | --- | --- |
+| Shaded roof | +0.119 % | +4.37 | +2.78 | −1.56 | +3.01 | +0.00 |
+| Rack field | +0.128 % | +1.94 | +0.04 | −0.00 | +2.43 | −0.55 |
+
+From March to September every month kept within 0.07 %.
 
 ## Before #889
 
