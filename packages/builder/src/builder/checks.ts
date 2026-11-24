@@ -118,7 +118,7 @@ export function sized(
 
 /** What the live checks read: the crate and each inverter's limits. */
 export interface Checking {
-  readonly pv: Readonly<Pick<Pv, "coldVoltages" | "sizing" | "longest">>;
+  readonly pv: Readonly<Pick<Pv, "coldVoltages" | "sizing" | "autoStringFace">>;
   readonly limits: Limits;
   readonly inputs: Inverters;
 }

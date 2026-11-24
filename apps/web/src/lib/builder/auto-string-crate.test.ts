@@ -1,7 +1,7 @@
 /// <reference types="bun" />
-// The pv crate's auto-stringing does what the builder's does (ADR 20, 25): on the same scenes and
-// inverters, the builder's run a face at a time, the face with the most modules in no string first,
-// and the crate's run over the whole roof wire the same modules into the same strings.
+// The pv crate's auto-stringing over a whole roof (ADR 20, 25) does what the builder does a face
+// at a time: on the same scenes and inverters, the builder's run, the face with the most modules in
+// no string first, and the crate's run over the roof wire the same modules into the same strings.
 import { expect, test } from "bun:test";
 import { loadPv, type InputLimits, type Strand } from "@sunreye/pv-wasm";
 import type { ModuleType } from "@sunreye/scene";
