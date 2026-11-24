@@ -3,7 +3,7 @@
 
 /** @import { Chimney, Opening, RoofWindow } from "@sunreye/scene" */
 /**
- * @import { Cautious, Face, Geometry, Ghost, Location, Modules, Sizing, Sun, TypicalYear, Unfit, YearEnergy }
+ * @import { Cautious, Face, Geometry, Ghost, Location, Modules, Sizing, Strung, Sun, TypicalYear, Unfit, YearEnergy }
  *   from "./index.d.ts"
  */
 
@@ -188,7 +188,7 @@ export const isCautious = (value) =>
     "basis" in value.ok &&
     isRecord(value.ok.basis));
 
-const KINDS = new Set(["start", "low", "high", "current", "uneven", "noInput"]);
+const KINDS = new Set(["start", "low", "high", "open", "current", "uneven", "noInput"]);
 
 /**
  * @param {unknown} item
@@ -203,6 +203,40 @@ const isWarning = (item) => isRecord(item) && "kind" in item && KINDS.has(String
 export const isSizing = (value) =>
   isFailure(value) ||
   (isRecord(value) && "ok" in value && Array.isArray(value.ok) && value.ok.every(isWarning));
+
+/**
+ * A proposal of auto-stringing.
+ * @param {unknown} ok
+ * @returns {ok is Strung}
+ */
+const isProposal = (ok) =>
+  isRecord(ok) &&
+  "scene" in ok &&
+  isRecord(ok.scene) &&
+  "strings" in ok &&
+  Array.isArray(ok.strings) &&
+  "left" in ok &&
+  Number.isInteger(ok.left);
+
+/**
+ * @param {unknown} value
+ * @returns {value is Reply<Strung>}
+ */
+export const isStrung = (value) =>
+  isFailure(value) || (isRecord(value) && "ok" in value && isProposal(value.ok));
+
+/**
+ * A face's proposal, its refusal, or null where it holds no module in no string.
+ * @param {unknown} value
+ * @returns {value is Reply<Strung | { readonly refused: "input" } | null>}
+ */
+export const isStrungFace = (value) =>
+  isFailure(value) ||
+  (isRecord(value) &&
+    "ok" in value &&
+    (value.ok === null ||
+      isProposal(value.ok) ||
+      (isRecord(value.ok) && "refused" in value.ok && value.ok.refused === "input")));
 
 /**
  * An index or a count, or null where the crate has none.

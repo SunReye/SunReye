@@ -30,6 +30,7 @@ mod shading;
 mod sizing;
 mod sky_view;
 mod string;
+mod stringing;
 mod sun;
 mod surroundings;
 mod temperature;
@@ -57,8 +58,11 @@ pub use perez::plane_irradiance;
 pub use roof_window::RoofWindow;
 pub use scene::{Block, Crown, Face, Obstacle, Overhang, Roof, Scene, Surface};
 pub use shading::ShadingTable;
-pub use sizing::{HOT, Sizing, Wired, longest_string, window_warnings};
+pub use sizing::{
+    HOT, InverterLimits, Sizing, Wired, longest_string, peak_voltage, window_warnings,
+};
 pub use sky_view::SkyViews;
+pub use stringing::{Strung, Unstrung, Wiring, auto_string, auto_string_face};
 pub use sun::sun_position;
 pub use surroundings::{
     Fence, FenceFinish, FencePoint, Fencing, Ground, GroundFinish, GroundSurface,

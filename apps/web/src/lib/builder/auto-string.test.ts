@@ -1,7 +1,9 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
 import type { StringDraft } from "../api/core.ts";
-import { autoStrung, type Limit } from "../../../../../packages/builder/src/builder/auto-string.ts";
+import { loadPv, type InputLimits } from "@sunreye/pv-wasm";
+import type { ModuleType } from "@sunreye/scene";
+import { strungOn } from "../../../../../packages/builder/src/builder/auto-string.ts";
 import { addGrid, type Draft } from "../../../../../packages/builder/src/builder/modules.ts";
 import { place } from "../../../../../packages/builder/src/builder/placing.ts";
 import type { Scene } from "../../../../../packages/builder/src/builder/pv.ts";
@@ -43,11 +45,39 @@ const first: StringDraft = {
 const draft: Draft = { scene, strings: [first] };
 const name = (number: number) => `String ${String(number)}`;
 
-/** Free inputs that all share one limit. */
-const even = (longest: number | null, free: readonly number[], parallel: number | null): Limit => ({
-  device: 1,
-  free: free.map((input) => ({ input, longest, parallel })),
+const wasm = new URL(import.meta.resolve("@sunreye/pv-wasm/pv.wasm"));
+
+const pv = await loadPv(await Bun.file(wasm).bytes());
+
+/** Its cold peak is 37.21 V and its short-circuit current 12.5 A: a window of 230 V takes 6 in
+ * series, 270 V 7 and 380 V 10, and 30 A carries two strings in parallel, 15 A one. */
+const MODULE: ModuleType = {
+  id: 7,
+  name: "Owner 400",
+  pmax: 400,
+  vmp: 34,
+  imp: 11.76,
+  voc: 41,
+  isc: 12.5,
+  powerCoefficient: -0.35,
+  voltageCoefficient: -0.27,
+  currentCoefficient: 0.05,
+  width: 1.134,
+  height: 1.722,
+  bypassDiodes: 3,
+};
+
+/** An input whose window takes up to `volts` and whose current carries `amperes`. */
+const input = (volts: number, amperes: number): InputLimits => ({
+  maxCurrent: amperes,
+  minVoltage: 0,
+  maxVoltage: volts,
+  startVoltage: 0,
 });
+
+/** `count` inputs alike. */
+const alike = (count: number, volts: number, amperes: number) =>
+  Array.from({ length: count }, () => input(volts, amperes));
 
 /** The modules of string `string` in their wiring order, by their position in the grid. */
 function run(of: Draft | null, string: number): number[] {
@@ -63,14 +93,24 @@ function run(of: Draft | null, string: number): number[] {
 const made = (of: Draft | undefined) =>
   (of?.strings ?? []).slice(1).map((string, i) => [string.input, run(of ?? null, i + 1)]);
 
-const strung = (limit: Limit, from: Draft = draft) => {
-  const result = autoStrung(from, 0, limit, name);
+/** Grid 0 auto-strung on inverter 1 with `inputs`, input 1 carrying the first string; none listed
+ * where null. */
+const auto = (inputs: readonly InputLimits[] | null, from: Draft = draft) =>
+  strungOn(
+    from,
+    0,
+    { pv, limits: {}, inputs: inputs === null ? {} : { 1: inputs }, moduleTypes: [MODULE] },
+    name,
+  );
+
+const strung = (inputs: readonly InputLimits[] | null, from: Draft = draft) => {
+  const result = auto(inputs, from);
 
   return result !== null && "draft" in result ? result : undefined;
 };
 
 test("with an input free for each, a face's modules run in a serpentine into as few even strings as the limit allows", () => {
-  const result = strung(even(6, [2, 3, 4], 2));
+  const result = strung(alike(4, 230, 30));
 
   // 16 modules at most 6 long: three strings of 6, 5 and 5, each alone on its input.
   expect(made(result?.draft)).toEqual([
@@ -83,7 +123,7 @@ test("with an input free for each, a face's modules run in a serpentine into as 
 });
 
 test("strings that share an input are all one length: the fewest that leave no module over", () => {
-  const result = strung(even(6, [2, 3], 2));
+  const result = strung(alike(3, 230, 30));
 
   // Three strings would be 6, 5 and 5 with two in parallel: four of four share the two inputs.
   expect(made(result?.draft)).toEqual([
@@ -98,35 +138,30 @@ test("strings that share an input are all one length: the fewest that leave no m
 test("where no equal cut holds every module the rest stays unwired, and is counted", () => {
   const partly = wiredInto(draft, [{ grid: 0, module: 3 }], 0) ?? draft;
   // 15 modules at most 7 long on one input that carries two strings: two of seven, one over.
-  const result = strung(even(7, [2], 2), partly);
+  const result = strung(alike(2, 270, 30), partly);
 
   expect(made(result?.draft)).toEqual([
     [2, [0, 1, 2, 4, 5, 6, 7]],
     [2, [15, 14, 13, 12, 11, 10, 9]],
   ]);
   expect(result?.left).toBe(1);
-  // The wired module stays as it is.
+  // The wired module stays as it is, the very one.
   expect(run(result?.draft ?? null, 0)).toEqual([3]);
+  expect(result?.draft.scene.grids?.[0]?.modules[3]).toBe(partly.scene.grids?.[0]?.modules[3]);
 });
 
 test("without a limit the face is one string; no free input, no proposal; none unwired, nothing", () => {
-  const whole = strung(even(null, [2], null));
+  const whole = strung(null);
 
   expect(made(whole?.draft)).toEqual([[2, [0, 1, 2, 3, 4, 5, 6, 7, 15, 14, 13, 12, 11, 10, 9, 8]]]);
-  expect(autoStrung(draft, 0, even(6, [], 2), name)).toEqual({
+  expect(auto(alike(1, 230, 30))).toEqual({
     refused: "input",
   });
-  expect(whole && autoStrung(whole.draft, 0, even(6, [3], 2), name)).toBeNull();
+  expect(whole && auto(alike(3, 230, 30), whole.draft)).toBeNull();
 });
 
 test("each free input is sized by its own limits: a short window takes a shorter string", () => {
-  const result = strung({
-    device: 1,
-    free: [
-      { input: 2, longest: 6, parallel: 1 },
-      { input: 3, longest: 10, parallel: 1 },
-    ],
-  });
+  const result = strung([input(230, 30), input(230, 15), input(380, 15)]);
 
   expect(made(result?.draft)).toEqual([
     [2, [0, 1, 2, 3, 4, 5]],
@@ -136,16 +171,10 @@ test("each free input is sized by its own limits: a short window takes a shorter
 });
 
 test("an input carries no more strings in parallel than its own current allows", () => {
-  const result = strung({
-    device: 1,
-    free: [
-      { input: 2, longest: 6, parallel: 2 },
-      { input: 3, longest: 6, parallel: 1 },
-    ],
-  });
+  const result = strung([input(230, 30), input(230, 30), input(230, 15)]);
 
   // Four of four would put two on input 3: three of five fit, and one module stays over.
-  expect(result?.draft.strings.slice(1).map(({ input }) => input)).toEqual([2, 2, 3]);
+  expect(result?.draft.strings.slice(1).map((string) => string.input)).toEqual([2, 2, 3]);
   expect([1, 2, 3].map((string) => run(result?.draft ?? null, string).length)).toEqual([5, 5, 5]);
   expect(result?.left).toBe(1);
 });

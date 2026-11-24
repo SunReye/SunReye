@@ -17,6 +17,8 @@ export type { Aerial } from "./builder/supplied.ts";
 
 export { panels } from "./builder/modules.ts";
 
+export { stringCss } from "./builder/panels.ts";
+
 export { sunAt } from "./builder/pv.ts";
 
 export { speak, type Locale } from "./locale.svelte.ts";

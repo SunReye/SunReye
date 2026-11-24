@@ -89,7 +89,7 @@ The scene canvas. Loads three.js: import it where a scene is drawn, or lazily.
   - "Fill face" is `@sunreye/pv-wasm`'s `fillFace(on, rules)`: the places a grid's free roof takes. `FillRules`, each optional, the frame's own without: `gap` (metres between modules, 0.02 and never less), `alignment` (`"lowerLeft"`, or `"centred"` to share the spare roof out on both sides) and `keepOut` (metres kept free round each roof chimney, roof window, existing PV and dormer).
 - Camera: `presetView` (a preset, turned to a compass heading), `headingOf` (the bearing a view looks toward, for a compass), `parseView`, and the types `View` and `Preset`.
 - Language: `speak` sets the locale of every entry's words, `Locale`; a change shows without a reload.
-- `panels`, the modules a layout draws; `sunAt`, the sun's direction at an instant.
+- `panels`, the modules a layout draws; `stringCss`, the colour a string is drawn in by its position, as CSS (grey for none); `sunAt`, the sun's direction at an instant.
 - Types the props name: `Around`, `Aerial`, `Editing`, `Hit`, `Laying`, `LaySteps`, `Panel`, `Projector`, `Roofwork`, `Tracing`, `TraceEdit`, `LineRef`, `Placing`.
 
 ## `@sunreye/builder/frame`

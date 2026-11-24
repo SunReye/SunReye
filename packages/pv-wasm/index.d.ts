@@ -12,10 +12,13 @@ import type {
 } from "@sunreye/scene";
 import type { Face, Geometry, Point, Unfit } from "./geometry.d.ts";
 import type { FillRules, Ghost, Modules, OnGrid, Sizes } from "./layout.d.ts";
+import type { InputLimits, Inverters, Sizing, Stringing, Strung } from "./stringing.d.ts";
 
 export type * from "./geometry.d.ts";
 
 export type * from "./layout.d.ts";
+
+export type * from "./stringing.d.ts";
 
 /** North and east positive, in degrees. */
 export interface Location {
@@ -176,38 +179,6 @@ export interface YearEnergy {
   }[];
 }
 
-/** One MPPT input's limits, as the core's capabilities list them (ADR 9). */
-export interface InputLimits {
-  /** Amperes. */
-  readonly maxCurrent: number;
-  /** Volts: its window, and where it starts. */
-  readonly minVoltage: number;
-  readonly maxVoltage: number;
-  readonly startVoltage: number;
-}
-
-/** Each inverter's inputs' limits in the inputs' order, by device id. */
-export type Inverters = Readonly<Record<number, readonly InputLimits[]>>;
-
-/** Where a layout leaves an MPPT input's limits; a string by its position in the layout. */
-export type Sizing =
-  | {
-      /** Never starts in the cold, held under the window when hot, clipped over it in the cold. */
-      readonly kind: "start" | "low" | "high";
-      readonly string: number;
-      readonly volts: number;
-      readonly limit: number;
-    }
-  | {
-      readonly kind: "current";
-      readonly device: number;
-      readonly input: number;
-      readonly amperes: number;
-      readonly limit: number;
-    }
-  | { readonly kind: "uneven"; readonly device: number; readonly input: number }
-  | { readonly kind: "noInput"; readonly string: number };
-
 /** The engine. Each call throws the crate's reason for an input it cannot read. */
 export interface Pv {
   /** The scene's faces and solids. */
@@ -241,6 +212,16 @@ export interface Pv {
     strings: readonly Wiring[],
     inverters: Inverters,
   ) => Sizing[];
+  /** Grid `grid`'s modules in no string as new strings, in a serpentine cut as few as the
+   * inverter's limits allow; `refused` where it has no free input, null where the grid holds no
+   * module in no string. */
+  readonly autoStringFace: (
+    stringing: Stringing,
+    grid: number,
+  ) => Strung | { readonly refused: "input" } | null;
+  /** Every face strung so, the one with the most modules in no string first, each on the inputs
+   * the faces before left free. */
+  readonly autoString: (stringing: Stringing) => Strung;
   /** The most modules of `moduleType` in series that stay under the inverter's maximum DC input
    * voltage and the input's window at −10 °C; null without either limit. */
   readonly longest: (

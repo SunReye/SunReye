@@ -58,6 +58,7 @@ test("the package ships the engine beside its loader", async () => {
     "layout.d.ts",
     "package.json",
     "replies.js",
+    "stringing.d.ts",
   ]);
 });
 

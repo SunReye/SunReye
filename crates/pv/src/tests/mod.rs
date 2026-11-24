@@ -27,6 +27,7 @@ mod shading;
 mod sizing;
 mod sky_view;
 mod string;
+mod stringing;
 mod sun;
 mod surroundings;
 mod temperature;
