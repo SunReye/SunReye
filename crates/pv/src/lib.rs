@@ -36,6 +36,7 @@ mod sun;
 mod surroundings;
 mod temperature;
 mod typical;
+mod warranty;
 mod year;
 
 pub use cautious::{Basis, Cautious, cautious, irradiation};
@@ -73,6 +74,7 @@ pub use temperature::cell_temperature;
 pub use typical::{
     FEWEST_YEARS, TYPICAL_YEAR, Typical, TypicalRefused, quarter_hours, typical_year,
 };
+pub use warranty::Warranty;
 pub use year::{
     AcCable, AcYear, Cable, Energy, InputYear, InverterYear, RunInputs, Year, year, year_run,
     year_with,

@@ -513,3 +513,36 @@ fn an_ac_cable_loses_its_resistance_times_the_current_squared_in_each_conductor(
         );
     }
 }
+
+#[test]
+fn degradation_gives_each_later_year_by_the_warranted_power_s_mean_over_it() {
+    // A common linear warranty: 98 % after the first year, then 0.55 % less each year.
+    let warranty = Warranty {
+        first_year: 2.0,
+        yearly: 0.55,
+    };
+
+    let yields = warranty.yields(10_000.0, 25);
+
+    assert_eq!(yields.len(), 25);
+    // The first year runs from 100 % to 98 %, the second from 98 % to 97.45 %.
+    assert_near(yields[0], 9900.0, "the first year");
+    assert_near(yields[1], 9772.5, "the second year");
+    // The 25th from 85.35 % to 84.8 %.
+    assert_near(yields[24], 8507.5, "the 25th year");
+}
+
+#[test]
+fn a_warranty_never_takes_a_year_below_nothing() {
+    let warranty = Warranty {
+        first_year: 50.0,
+        yearly: 30.0,
+    };
+
+    let yields = warranty.yields(1000.0, 4);
+
+    // 100 % to 50 %, to 20 %, to nothing, and nothing.
+    for (year, expected) in yields.iter().zip([750.0, 350.0, 100.0, 0.0]) {
+        assert_near(*year, expected, "a year");
+    }
+}
