@@ -66,10 +66,10 @@ An inverter with an AC side, its inverter type's AC rating and European weighted
 Which substrings a scene shades depends on the sun's direction, not on the date (ADR 17, `shading.rs`).
 
 - The grid has a node every 2° of elevation, from the horizon to the zenith, and of azimuth, all round. It is the same at every location, so a sky view or a horizon can be laid over it.
-- At each node, every placed module facing the sun is traced as below, and each of its substrings is stored as shaded or not, in layout order. With no occluders or no placed module nothing is traced.
+- At each node, every placed module facing the sun is traced as below, and each of its substrings is stored with how much of it lies in shade, its shaded samples' weight out of 64, in layout order. Any shaded sample takes its beam. With no occluders or no placed module nothing is traced.
 - A step reads the node nearest the sun; azimuths wrap at north. The sun below the horizon reads nothing.
 - `refresh` compares what shading reads (the occluders; each string's module size, bypass diodes, and modules' planes and places, in order) with what the table was traced from, and traces again only when they differ.
-- Nearest-node lookup moves a shade's edge by up to a node's half-width, about 4 minutes of sun. The tests bound a string's energy at 2 % in a clear day and 0.5 % over a run; on the profile's plant a clear year reads at most 0.47 % off in a month and 0.06 % in the year, against tracing every instant under the same sky views.
+- Nearest-node lookup moves a shade's edge by up to a node's half-width, about 4 minutes of sun. The tests bound a string's energy at 3.5 % in a clear day and 0.5 % over a run; on the profile's plant a clear year reads at most 0.34 % off in a month and 0.01 % in the year, against tracing every instant under the same sky views. On the proof's hourly year it is what is left of a shaded plant's gap to pvlib: up to 4.4 % in a winter month, where the sun stands near a wall's top all day, and 0.04 % traced ([pv-proof.md](pv-proof.md)).
 
 The profile `cargo test -p sunreye-pv --release profile::a_shading_table -- --ignored --nocapture` prints the table's build time, the year's run looked up and traced, and their difference.
 
@@ -78,7 +78,7 @@ The profile `cargo test -p sunreye-pv --release profile::a_shading_table -- --ig
 How much of the isotropic sky and its horizon band each substring sees (ADR 17, `sky_view.rs`).
 
 - Over the shading table's grid, each node's band of elevation is weighted by its cosine onto the plane, and by the part of it above the horizon profile, if any. The view is the sum over the same sum under an open sky.
-- A node at which the table shades the substring's beam is closed whole: what hides the sun there hides that patch of sky. With no occluders nothing is closed.
+- A node is closed by the share of the substring the table holds in shade there: what hides the sun from part of it hides that patch of sky from that part. The view is so the substring's mean over its samples, as pvlib's along its strip. With no occluders nothing is closed.
 - `SkyViews::new(layout, table, horizon)` refreshes the table and lays the views once; every instant of a run reads them.
 - Each substring takes its exact view. Exact views give almost every substring a circuit of its own, and each costs a diode solve wherever the curve is read: a clear March instant of the profile's plant took 12 ms, against 0.46 ms under the open sky (`profile::a_day_under_the_scenes_sky`). Merging substrings alike at their mean irradiance (Substring circuit) keeps a clear year within twice the open sky's cost (`profile::a_clear_year_under_the_scenes_sky_costs_at_most_twice_the_open_skys`) and each string's energy within 0.01 % of a circuit per substring (`profile::merging_substrings_alike_keeps_each_strings_energy_within_three_permille`). Rounding views to 0.02 instead, as first built, moved it 0.06 %.
 - `estimate` lays none: it shades diffuse light only by the circumsolar part. `estimate_with` lays them, and traces each instant's beam shade.
@@ -103,9 +103,9 @@ The split stays inside each hour, so the months picked are the same.
 ## How shade reaches the electrics
 
 - A module has one substring per bypass diode: strips along its long side, side by side across its short side.
-- Each substring has 27 sample points, 3 across its strip and 9 along it. From each a ray runs toward the sun.
+- Each substring has 27 sample points, 3 across its strip and 9 along it, edge to edge: the outer ones stand 0.1 mm inside its edges, so a shadow that ends on the line between two substrings takes only the one it covers. They weigh as the trapezoid rule: each edge row and column at half weight. From each a ray runs toward the sun.
 - A ray that meets an occluder further than 1 µm away is blocked. The clearance keeps a module's own roof from shading it.
-- A substring with any blocked sample loses its whole beam: its most shaded cell limits its current. It loses the circumsolar part of its diffuse light too, from the same patch of sky, and keeps the rest by its sky view.
+- A substring with any blocked sample loses its whole beam, as soon as the shadow reaches its edge: its most shaded cell limits its current. It loses the circumsolar part of its diffuse light too, from the same patch of sky, and keeps the rest by its sky view.
 - The shaded substring's circuit has a lower photocurrent. In series with lit substrings it either drags the string's current down or is bypassed at −0.5 V. Both show on the string's curve as a step, and on the input's power as a second peak. The operating point takes whichever peak is higher inside the MPPT window.
 - An optimized module keeps its shade to itself: only its own peak drops.
 
@@ -125,7 +125,7 @@ Per sun, `Casters` prepares each occluder once: a triangle's ray-dependent terms
 | `input.csv` | Shade, optimizers, parallel strings and MPPT limits on one input | 1e-6 |
 | `skyview.csv` | Sky views beside a long wall, between two, and at the foot of a row in a field of rows: closed forms and pvlib's 2D view factor | 0.002 |
 | `estimate.csv` | The whole chain for the owner's wiring through a day | 0.1 % or 0.5 W |
-| `proof.csv` | A year's run of the proof's four plants, two shaded in two dimensions ([pv-proof.md](pv-proof.md)) | 0.1 % unshaded, 1 % shaded |
+| `proof.csv` | A year's run of the proof's four plants, two shaded in two dimensions ([pv-proof.md](pv-proof.md)) | Unshaded 0.1 % a year and a month; shaded 0.2 % a year, 5 % a month, 0.1 % a month with the beam traced; sky views 0.001 |
 
 pvlib knows no scene. Geometry is checked by hand-worked cases (`tests/shade.rs`, `roofing.rs`, `surroundings.rs`, `grid.rs`), and `tests/profile.rs` pins a whole scene's shaded substrings and input powers at nine instants, three more with optimizers and a binding current limit, and checks the bounds that rule casters out against testing every caster.
 
