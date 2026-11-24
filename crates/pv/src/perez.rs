@@ -48,16 +48,40 @@ pub fn plane_irradiance(plane: Plane, sky: &Sky) -> PlaneIrradiance {
 /// light, which come from the same patch of sky, and the isotropic sky and its horizon band by
 /// the sky view. Ground-reflected light stays.
 pub fn plane_irradiance_in(plane: Plane, sky: &Sky, light: Light) -> PlaneIrradiance {
-    let cos_aoi = cos_incidence(plane, sky.sun);
-
+    let split = Split::of(plane, sky);
     PlaneIrradiance {
-        beam: if light.sun {
-            (sky.dni * cos_aoi).max(0.0)
-        } else {
-            0.0
-        },
-        sky_diffuse: sky_diffuse(plane, sky, cos_aoi, light),
-        ground_diffuse: sky.ghi * ALBEDO * (1.0 - plane.tilt.to_radians().cos()) / 2.0,
+        beam: if light.sun { split.beam } else { 0.0 },
+        sky_diffuse: split.sky_diffuse(light),
+        ground_diffuse: split.ground,
+    }
+}
+
+/// A plane's irradiance by what a horizon and the scene may take from it, in W/m².
+#[derive(Debug, Clone, Copy)]
+pub struct Split {
+    pub beam: f64,
+    /// The isotropic sky and its horizon band, the whole sky seen.
+    pub isotropic: f64,
+    pub circumsolar: f64,
+    pub ground: f64,
+}
+
+impl Split {
+    pub fn of(plane: Plane, sky: &Sky) -> Self {
+        let cos_aoi = cos_incidence(plane, sky.sun);
+        let (isotropic, circumsolar) = sky_diffuse(plane, sky, cos_aoi);
+        Self {
+            beam: (sky.dni * cos_aoi).max(0.0),
+            isotropic,
+            circumsolar,
+            ground: sky.ghi * ALBEDO * (1.0 - plane.tilt.to_radians().cos()) / 2.0,
+        }
+    }
+
+    /// The sky's diffuse light under `light`.
+    pub const fn sky_diffuse(&self, light: Light) -> f64 {
+        let circumsolar = if light.sun { self.circumsolar } else { 0.0 };
+        light.view.mul_add(self.isotropic, circumsolar).max(0.0)
     }
 }
 
@@ -72,10 +96,12 @@ pub fn cos_incidence(plane: Plane, sun: Sun) -> f64 {
     projection.clamp(-1.0, 1.0)
 }
 
-fn sky_diffuse(plane: Plane, sky: &Sky, cos_aoi: f64, light: Light) -> f64 {
+/// The sky's diffuse light on the plane: its isotropic part with the horizon band, and its
+/// circumsolar part.
+fn sky_diffuse(plane: Plane, sky: &Sky, cos_aoi: f64) -> (f64, f64) {
     // Relative airmass is undefined below the horizon; pvlib yields no sky diffuse there.
     if sky.sun.zenith > 90.0 {
-        return 0.0;
+        return (0.0, 0.0);
     }
 
     let z = sky.sun.zenith.to_radians();
@@ -85,21 +111,19 @@ fn sky_diffuse(plane: Plane, sky: &Sky, cos_aoi: f64, light: Light) -> f64 {
 
     // An undefined clearness (no light at all) falls in no bin.
     BINS.iter().rfind(|bin| clearness >= bin.0).map_or(
-        0.0,
+        (0.0, 0.0),
         |Bin(_, [f11, f12, f13, f21, f22, f23])| {
             let f1 = f13.mul_add(z, f12.mul_add(brightness, *f11)).max(0.0);
             let f2 = f23.mul_add(z, f22.mul_add(brightness, *f21));
             let tilt = plane.tilt.to_radians();
             let horizon_floor = 85.0_f64.to_radians().cos();
             let isotropic = 0.5 * (1.0 - f1) * (1.0 + tilt.cos());
-            let circumsolar = if light.sun {
-                f1 * cos_aoi.max(0.0) / z.cos().max(horizon_floor)
-            } else {
-                0.0
-            };
-            let (band, isotropic) = (light.view * f2, light.view * isotropic);
+            let circumsolar = f1 * cos_aoi.max(0.0) / z.cos().max(horizon_floor);
 
-            (sky.dhi * band.mul_add(tilt.sin(), isotropic + circumsolar)).max(0.0)
+            (
+                sky.dhi * f2.mul_add(tilt.sin(), isotropic),
+                sky.dhi * circumsolar,
+            )
         },
     )
 }

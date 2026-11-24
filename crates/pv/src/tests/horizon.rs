@@ -2,7 +2,7 @@
 //! trims each module's sky view.
 
 use super::fixtures::MODULE;
-use crate::shading::sky_view;
+use crate::sky_view::sky_view;
 use crate::{
     Horizon, HorizonRefused, Input, Inverter, Layout, Location, Module, Occluder, Place, Plane,
     PvString, ShadingTable, SkyViews, Weather, clear_weather, estimate, estimate_with,
@@ -63,11 +63,15 @@ fn clear_day() -> Vec<Weather> {
         .collect()
 }
 
+fn views<'a>(layout: &Layout, horizon: Option<&'a Horizon>) -> SkyViews<'a> {
+    SkyViews::new(layout, &mut ShadingTable::default(), horizon)
+}
+
 fn watts(layout: &Layout, horizon: Option<&Horizon>, weather: &Weather) -> f64 {
     horizon
         .map_or_else(
             || estimate(layout, weather),
-            |h| estimate_with(layout, &SkyViews::new(layout, h), weather),
+            |h| estimate_with(layout, &views(layout, Some(h)), weather),
         )
         .inverters[0]
         .power
@@ -266,10 +270,11 @@ fn an_open_horizon_computes_as_before() {
     );
 
     assert_eq!(with, year(&layout, &clear_day(), QUARTER));
+    let (open, none) = (views(&layout, Some(&open)), views(&layout, None));
     for sample in clear_day() {
         assert_eq!(
-            estimate_with(&layout, &SkyViews::new(&layout, &open), &sample),
-            estimate(&layout, &sample)
+            estimate_with(&layout, &open, &sample),
+            estimate_with(&layout, &none, &sample)
         );
     }
 }
@@ -347,9 +352,11 @@ fn under_a_sun_below_the_profile_the_scene_shades_nothing_more() {
     }))
     .unwrap();
 
-    assert!(watts(&crowned, None, &morning) < watts(&bare, None, &morning));
-    assert_eq!(
-        watts(&crowned, Some(&hill), &morning),
-        watts(&bare, Some(&hill), &morning)
-    );
+    // The crown takes its share of the sky from both: only the beam's shade tells them apart.
+    let power = |layout: &Layout, views: &SkyViews| {
+        estimate_with(layout, views, &morning).inverters[0].power
+    };
+    let (open, hidden) = (views(&crowned, None), views(&crowned, Some(&hill)));
+    assert!(power(&crowned, &open) < power(&bare, &open));
+    assert_eq!(power(&crowned, &hidden), power(&bare, &hidden));
 }

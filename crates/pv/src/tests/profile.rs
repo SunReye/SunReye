@@ -15,8 +15,9 @@ use crate::shade::Casters;
 use crate::string::{Curve, Open, Shade};
 use crate::{
     GridModule, Horizon, Input, Inverter, Layout, Location, Module, ModuleGrid, MpptLimits,
-    Occluder, Place, Plane, Point, PvString, Scene, ShadingTable, Size, Sky, Spot, Sun, Weather,
-    clear_weather, estimate, input_output, plane_irradiance, sun_position, year, year_with,
+    Occluder, Place, Plane, Point, PvString, Scene, ShadingTable, Size, Sky, SkyViews, Spot, Sun,
+    Weather, clear_weather, estimate, estimate_with, input_output, plane_irradiance, sun_position,
+    year, year_with,
 };
 
 const BERLIN: Location = Location {
@@ -225,9 +226,10 @@ type Capped = (i64, [[f64; 3]; 2]);
 const CAPPED: [Capped; 3] = [
     // Both inputs at their 9 A.
     (JUNE + 11 * HOUR, [[6_021.901_678_933_0, 669.100_186_548_1, 9.0], [4_498.445_151_981_4, 499.827_239_109_0, 9.0]]),
-    // Shade on optimized and plain modules alike, under the cap.
-    (MARCH + 7 * HOUR, [[823.896_388_676_8, 203.606_634_836_0, 4.046_510_514_5], [1_113.981_031_321_9, 310.934_039_102_3, 3.582_692_440_3]]),
-    (DECEMBER + 13 * HOUR, [[1_340.473_972_394_2, 309.254_954_713_4, 4.334_527_068_9], [1_482.041_968_159_9, 367.977_692_971_1, 4.027_532_093_6]]),
+    // Shade on optimized and plain modules alike, under the cap. Re-pinned when shade came to
+    // take the circumsolar part of diffuse light too (ADR 17), which an optimizer reaches.
+    (MARCH + 7 * HOUR, [[795.415_796_245_2, 196.491_610_039_2, 4.048_090_379_5], [1_101.515_353_574_4, 307.454_622_818_3, 3.582_692_442_5]]),
+    (DECEMBER + 13 * HOUR, [[1_320.723_678_398_4, 304.670_418_833_2, 4.334_925_863_4], [1_463.787_889_956_9, 363.445_368_855_2, 4.027_532_100_8]]),
 ];
 
 #[test]
@@ -470,6 +472,7 @@ fn a_shading_table() {
     let run = black_box(year_with(&layout, &mut table, None, &weather, QUARTER));
     let looked_up = start.elapsed().as_secs_f64();
 
+    let views = SkyViews::new(&layout, &mut table, None);
     let start = Instant::now();
     let mut traced = [[0.0; 12]; 2];
     for sample in weather
@@ -477,7 +480,7 @@ fn a_shading_table() {
         .filter(|w| w.ghi > 0.0 || w.dni > 0.0 || w.dhi > 0.0)
     {
         let month = crate::estimate::month(sample.unix.div_euclid(SECONDS_PER_DAY));
-        let at = estimate(&layout, sample);
+        let at = estimate_with(&layout, &views, sample);
         for (input, at) in traced.iter_mut().zip(&at.inverters[0].inputs) {
             input[month] += at.power / 4.0;
         }
@@ -545,6 +548,43 @@ fn diffuse_only() {
             "March, {what}: ms per instant: curves {:.4}, estimate {:.4}",
             curves / n,
             whole / n
+        );
+    }
+}
+/// A clear March day and the same overcast through a year's run, which lays the scene's sky
+/// views: their cost over the open sky's, which `cost_by_stage` and `diffuse_only` run.
+#[test]
+#[ignore = "a profile, read by a person"]
+#[expect(clippy::print_stdout, reason = "a profile, read by a person")]
+fn a_day_under_the_scenes_sky() {
+    let layout = layout();
+    let clear: Vec<Weather> = (0..96)
+        .map(|k| clear_weather(MARCH + QUARTER * k, BERLIN))
+        .collect();
+    let overcast: Vec<Weather> = clear
+        .iter()
+        .map(|w| Weather {
+            ghi: w.dhi * 1.5,
+            dni: 0.0,
+            dhi: w.dhi * 1.5,
+            ..*w
+        })
+        .collect();
+    let mut table = ShadingTable::default();
+    table.refresh(&layout);
+    let table = std::cell::RefCell::new(table);
+    for (what, weather) in [("clear", &clear), ("overcast", &overcast)] {
+        let run = || year_with(&layout, &mut table.borrow_mut(), None, weather, QUARTER);
+        let ms = time(|| _ = black_box(run()));
+        let strings = run().inverters[0]
+            .inputs
+            .iter()
+            .flat_map(|i| &i.strings)
+            .map(|e| e.total)
+            .collect::<Vec<_>>();
+        println!(
+            "March, {what}, sky views laid: {:.4} ms per instant; strings {strings:.0?} Wh",
+            ms / 96.0
         );
     }
 }

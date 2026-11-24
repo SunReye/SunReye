@@ -18,7 +18,9 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from pvlib import atmosphere, clearsky, iam, irradiance, pvsystem, solarposition, temperature
+from pvlib import (
+    atmosphere, bifacial, clearsky, iam, irradiance, pvsystem, solarposition, temperature,
+)
 from pvlib.ivtools import sdm
 from scipy import constants, optimize
 
@@ -214,27 +216,33 @@ def cases():
 
 
 def on_plane(tilt, plane_az, zenith, sun_az, doy, ghi, dni, dhi, temp_air, wind):
-    """Effective irradiance with and without beam, and the cell temperature, on one plane.
+    """Effective irradiance lit and shaded, and the cell temperature, on one plane. A shaded
+    substring loses its beam and the circumsolar part of its diffuse light (ADR 17).
 
     Azimuths in pvlib's convention."""
+    dni_extra = irradiance.get_extra_radiation(doy)
     poa = irradiance.get_total_irradiance(
-        tilt, plane_az, zenith, sun_az, dni, ghi, dhi,
-        dni_extra=irradiance.get_extra_radiation(doy), model="perez",
+        tilt, plane_az, zenith, sun_az, dni, ghi, dhi, dni_extra=dni_extra, model="perez",
     )
+    airmass = atmosphere.get_relative_airmass(zenith)
+    parts = irradiance.perez(tilt, plane_az, dhi, dni, dni_extra, zenith, sun_az, airmass,
+                             return_components=True)
+    circumsolar = float(np.nan_to_num(parts["poa_circumsolar"]))
     aoi = irradiance.aoi(tilt, plane_az, zenith, sun_az)
     diffuse = poa["poa_diffuse"] * DIFFUSE_IAM
     lit = poa["poa_direct"] * iam.martin_ruiz(aoi) + diffuse
+    shaded = (poa["poa_diffuse"] - circumsolar) * DIFFUSE_IAM
     if wind is None:
         cell = temperature.ross(poa["poa_global"], temp_air, noct=NOCT)
     else:
         cell = temperature.faiman(poa["poa_global"], temp_air, wind)
-    return float(lit), float(diffuse), float(cell)
+    return float(lit), float(shaded), float(cell)
 
 
 def module(params, ds, light, optimized=False, shaded=0):
-    lit, diffuse, cell = light
+    lit, in_shade, cell = light
     n = ds.bypass_diodes
-    subs = [substring(params, n, diffuse if k < shaded else lit, cell) for k in range(n)]
+    subs = [substring(params, n, in_shade if k < shaded else lit, cell) for k in range(n)]
     return Module(subs, optimized)
 
 
@@ -419,11 +427,32 @@ def clear_sky():
     return rows
 
 
+# Sky views of simple geometries (ADR 17): the share of the isotropic sky a plane sees, over
+# what it sees under an open sky. Beside one long wall whose top stands at b above a flat
+# point's horizon, (1 + cos b) / 2; between two, cos b. At the foot of a row in a long field of
+# rows, pvlib's 2D view factor to the sky over the open sky's (1 + cos tilt) / 2.
+WALLS = [(1.0, 2.0), (2.0, 2.0), (4.0, 1.5), (6.0, 2.0)]  # wall height, distance, in metres
+ROWS = [(20.0, 2.0, 5.0), (30.0, 2.0, 4.0), (35.0, 1.7, 3.0)]  # tilt, slant, pitch
+
+
+def sky_views():
+    rows = [["case", "tilt", "size", "distance", "view"]]
+    for height, distance in WALLS:
+        top = math.atan2(height, distance)
+        rows.append(["wall", 0.0, height, distance, (1.0 + math.cos(top)) / 2.0])
+        rows.append(["street", 0.0, height, distance, math.cos(top)])
+    for tilt, slant, pitch in ROWS:
+        open_sky = (1.0 + math.cos(math.radians(tilt))) / 2.0
+        view = bifacial.utils.vf_row_sky_2d(tilt, slant / pitch, 0.0)
+        rows.append(["rows", tilt, slant, pitch, float(view) / open_sky])
+    return rows
+
+
 def main():
     for name, rows in (("perez.csv", perez()), ("string.csv", string_fixture()),
                        ("sun.csv", sun()), ("estimate.csv", estimate()),
                        ("desoto.csv", desoto()), ("input.csv", input_fixture()),
-                       ("clearsky.csv", clear_sky())):
+                       ("clearsky.csv", clear_sky()), ("skyview.csv", sky_views())):
         with open(HERE / name, "w", newline="") as f:
             csv.writer(f, lineterminator="\n").writerows(
                 [[v if isinstance(v, (str, int)) else repr(float(v)) for v in row] for row in rows]

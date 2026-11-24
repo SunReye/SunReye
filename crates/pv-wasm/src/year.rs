@@ -1,22 +1,13 @@
 //! A plant's run over a year of weather (ADR 17): energy per string, MPPT input and inverter, and
 //! a typed inverter's AC side.
 
-use std::cell::RefCell;
 use std::collections::HashMap;
 
 use serde::Deserialize;
 use serde_json::{Value, json};
-use sunreye_pv::{Energy, InverterType, ShadingTable, Weather, year_with};
+use sunreye_pv::{Energy, InverterType, Weather, year_with};
 
-use crate::clear::horizon;
-
-use crate::clear::{Plant, Wired};
-
-thread_local! {
-    /// The last plant's shading table: runs that change only the weather or the electrics reuse
-    /// it (ADR 17).
-    static TABLE: RefCell<ShadingTable> = RefCell::default();
-}
+use crate::clear::{Plant, TABLE, Wired, horizon};
 
 /// Weather at a fixed step, as columns: sample `i` is at `start + i × step`.
 #[derive(Deserialize)]

@@ -305,11 +305,11 @@ Which substrings a scene shades at each sun position of a grid over the sky, tra
 _Avoid_: Shade map, shadow cache
 
 **Horizon profile**:
-The far horizon's elevation at each degree of azimuth, which the caller supplies to a run: a sun below it gives no beam, and it trims each module's sky view. Never stored in the layout.
+The far horizon's elevation at each degree of azimuth, which the caller supplies to a run: a sun below it gives no beam, and it trims each substring's sky view. Never stored in the layout.
 _Avoid_: Skyline, horizon mask
 
 **Sky view**:
-The share of the isotropic sky a module's plane sees, 1 under an open sky.
+The share of the isotropic sky a substring sees above the horizon profile and past the scene, 1 under an open sky.
 _Avoid_: SVF, sky factor
 
 **Module type**:

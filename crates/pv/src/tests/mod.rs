@@ -25,6 +25,7 @@ mod scene;
 mod shade;
 mod shading;
 mod sizing;
+mod sky_view;
 mod string;
 mod sun;
 mod surroundings;

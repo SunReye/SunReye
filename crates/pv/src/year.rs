@@ -65,8 +65,7 @@ pub fn year_with(
     weather: &[Weather],
     step: i64,
 ) -> Year {
-    table.refresh(layout);
-    let horizon = horizon.map(|horizon| SkyViews::new(layout, horizon));
+    let views = SkyViews::new(layout, table, horizon);
     let mut run = empty(layout);
     #[expect(
         clippy::cast_precision_loss,
@@ -82,7 +81,7 @@ pub fn year_with(
         add(
             &mut run,
             layout,
-            &table.estimate(layout, sample, horizon.as_ref()),
+            &table.estimate(layout, sample, &views),
             month,
             hours,
         );

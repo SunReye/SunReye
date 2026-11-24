@@ -60,6 +60,7 @@ impl Casters {
 
     /// How many of the module's substrings lose their beam. A substring with any shaded sample
     /// is shaded, since its most shaded cell limits its current.
+    #[cfg(test)]
     pub fn shaded_substrings(&self, module: &ModuleType, plane: Plane, at: Place) -> u8 {
         self.shaded(module, plane, at, true)
     }
@@ -80,6 +81,7 @@ impl Casters {
         }
     }
 
+    #[cfg(test)]
     fn shaded(&self, module: &ModuleType, plane: Plane, at: Place, rule_out: bool) -> u8 {
         let shaded = self.shaded_parts(module, plane, at, rule_out).count();
         u8::try_from(shaded).unwrap_or(u8::MAX)

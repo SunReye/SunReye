@@ -122,6 +122,27 @@ test("a clear-sky run takes the horizon too", () => {
   expect(hidden).toBeLessThan(open / 2);
 });
 
+/** A 30 m wall 2 m north of the back eave: behind the south face, out of the noon sun's way. */
+const behind: Neighbour = {
+  footprint: [
+    [-5, 6],
+    [15, 6],
+    [15, 6.3],
+    [-5, 6.3],
+  ],
+  height: 30,
+};
+
+test("a clear-sky run loses the sky a neighbour hides, though it shades no beam", () => {
+  const { weather: _, ...rest } = plant;
+  const times = [Date.UTC(2026, 5, 21, 11) / 1000];
+  const [[open = 0] = []] = pv.clearSky({ ...rest, times });
+  const [[walled = 0] = []] = pv.clearSky({ ...rest, times, neighbours: [behind] });
+
+  expect(walled).toBeLessThan(open);
+  expect(walled).toBeGreaterThan(0.9 * open);
+});
+
 test("a horizon of any other shape is refused", () => {
   expect(() => pv.year({ ...plant, horizon: hill.slice(1) })).toThrow("360");
 });
