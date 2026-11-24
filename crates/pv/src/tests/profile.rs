@@ -14,9 +14,9 @@ use crate::perez::cos_incidence;
 use crate::shade::Casters;
 use crate::string::{Curve, Open, Shade};
 use crate::{
-    GridModule, Input, Inverter, Layout, Location, Module, ModuleGrid, MpptLimits, Occluder, Place,
-    Plane, Point, PvString, Scene, ShadingTable, Size, Sky, Spot, Sun, Weather, clear_weather,
-    estimate, input_output, plane_irradiance, sun_position, year, year_with,
+    GridModule, Horizon, Input, Inverter, Layout, Location, Module, ModuleGrid, MpptLimits,
+    Occluder, Place, Plane, Point, PvString, Scene, ShadingTable, Size, Sky, Spot, Sun, Weather,
+    clear_weather, estimate, input_output, plane_irradiance, sun_position, year, year_with,
 };
 
 const BERLIN: Location = Location {
@@ -433,6 +433,25 @@ fn a_years_run() {
 
     let kwh = run.inverters[0].dc.total / 1e3;
     println!("a clear 2026 at quarter hours: {elapsed:.2} s, {kwh:.0} kWh");
+
+    let profile: Vec<[f64; 2]> = (-180_i16..180)
+        .map(|azimuth| {
+            let azimuth = f64::from(azimuth);
+            [azimuth, 6.0f64.mul_add((azimuth / 30.0).sin(), 12.0)]
+        })
+        .collect();
+    let horizon = Horizon::new(&profile).unwrap();
+    let start = Instant::now();
+    let run = black_box(year_with(
+        &layout,
+        &mut ShadingTable::default(),
+        Some(&horizon),
+        &weather,
+        QUARTER,
+    ));
+    let elapsed = start.elapsed().as_secs_f64();
+    let kwh = run.inverters[0].dc.total / 1e3;
+    println!("the same under hills of 6–18°: {elapsed:.2} s, {kwh:.0} kWh");
 }
 
 #[test]
