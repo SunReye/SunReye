@@ -146,3 +146,79 @@ test("a clear-sky run loses the sky a neighbour hides, though it shades no beam"
 test("a horizon of any other shape is refused", () => {
   expect(() => pv.year({ ...plant, horizon: hill.slice(1) })).toThrow("360");
 });
+
+const limits = { maxCurrent: 30, minVoltage: 80, maxVoltage: 1000, startVoltage: 100 };
+
+/** The plant on a small typed inverter, soiled, cabled and warranted. */
+const supplied: YearRun = {
+  ...plant,
+  inverterTypes: {
+    1: {
+      maker: "Example",
+      model: "Small",
+      maxInputVoltage: 1100,
+      acRating: 1200,
+      efficiency: 97,
+      inputs: [limits],
+    },
+  },
+  soiling: 2,
+  cables: {
+    dc: [{ length: 20, crossSection: 4 }],
+    ac: { 1: { length: 15, crossSection: 2.5, threePhase: false } },
+  },
+  warranty: { firstYear: 2, yearly: 0.55, years: 25 },
+};
+
+test("a run returns its loss chain from the planes to the grid, with what the caller supplies", () => {
+  const ran = pv.year(supplied);
+
+  const [inverter] = ran.inverters;
+
+  if (inverter === undefined) throw new Error("the run has its inverter");
+
+  const steps = inverter.chain.steps;
+
+  expect(steps.map((step) => step.id)).toEqual([
+    "beam_shading",
+    "diffuse_shading",
+    "incidence",
+    "soiling",
+    "irradiance_level",
+    "temperature",
+    "string",
+    "mismatch",
+    "mppt_limits",
+    "dc_cable",
+    "inverter",
+    "clipping",
+    "ac_cable",
+  ]);
+  expect(steps[3]).toMatchObject({ en: "Soiling", de: "Verschmutzung" });
+
+  const planes = inverter.chain.planes.total;
+  const lost = steps.reduce((sum, step) => sum + step.lost.total, 0);
+  const grid = steps.at(-1)?.after.total ?? 0;
+
+  expect(lost).toBeCloseTo(planes - grid, 6);
+  expect(steps.at(-2)?.after.total).toBe(inverter.ac?.energy.total);
+  expect(grid).toBeLessThan(inverter.ac?.energy.total ?? 0);
+  expect(ran.chain).toEqual(inverter.chain);
+  expect(ran.years).toHaveLength(25);
+  expect(ran.years?.[0]).toBeCloseTo(0.99 * grid, 6);
+});
+
+test("a loss a run does not compute is absent from its chain", () => {
+  const [inverter] = pv.year(plant).inverters;
+
+  expect(inverter?.chain.steps.map((step) => step.id)).toEqual([
+    "beam_shading",
+    "diffuse_shading",
+    "incidence",
+    "irradiance_level",
+    "temperature",
+    "string",
+    "mismatch",
+  ]);
+  expect(pv.year(plant).years).toBeUndefined();
+});

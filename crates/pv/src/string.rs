@@ -46,12 +46,120 @@ pub struct Curve {
     sampled: Vec<(f64, f64)>,
 }
 
+/// A string's watts at each stage of the loss chain before its own curve (ADR 17).
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub struct Tally {
+    /// Light at the datasheet's efficiency: on the planes, past the horizon, past the scene's
+    /// beam shade, past its diffuse shade, through the glass, past the dirt.
+    pub light: [f64; LIGHT],
+    /// Every lit substring at its own maximum power point at 25 °C, then at its cells'
+    /// temperature, then after the string's loss.
+    pub cool: f64,
+    pub warm: f64,
+    pub kept: f64,
+}
+
+impl Tally {
+    /// Several tallies added stage by stage.
+    pub fn sum(tallies: &[Self]) -> Self {
+        tallies.iter().fold(Self::default(), |sum, t| Self {
+            light: std::array::from_fn(|n| {
+                sum.light.get(n).copied().unwrap_or(0.0) + t.light.get(n).copied().unwrap_or(0.0)
+            }),
+            cool: sum.cool + t.cool,
+            warm: sum.warm + t.warm,
+            kept: sum.kept + t.kept,
+        })
+    }
+}
+
+/// The optical stages a tally holds.
+pub const LIGHT: usize = 6;
+
+/// Solves a string's substrings at their own maximum power points for its tally.
+struct Owner<'a> {
+    reference: &'a Diode,
+    module: &'a ModuleType,
+    /// Each substring's datasheet watts per W/m².
+    nominal: f64,
+    keep: f64,
+    /// Solved: the own maximum power at 25 °C and at the cells' temperature by effective
+    /// irradiance and cell temperature, so substrings alike are solved once.
+    owns: Vec<((u64, u64), f64, f64)>,
+}
+
+impl Owner<'_> {
+    /// Adds a module's substrings' light, `lit`, to `tally`.
+    fn light(&self, tally: &mut Tally, lit: &Lit) {
+        for part in &lit.parts {
+            for (sum, light) in tally.light.iter_mut().zip(part.light) {
+                *sum = self.nominal.mul_add(light, *sum);
+            }
+        }
+    }
+
+    /// Adds substrings, by the circuits they share, at their own maximum power points to `tally`.
+    fn add(&mut self, tally: Option<&mut Tally>, shared: &[Shared]) {
+        let Some(tally) = tally else {
+            return;
+        };
+        for circuit in shared {
+            let (cool, warm) = self.own(circuit);
+            let count = f64::from(circuit.count);
+            tally.cool = count.mul_add(cool, tally.cool);
+            tally.warm = count.mul_add(warm, tally.warm);
+            tally.kept = (self.keep * count).mul_add(warm, tally.kept);
+        }
+    }
+
+    /// A shared circuit's own maximum power at 25 °C and at its cells' temperature.
+    fn own(&mut self, shared: &Shared) -> (f64, f64) {
+        let Some(circuit) = shared.circuit else {
+            return (0.0, 0.0);
+        };
+        let key = (shared.effective.to_bits(), shared.cell.to_bits());
+        if let Some(&(_, cool, warm)) = self.owns.iter().find(|(k, _, _)| *k == key) {
+            return (cool, warm);
+        }
+        let parts = self.module.bypass_diodes.max(1);
+        let cool = self
+            .reference
+            .substring(self.module, parts, shared.effective, STC_CELL)
+            .map_or(0.0, |d| peak_power(&d));
+        let warm = peak_power(&circuit);
+        self.owns.push((key, cool, warm));
+        (cool, warm)
+    }
+}
+
 impl Curve {
+    #[cfg(test)]
     #[must_use]
     pub fn new(string: &PvString, sky: &Sky, shade: Shade, open: Open) -> Self {
-        let mut curve = Self::empty(1.0 - string.loss / 100.0);
+        Self::tallied(string, sky, shade, open, None)
+    }
+
+    /// The same, adding the string's stages of the loss chain to `tally`, if any.
+    #[must_use]
+    pub fn tallied(
+        string: &PvString,
+        sky: &Sky,
+        shade: Shade,
+        open: Open,
+        mut tally: Option<&mut Tally>,
+    ) -> Self {
+        let keep = 1.0 - string.loss / 100.0;
+        let mut curve = Self::empty(keep);
         let Some(reference) = fit(&string.module) else {
             return curve;
+        };
+        let parts = string.module.bypass_diodes.max(1);
+        let mut owner = Owner {
+            reference: &reference,
+            module: &string.module,
+            nominal: string.module.vmp * string.module.imp / f64::from(parts) / 1000.0,
+            keep,
+            owns: Vec::new(),
         };
         let circuits = |lights: &mut Vec<(f64, f64)>| {
             circuits(&reference, &string.module, std::mem::take(lights))
@@ -59,10 +167,20 @@ impl Curve {
         // The string's plain substrings, merged across modules.
         let mut plain = Vec::new();
         for (k, module) in string.modules.iter().enumerate() {
-            let mut lights = substrings(&string.module, (k, module), (sky, open), shade);
+            let lit = substrings(&string.module, (k, module), (sky, open), shade);
+            if let Some(tally) = tally.as_deref_mut() {
+                owner.light(tally, &lit);
+            }
+            let mut lights: Vec<_> = lit
+                .parts
+                .iter()
+                .map(|part| (part.effective, lit.cell))
+                .collect();
             if module.optimized {
+                let shared = circuits(&mut lights);
+                owner.add(tally.as_deref_mut(), &shared);
                 let mut own = Self::empty(1.0);
-                own.add_all(circuits(&mut lights));
+                own.add_all(&shared);
                 let (current, power) = own.peak_of_own();
                 curve.optimized = OPTIMIZER.mul_add(power, curve.optimized);
                 curve.top = curve.top.max(current);
@@ -70,7 +188,9 @@ impl Curve {
                 plain.append(&mut lights);
             }
         }
-        curve.add_all(circuits(&mut plain));
+        let shared = circuits(&mut plain);
+        owner.add(tally, &shared);
+        curve.add_all(&shared);
         if curve.top > 0.0 {
             curve.sampled = (0..=SAMPLES)
                 .map(|k| sample(curve.top, k))
@@ -91,9 +211,9 @@ impl Curve {
         }
     }
 
-    fn add_all(&mut self, groups: Vec<(Option<Diode>, u32)>) {
-        for (diode, count) in groups {
-            self.add(diode, count);
+    fn add_all(&mut self, shared: &[Shared]) {
+        for circuit in shared {
+            self.add(circuit.circuit, circuit.count);
         }
     }
 
@@ -249,6 +369,8 @@ pub struct Open<'a> {
     /// Each substring's plane's view above the horizon alone, the same indexing: what its cells
     /// warm by.
     pub warming: &'a [f64],
+    /// What soiling leaves of the light reaching the cells, of 1.
+    pub clean: f64,
 }
 
 impl Open<'_> {
@@ -257,6 +379,7 @@ impl Open<'_> {
         sun: true,
         views: &[],
         warming: &[],
+        clean: 1.0,
     };
 
     /// The sky view of each of the `k`th module's `parts` substrings.
@@ -268,21 +391,55 @@ impl Open<'_> {
         (0..parts).map(move |part| views.get(part).copied().unwrap_or(1.0))
     }
 
-    /// The view the `k`th module's cells warm by.
+    /// The view the `k`th module's cells warm by, which is also its plane's view above the
+    /// horizon alone.
     fn warming(self, k: usize, parts: usize) -> f64 {
         self.warming.get(k * parts).copied().unwrap_or(1.0)
     }
 }
 
+/// A module's substrings under one sky and their cells' temperature.
+struct Lit {
+    parts: Vec<Part>,
+    cell: f64,
+}
+
+/// A substring's effective irradiance and its light at each optical stage of the loss chain, in
+/// W/m².
+struct Part {
+    effective: f64,
+    light: [f64; LIGHT],
+}
+
+/// Substrings that share one circuit: it, `None` in the dark; how many; and their mean effective
+/// irradiance and cells' temperature.
+struct Shared {
+    circuit: Option<Diode>,
+    count: u32,
+    effective: f64,
+    cell: f64,
+}
+
+/// A circuit's own maximum power, in watts. Power is flat at its peak, so a current to 1e-8
+/// leaves it within 1e-15.
+fn peak_power(circuit: &Diode) -> f64 {
+    let power = |i: f64| i * circuit.voltage(i);
+    power(golden_within(&power, 0.0, circuit.photocurrent, 1e-8)).max(0.0)
+}
+
+/// The cell temperature of standard test conditions, in °C.
+const STC_CELL: f64 = 25.0;
+
 /// A module's substrings under one sky, each with its own sky view: the effective irradiance
-/// each takes, in W/m², and its cells' temperature. A shaded substring loses its beam and the
-/// circumsolar part of its diffuse light, which come from the same patch of sky.
+/// each takes, in W/m², with its light at each optical stage, and its cells' temperature. A
+/// shaded substring loses its beam and the circumsolar part of its diffuse light, which come
+/// from the same patch of sky.
 fn substrings(
     module_type: &ModuleType,
     (k, module): (usize, &Module),
     (sky, open): (&Sky, Open),
     shade: Shade,
-) -> Vec<(f64, f64)> {
+) -> Lit {
     let split = Split::of(module.plane, sky);
     let parts = module_type.bypass_diodes.max(1);
     let views: Vec<f64> = open.of(k, usize::from(parts)).collect();
@@ -299,27 +456,44 @@ fn substrings(
     let warming =
         if open.sun { split.beam } else { 0.0 } + split.sky_diffuse(open_sky) + split.ground;
     let cell = cell_temperature(warming, sky.temperature, sky.wind);
-    views
+    let horizon_view = open_sky.view;
+    let parts = views
         .iter()
         .zip(&shaded)
         .map(|(&view, &shaded)| {
             let sun = open.sun && !shaded;
             let diffuse = (split.sky_diffuse(Light { sun, view }) + split.ground) * DIFFUSE_IAM;
-            let effective = if sun { beam + diffuse } else { diffuse };
-            (effective, cell)
+            let glass = if sun { beam + diffuse } else { diffuse };
+            let effective = glass * open.clean;
+            let seen = |sun: bool, view| {
+                (if sun { split.beam } else { 0.0 })
+                    + split.sky_diffuse(Light { sun, view })
+                    + split.ground
+            };
+            Part {
+                effective,
+                light: [
+                    seen(true, 1.0),
+                    seen(open.sun, horizon_view),
+                    seen(sun, horizon_view),
+                    seen(sun, view),
+                    glass,
+                    effective,
+                ],
+            }
         })
-        .collect()
+        .collect();
+    Lit { parts, cell }
 }
 
 /// The circuits of substrings, each its effective irradiance and cell temperature: those at one
 /// temperature within `MERGE` above the dimmest of them share one at their mean irradiance,
-/// which keeps their summed photocurrent and shunt conductance, both proportional to it; `None`
-/// in the dark.
+/// which keeps their summed photocurrent and shunt conductance, both proportional to it.
 fn circuits(
     reference: &Diode,
     module_type: &ModuleType,
     mut lights: Vec<(f64, f64)>,
-) -> Vec<(Option<Diode>, u32)> {
+) -> Vec<Shared> {
     let parts = module_type.bypass_diodes.max(1);
     let width = merge();
     lights.sort_by(|(a, hot), (b, warm)| hot.total_cmp(warm).then(a.total_cmp(b)));
@@ -335,7 +509,12 @@ fn circuits(
         let above: f64 = these.iter().map(|(effective, _)| effective - dimmest).sum();
         let count = u32::try_from(n).unwrap_or(u32::MAX);
         let mean = above / f64::from(count) + dimmest;
-        merged.push((reference.substring(module_type, parts, mean, cell), count));
+        merged.push(Shared {
+            circuit: reference.substring(module_type, parts, mean, cell),
+            count,
+            effective: mean,
+            cell,
+        });
         rest = after;
     }
     merged
@@ -415,13 +594,18 @@ pub fn peak(points: &[f64], f: &impl Fn(f64) -> f64, admit: impl Fn(f64) -> bool
 }
 
 /// The maximum of a unimodal `f` on `[low, high]`.
-fn golden(f: &impl Fn(f64) -> f64, mut low: f64, mut high: f64) -> f64 {
+fn golden(f: &impl Fn(f64) -> f64, low: f64, high: f64) -> f64 {
+    golden_within(f, low, high, 1e-13)
+}
+
+/// The same to within `tolerance` of the current, relative.
+fn golden_within(f: &impl Fn(f64) -> f64, mut low: f64, mut high: f64, tolerance: f64) -> f64 {
     let ratio = (5.0f64.sqrt() - 1.0) / 2.0;
     let mut a = ratio.mul_add(-(high - low), high);
     let mut b = ratio.mul_add(high - low, low);
     let (mut fa, mut fb) = (f(a), f(b));
     for _ in 0..100 {
-        if (high - low).abs() <= 1e-13 * high.abs().max(1.0) {
+        if (high - low).abs() <= tolerance * high.abs().max(1.0) {
             break;
         }
         if fa < fb {

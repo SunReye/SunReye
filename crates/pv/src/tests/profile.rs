@@ -9,7 +9,7 @@ use serde_json::json;
 
 use super::fixtures::MODULE;
 use crate::diode::fit;
-use crate::estimate::{SECONDS_PER_DAY, day_of_year};
+use crate::estimate::{SECONDS_PER_DAY, Tallies, day_of_year};
 use crate::perez::cos_incidence;
 use crate::shade::Casters;
 use crate::string::{Curve, Open, Shade};
@@ -626,8 +626,11 @@ fn energy(
     weather: &[Weather],
 ) -> Vec<f64> {
     let mut wh = vec![0.0; 3];
+    // A year's run tallies its loss chain: its cost is part of the run's.
+    let mut tallies = Tallies::default();
     for w in weather {
-        let at = table.estimate(layout, w, views);
+        let open = |sun, string| views.open(sun, string);
+        let at = table.estimate(layout, w, open, Some(&mut tallies));
         let watts = at.inverters[0].inputs.iter().flat_map(|i| &i.strings);
         for (wh, watts) in wh.iter_mut().zip(watts) {
             *wh += watts / 4.0;

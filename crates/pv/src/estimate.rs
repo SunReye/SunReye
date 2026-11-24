@@ -1,8 +1,8 @@
 //! A layout's output under one weather instant: strings, then their MPPT inputs, then inverters.
 
-use crate::mppt::operating_point;
+use crate::mppt::tallied_point;
 use crate::shade::Casters;
-use crate::string::{Open, Shade};
+use crate::string::{Open, Shade, Tally};
 use crate::{Estimate, InverterEstimate, Layout, Sky, SkyViews, Weather, sun_position};
 
 pub const SECONDS_PER_DAY: i64 = 86_400;
@@ -44,6 +44,28 @@ pub fn shaded<'a>(
     sky: &Sky,
     shade: impl Fn(usize) -> (Shade<'a>, Open<'a>),
 ) -> Estimate {
+    tallied(layout, sky, shade, None)
+}
+
+/// Each string's stages of the loss chain, in layout order, and each input's watts free of its
+/// limits, in layout order: what a year's run adds up besides the estimate.
+#[derive(Debug, Default)]
+pub struct Tallies {
+    pub strings: Vec<Tally>,
+    pub free: Vec<f64>,
+}
+
+/// The same, tallying into `tallies`, if any, which it clears first.
+pub fn tallied<'a>(
+    layout: &Layout,
+    sky: &Sky,
+    shade: impl Fn(usize) -> (Shade<'a>, Open<'a>),
+    mut tallies: Option<&mut Tallies>,
+) -> Estimate {
+    if let Some(tallies) = tallies.as_deref_mut() {
+        tallies.strings.clear();
+        tallies.free.clear();
+    }
     let mut first = 0;
     let inverters = layout
         .inverters
@@ -55,7 +77,15 @@ pub fn shaded<'a>(
                 .map(|input| {
                     let from = first;
                     first += input.strings.len();
-                    operating_point(input, sky, |k| shade(from + k))
+                    let shade = |k| shade(from + k);
+                    let Some(tallies) = tallies.as_deref_mut() else {
+                        return tallied_point(input, sky, shade, None).0;
+                    };
+                    let mut strings = vec![Tally::default(); input.strings.len()];
+                    let (estimate, free) = tallied_point(input, sky, shade, Some(&mut strings));
+                    tallies.strings.extend(strings);
+                    tallies.free.push(free);
+                    estimate
                 })
                 .collect();
             InverterEstimate {

@@ -13,10 +13,13 @@ import type {
 import type { Face, Geometry, Point, Unfit } from "./geometry.d.ts";
 import type { FillRules, Ghost, Modules, OnGrid, Sizes } from "./layout.d.ts";
 import type { InputLimits, Inverters, Sizing, Stringing, Strung } from "./stringing.d.ts";
+import type { LossChain, RunLosses } from "./losses.d.ts";
 
 export type * from "./geometry.d.ts";
 
 export type * from "./layout.d.ts";
+
+export type * from "./losses.d.ts";
 
 export type * from "./stringing.d.ts";
 
@@ -97,7 +100,7 @@ export interface WeatherSteps {
 }
 
 /** A layout over a year of weather (ADR 17): the scene names its strings by position. */
-export interface YearRun {
+export interface YearRun extends RunLosses {
   readonly location: Location;
   readonly scene: Scene;
   /** The consumer's neighbours, shading as the scene's obstacles do. */
@@ -127,7 +130,7 @@ export interface TypicalYear {
 }
 
 /** A layout over a year of weather, for its irradiation on its planes. */
-export type Irradiated = Omit<YearRun, "inverterTypes" | "horizon">;
+export type Irradiated = Omit<YearRun, "inverterTypes" | "horizon" | keyof RunLosses>;
 
 /** A past year's irradiation on a layout's planes, in Wh/m². */
 export interface PastIrradiation {
@@ -170,13 +173,19 @@ export interface YearEnergy {
   readonly strings: readonly Energy[];
   readonly inverters: readonly {
     readonly device: number;
-    /** The sum of its inputs, on the DC side. */
+    /** The sum of its inputs, on the DC side, past the strings' DC cables. */
     readonly dc: Energy;
     /** After its type's efficiency curve, capped at its AC rating, and what the cap cut; absent without a type. */
     readonly ac?: { readonly energy: Energy; readonly clipped: Energy };
-    /** By input number, from 1. */
+    /** By input number, from 1; past each string's DC cable. */
     readonly inputs: readonly { readonly input: number; readonly energy: Energy }[];
+    /** To its DC sum, or with a type to what it delivers past its AC cable. */
+    readonly chain: LossChain;
   }[];
+  /** The inverters' chains added over the losses all of them have. */
+  readonly chain: LossChain;
+  /** The chain's end in each year from the first, by the warranty; absent without one. */
+  readonly years?: readonly number[];
 }
 
 /** The engine. Each call throws the crate's reason for an input it cannot read. */

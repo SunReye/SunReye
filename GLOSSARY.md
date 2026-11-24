@@ -524,6 +524,10 @@ _Avoid_: TMY, average year, reference year
 The yearly yield exceeded in nine years of ten (P90): the simulated typical year less 1.2816 deviations of past years' irradiation on the planes over the typical year's.
 _Avoid_: Worst case, minimum yield
 
+**Loss chain**:
+The energy a year's run leaves after each named loss, from irradiation on the planes at the datasheet's efficiency to what an inverter delivers; the losses sum to the whole. A loss the run did not compute is absent. German UI: Verlustkette.
+_Avoid_: Loss tree, waterfall (a chart of it), performance ratio
+
 **Correction**:
 A multiplier the plant learns per MPPT input, plant-local month and hour: measured over modelled PV power on past weather.
 _Avoid_: Calibration, bias factor
