@@ -27,7 +27,7 @@ export { TraceTool, type Tracing } from "./tracing.svelte.ts";
 
 export { default as TraceLayer } from "./TraceLayer.svelte";
 
-export { TracingMode } from "./tracing-mode.svelte.ts";
+export { TracingMode, type Traced } from "./tracing-mode.svelte.ts";
 
 export { projector, type Projector } from "./project.ts";
 

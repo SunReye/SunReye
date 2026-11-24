@@ -11,6 +11,7 @@ import {
   layingOf,
   TracingMode,
   type Editing,
+  type Traced,
   type Hit,
   type Roofwork,
   type Panel,
@@ -32,6 +33,8 @@ export interface Reads extends Checking {
   readonly types?: Readonly<Types> | undefined;
   readonly moduleTypes: readonly Readonly<ModuleType>[];
   readonly devices: readonly Readonly<Device>[];
+  /** Hears each edit of a traced roof, named as `@sunreye/scene`'s `replay` makes it. */
+  readonly ontrace?: Traced["traced"] | undefined;
 }
 
 export class Session {
@@ -63,6 +66,7 @@ export class Session {
 
   /** The tracing mode: clicks on the canvas trace a roof's lines (ADR 20). */
   readonly tracing = new TracingMode(this);
+  readonly traced: Traced["traced"] = (edit) => this.#opening().ontrace?.(edit);
 
   /** The wiring mode: its selection, and what wiring it makes of the draft (ADR 20). */
   readonly wiring = new WiringMode(this, () => ({

@@ -368,6 +368,10 @@ _Avoid_: Roof extension, Dachaufbau
 A common German roof, such as a Satteldach or a Mansarddach, placed in one click as the lines a person could have traced and pulled up, then edited as any traced roof.
 _Avoid_: Template, preset, roof type
 
+**Ready dormer**:
+A common German dormer, such as a Schleppgaube or a Satteldachgaube, or a Zwerchhaus, placed in one click on a face as the lines a person could have traced and pulled up, then edited as any traced roof.
+_Avoid_: Dormer template, dormer preset
+
 **Covering**:
 What a roof face is covered with: tiles, slate, sheet metal or bitumen; unknown until someone says.
 _Avoid_: Roofing, material, Eindeckung

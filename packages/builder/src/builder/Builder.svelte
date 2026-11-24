@@ -36,6 +36,7 @@
     inputs = {},
     aerial,
     neighbours = [],
+    ontrace,
   }: {
     pv: Pv;
     /** Takes the session's writes: Home's core. */
@@ -62,6 +63,9 @@
     aerial?: Aerial | undefined;
     /** Bodies around the plant that shade as its obstacles do; never saved. */
     neighbours?: readonly Neighbour[];
+    /** Hears each edit of a traced roof, on the canvas or the tracing bar, as `@sunreye/scene`'s
+     * `replay` makes it (ADR 20). */
+    ontrace?: Reads["ontrace"];
   } = $props();
 
   // Every width edits (ADR 20): a phone with the inspector as a sheet and "+" on the canvas.
@@ -77,6 +81,7 @@
     devices,
     limits,
     inputs,
+    ontrace,
   }));
 
   /** The time slider's instant: it reads the draft, never writes it. */

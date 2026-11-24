@@ -11,7 +11,7 @@ export type { Around, Editing, Hit, Panel, Projector, Roofwork } from "./builder
 
 export { layingOf, type Laying, type LaySteps } from "./builder/gestures.ts";
 
-export type { LineRef, TraceEdit, Tracing } from "./builder/tracing.svelte.ts";
+export type { LineRef, Placing, TraceEdit, Tracing } from "./builder/tracing.svelte.ts";
 
 export type { Aerial } from "./builder/supplied.ts";
 

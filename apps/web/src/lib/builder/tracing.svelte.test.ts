@@ -4,7 +4,8 @@ import { cdp, page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { presetView } from "../../../../../packages/builder/src/builder/camera.ts";
 import type { Geometry, Scene } from "../../../../../packages/builder/src/builder/pv.ts";
-import type { Projector, TraceEdit } from "@sunreye/builder";
+import type { Placing, Projector, TraceEdit } from "@sunreye/builder";
+import { replay } from "@sunreye/scene";
 import { SceneCanvas } from "@sunreye/builder";
 import { settle } from "../motion/clock.harness.ts";
 import { press } from "./pointer.harness.ts";
@@ -34,9 +35,13 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-/** A canvas in the tracing mode, kept on the scene each edit hands back. */
-async function tracing(): Promise<{
-  readonly at: (x: number, z: number) => [number, number];
+/** A canvas in the tracing mode, kept on the scene each edit hands back; `placing` held until a
+ * ready shape is placed. */
+async function tracing(
+  start: Scene = EMPTY,
+  held?: Placing,
+): Promise<{
+  readonly at: (x: number, z: number, height?: number) => [number, number];
   readonly scenes: Scene[];
   readonly edits: TraceEdit[];
 }> {
@@ -52,7 +57,8 @@ async function tracing(): Promise<{
       project = next;
     },
     tracing: {
-      scene: EMPTY,
+      scene: start,
+      placing: held,
       ontrace: (scene: Scene, edit: TraceEdit) => {
         traced(scene, edit);
       },
@@ -71,9 +77,9 @@ async function tracing(): Promise<{
 
   return {
     // Scene x and z to page pixels: north 0, so east is x and north is −z.
-    at: (x, z) => {
+    at: (x, z, height = 0) => {
       const { left, top } = canvas.getBoundingClientRect();
-      const [px = 0, py = 0] = project?.([x, -z, 0]) ?? [];
+      const [px = 0, py = 0] = project?.([x, -z, height]) ?? [];
 
       return [left + px, top + py];
     },
@@ -140,4 +146,58 @@ test("a traced line dragged moves, and its faces follow", async () => {
   expect(scenes.at(-1)?.blocks[0]?.freeForm?.faces[0]?.map(([x = 0]) => Math.round(x))).toEqual(
     expect.arrayContaining([2, 9]),
   );
+});
+
+test("each edit is reported with its arguments, the reach in metres too, and replays to its scene", async () => {
+  const { at, scenes, edits } = await tracing();
+
+  await press("mouse", [at(2, 2)]);
+  await press("mouse", [at(2, 8)]);
+  await settle(() => scenes.length === 1);
+
+  const [edit] = edits;
+
+  expect(edit?.kind === "add" && "x" in edit.from).toBe(true);
+  expect(edit?.kind === "add" && edit.reach > 0 && edit.reach < 2).toBe(true);
+  expect(edit && replay(EMPTY, edit)).toMatchObject({ scene: scenes[0] });
+});
+
+test("a ready roof held is placed by the next click, centred on it, and reported", async () => {
+  const size = { width: 6, depth: 4, eave: 3, ridge: 6 };
+  const { at, scenes, edits } = await tracing(EMPTY, { kind: "roof", id: "satteldach", size });
+
+  await press("mouse", [at(5, 5)]);
+  await settle(() => scenes.length === 1);
+
+  const [edit] = edits;
+
+  expect(edit).toMatchObject({ kind: "roof", id: "satteldach", size });
+  expect(edit?.kind === "roof" && [edit.at.x, edit.at.z].map((v) => Math.round(v))).toEqual([2, 3]);
+  expect(edit && replay(EMPTY, edit)).toMatchObject({ scene: scenes[0] });
+});
+
+test("a ready dormer held is placed on the face under the next click", async () => {
+  const size = { width: 6, depth: 4, eave: 3, ridge: 6 };
+  const house = replay(EMPTY, { kind: "roof", id: "satteldach", at: { x: 2, z: 3 }, size });
+  const start = "refused" in house ? EMPTY : house.scene;
+  const dormer = { width: 1, depth: 1 };
+
+  const { at, scenes, edits } = await tracing(start, {
+    kind: "dormer",
+    id: "schleppgaube",
+    size: dormer,
+  });
+
+  // Tapped where the face is drawn, 4.5 m up near the house's corner, not over the ground under it.
+  await press("mouse", [at(3, 4, 4.5)]);
+  await settle(() => scenes.length === 1);
+
+  const [edit] = edits;
+
+  expect(edit).toMatchObject({ kind: "dormer", block: 0, id: "schleppgaube", size: dormer });
+  expect(edit?.kind === "dormer" && [edit.at.x, edit.at.z].map((v) => v.toFixed(1))).toEqual([
+    "3.0",
+    "4.0",
+  ]);
+  expect(edit && replay(start, edit)).toMatchObject({ scene: scenes[0] });
 });

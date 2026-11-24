@@ -1,6 +1,7 @@
 <!--
   The picked traced line on the tracing bar (ADR 20): whether it is an eave or a ridge, its two
-  points' heights by number, and removing it.
+  points' heights by number, its dormer's eave and ridge heights where it is a dormer's, and
+  removing it.
 -->
 <script lang="ts">
   import Trash from "@lucide/svelte/icons/trash-2";
@@ -47,6 +48,24 @@
     mode.raise(1, height);
   }}
 />
+{#if mode.dormer}
+  <HeightButton
+    name={m.builder_trace_dormer_eaves()}
+    value={mode.dormer.eave}
+    onchange={(height) => {
+      mode.raiseDormer("eave", height);
+    }}
+  />
+  {#if mode.dormer.ridged}
+    <HeightButton
+      name={m.builder_trace_dormer_ridge()}
+      value={mode.dormer.ridge}
+      onchange={(height) => {
+        mode.raiseDormer("ridge", height);
+      }}
+    />
+  {/if}
+{/if}
 <Button
   variant="ghost"
   size="sm"

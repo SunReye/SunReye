@@ -15,4 +15,8 @@ export { placeRoof, readyRoofs } from "./roof-ready.js";
 
 export { faceCount } from "./roof-count.js";
 
+export { placeDormer, readyDormers } from "./roof-ready-dormer.js";
+
+export { replay } from "./roof-replay.js";
+
 export { SCENE_SCHEMA, SCENE_SCHEMA_VERSION } from "./scene-schema.js";

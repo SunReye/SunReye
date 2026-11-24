@@ -160,3 +160,74 @@ export declare function placeRoof(
   at: { readonly x: number; readonly z: number },
   size: RoofSize,
 ): Edited;
+
+/** The ready dormers, in the order a menu lists them. */
+export declare const readyDormers: readonly ReadyEntry[];
+
+/** A ready dormer's size: `width` metres across its face's slope and `depth` up it, seen from
+ * above, where its top meets the face; its front eave at `eave` metres, between the face and that
+ * top, halfway without one. A Flachdachgaube is level at its top and a Zwerchhaus's eaves are the
+ * house's: neither reads `eave`. A Zwerchhaus's `depth` runs from the face's eave. */
+export interface DormerSize {
+  readonly width: number;
+  readonly depth: number;
+  readonly eave?: number;
+}
+
+/** The scene with ready dormer `id` on face `face` of traced block `block`, its middle at `at`
+ * seen from above and its front toward the face's low side: the lines a person could have traced,
+ * pulled up by its own eaves and ridges. A Zwerchhaus stands on the face's eave under `at`, its
+ * ridge's ends set; it touches the outline, so it is the house's, not a dormer. Refused
+ * (`"missing"`) for an unknown id, block or face, `"short"` without a positive size, on a face
+ * without slope or with its eave not between the face and its top, `"crosses"` where it is not
+ * wholly on its face. `faces` says where the block's faces went; `from` and `to` are -1. */
+export declare function placeDormer(
+  scene: Scene,
+  block: number,
+  face: number,
+  id: string,
+  at: { readonly x: number; readonly z: number },
+  size: DormerSize,
+): Edited;
+
+/** A place seen from above, in the scene's metres. */
+export interface Place {
+  readonly x: number;
+  readonly z: number;
+}
+
+/** An edit of a traced roof, named with its operation's arguments, as the tracing reports it: a
+ * consumer keeping the scene elsewhere makes the same next scene with `replay`. An add carries the
+ * metres its clicks snapped within; `which` is the eaves or ridges pulled, `as` what a line is made. */
+export type TraceEdit =
+  | { readonly kind: "add"; readonly from: End; readonly to: End; readonly reach: number }
+  | { readonly kind: "move"; readonly block: number; readonly line: number; readonly by: Place }
+  | { readonly kind: "remove"; readonly block: number; readonly line: number }
+  | { readonly kind: "pull"; readonly block: number; readonly which: Kind; readonly height: number }
+  | { readonly kind: "mark"; readonly block: number; readonly line: number; readonly as: Kind }
+  | {
+      readonly kind: "height";
+      readonly block: number;
+      readonly point: number;
+      readonly height: number;
+    }
+  | { readonly kind: "roof"; readonly id: string; readonly at: Place; readonly size: RoofSize }
+  | {
+      readonly kind: "dormer";
+      readonly block: number;
+      readonly face: number;
+      readonly id: string;
+      readonly at: Place;
+      readonly size: DormerSize;
+    }
+  | {
+      readonly kind: "pullDormer";
+      readonly block: number;
+      readonly face: number;
+      readonly which: Kind;
+      readonly height: number;
+    };
+
+/** The scene `edit` makes of `scene`: `addLine`, `moveLine`, `removeLine`, `pullEaves` or
+ * `pullRidges`, `markLine`, `setHeight`, `placeRoof`, `placeDormer` or `pullDormer`, as it names. */
+export declare function replay(scene: Scene, edit: TraceEdit): Edited;

@@ -311,5 +311,13 @@
   "builder_trace_ridge": "First",
   "builder_trace_start": "Höhe Anfang",
   "builder_trace_end": "Höhe Ende",
-  "builder_trace_bent": "Eine Dachfläche ist nicht eben und trägt keine Module, bis sie es ist."
+  "builder_trace_bent": "Eine Dachfläche ist nicht eben und trägt keine Module, bis sie es ist.",
+  "builder_trace_ready": "Fertige Form",
+  "builder_trace_roofs": "Dächer",
+  "builder_trace_dormers": "Gauben",
+  "builder_trace_place_roof": "Tippe auf die Stelle für: {name}",
+  "builder_trace_place_dormer": "Tippe auf die Dachfläche für: {name}",
+  "builder_trace_cancel": "Abbrechen",
+  "builder_trace_dormer_eaves": "Gaube Traufe",
+  "builder_trace_dormer_ridge": "Gaube First"
 }

@@ -4,7 +4,9 @@ import { loadPv } from "@sunreye/pv-wasm";
 import {
   addLine,
   markLine,
+  placeDormer,
   placeRoof,
+  readyDormers,
   pullEaves,
   readyRoofs,
   setHeight,
@@ -162,4 +164,28 @@ test("a terrace cut into a ready roof is read by the engine: its concave face is
   expect(roofs).toBe(6);
   expect(filled).toBeGreaterThan(0);
   expect(pv.geometry(terrace).faces.length).toBeGreaterThan(0);
+});
+
+test("every ready dormer on a Satteldach is read by the engine, its faces roofs of their own", () => {
+  const house = made(
+    placeRoof(
+      { north: 0, blocks: [], obstacles: [] },
+      "satteldach",
+      { x: 0, z: 0 },
+      { width: 10, depth: 8, eave: 3, ridge: 7 },
+    ),
+  );
+
+  // The face toward -z holds (5, 2) seen from above.
+  const front = (house.blocks[0]?.freeForm?.faces ?? []).findIndex((face) =>
+    face.every(([, , z = 0]) => z <= 4),
+  );
+
+  for (const { id } of readyDormers) {
+    const scene = made(placeDormer(house, 0, front, id, { x: 5, z: 2 }, { width: 2, depth: 2 }));
+    const faces = scene.blocks[0]?.freeForm?.faces.length ?? 0;
+
+    expect([id, pv.modules(scene, SIZES).roofs.length]).toEqual([id, faces]);
+    expect([id, pv.geometry(scene).faces.length > 0]).toEqual([id, true]);
+  }
 });
