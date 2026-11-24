@@ -225,16 +225,30 @@ pub(crate) async fn estimates(
     let inverters = layouts.inverters().clone();
     // Seconds of work on a slow device: on tokio's blocking pool, the I/O thread stays free (ADR 2).
     tokio::task::spawn_blocking(move || {
-        weather
-            .into_iter()
-            .map(|(target, sky)| {
-                let values = in_force(&versions, target).map_or_else(HashMap::new, |version| {
+        // The scene's sky views, which close diffuse light as the builder's do (ADR 17), are laid
+        // once per version: targets come in order.
+        let mut table = pv::ShadingTable::default();
+        let mut laid: Option<(SystemTime, Model, pv::SkyViews<'static>)> = None;
+        let mut modelled = Vec::with_capacity(weather.len());
+        for (target, sky) in weather {
+            let Some(version) = in_force(&versions, target) else {
+                modelled.push((target, HashMap::new()));
+                continue;
+            };
+            let (_, model, views) = match laid {
+                Some(ref laid) if laid.0 == version.applies_from => laid,
+                _ => {
                     let model = Model::new(version, &module_types, &inverters, location);
-                    model.values(&pv::estimate(&model.layout, &sky))
-                });
-                (target, values)
-            })
-            .collect()
+                    let views = pv::SkyViews::new(&model.layout, &mut table, None);
+                    laid.insert((version.applies_from, model, views))
+                }
+            };
+            modelled.push((
+                target,
+                model.values(&pv::estimate_with(&model.layout, views, &sky)),
+            ));
+        }
+        modelled
     })
     .await
     // A panic in the model stays one, as it would have been on the I/O thread; only a runtime

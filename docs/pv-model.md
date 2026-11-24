@@ -130,7 +130,7 @@ pvlib knows no scene. Geometry is checked by hand-worked cases (`tests/shade.rs`
 
 ## Callers
 
-`solar::estimates` in the core runs the model for each weather target under the layout version in force, on tokio's blocking pool (ADR 2). It serves the solar forecast (about 200 targets after each weather fetch), the corrections and their report, and the clear-sky index. The browser runs the same crate as WASM for the builder's clear-sky day (ADR 20).
+`solar::estimates` in the core runs the model for each weather target under the layout version in force, on tokio's blocking pool (ADR 2): `estimate_with`, under the scene's sky views, laid once per version from one shading table per run. It serves the solar forecast (about 200 targets after each weather fetch), the corrections and their report, and the clear-sky index. The browser runs the same crate as WASM for the builder's clear-sky day (ADR 20).
 
 ## Cost
 

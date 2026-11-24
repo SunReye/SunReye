@@ -696,6 +696,58 @@ async fn a_saved_scene_places_the_modules_and_its_obstacles_shade_the_forecast()
     assert!(walled < 0.4 * open, "walled {walled} W, open {open} W");
 }
 
+#[tokio::test]
+async fn the_scenes_sky_views_shade_the_forecasts_diffuse_light() {
+    // ADR 17: under overcast nothing casts a beam shadow; the wall still hides part of the sky.
+    let plant = plant(&[NOON]).await;
+    let layout = plant
+        .layouts
+        .change(
+            at(0),
+            Draft::new(
+                vec![
+                    plant.string(None, 1, 90.0, 1),
+                    plant.string(None, 2, 90.0, 1),
+                ],
+                Some(walled_house(plant.module_type)),
+            ),
+            at(0),
+        )
+        .await
+        .unwrap();
+    let versions = plant.layouts.versions().await.unwrap();
+    let overcast = sunreye_pv::Weather {
+        unix: i64::try_from(NOON).unwrap(),
+        ghi: 150.0,
+        dni: 0.0,
+        dhi: 150.0,
+        temperature: 15.0,
+        wind: Some(3.0),
+    };
+
+    let modelled = super::estimates(
+        &plant.layouts,
+        &versions,
+        BERLIN,
+        vec![(at(NOON), overcast)],
+    )
+    .await
+    .unwrap();
+
+    let power = |i: usize| {
+        let id = layout.strings[i].id;
+        let (_, values) = &modelled[0];
+        values
+            .iter()
+            .find(|((_, role, index), _)| *role == "pv.string.power" && *index == Some(id))
+            .map(|(_, watts)| *watts)
+            .unwrap()
+    };
+    let (walled, open) = (power(0), power(1));
+    assert!(open > 100.0, "eight modules under overcast: {open} W");
+    assert!(walled < 0.9 * open, "walled {walled} W, open {open} W");
+}
+
 /// Issue times a second apart from an hour before noon, one per call, counted in `calls`.
 fn ticking(calls: Arc<AtomicU64>) -> impl Fn() -> SystemTime + Sync {
     move || at(NOON - HOUR + calls.fetch_add(1, Ordering::Relaxed))
