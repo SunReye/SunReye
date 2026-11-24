@@ -189,3 +189,45 @@ export declare function placeDormer(
   at: { readonly x: number; readonly z: number },
   size: DormerSize,
 ): Edited;
+
+/** A place seen from above, in the scene's metres. */
+export interface Place {
+  readonly x: number;
+  readonly z: number;
+}
+
+/** An edit of a traced roof, named with its operation's arguments, as the tracing reports it: a
+ * consumer keeping the scene elsewhere makes the same next scene with `replay`. An add carries the
+ * metres its clicks snapped within; `which` is the eaves or ridges pulled, `as` what a line is made. */
+export type TraceEdit =
+  | { readonly kind: "add"; readonly from: End; readonly to: End; readonly reach: number }
+  | { readonly kind: "move"; readonly block: number; readonly line: number; readonly by: Place }
+  | { readonly kind: "remove"; readonly block: number; readonly line: number }
+  | { readonly kind: "pull"; readonly block: number; readonly which: Kind; readonly height: number }
+  | { readonly kind: "mark"; readonly block: number; readonly line: number; readonly as: Kind }
+  | {
+      readonly kind: "height";
+      readonly block: number;
+      readonly point: number;
+      readonly height: number;
+    }
+  | { readonly kind: "roof"; readonly id: string; readonly at: Place; readonly size: RoofSize }
+  | {
+      readonly kind: "dormer";
+      readonly block: number;
+      readonly face: number;
+      readonly id: string;
+      readonly at: Place;
+      readonly size: DormerSize;
+    }
+  | {
+      readonly kind: "pullDormer";
+      readonly block: number;
+      readonly face: number;
+      readonly which: Kind;
+      readonly height: number;
+    };
+
+/** The scene `edit` makes of `scene`: `addLine`, `moveLine`, `removeLine`, `pullEaves` or
+ * `pullRidges`, `markLine`, `setHeight`, `placeRoof`, `placeDormer` or `pullDormer`, as it names. */
+export declare function replay(scene: Scene, edit: TraceEdit): Edited;

@@ -62,6 +62,13 @@ A ready dormer is placed on a face in one click as the lines a person could have
 - `readyDormers: ReadyEntry[]`: the ready dormers for a menu, in order: `schleppgaube`, `satteldachgaube`, `walmgaube`, `flachdachgaube`, `zwerchhaus`.
 - `placeDormer(scene, block, face, id, { x, z }, { width, depth, eave? }): Edited`: ready dormer `id` on face `face` of traced block `block`, its middle at `x`, `z` seen from above, its front toward the face's low side; `width` metres across the slope and `depth` up it, where its top (a ridge, a shed's high side, a flat roof) meets the face; its front eave at `eave` metres, halfway between the face and its top without one. A Flachdachgaube is level at its top. A Zwerchhaus stands on the face's eave under `x`, `z`, `depth` up from it: its gable is in the wall, its eaves the house's, its valleys run up the face, and its ridge's ends are set; touching the outline, it is the house's, not a dormer. `faces` says where the block's faces went. Refused `"missing"` for an unknown id, block or face, `"short"` without a positive size, on a face without slope or with an eave not between the face and the top, `"crosses"` where it is not wholly on its face.
 
+## Every edit named
+
+Each edit the tracing makes, on the canvas or on a tracing bar, is a `TraceEdit`: its operation's name and arguments, so a consumer keeping the scene elsewhere makes the same next scene.
+
+- `TraceEdit`: `{ kind: "add", from, to, reach }` (`reach` the metres its clicks snapped within), `{ kind: "move", block, line, by }`, `{ kind: "remove", block, line }`, `{ kind: "pull", block, which, height }` (the eaves or ridges), `{ kind: "mark", block, line, as }`, `{ kind: "height", block, point, height }`, `{ kind: "roof", id, at, size }`, `{ kind: "dormer", block, face, id, at, size }`, `{ kind: "pullDormer", block, face, which, height }`.
+- `replay(scene, edit): Edited`: the scene the edit makes, by the operation it names; refused `"missing"` for a kind it does not know.
+
 ## Face details
 
 `Scene.faceDetails` holds what is known of a roof face beyond its shape, named by block and face as a grid is: its `covering` (`tiles`, `slate`, `metal`, `bitumen`; unknown without one) and `pitchConfirmed` (estimated without it). At most one per face.
