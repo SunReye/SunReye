@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::{COLD, ModuleType, MpptLimits, open_circuit_voltage};
+use crate::{COLD, InverterType, ModuleType, MpptLimits, open_circuit_voltage};
 
 /// The cell temperature in °C a string's lowest maximum-power voltage is reckoned at.
 pub const HOT: f64 = 70.0;
@@ -15,6 +15,23 @@ pub struct Wired {
     pub input: u32,
     pub module: ModuleType,
     pub modules: u16,
+}
+
+/// What sizing reads of one inverter: its maximum DC input voltage and its MPPT inputs' limits, in
+/// the inputs' order, each where it is known.
+#[derive(Debug, Clone, PartialEq)]
+pub struct InverterLimits {
+    pub max_input_voltage: Option<f64>,
+    pub inputs: Option<Vec<MpptLimits>>,
+}
+
+impl From<&InverterType> for InverterLimits {
+    fn from(kind: &InverterType) -> Self {
+        Self {
+            max_input_voltage: Some(kind.max_input_voltage),
+            inputs: Some(kind.limits()),
+        }
+    }
 }
 
 /// Where a layout leaves an MPPT input's limits; a string by its position in the layout.
@@ -38,6 +55,12 @@ pub enum Sizing {
         volts: f64,
         limit: f64,
     },
+    /// Its open-circuit voltage at −10 °C exceeds the inverter's maximum DC input voltage.
+    Open {
+        string: usize,
+        volts: f64,
+        limit: f64,
+    },
     /// The input's parallel strings' short-circuit currents sum over its maximum input current.
     Current {
         device: u32,
@@ -53,7 +76,8 @@ pub enum Sizing {
 
 /// A string's maximum-power voltage at a cell temperature in °C, by the datasheet's voltage
 /// coefficient, as its open-circuit voltage scales.
-fn peak_voltage(module: &ModuleType, modules: u16, temperature: f64) -> f64 {
+#[must_use]
+pub fn peak_voltage(module: &ModuleType, modules: u16, temperature: f64) -> f64 {
     let per_module =
         module.vmp * (module.voltage_coefficient / 100.0).mul_add(temperature - 25.0, 1.0);
     per_module * f64::from(modules)
@@ -101,30 +125,46 @@ fn shared(device: u32, input: u32, strings: &[&Wired], limits: &MpptLimits) -> V
     [current, uneven].into_iter().flatten().collect()
 }
 
+/// Whether string `string`'s open-circuit voltage at −10 °C exceeds `limit`, the inverter's
+/// maximum DC input voltage.
+fn open(string: usize, wired: &Wired, limit: f64) -> Option<Sizing> {
+    let volts = open_circuit_voltage(&wired.module, wired.modules, COLD);
+    (volts > limit).then_some(Sizing::Open {
+        string,
+        volts,
+        limit,
+    })
+}
+
 /// Every MPPT window warning of `strings`.
 ///
 /// Each string's own come first in the layout's order, then each input's by device and input.
-/// `inverters` holds each inverter's inputs' limits in the inputs' order; a string on an inverter
-/// without them, or with no module yet, warns nothing.
+/// `inverters` holds what is known of each inverter's limits; a string on an inverter without
+/// them, or with no module yet, warns nothing.
 #[must_use]
 pub fn window_warnings(
     strings: &[Wired],
-    inverters: &BTreeMap<u32, Vec<MpptLimits>>,
+    inverters: &BTreeMap<u32, InverterLimits>,
 ) -> Vec<Sizing> {
-    // None without the inverter's limits; else the input's, none where it has no such input.
+    // None without the inverter's inputs; else the input's, none where it has no such input.
     let limits = |device: u32, input: u32| {
-        let inputs = inverters.get(&device)?;
+        let inputs = inverters.get(&device)?.inputs.as_ref()?;
         // Inputs count from 1: input 0 is none of them.
         let at = usize::try_from(input).ok().and_then(|at| at.checked_sub(1));
         Some(at.and_then(|at| inputs.get(at)))
     };
     let own = strings.iter().enumerate().flat_map(|(string, wired)| {
-        match limits(wired.device, wired.input) {
+        let mut found = match limits(wired.device, wired.input) {
             None => Vec::new(),
             Some(None) => vec![Sizing::NoInput { string }],
             Some(Some(_)) if wired.modules == 0 => Vec::new(),
             Some(Some(found)) => window(string, wired, found),
-        }
+        };
+        let maximum = inverters
+            .get(&wired.device)
+            .and_then(|inverter| inverter.max_input_voltage);
+        found.extend(maximum.and_then(|limit| open(string, wired, limit)));
+        found
     });
     let mut inputs: BTreeMap<(u32, u32), Vec<&Wired>> = BTreeMap::new();
     for wired in strings.iter().filter(|wired| wired.modules > 0) {

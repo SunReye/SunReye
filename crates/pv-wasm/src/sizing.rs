@@ -4,7 +4,9 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 use serde_json::{Value, json};
-use sunreye_pv::{ModuleType, MpptLimits, Sizing, Wired, longest_string, window_warnings};
+use sunreye_pv::{
+    InverterLimits, ModuleType, MpptLimits, Sizing, Wired, longest_string, window_warnings,
+};
 
 use crate::clear::{Datasheet, Wiring};
 
@@ -69,6 +71,11 @@ fn worded(warning: &Sizing) -> Value {
             volts,
             limit,
         } => json!({ "kind": "high", "string": string, "volts": volts, "limit": limit }),
+        Sizing::Open {
+            string,
+            volts,
+            limit,
+        } => json!({ "kind": "open", "string": string, "volts": volts, "limit": limit }),
         Sizing::Current {
             device,
             input,
@@ -86,12 +93,18 @@ fn worded(warning: &Sizing) -> Value {
 
 impl Checked {
     /// The layout's MPPT window warnings; a string of an unknown module type is left out, its
-    /// position kept.
+    /// position kept. The builder checks the inverters' maximum DC input voltage on its own.
     pub fn reply(&self) -> Value {
-        let inverters: BTreeMap<u32, Vec<MpptLimits>> = self
+        let inverters: BTreeMap<u32, InverterLimits> = self
             .inverters
             .iter()
-            .map(|(device, inputs)| (*device, inputs.iter().map(|input| input.model()).collect()))
+            .map(|(device, inputs)| {
+                let limits = InverterLimits {
+                    max_input_voltage: None,
+                    inputs: Some(inputs.iter().map(|input| input.model()).collect()),
+                };
+                (*device, limits)
+            })
             .collect();
         let wired: Vec<Wired> = self
             .strings
