@@ -1,20 +1,12 @@
 // The builder's tracing mode (ADR 20): entered from the Buildings group, the canvas is seen from
 // above and clicks trace a roof's lines; each line is one undo step. The picked line is held here,
 // never stored, and "Linie entfernen" removes it. The roof is pulled up here too: its eaves and
-// ridges to a height, the picked line made an eave or a ridge, a point of it given a height.
-import {
-  bent,
-  lineKind,
-  markLine,
-  pullEaves,
-  pullRidges,
-  removeLine,
-  setHeight,
-  type Edited,
-  type Kind,
-} from "@sunreye/scene";
+// ridges to a height, the picked line made an eave or a ridge, a point of it given a height, a
+// picked dormer raised. A ready shape is held here until the canvas places it. Every edit is a
+// named `TraceEdit`, made by `replay`, as a consumer keeping the scene elsewhere makes it.
+import { bent, dormers, lineKind, replay, type Kind, type TraceEdit } from "@sunreye/scene";
 import type { Draft } from "./modules.ts";
-import type { LineRef, Tracing } from "./tracing.svelte.ts";
+import type { LineRef, Placing, Tracing } from "./tracing.svelte.ts";
 
 /** The session the mode reads and edits. */
 export interface Traced {
@@ -31,19 +23,28 @@ export class TracingMode {
   /** The line a tap picked. */
   line = $state.raw<LineRef>();
 
+  /** The ready shape the next tap places. */
+  placing = $state.raw<Placing>();
+
   constructor(session: Readonly<Traced>) {
     this.#session = session;
   }
 
-  // fallow-ignore-next-line unused-class-member -- called from the inspector's Svelte markup, which fallow does not read in this package.
   enter(): void {
     this.active = true;
   }
 
-  // fallow-ignore-next-line unused-class-member -- called from the canvas bar's Svelte markup, which fallow does not read in this package.
   leave(): void {
     this.active = false;
     this.line = undefined;
+    this.placing = undefined;
+  }
+
+  /** Holds ready shape `placing` for the next tap; without one, lets go of what was held. */
+  hold(placing?: Placing): void {
+    this.placing = placing;
+
+    if (placing !== undefined) this.line = undefined;
   }
 
   /** Removes the picked line, one undo step. */
@@ -52,12 +53,8 @@ export class TracingMode {
 
     if (line === undefined) return;
 
-    const { draft } = this.#session;
-    const edited = removeLine(draft.scene, line.block, line.line);
-
     this.line = undefined;
-
-    if (!("refused" in edited)) this.#session.change({ ...draft, scene: edited.scene });
+    this.#emit({ kind: "remove", ...line });
   }
 
   /** The traced block the heights are given to: the picked line's, else the last traced. */
@@ -80,7 +77,6 @@ export class TracingMode {
   }
 
   /** What the picked line is, and its two points' heights. */
-  // fallow-ignore-next-line unused-class-member -- read in the canvas bar's Svelte markup, which fallow does not read in this package.
   get picked(): { kind: Kind | undefined; heights: readonly [number, number] } | undefined {
     const { line } = this;
 
@@ -99,7 +95,6 @@ export class TracingMode {
   }
 
   /** Whether a traced face is bent off its plane. */
-  // fallow-ignore-next-line unused-class-member -- read in the canvas bar's Svelte markup, which fallow does not read in this package.
   get bent(): boolean {
     const { scene } = this.#session.draft;
 
@@ -109,21 +104,15 @@ export class TracingMode {
   /** Pulls the block's eaves, or ridges, to `height` metres: one undo step. */
   pull(kind: Kind, height: number): void {
     const { block } = this;
-    const scene = this.#session.draft.scene;
 
-    if (block === undefined) return;
-
-    this.#edited(
-      kind === "eave" ? pullEaves(scene, block, height) : pullRidges(scene, block, height),
-    );
+    if (block !== undefined) this.#emit({ kind: "pull", block, which: kind, height });
   }
 
   /** Makes the picked line an eave or a ridge: one undo step. */
   mark(kind: Kind): void {
     const { line } = this;
 
-    if (line !== undefined)
-      this.#edited(markLine(this.#session.draft.scene, line.block, line.line, kind));
+    if (line !== undefined) this.#emit({ kind: "mark", ...line, as: kind });
   }
 
   /** Sets the height of the picked line's first point, or its second: one undo step. */
@@ -133,16 +122,54 @@ export class TracingMode {
     const point = line && scene.blocks[line.block]?.freeForm?.traced?.lines[line.line]?.[end];
 
     if (line !== undefined && point !== undefined)
-      this.#edited(setHeight(scene, line.block, point, height));
+      this.#emit({ kind: "height", block: line.block, point, height });
   }
 
-  #edited(edited: Edited): void {
+  /** The dormer the picked line is a line of: its first face, and its lowest and highest points'
+   * heights, its eaves' and its ridges'. */
+  get dormer(): { face: number; eave: number; ridge: number } | undefined {
+    const { line } = this;
+    const scene = this.#session.draft.scene;
+
+    if (line === undefined) return undefined;
+
+    const traced = scene.blocks[line.block]?.freeForm?.traced;
+    const ends = traced?.lines[line.line];
+
+    if (traced === undefined || traced === null || ends === undefined) return undefined;
+
+    const of = dormers(scene, line.block).find((d) =>
+      d.faces.some((f) => ends.every((p) => traced.faces[f]?.includes(p) === true)),
+    );
+
+    const heights = [...new Set(of?.faces.flatMap((f) => traced.faces[f] ?? []))].map(
+      (p) => traced.points[p]?.[1] ?? 0,
+    );
+
+    const [face] = of?.faces ?? [];
+
+    return face === undefined
+      ? undefined
+      : { face, eave: Math.min(...heights), ridge: Math.max(...heights) };
+  }
+
+  /** Pulls the picked dormer's eaves, or ridges, to `height` metres: one undo step. */
+  raiseDormer(kind: Kind, height: number): void {
+    const { line, dormer } = this;
+
+    if (line !== undefined && dormer !== undefined)
+      this.#emit({ kind: "pullDormer", block: line.block, face: dormer.face, which: kind, height });
+  }
+
+  /** Makes `edit` on the draft, one undo step; a refused edit changes nothing. */
+  #emit(edit: TraceEdit): void {
+    const edited = replay(this.#session.draft.scene, edit);
+
     if (!("refused" in edited))
       this.#session.change({ ...this.#session.draft, scene: edited.scene });
   }
 
   /** The canvas's tracing while the mode is on. */
-  // fallow-ignore-next-line unused-class-member -- read in the builder's Svelte markup, which fallow does not read in this package.
   get tracing(): Tracing | undefined {
     if (!this.active) return undefined;
 
@@ -151,11 +178,15 @@ export class TracingMode {
     return {
       scene: draft.scene,
       line: this.line,
+      placing: this.placing,
       onpickline: (line) => {
         this.line = line;
       },
-      ontrace: (scene) => {
+      ontrace: (scene, edit) => {
         this.line = undefined;
+
+        if (edit.kind === "roof" || edit.kind === "dormer") this.placing = undefined;
+
         this.#session.change({ ...this.#session.draft, scene });
       },
     };

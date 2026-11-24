@@ -1,15 +1,15 @@
 <!--
   The tracing mode's bar on the canvas (ADR 20): what to do, the roof's eave and ridge heights to
-  pull it up by, the picked line's kind and its points' heights, removing it, and leaving. A bent
-  face is said here. Under the time slider, a canvas chip; Delete or Backspace removes the picked
-  line too.
+  pull it up by, the ready shapes, the picked line's kind and its points' heights, a picked dormer's
+  heights, removing the line, and leaving. A held ready shape says where the next tap places it.
+  A bent face is said here. Under the time slider, a canvas chip; Delete or Backspace removes the
+  picked line too, Escape lets go of a held shape.
 -->
 <script lang="ts">
   import Check from "@lucide/svelte/icons/check";
   import Trash from "@lucide/svelte/icons/trash-2";
   import { Button } from "@sunreye/ui/button";
-  import PickedLine from "./PickedLine.svelte";
-  import RoofHeights from "./RoofHeights.svelte";
+  import TraceTools from "./TraceTools.svelte";
   import { m } from "../paraglide/messages.js";
   import type { Session } from "./session.svelte.ts";
 
@@ -17,11 +17,8 @@
 
   const mode = $derived(session?.tracing);
 
-  const picked = $derived(mode?.picked);
-</script>
-
-<svelte:window
-  onkeydown={(event) => {
+  /** Delete or Backspace, outside a text field, removes the picked line. */
+  function removing(event: KeyboardEvent): void {
     const typing =
       event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
 
@@ -29,6 +26,15 @@
       event.preventDefault();
       mode.remove();
     }
+  }
+</script>
+
+<svelte:window
+  onkeydown={(event) => {
+    // Escape lets go of a held shape.
+    if (event.key === "Escape") mode?.hold();
+
+    removing(event);
   }}
 />
 
@@ -41,11 +47,7 @@
         aria-label={m.builder_trace()}
         class="canvas-chip pointer-events-auto flex max-w-xl flex-wrap items-center gap-2 rounded-lg py-1.5 pr-1.5 pl-3 ring-1 ring-border/60 elevation-1"
       >
-        {#if picked}
-          <PickedLine {mode} {picked} />
-        {:else}
-          <RoofHeights {mode} />
-        {/if}
+        <TraceTools {mode} />
         <span class="flex-1"></span>
         <Button
           size="sm"

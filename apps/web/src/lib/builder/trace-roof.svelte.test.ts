@@ -156,3 +156,51 @@ test("a traced gable is pulled up by its eaves and ridge, and a point raised by 
     .element(bar().getByRole("status"))
     .toHaveTextContent("Eine Dachfläche ist nicht eben und trägt keine Module, bis sie es ist.");
 });
+
+/** Picks ready shape `name` from the bar's menu. */
+async function ready(name: string): Promise<void> {
+  await bar().getByRole("button", { name: "Fertige Form" }).click();
+  await page.getByRole("menuitem", { name }).click();
+}
+
+test("a ready roof and a ready dormer are placed by a click each, and the dormer is raised", async () => {
+  await tracing();
+
+  const view = parseView(localStorage.getItem("sunreye.builder.view"));
+  const canvas = page.getByLabelText("3D-Szene des Hauses").element().getBoundingClientRect();
+
+  if (view === undefined) throw new Error("no view from above was kept");
+
+  const at = onView(view, canvas);
+
+  await ready("Satteldach");
+  await expect.element(bar().getByText("Tippe auf die Stelle für: Satteldach")).toBeVisible();
+
+  // 10 m by 8 m, centred on (6, 4): its front face rises from z 0, at 3 m, to its ridge at z 4.
+  await press("mouse", [at([6, 0, 4])]);
+
+  await expect.element(bar().getByRole("button", { name: /^Firsthöhe 7 m/u })).toBeVisible();
+
+  await ready("Schleppgaube");
+  await expect.element(bar().getByText("Tippe auf die Dachfläche für: Schleppgaube")).toBeVisible();
+
+  // 2 m by 1.5 m, centred on (6, 2): its front at z 1.25 on the face at 4.25 m, its eave at 5 m.
+  await press("mouse", [at([6, 0, 2])]);
+  await expect.element(bar().getByText(/Tippe auf/u)).not.toBeInTheDocument();
+
+  await press("mouse", [at([6, 5, 1.25])]);
+  await expect.element(bar().getByRole("button", { name: /^Gaube Traufe 5 m/u })).toBeVisible();
+
+  await height("Gaube Traufe", "4,5");
+
+  await expect.element(bar().getByRole("button", { name: /^Gaube Traufe 4,5 m/u })).toBeVisible();
+});
+
+test("a ready shape held is let go by Abbrechen, and nothing is placed", async () => {
+  await tracing();
+  await ready("Walmdach");
+  await bar().getByRole("button", { name: "Abbrechen" }).click();
+
+  await expect.element(bar().getByText(/Tippe auf/u)).not.toBeInTheDocument();
+  await expect.element(bar().getByRole("button", { name: /^Traufhöhe/u })).not.toBeInTheDocument();
+});
