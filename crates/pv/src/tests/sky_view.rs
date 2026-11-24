@@ -3,10 +3,11 @@
 //! follows the beam's shade.
 
 use super::fixtures::{MODULE, rows};
-use crate::string::VIEW_STEP;
+use crate::string::EXACT;
 use crate::{
     Horizon, Input, Inverter, Layout, Location, Module, ModuleType, Occluder, Place, Plane, Point,
-    PvString, ShadingTable, SkyViews, Weather, estimate, estimate_with, sun_position,
+    PvString, ShadingTable, SkyViews, Weather, clear_weather, estimate, estimate_with,
+    sun_position,
 };
 
 const BERLIN: Location = Location {
@@ -95,11 +96,9 @@ fn a_substring_beside_a_tall_wall_receives_less_diffuse_light_by_its_sky_view() 
     );
     let open = layout(WHOLE, FLAT, &[[0.0, 0.0, 0.0]], Vec::new());
     let view = views(&beside).of(0)[0];
-    // The share the wall closes, to the step it reaches the circuit at.
-    let circuit = ((1.0 - view) / VIEW_STEP).round().mul_add(-VIEW_STEP, 1.0);
 
     let shaded = watts(&beside, &overcast(60.0));
-    let scaled = watts(&open, &overcast(60.0 * circuit));
+    let scaled = watts(&open, &overcast(60.0 * view));
 
     assert!(view < 0.8, "view {view}");
     // Its cells still warm by the open sky's light, so it yields a little less, never more.
@@ -231,6 +230,33 @@ fn rows_of_a_rack_field_take_each_others_diffuse_light() {
     );
 }
 
+#[test]
+fn substrings_that_see_nearly_as_much_sky_share_a_circuit_and_keep_their_strings_power() {
+    let field = rack_field(3.5);
+    let views = views(&field);
+    let strings = |weather: &Weather| {
+        estimate_with(&field, &views, weather).inverters[0].inputs[0]
+            .strings
+            .clone()
+    };
+    let morning = clear_weather(JUNE_NOON - 5 * 3600, BERLIN);
+    let noon = clear_weather(JUNE_NOON, BERLIN);
+
+    for weather in [morning, noon, overcast(150.0)] {
+        let merged = strings(&weather);
+        EXACT.set(true);
+        let exact = strings(&weather);
+        EXACT.set(false);
+
+        for (merged, exact) in merged.iter().zip(&exact) {
+            assert!(
+                (merged - exact).abs() <= 5e-4 * exact,
+                "{merged} W merged, {exact} W each substring its own circuit"
+            );
+        }
+    }
+}
+
 /// A module so small its sample points stand where its centre does.
 const POINT: ModuleType = ModuleType {
     width: 0.01,
@@ -294,10 +320,6 @@ fn a_horizon_alone_reaches_the_circuit_unrounded() {
     let under = estimate_with(&open, &views, &overcast(60.0)).inverters[0].power;
     let scaled = watts(&open, &overcast(60.0 * view));
 
-    assert!(
-        (view / VIEW_STEP).round().mul_add(VIEW_STEP, -view).abs() > 0.002,
-        "{view}"
-    );
     assert!(
         (under - scaled).abs() <= 1e-9 * scaled,
         "{under} W under the horizon, {scaled} W under the diffuse it sees"

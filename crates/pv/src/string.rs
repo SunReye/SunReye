@@ -12,14 +12,20 @@ const MARTIN_RUIZ_AR: f64 = 0.16;
 const DIFFUSE_IAM: f64 = 0.95;
 /// ADR 17: an optimized module delivers its own maximum power less 1 %.
 const OPTIMIZER: f64 = 0.99;
-/// The share of sky the scene closes reaches the circuit to this step, so substrings that see
-/// nearly as much sky share one circuit: each distinct circuit costs a diode solve wherever the
+/// Substrings at one temperature whose effective irradiance lies within this share above the
+/// dimmest of them share one circuit: each distinct circuit costs a diode solve wherever the
 /// curve is read.
-pub const VIEW_STEP: f64 = 0.02;
+const MERGE: f64 = 0.02;
 /// Points per curve before refining; a shaded curve has one peak per shade level.
 const SAMPLES: u32 = 128;
 /// Powers this close are equal: an optimized string delivers the same at any current.
 const TIE: f64 = 1e-12;
+
+#[cfg(test)]
+thread_local! {
+    /// Each substring its own circuit: the reference merging is measured against.
+    pub static EXACT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
 
 /// Equal substrings and how many of them.
 type Group = (Diode, u32);
@@ -47,18 +53,24 @@ impl Curve {
         let Some(reference) = fit(&string.module) else {
             return curve;
         };
+        let circuits = |lights: &mut Vec<(f64, f64)>| {
+            circuits(&reference, &string.module, std::mem::take(lights))
+        };
+        // The string's plain substrings, merged across modules.
+        let mut plain = Vec::new();
         for (k, module) in string.modules.iter().enumerate() {
-            let groups = substrings(&reference, &string.module, (k, module), (sky, open), shade);
+            let mut lights = substrings(&string.module, (k, module), (sky, open), shade);
             if module.optimized {
                 let mut own = Self::empty(1.0);
-                own.add_all(groups);
+                own.add_all(circuits(&mut lights));
                 let (current, power) = own.peak_of_own();
                 curve.optimized = OPTIMIZER.mul_add(power, curve.optimized);
                 curve.top = curve.top.max(current);
             } else {
-                curve.add_all(groups);
+                plain.append(&mut lights);
             }
         }
+        curve.add_all(circuits(&mut plain));
         if curve.top > 0.0 {
             curve.sampled = (0..=SAMPLES)
                 .map(|k| sample(curve.top, k))
@@ -235,7 +247,7 @@ pub struct Open<'a> {
     /// Each substring's sky view, module by module; empty for the whole sky.
     pub views: &'a [f64],
     /// Each substring's plane's view above the horizon alone, the same indexing: what its cells
-    /// warm by, and what the scene's share is closed from.
+    /// warm by.
     pub warming: &'a [f64],
 }
 
@@ -247,18 +259,13 @@ impl Open<'_> {
         warming: &[],
     };
 
-    /// The sky view of each of the `k`th module's `parts` substrings: the share the scene closes
-    /// of its plane's view to the circuit's step, the horizon's exactly.
+    /// The sky view of each of the `k`th module's `parts` substrings.
     fn of(self, k: usize, parts: usize) -> impl Iterator<Item = f64> {
-        let range = k * parts..(k + 1) * parts;
-        let views = self.views.get(range.clone()).unwrap_or_default();
-        let planes = self.warming.get(range).unwrap_or_default();
-        (0..parts).map(move |part| match (views.get(part), planes.get(part)) {
-            (Some(&view), Some(&plane)) => ((plane - view) / VIEW_STEP)
-                .round()
-                .mul_add(-VIEW_STEP, plane),
-            _ => 1.0,
-        })
+        let views = self
+            .views
+            .get(k * parts..(k + 1) * parts)
+            .unwrap_or_default();
+        (0..parts).map(move |part| views.get(part).copied().unwrap_or(1.0))
     }
 
     /// The view the `k`th module's cells warm by.
@@ -267,16 +274,15 @@ impl Open<'_> {
     }
 }
 
-/// A module's substrings under one sky, each with its own sky view: lit or shaded, by circuit;
-/// `None` in the dark. A shaded substring loses its beam and the circumsolar part of its diffuse
-/// light, which come from the same patch of sky.
+/// A module's substrings under one sky, each with its own sky view: the effective irradiance
+/// each takes, in W/m², and its cells' temperature. A shaded substring loses its beam and the
+/// circumsolar part of its diffuse light, which come from the same patch of sky.
 fn substrings(
-    reference: &Diode,
     module_type: &ModuleType,
     (k, module): (usize, &Module),
     (sky, open): (&Sky, Open),
     shade: Shade,
-) -> Vec<(Option<Diode>, u32)> {
+) -> Vec<(f64, f64)> {
     let split = Split::of(module.plane, sky);
     let parts = module_type.bypass_diodes.max(1);
     let views: Vec<f64> = open.of(k, usize::from(parts)).collect();
@@ -293,7 +299,6 @@ fn substrings(
     let warming =
         if open.sun { split.beam } else { 0.0 } + split.sky_diffuse(open_sky) + split.ground;
     let cell = cell_temperature(warming, sky.temperature, sky.wind);
-    let circuit = |effective| reference.substring(module_type, parts, effective, cell);
     views
         .iter()
         .zip(&shaded)
@@ -301,9 +306,49 @@ fn substrings(
             let sun = open.sun && !shaded;
             let diffuse = (split.sky_diffuse(Light { sun, view }) + split.ground) * DIFFUSE_IAM;
             let effective = if sun { beam + diffuse } else { diffuse };
-            (circuit(effective), 1)
+            (effective, cell)
         })
         .collect()
+}
+
+/// The circuits of substrings, each its effective irradiance and cell temperature: those at one
+/// temperature within `MERGE` above the dimmest of them share one at their mean irradiance,
+/// which keeps their summed photocurrent and shunt conductance, both proportional to it; `None`
+/// in the dark.
+fn circuits(
+    reference: &Diode,
+    module_type: &ModuleType,
+    mut lights: Vec<(f64, f64)>,
+) -> Vec<(Option<Diode>, u32)> {
+    let parts = module_type.bypass_diodes.max(1);
+    let width = merge();
+    lights.sort_by(|(a, hot), (b, warm)| hot.total_cmp(warm).then(a.total_cmp(b)));
+    let mut merged = Vec::new();
+    let mut rest = lights.as_slice();
+    while let Some(&(dimmest, cell)) = rest.first() {
+        let alike = |&&(effective, at): &&(f64, f64)| {
+            at.to_bits() == cell.to_bits() && effective <= width.mul_add(dimmest.abs(), dimmest)
+        };
+        let n = rest.iter().take_while(alike).count();
+        let (these, after) = rest.split_at(n);
+        // Summed from the dimmest, so substrings alike keep their irradiance to the bit.
+        let above: f64 = these.iter().map(|(effective, _)| effective - dimmest).sum();
+        let count = u32::try_from(n).unwrap_or(u32::MAX);
+        let mean = above / f64::from(count) + dimmest;
+        merged.push((reference.substring(module_type, parts, mean, cell), count));
+        rest = after;
+    }
+    merged
+}
+
+#[cfg(test)]
+fn merge() -> f64 {
+    if EXACT.get() { 0.0 } else { MERGE }
+}
+
+#[cfg(not(test))]
+const fn merge() -> f64 {
+    MERGE
 }
 
 /// The fraction of beam light the glass lets through.

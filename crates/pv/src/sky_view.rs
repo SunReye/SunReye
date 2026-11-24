@@ -68,6 +68,17 @@ impl<'a> SkyViews<'a> {
         }
     }
 
+    /// No horizon and no diffuse shade: every substring sees the whole sky.
+    #[cfg(test)]
+    pub(crate) const fn open_sky() -> Self {
+        Self {
+            horizon: None,
+            views: Vec::new(),
+            warming: Vec::new(),
+            starts: Vec::new(),
+        }
+    }
+
     /// What the horizon and the scene leave the layout's `string`th string under `sun`.
     pub(crate) fn open(&self, sun: Sun, string: usize) -> Open<'_> {
         Open {
