@@ -147,5 +147,7 @@ test("seen from the side a chimney stays under the pointer: a metre up the slope
   );
 
   expect(moved?.scene.chimneys?.[0]).toEqual({ ...CHIMNEY, across: 5, up: 2.5 });
-  expect(moved?.value).toEqual([5, 2.5]);
+  // Its edge 2.2 m above the eave, 4.7 m from the nearer verge of the 10 m face.
+  expect(moved?.unit).toBe("roof");
+  expect(moved?.value.map((metres) => Math.round(metres * 1000) / 1000)).toEqual([2.2, 4.7]);
 });

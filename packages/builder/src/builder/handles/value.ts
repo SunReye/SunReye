@@ -1,12 +1,15 @@
 // A dragging handle's live value as words (ADR 20). Pure.
+import { m } from "../../paraglide/messages.js";
+import { isLocale } from "../../paraglide/runtime.js";
 import type { Reading } from "./grabbing.ts";
 
-/** One length to the decimetre or an angle in degrees; a move's x and z. */
+/** One length to the decimetre or an angle in degrees; a move's x and z; a roof object's metres
+ * from its eave and verge. */
 export function valueText(
   { value, unit }: Pick<Reading, "value" | "unit">,
   locale: string,
 ): string {
-  const digits = unit === "m" ? 1 : 0;
+  const digits = unit === "°" ? 0 : 1;
 
   const format = new Intl.NumberFormat(locale, {
     minimumFractionDigits: digits,
@@ -14,6 +17,13 @@ export function valueText(
   });
 
   const [first = 0, second] = value;
+
+  if (unit === "roof") {
+    return m.builder_value_roof(
+      { eave: format.format(first), verge: format.format(second ?? 0) },
+      isLocale(locale) ? { locale } : {},
+    );
+  }
 
   if (second !== undefined) return `x ${format.format(first)} · z ${format.format(second)} m`;
 

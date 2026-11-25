@@ -25,6 +25,60 @@ function travelled(
   return to === null ? null : [to[0] - anchor[0], anchor[2] - to[2]];
 }
 
+type Corner = RoofFace["outline"][number];
+
+/** Where the edge from `p` to `q` crosses the line at `at` along `axis`, on the other axis; null
+ * where it does not. */
+function crossing(p: Corner, q: Corner, axis: 0 | 1, at: number): number | null {
+  const other = axis === 0 ? 1 : 0;
+  const [a, b, c, d] = [p[axis], q[axis], p[other], q[other]];
+
+  if (a === b || at < Math.min(a, b) || at > Math.max(a, b)) return null;
+
+  return c + ((d - c) * (at - a)) / (b - a);
+}
+
+/** Where the line across `outline` at `at` along axis `axis` (0 across, 1 up) enters and leaves
+ * it; the outline's extent where the line misses it. */
+function span(outline: RoofFace["outline"], axis: 0 | 1, at: number): readonly [number, number] {
+  const hits = outline.flatMap((p, index) => {
+    const hit = crossing(p, outline[(index + 1) % outline.length] ?? p, axis, at);
+
+    return hit === null ? [] : [hit];
+  });
+
+  const all = hits.length > 0 ? hits : outline.map((p) => p[axis === 0 ? 1 : 0]);
+
+  return [Math.min(...all), Math.max(...all)];
+}
+
+const tidy = (metres: number) => Math.round(metres * 1000) / 1000;
+
+/** Metres from the eave below a roof object to its lower edge, and from its nearer verge to its
+ * side: what an installer checks clearances by. */
+function clearance(
+  outline: RoofFace["outline"],
+  {
+    across,
+    up,
+    width,
+    deep,
+  }: {
+    readonly across: number;
+    readonly up: number;
+    readonly width: number;
+    readonly deep: number;
+  },
+): number[] {
+  const [eave] = span(outline, 0, across);
+  const [left, right] = span(outline, 1, up);
+
+  return [
+    tidy(up - deep / 2 - eave),
+    tidy(Math.min(across - width / 2 - left, right - across - width / 2)),
+  ];
+}
+
 /** A chimney or a roof window follows the pointer in its roof face's plane, so it stays under it
  * from every view (ADR 20), where the crate lets it. */
 export function onRoof(
@@ -36,7 +90,10 @@ export function onRoof(
   const [chimneys, windows] = [scene.chimneys ?? [], scene.roofWindows ?? []];
   const item = (target.kind === "chimney" ? chimneys : windows)[target.index];
   const roof = item && laid.roofs.find((r) => roofFaceKey(r) === roofFaceKey(item));
-  const shift = roof === undefined ? null : travelled(roof, grab, now);
+
+  if (roof === undefined) return null;
+
+  const shift = travelled(roof, grab, now);
 
   if (shift === null) return null;
 
@@ -46,8 +103,8 @@ export function onRoof(
     return (
       moved && {
         scene: { ...scene, chimneys: chimneys.with(target.index, moved) },
-        value: [moved.across, moved.up],
-        unit: "m",
+        value: clearance(roof.outline, { ...moved, deep: moved.depth }),
+        unit: "roof",
       }
     );
   }
@@ -57,8 +114,8 @@ export function onRoof(
   return (
     moved && {
       scene: { ...scene, roofWindows: windows.with(target.index, moved) },
-      value: [moved.across, moved.up],
-      unit: "m",
+      value: clearance(roof.outline, { ...moved, deep: moved.length }),
+      unit: "roof",
     }
   );
 }

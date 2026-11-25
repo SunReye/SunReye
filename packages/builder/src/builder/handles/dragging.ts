@@ -39,7 +39,8 @@ export interface Dragged {
   readonly scene: Scene;
   /** What the handle shows while dragging: one length or angle, or x and z for a move. */
   readonly value: readonly number[];
-  readonly unit: "m" | "°";
+  /** `roof`: a roof object's metres from its face's eave and its nearer verge. */
+  readonly unit: "m" | "°" | "roof";
 }
 
 const LENGTH = 0.1;
