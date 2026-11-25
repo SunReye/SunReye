@@ -247,3 +247,13 @@ test("the canvas and values entries load no Svelte either, so a unit test reache
 test("its root entry gives a string's colour, so a second consumer draws its strings alike", async () => {
   expect(await exported(FILES.get(".") ?? "")).toContain("stringCss");
 });
+
+test("its values entry gives a string's colour without three.js, for a list that draws no scene", async () => {
+  const file = FILES.get("./values") ?? "";
+
+  const names = ["STRINGS", "UNASSIGNED", "stringColour", "stringCss"];
+  const given = await exported(file);
+
+  expect(names.filter((name) => !given.includes(name))).toEqual([]);
+  expect((await reached(file)).filter((p) => p.startsWith("three"))).toEqual([]);
+});
