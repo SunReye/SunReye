@@ -18,10 +18,9 @@ import type { Aimed } from "./trace-aim.ts";
 import type { Scene } from "./pv.ts";
 import { ended, samePoint, snapOf, spotOf } from "./trace-ends.ts";
 import {
-  lineDragged,
   lineMoved,
   lineSplit,
-  pointLines,
+  draggedLines,
   pointMoved,
   pointRemoved,
   readyPlaced,
@@ -143,11 +142,8 @@ export class TraceTool {
     this.#snap = snapped?.snap;
     this.#guide = snapped?.guide;
 
-    if (!dragged || pressed === undefined) return;
-
-    if (line !== undefined) this.#dragged = lineDragged(tracing.scene, line, pressed.at, at);
-    else if (pressed.point !== undefined && snapped !== undefined)
-      this.#dragged = pointLines(tracing.scene, pressed.point, snapped.snap.at);
+    if (dragged && pressed !== undefined)
+      this.#dragged = draggedLines(tracing.scene, pressed, at, snapped?.snap.at);
   }
 
   /** A press put back: nothing happens. */

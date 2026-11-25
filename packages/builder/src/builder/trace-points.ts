@@ -21,7 +21,7 @@ import type { LineRef, Placing } from "./trace-types.ts";
 export type Dashed = { readonly from: Spot; readonly to: Spot };
 
 /** The lines meeting point `ref`, drawn from their other ends to `to`, where it would go. */
-export function pointLines(scene: Scene, ref: PointRef, to: Spot): Dashed[] {
+function pointLines(scene: Scene, ref: PointRef, to: Spot): Dashed[] {
   const lines = scene.blocks[ref.block]?.freeForm?.traced?.lines ?? [];
   const [, height] = spotOf(scene, ref);
   const at: Spot = [to[0], height, to[2]];
@@ -61,7 +61,7 @@ export function lineMoved(scene: Scene, { block, line }: LineRef, at: Spot, to: 
 
 /** Line `ref` being dragged from `at` to `to`: every line the move would shift or stretch, where
  * it would go; refused, the line alone shifted. */
-export function lineDragged(scene: Scene, ref: LineRef, at: Spot, to: Spot): Dashed[] {
+function lineDragged(scene: Scene, ref: LineRef, at: Spot, to: Spot): Dashed[] {
   const { edited } = lineMoved(scene, ref, at, to);
 
   if ("refused" in edited) return [shifted(scene, ref, at, to)];
@@ -83,6 +83,24 @@ export function lineDragged(scene: Scene, ref: LineRef, at: Spot, to: Spot): Das
         ]
       : [],
   );
+}
+
+/** The lines a drag of `pressed` to `at` would move, dashed; a point goes to `snapped`. */
+export function draggedLines(
+  scene: Scene,
+  {
+    line,
+    point,
+    at: from,
+  }: Readonly<{ line?: LineRef | undefined; point?: PointRef | undefined; at: Spot }>,
+  at: Spot,
+  snapped: Spot | undefined,
+): Dashed[] | undefined {
+  if (line !== undefined) return lineDragged(scene, line, from, at);
+
+  return point === undefined || snapped === undefined
+    ? undefined
+    : pointLines(scene, point, snapped);
 }
 
 /** Point `ref` dragged to `to`. */

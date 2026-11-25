@@ -8,7 +8,7 @@ import { SceneCanvas } from "@sunreye/builder";
 import { settle } from "../motion/clock.harness.ts";
 
 /** The plain ground under the tracing, 12 m square, seen from above. */
-export const ground: Geometry = {
+const ground: Geometry = {
   faces: [
     {
       surface: "roof",

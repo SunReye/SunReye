@@ -44,6 +44,26 @@ export function movePoint(scene, block, point, to) {
 }
 
 /**
+ * The spot on the line `from`–`to` nearest `at` seen from above, kept `OFF_END` off its ends, at
+ * the height between them; none on a line too short for that.
+ * @param {readonly number[]} from
+ * @param {readonly number[]} to
+ * @param {Place} at
+ * @returns {number[] | null}
+ */
+function between([ax = 0, ay = 0, az = 0], [bx = 0, by = 0, bz = 0], at) {
+  const [dx, dy, dz] = [bx - ax, by - ay, bz - az];
+  const length = Math.hypot(dx, dz);
+
+  if (length <= 2 * OFF_END) return null;
+
+  const along = ((at.x - ax) * dx + (at.z - az) * dz) / (length * length);
+  const t = Math.min(1 - OFF_END / length, Math.max(OFF_END / length, along));
+
+  return [ax + dx * t, ay + dy * t, az + dz * t];
+}
+
+/**
  * Block `block`'s line `line` split by a new point where `at` lies nearest along it, at the height
  * between its ends; an eave or a ridge both its ends are.
  * @param {Scene} scene
@@ -54,26 +74,22 @@ export function movePoint(scene, block, point, to) {
  */
 export function splitLine(scene, block, line, at) {
   const lines = linesOf(scene.blocks[block]);
-  const [a, b] = lines.lines[line] ?? [];
-  const [from, to] = [lines.points[a ?? -1], lines.points[b ?? -1]];
+  const [a = -1, b = -1] = lines.lines[line] ?? [];
+  const [from, to] = [lines.points[a], lines.points[b]];
 
-  if (a === undefined || b === undefined || !from || !to) return { refused: "missing" };
+  if (!from || !to) return { refused: "missing" };
 
-  const [ax = 0, ay = 0, az = 0] = from;
-  const [dx, dy, dz] = [(to[0] ?? 0) - ax, (to[1] ?? 0) - ay, (to[2] ?? 0) - az];
-  const length = Math.hypot(dx, dz);
+  const spot = between(from, to, at);
 
-  if (length <= 2 * OFF_END) return { refused: "short" };
+  if (spot === null) return { refused: "short" };
 
-  const along = ((at.x - ax) * dx + (at.z - az) * dz) / (length * length);
-  const t = Math.min(1 - OFF_END / length, Math.max(OFF_END / length, along));
   const p = lines.points.length;
   /** @param {readonly number[]} list */
   const both = (list) => list.includes(a) && list.includes(b);
 
   const split = {
     ...lines,
-    points: [...lines.points, [ax + dx * t, ay + dy * t, az + dz * t]],
+    points: [...lines.points, spot],
     lines: [...lines.lines.map((l, i) => (i === line ? [a, p] : l)), [p, b]],
     eaves: both(lines.eaves) ? [...lines.eaves, p] : lines.eaves,
     ridges: both(lines.ridges) ? [...lines.ridges, p] : lines.ridges,
