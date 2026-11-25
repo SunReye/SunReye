@@ -143,3 +143,15 @@ test.each([
   expect(draws()).toBe(before + 1);
   expect(at()).toEqual(landed);
 });
+
+test("held steady, a turned view lands at once: a hand turning it is never trailed", async () => {
+  const { screen, at } = await flying();
+
+  await screen.rerender({ view: { ...presetView("top", house, 1, 40), steady: true } });
+  vi.advanceTimersByTime(FRAME);
+
+  const landed = at();
+
+  vi.advanceTimersByTime(1000);
+  expect(at()).toEqual(landed);
+});

@@ -10,6 +10,8 @@ export type Preset = (typeof presets)[number];
 export interface View {
   readonly position: Triple;
   readonly target: Triple;
+  /** It lands at once, without a flight: a hand turning the view moves it on each step. */
+  readonly steady?: boolean | undefined;
 }
 
 /** The camera's vertical field of view, in degrees. */

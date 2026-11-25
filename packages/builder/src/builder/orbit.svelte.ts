@@ -64,10 +64,13 @@ function follow(
     untrack(() => {
       const from = { position: camera.position.toArray(), target: controls.target.toArray() };
 
-      if (!placed) {
+      if (!placed || to.steady === true) {
         placed = true;
+        flight.stop();
         place(to);
-      } else if (JSON.stringify(from) !== JSON.stringify(to)) {
+      } else if (
+        JSON.stringify(from) !== JSON.stringify({ position: to.position, target: to.target })
+      ) {
         flight.fly(from, to, place);
         render();
       }
