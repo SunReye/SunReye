@@ -2,10 +2,10 @@
 // The ring an editor offers beside the other handles (ADR 20): a traced block turns about its
 // footprint's centroid as a drawn one about its centre; a turn settles lightly into the compass
 // and other blocks' walls, Shift turns free, and a typed turn is exact.
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { turnBlock } from "@sunreye/scene";
 import { nextBlock } from "../../../../../../packages/builder/src/builder/draft.ts";
-import type { Block, Scene } from "../../../../../../packages/builder/src/builder/pv.ts";
+import type { Block, Point, Scene } from "../../../../../../packages/builder/src/builder/pv.ts";
 import {
   drag,
   handles,
@@ -155,4 +155,52 @@ test("a typed turn is exact: a block by its turn, a box about its centre, a tree
   expect(angleOf(start, { kind: "obstacle", index: 0 })).toBe(0);
   expect(angleOf(turnBlock(start, 1, 20), { kind: "block", index: 1 })).toBe(20);
   expect(angleOf(start, { kind: "obstacle", index: 1 })).toBeUndefined();
+});
+
+describe("a roof chimney and a roof window", () => {
+  const CHIMNEY = { block: 0, face: 1, across: 5, up: 2, width: 0.6, depth: 0.6, height: 1 };
+  const WINDOW = { block: 0, face: 1, across: 2, up: 2, width: 0.78, length: 1.18, turn: 350 };
+  const roofed: Scene = { ...scene([HOUSE]), chimneys: [CHIMNEY], roofWindows: [WINDOW] };
+  const chimney: Target = { kind: "chimney", index: 0 };
+
+  // The crate's footing: a 0.6 m square round (5, -6) east and north, 4 m up.
+  const foot: Point[] = [
+    [4.7, -6.3, 4],
+    [5.3, -6.3, 4],
+    [5.3, -5.7, 4.4],
+    [4.7, -5.7, 4.4],
+  ];
+
+  const footing = { foot, top: 5.4 };
+
+  const laid = { ...NONE, footings: [footing] };
+
+  test("turn in their face: typed exactly, read as their turn", () => {
+    expect(angleOf(roofed, chimney)).toBe(0);
+    expect(angleOf(roofed, { kind: "roofWindow", index: 0 })).toBe(350);
+    expect(turnedBy(roofed, chimney, 30)?.chimneys?.[0]).toEqual({ ...CHIMNEY, turn: 30 });
+    expect(turnedBy(roofed, { kind: "roofWindow", index: 0 }, 20)?.roofWindows?.[0]?.turn).toBe(10);
+  });
+
+  test("an editor's ring lies level round the footing's middle", () => {
+    const ring = offered(roofed, chimney, laid, false, true).find(({ grip }) => grip === "turn");
+
+    expect(ring?.at).toEqual([5, 4.2, 6]);
+    expect(ring?.radius).toBeGreaterThan(Math.hypot(0.3, 0.3));
+    expect(offered(roofed, chimney, laid, false).map(({ grip }) => grip)).not.toContain("turn");
+  });
+
+  /** The crate, as far as a turn asks it: nothing. */
+  const crate = {
+    pv: { refit: () => ({ unfit: "room" as const }), glide: () => null, glideWindow: () => null },
+    laid: { walls: [], roofs: [] },
+  };
+
+  test("the ring turns it in its face, settling lightly onto the eave's square and 45°", () => {
+    const at = [5, 4.2, 6] as const;
+    const grab = { grip: "turn", ray: round(5, 6, 0), height: 4.2, at, settle: "light" } as const;
+
+    expect(drag(roofed, chimney, grab, round(5, 6, 37), crate)?.scene.chimneys?.[0]?.turn).toBe(37);
+    expect(drag(roofed, chimney, grab, round(5, 6, 43.5), crate)?.value).toEqual([45]);
+  });
 });

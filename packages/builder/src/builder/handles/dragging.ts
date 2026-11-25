@@ -20,7 +20,7 @@ import type { Grip } from "./grips.ts";
 import { onRoof } from "./on-roof.ts";
 import { onLevel } from "./shallow.ts";
 import { along, edges, pull, snapTurn } from "./snapping.ts";
-import { ringTurned, type Settle } from "./turning.ts";
+import { ringTurned, roofRingTurned, type Settle } from "./turning.ts";
 
 /** Where a drag began: its grip, its ray, and the height of the plane it slides in. */
 export interface Grab {
@@ -249,6 +249,8 @@ function fitted(
   crate: Crate,
 ): Dragged | null {
   if (target.kind !== "opening") {
+    if (grab.grip === "turn") return roofRingTurned(scene, target, grab, now);
+
     return grab.grip === "move" ? onRoof(scene, target, [grab, now], crate) : null;
   }
 
