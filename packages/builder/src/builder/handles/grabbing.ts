@@ -5,9 +5,10 @@
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- three.js and the DOM, used in place. */
 import { type Group, type PerspectiveCamera, Raycaster, Vector2, Vector3 } from "three";
 import { haptics } from "@sunreye/ui/haptics";
-import { picked } from "../levels.ts";
-import type { Point, Pv, Scene } from "../pv.ts";
-import { strike, toThree, type Hit, type Panel } from "../scene.ts";
+import { spaceHeld } from "../space.ts";
+import { bodyAt, same } from "./body-at.ts";
+import type { Pv, Scene } from "../pv.ts";
+import { strike, toThree, type Panel } from "../scene.ts";
 import { PER_PIXEL, sense, turnOf } from "./dial.ts";
 import { handleOf } from "./gizmo.ts";
 import {
@@ -37,6 +38,9 @@ export interface Editing {
   readonly laid: Laid;
   /** The turn mode: a drag anywhere turns the object, and nothing else of it drags. */
   readonly turning: boolean;
+  /** A press on a picked block's own surface, its roof included, moves it: an editor's navigation,
+   * where a drag on empty ground pans, not orbits (ADR 20 "Navigation"). */
+  readonly wholeBlock?: boolean;
   /** Each step of a drag, shown at once. */
   readonly ondrag: (scene: Scene) => void;
   /** The drag let go: one undo step. */
@@ -80,18 +84,6 @@ interface Held {
   readonly dial: -1 | 0 | 1;
   /** The turn as last shown, as text: a turn ticks when it changes. */
   shown: string;
-}
-
-const same = (a: Target, b: { readonly kind: string; readonly index?: number }): boolean =>
-  a.kind === b.kind && a.index === b.index;
-
-/** Where a press `hit` the selected object's own surface; none for anything else. */
-function bodyAt(hit: Hit | null | undefined, editing: Editing): Point | undefined {
-  if (hit?.kind !== "point" && hit?.kind !== "obstacle") return undefined;
-
-  const level = picked(editing.scene, hit, editing.pv);
-
-  return level !== null && same(editing.target, level) ? hit.point : undefined;
 }
 
 function rayAt(camera: PerspectiveCamera, at: readonly [number, number]): Ray {
@@ -149,10 +141,7 @@ export class Grabbing {
       return { grip, point: handle.point, ray, height: handle.at[1], at: handle.at };
     }
 
-    // A fence has no footprint to drag, and a block's surface orbits.
-    return editing.target.kind === "fence" || editing.target.kind === "block"
-      ? undefined
-      : this.#bodyGrabbed(at, editing, ray);
+    return this.#bodyGrabbed(at, editing, ray);
   }
 
   /** The selected object's own surface under the press, which moves it whole. */
@@ -182,7 +171,8 @@ export class Grabbing {
       return;
     }
 
-    const editing = event.button === 0 ? this.#sources.editing() : undefined;
+    // Space held pans, whatever the press lands on.
+    const editing = event.button === 0 && !spaceHeld() ? this.#sources.editing() : undefined;
     const grab = editing && this.#grabbed(ndc(this.#canvas, event), editing);
 
     if (editing !== undefined && grab !== undefined) this.#hold(event, editing, grab);

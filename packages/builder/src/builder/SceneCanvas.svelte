@@ -27,6 +27,7 @@
     marked,
     overlaid,
     picking,
+    pointing,
     projector,
     selector,
     TraceLayer,
@@ -35,6 +36,9 @@
     type Around,
     type Editing,
     type Hit,
+    type Navigation,
+    type OnContext,
+    type OnPress,
     type Roofwork,
     type Panel,
     type Projector,
@@ -66,6 +70,9 @@
     editing,
     roofwork,
     tracing,
+    navigation = "orbit",
+    oncontext,
+    onpress,
   }: {
     geometry: Geometry;
     /** The placed modules. */
@@ -114,6 +121,11 @@
     /** The tracing mode: seen from above, clicks trace a roof's lines over what is drawn, the
      * aerial image included, and each edit's next scene goes to `ontrace` (ADR 20). */
     tracing?: Tracing | undefined;
+    /** What the pointer does to the camera and shows on hover; read when the canvas is made. */
+    navigation?: Navigation;
+    /** A right click or a long press, not a drag: what it struck, its face, and where on the page. */
+    oncontext?: OnContext | undefined;
+    onpress?: OnPress | undefined;
   } = $props();
 
   const traceTool = new TraceTool();
@@ -227,9 +239,17 @@
       opening.render,
     );
 
+    const unpoint = pointing(canvas, camera, studio.scene, opening.render, {
+      navigation: untrack(() => navigation),
+      drawn,
+      panels: source.panels,
+      props: () => ({ roofs, selected, editing, tracing, oncontext, onpress }),
+    });
+
     return () => {
       unpick();
       unmark();
+      unpoint();
     };
   }
 
@@ -264,7 +284,7 @@
       ),
     );
 
-    const controls = orbit(canvas, camera, flight, render, orbiting);
+    const controls = orbit(canvas, camera, flight, render, orbiting, () => navigation);
 
     opening
       .open(kept.built, () => onready?.(), parking.due)

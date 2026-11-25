@@ -68,7 +68,8 @@ The scene canvas. Loads three.js: import it where a scene is drawn, or lazily.
   - Scene: `geometry`, `panels`, `cars`, `around` (the aerial image and the neighbours).
   - Light: `sun` (`sunAt` gives it at an instant), `diffuse`, `weather`.
   - A view's style and layers are these props: one left out is switched off.
-  - Camera: `view` and `onview`; `locked` keeps it still.
+  - Camera: `view` and `onview`; `locked` keeps it still. `navigation`, read when the canvas is made: `"orbit"` (the default, a drag orbits), or an editor's `"plan"` (seen from above, north up: every button pans) or `"model"` (left and middle buttons pan, right or Shift+left orbits); in both the wheel and a pinch zoom to the cursor, Space held pans, the face a press would pick is outlined, the cursor shows whether a press moves, picks or pans, and a picked block moves by its own surface.
+  - Context menu: `oncontext(hit, face, at)` answers a right click let go where it was pressed, or a finger held still, with what it struck, its roof face and the page point; the consumer opens `@sunreye/ui`'s context menu there. `onpress(hit, face)` hears each primary press before anything else: a consumer that picks what was struck there, giving it `editing`, lets the same drag move it.
   - Name and picking: `label` names the canvas; `onpick` answers a click with a `Hit`, its points in the shading frame (east, north, up):
     - `{ kind: "grid", grid, module?, point }`: a module, by its grid's position in the scene and its own in the grid, and the point struck on it.
     - `{ kind: "equipment", index }`, `{ kind: "opening", index }`: a marker or an opening, by its position in the scene.
@@ -90,7 +91,7 @@ The scene canvas. Loads three.js: import it where a scene is drawn, or lazily.
 - Camera: `presetView` (a preset, turned to a compass heading), `headingOf` (the bearing a view looks toward, for a compass), `parseView`, and the types `View` and `Preset`.
 - Language: `speak` sets the locale of every entry's words, `Locale`; a change shows without a reload.
 - `panels`, the modules a layout draws; `stringCss`, the colour a string is drawn in by its position, as CSS (grey for none); `sunAt`, the sun's direction at an instant.
-- Types the props name: `Around`, `Aerial`, `Editing`, `Hit`, `Laying`, `LaySteps`, `Panel`, `Projector`, `Roofwork`, `Tracing`, `TraceEdit`, `LineRef`, `Placing`.
+- Types the props name: `Around`, `Aerial`, `Editing` (its `wholeBlock` moves a picked block by its own surface), `Hit`, `Navigation`, `OnContext`, `OnPress`, `Laying`, `LaySteps`, `Panel`, `Projector`, `Roofwork`, `Tracing`, `TraceEdit`, `LineRef`, `Placing`.
 
 ## `@sunreye/builder/frame`
 

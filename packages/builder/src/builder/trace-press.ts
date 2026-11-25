@@ -8,6 +8,7 @@ import { projector } from "./project.ts";
 import { aim, pvPoint, type Aimed } from "./trace-aim.ts";
 import { pick } from "./trace-pick.ts";
 import { Handover, listen } from "./pointer.ts";
+import { spaceHeld } from "./space.ts";
 import type { TraceTool, Tracing } from "./tracing.svelte.ts";
 
 /** Pixels a click snaps within by default. */
@@ -78,7 +79,9 @@ export class TracePress {
   readonly #press = (event: PointerEvent): void => {
     const tracing = this.#tracing();
 
-    if (this.#handover.handed(event) || tracing === undefined || event.button !== 0) return;
+    const passed = this.#handover.handed(event) || tracing === undefined || event.button !== 0;
+
+    if (passed || spaceHeld()) return;
 
     if (this.#held !== undefined) {
       this.#another(event);

@@ -7,6 +7,7 @@ import type { Group, PerspectiveCamera } from "three";
 import { onPlane, type Aim } from "./aim.ts";
 import { hover, lay, select, type Roofwork, type Press } from "./gestures.ts";
 import type { Ghost } from "./pv.ts";
+import { spaceHeld } from "./space.ts";
 import { strike, type Panel } from "./scene.ts";
 import { Handover, listen, ndc } from "./pointer.ts";
 
@@ -91,7 +92,7 @@ export class RoofPress {
 
     const roofwork = this.#sources.roofwork();
 
-    if (roofwork === undefined || event.button !== 0) return;
+    if (roofwork === undefined || event.button !== 0 || spaceHeld()) return;
 
     const aim = this.#aim(event);
 

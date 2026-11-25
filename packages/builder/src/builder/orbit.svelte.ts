@@ -5,6 +5,7 @@ import type { PerspectiveCamera } from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import type { Lit } from "../scene/stage.svelte.ts";
 import type { View } from "./camera.ts";
+import { controlsOf, type Navigation } from "./navigation.ts";
 
 /** Fits the drawing buffer and the camera to the canvas whenever its size changes. */
 export function fit(
@@ -84,6 +85,8 @@ export function orbit(
   flight: Lit["flight"],
   render: () => void,
   { view, locked, onview }: Orbiting,
+  /** What a drag, a button and the wheel do to the camera. */
+  navigation: () => Navigation = () => "orbit",
 ): OrbitControls {
   const controls = new OrbitControls(camera, canvas);
 
@@ -99,6 +102,15 @@ export function orbit(
     onview({ position: camera.position.toArray(), target: controls.target.toArray() });
   });
   follow(camera, controls, flight, render, view);
+
+  $effect(() => {
+    const { mouseButtons, touches, enableRotate, zoomToCursor } = controlsOf(navigation());
+
+    controls.mouseButtons = mouseButtons;
+    controls.touches = touches;
+    controls.enableRotate = enableRotate;
+    controls.zoomToCursor = zoomToCursor;
+  });
 
   $effect(() => {
     controls.enabled = !locked();

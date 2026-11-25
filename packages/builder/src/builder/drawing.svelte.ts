@@ -31,6 +31,10 @@ export { TracingMode, type Traced } from "./tracing-mode.svelte.ts";
 
 export { projector, type Projector } from "./project.ts";
 
+export { pointing, type OnContext, type OnPress } from "./pointing.svelte.ts";
+
+export type { Navigation } from "./navigation.ts";
+
 /** SceneCanvas's props, read when needed. */
 export interface Source {
   readonly geometry: () => Geometry;
