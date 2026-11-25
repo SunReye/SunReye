@@ -22,3 +22,5 @@ export { STRINGS, UNASSIGNED, stringColour, stringCss } from "../builder/string-
 export { headingOf, type View } from "../builder/view.ts";
 
 export { detent, eaveHeading, withHeading } from "../builder/view-turn.ts";
+
+export { angleOf, turnedBy } from "../builder/handles/turning.ts";

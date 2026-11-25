@@ -23,7 +23,7 @@ import {
   Vector3,
   type Camera,
 } from "three";
-import type { Handle } from "./grips.ts";
+import type { Handle, Ray } from "./grips.ts";
 import { CLEAR, hidden, reachOf } from "./sight.ts";
 
 /** Metres: big enough to read on a house, small enough not to hide its walls. */
@@ -284,4 +284,13 @@ export function free(handles: Group): void {
       material.dispose();
     }
   });
+}
+
+/** The pointer's ray at `at` on the canvas, from `camera`. */
+export function rayAt(camera: Camera, at: readonly [number, number]): Ray {
+  const caster = new Raycaster();
+
+  caster.setFromCamera(new Vector2(...at), camera);
+
+  return { origin: caster.ray.origin.toArray(), direction: caster.ray.direction.toArray() };
 }

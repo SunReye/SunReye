@@ -22,6 +22,15 @@ export declare function faceCount(scene: Scene, block: number): number;
  * carried; the same scene for no such block. */
 export declare function moveBlock(scene: Scene, index: number, by: readonly number[]): Scene;
 
+/** A footprint's centroid, x and z, as a block turns about it; its corners' mean where it
+ * encloses nothing. */
+export declare function centroidOf(footprint: readonly (readonly number[])[]): [number, number];
+
+/** The scene with block `index` turned `by` degrees clockwise seen from above about the middle of
+ * its footprint, what stands on its roof turning with it; a traced block keeps its turn so far as
+ * its rotation. The same scene for no such block. */
+export declare function turnBlock(scene: Scene, index: number, by: number): Scene;
+
 /** The scene without block `index` and what stands on it; later blocks' follow them down. The last
  * block may go. The same scene for no such block. */
 export declare function removeBlock(scene: Scene, index: number): Scene;

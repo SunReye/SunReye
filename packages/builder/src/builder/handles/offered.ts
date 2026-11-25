@@ -22,13 +22,20 @@ function knob(scene: Scene, target: Target): Handle[] {
   return [{ grip: "carry", at: onWorld(scene.north, body, across, LOW, body.depth + BEFORE) }];
 }
 
-/** The handles to show and to grab for `target`, in the turn mode or out of it. */
-export function offered(scene: Scene, target: Target, laid: Laid, turning: boolean): Handle[] {
+/** The handles to show and to grab for `target`, in the turn mode or out of it; an editor's
+ * `ring` shows beside the others. */
+export function offered(
+  scene: Scene,
+  target: Target,
+  laid: Laid,
+  turning: boolean,
+  ring = false,
+): Handle[] {
   const found = handles(scene, target, laid);
 
   if (turning) return found.filter(({ grip }) => grip === "turn");
 
-  return [...found.filter(({ grip }) => grip !== "turn"), ...knob(scene, target)];
+  return [...found.filter(({ grip }) => ring || grip !== "turn"), ...knob(scene, target)];
 }
 
 /** Whether `target` has a ring to turn it by. */
