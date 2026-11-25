@@ -1,8 +1,9 @@
 import { createRawSnippet } from "svelte";
 import { toast } from "svelte-sonner";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
+import { clearToasts, holdToasts } from "../components/toasts.harness.ts";
 import { finish } from "../motion/animations.harness.ts";
 import { motion } from "../../../../../packages/builder/src/motion/tier.svelte.ts";
 import Shell from "./Shell.svelte";
@@ -13,8 +14,10 @@ const goto = vi.fn((_url: string) => Promise.resolve());
 
 const children = createRawSnippet(() => ({ render: () => "<p>page</p>" }));
 
-afterEach(() => {
-  toast.dismiss();
+beforeEach(holdToasts);
+
+afterEach(async () => {
+  await clearToasts();
   motion.lowPower = false;
   localStorage.clear();
 });

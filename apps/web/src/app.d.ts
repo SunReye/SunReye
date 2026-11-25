@@ -4,3 +4,8 @@ declare namespace App {
     readonly drilled?: boolean;
   }
 }
+
+/** Svelte's frame loop, which ships no types: the test setup empties it (loop.harness.ts). */
+declare module "svelte/internal/client" {
+  export const raf: { readonly tasks: Set<unknown> };
+}

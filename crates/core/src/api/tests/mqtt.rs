@@ -1,15 +1,13 @@
 //! A broker connection (ADR 10): one client per connection, its status in the connection list,
 //! its credentials secrets that reach the broker and nothing else.
 
-use std::time::Duration;
-
 use axum::http::StatusCode;
 use serde_json::{Value, json};
 use tracing_subscriber::util::SubscriberInitExt as _;
 
 use super::devices::{delete, gateway, send};
 use super::secrets::Lines;
-use super::{Core, get};
+use super::{Core, get, until};
 use crate::mqtt::fake::{self, Fake};
 
 /// Distinctive, so a search for it finds only a leak.
@@ -22,16 +20,13 @@ fn broker(fake: &Fake) -> Value {
 }
 
 impl Core {
-    /// The listed connections once `holds` holds for the first, within a second.
-    async fn until(&self, set_cookie: &str, holds: impl Fn(&Value) -> bool) -> Value {
-        for _ in 0..100 {
+    /// The listed connections once `holds` holds for the first.
+    async fn until(&self, set_cookie: &str, holds: impl Fn(&Value) -> bool + Sync) -> Value {
+        until("the first connection", async || {
             let (_, listed) = self.ask(set_cookie, get("/api/v1/connections")).await;
-            if holds(&listed["connections"][0]) {
-                return listed;
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-        panic!("never held");
+            holds(&listed["connections"][0]).then_some(listed)
+        })
+        .await
     }
 }
 
@@ -185,16 +180,13 @@ async fn an_evcc_loadpoint_is_read_by_its_index_under_the_topic_root() {
 }
 
 impl Core {
-    /// The value at `uri` once it is live, within two seconds.
+    /// The value at `uri` once it is live.
     pub(super) async fn read_role(&self, set_cookie: &str, uri: &str) -> Value {
-        for _ in 0..200 {
+        until(uri, async || {
             let (status, body) = self.ask(set_cookie, get(uri)).await;
-            if status == StatusCode::OK {
-                return body;
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-        panic!("never live: {uri}");
+            (status == StatusCode::OK).then_some(body)
+        })
+        .await
     }
 }
 

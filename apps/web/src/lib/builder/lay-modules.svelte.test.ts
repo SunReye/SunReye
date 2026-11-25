@@ -31,10 +31,6 @@ import type { Scene } from "../../../../../packages/builder/src/builder/pv.ts";
 // Modules laid on the roof in 3D (ADR 20): a press on the selected face lays a module where the
 // pointer holds its middle, a drag a row, and a drag from a module moves it.
 
-/** Each test drives the canvas and the inspector many times: past vitest's 15 s on software WebGL
- * (`SLOW` in scripts/fake-time.ts). */
-const MINUTE = 60_000;
-
 /** The template house with an empty grid on its south face. */
 function gridded(): Draft {
   const draft = house();
@@ -92,173 +88,145 @@ function saved(transport: { readonly puts: readonly unknown[] }) {
   ]);
 }
 
-test(
-  "a tap on the roof lays a module there and a drag across free roof a row, as one undo step each",
-  async () => {
-    const draft = gridded();
-    const transport = testCore();
+test("a tap on the roof lays a module there and a drag across free roof a row, as one undo step each", async () => {
+  const draft = gridded();
+  const transport = testCore();
 
-    await opened(draft, transport);
+  await opened(draft, transport);
 
-    const at = faceOnPage(draft.scene, 0);
+  const at = faceOnPage(draft.scene, 0);
 
-    // The pointer holds a portrait module's middle: 0.567 m across and 0.861 m up from its corner.
-    await press("mouse", [at(1.067, 1.361)]);
-    await expect.element(count(1)).toBeVisible();
+  // The pointer holds a portrait module's middle: 0.567 m across and 0.861 m up from its corner.
+  await press("mouse", [at(1.067, 1.361)]);
+  await expect.element(count(1)).toBeVisible();
 
-    // 3.6 m across: a module and its 2 cm gap fit three times more.
-    await press("mouse", [at(3.067, 1.361), at(5, 1.5), at(6.667, 1.5)]);
-    await expect.element(count(5)).toBeVisible();
+  // 3.6 m across: a module and its 2 cm gap fit three times more.
+  await press("mouse", [at(3.067, 1.361), at(5, 1.5), at(6.667, 1.5)]);
+  await expect.element(count(5)).toBeVisible();
 
-    await saveFrom("2026-11-01");
-    await expect.poll(() => transport.puts).toHaveLength(1);
-    expect(saved(transport)).toEqual([
-      [500, 500, false],
-      [2500, 500, false],
-      [3654, 500, false],
-      [4808, 500, false],
-      [5962, 500, false],
-    ]);
-  },
-  MINUTE,
-);
+  await saveFrom("2026-11-01");
+  await expect.poll(() => transport.puts).toHaveLength(1);
+  expect(saved(transport)).toEqual([
+    [500, 500, false],
+    [2500, 500, false],
+    [3654, 500, false],
+    [4808, 500, false],
+    [5962, 500, false],
+  ]);
+});
 
-test(
-  "a row is one undo step, and a tap where no module fits lays none",
-  async () => {
-    const draft = gridded();
+test("a row is one undo step, and a tap where no module fits lays none", async () => {
+  const draft = gridded();
 
-    await opened(draft);
+  await opened(draft);
 
-    const at = faceOnPage(draft.scene, 0);
+  const at = faceOnPage(draft.scene, 0);
 
-    await press("mouse", [at(1.067, 1.361), at(2.5, 1.4), at(4, 1.4)]);
-    await expect.element(count(3)).toBeVisible();
+  await press("mouse", [at(1.067, 1.361), at(2.5, 1.4), at(4, 1.4)]);
+  await expect.element(count(3)).toBeVisible();
 
-    // Over the setback at the eave and at the ridge.
-    await press("mouse", [at(5, 0.6)]);
-    await press("mouse", [at(7, 4.2)]);
-    await expect.element(count(3)).toBeVisible();
+  // Over the setback at the eave and at the ridge.
+  await press("mouse", [at(5, 0.6)]);
+  await press("mouse", [at(7, 4.2)]);
+  await expect.element(count(3)).toBeVisible();
 
-    await undo();
-    await expect.element(count(0)).toBeVisible();
-  },
-  MINUTE,
-);
+  await undo();
+  await expect.element(count(0)).toBeVisible();
+});
 
-test(
-  "a tap on a module selects it, and a drag that starts on one moves it, snapped beside the next",
-  async () => {
-    const draft = gridded();
-    const transport = testCore();
+test("a tap on a module selects it, and a drag that starts on one moves it, snapped beside the next", async () => {
+  const draft = gridded();
+  const transport = testCore();
 
-    await opened(draft, transport);
+  await opened(draft, transport);
 
-    const at = faceOnPage(draft.scene, 0);
+  const at = faceOnPage(draft.scene, 0);
 
-    await press("mouse", [at(1.067, 1.361)]);
-    await press("mouse", [at(5.067, 1.361)]);
-    await expect.element(count(2)).toBeVisible();
+  await press("mouse", [at(1.067, 1.361)]);
+  await press("mouse", [at(5.067, 1.361)]);
+  await expect.element(count(2)).toBeVisible();
 
-    // The first module, dragged 2.8 m to the right: 2 cm left of the second, in line with it.
-    await press("mouse", [at(1, 1.2), at(2, 1.3), at(3.8, 1.3)]);
-    // Onto the second it does not fit, and stays at the last place it did.
-    await press("mouse", [at(3.9, 1.2), at(4.6, 1.2), at(5.3, 1.2)]);
+  // The first module, dragged 2.8 m to the right: 2 cm left of the second, in line with it.
+  await press("mouse", [at(1, 1.2), at(2, 1.3), at(3.8, 1.3)]);
+  // Onto the second it does not fit, and stays at the last place it did.
+  await press("mouse", [at(3.9, 1.2), at(4.6, 1.2), at(5.3, 1.2)]);
 
-    await press("mouse", [at(5, 1.2)]);
-    await expect.element(inspector().getByRole("heading", { name: "Modul 2" })).toBeVisible();
+  await press("mouse", [at(5, 1.2)]);
+  await expect.element(inspector().getByRole("heading", { name: "Modul 2" })).toBeVisible();
 
-    await choose("Ausrichtung", "Quer");
-    await inspector().getByRole("checkbox", { name: "Optimierer" }).click();
-    await saveFrom("2026-11-01");
-    await expect.poll(() => transport.puts).toHaveLength(1);
-    expect(saved(transport)).toEqual([
-      [3346, 500, false],
-      [4500, 500, true],
-    ]);
+  await choose("Ausrichtung", "Quer");
+  await inspector().getByRole("checkbox", { name: "Optimierer" }).click();
+  await saveFrom("2026-11-01");
+  await expect.poll(() => transport.puts).toHaveLength(1);
+  expect(saved(transport)).toEqual([
+    [3346, 500, false],
+    [4500, 500, true],
+  ]);
 
-    await inspector().getByRole("button", { name: "Entfernen" }).click();
-    await expect.element(count(1)).toBeVisible();
-  },
-  MINUTE,
-);
+  await inspector().getByRole("button", { name: "Entfernen" }).click();
+  await expect.element(count(1)).toBeVisible();
+});
 
-test(
-  "a module tapped in 3D is wired into a new string or a picked one, or unwired, from its level",
-  async () => {
-    const draft = gridded();
+test("a module tapped in 3D is wired into a new string or a picked one, or unwired, from its level", async () => {
+  const draft = gridded();
 
-    await opened(draft);
+  await opened(draft);
 
-    const cells = cellsOnPage(draft.scene, 0);
+  const cells = cellsOnPage(draft.scene, 0);
 
-    await press("mouse", [cells("0.0")]);
-    await press("mouse", [cells("0.1")]);
-    await expect.element(count(2)).toBeVisible();
+  await press("mouse", [cells("0.0")]);
+  await press("mouse", [cells("0.1")]);
+  await expect.element(count(2)).toBeVisible();
 
-    await press("mouse", [cells("0.0")]);
-    await expect.element(wiredTo("Keinem String zugeordnet")).toBeVisible();
-    await choose("String", "Neuer String");
-    await expect.element(wiredTo("String 1")).toBeVisible();
+  await press("mouse", [cells("0.0")]);
+  await expect.element(wiredTo("Keinem String zugeordnet")).toBeVisible();
+  await choose("String", "Neuer String");
+  await expect.element(wiredTo("String 1")).toBeVisible();
 
-    await press("mouse", [cells("0.1")]);
-    await choose("String", "String 1");
-    await press("mouse", [cells("0.0")]);
-    await choose("String", "Keinem String zugeordnet");
-    await expect.element(wiredTo("Keinem String zugeordnet")).toBeVisible();
+  await press("mouse", [cells("0.1")]);
+  await choose("String", "String 1");
+  await press("mouse", [cells("0.0")]);
+  await choose("String", "Keinem String zugeordnet");
+  await expect.element(wiredTo("Keinem String zugeordnet")).toBeVisible();
 
-    await drill("Baukörper 1, Fläche 2", "Module", "Szene", "Strings", "String 1");
-    await expect
-      .element(inspector().getByText(/^1 Module, davon 0 mit Optimierer$/u))
-      .toBeVisible();
+  await drill("Baukörper 1, Fläche 2", "Module", "Szene", "Strings", "String 1");
+  await expect.element(inspector().getByText(/^1 Module, davon 0 mit Optimierer$/u)).toBeVisible();
 
-    await undo();
-    await expect
-      .element(inspector().getByText(/^2 Module, davon 0 mit Optimierer$/u))
-      .toBeVisible();
-  },
-  MINUTE,
-);
+  await undo();
+  await expect.element(inspector().getByText(/^2 Module, davon 0 mit Optimierer$/u)).toBeVisible();
+});
 
-test(
-  "a chimney moved onto modules removes the ones it covers, in the same undo step",
-  async () => {
-    const draft = gridded();
+test("a chimney moved onto modules removes the ones it covers, in the same undo step", async () => {
+  const draft = gridded();
 
-    await opened({ ...draft, scene: filledFace(draft.scene, 0) });
-    await expect.element(count(16)).toBeVisible();
+  await opened({ ...draft, scene: filledFace(draft.scene, 0) });
+  await expect.element(count(16)).toBeVisible();
 
-    // The first roof face is the north one; moved to the south face it stands in its middle, three
-    // fifths up it: on the upper row's fourth and fifth module.
-    await drill("Module", "Szene", "Gebäude", "Schornstein hinzufügen");
-    await choose("Dachfläche", SOUTH);
-    await drill("Gebäude", "Szene", "Module", SOUTH);
-    await expect.element(count(14)).toBeVisible();
+  // The first roof face is the north one; moved to the south face it stands in its middle, three
+  // fifths up it: on the upper row's fourth and fifth module.
+  await drill("Module", "Szene", "Gebäude", "Schornstein hinzufügen");
+  await choose("Dachfläche", SOUTH);
+  await drill("Gebäude", "Szene", "Module", SOUTH);
+  await expect.element(count(14)).toBeVisible();
 
-    await undo();
-    await expect.element(count(16)).toBeVisible();
-  },
-  MINUTE,
-);
+  await undo();
+  await expect.element(count(16)).toBeVisible();
+});
 
-test(
-  "a drag that starts off the roof orbits the camera and places nothing",
-  async () => {
-    const draft = gridded();
+test("a drag that starts off the roof orbits the camera and places nothing", async () => {
+  const draft = gridded();
 
-    await opened(draft);
+  await opened(draft);
 
-    const canvas = page.getByLabelText("3D-Szene des Hauses").element().getBoundingClientRect();
-    const [left, top] = [canvas.left + 30, canvas.top + canvas.height * 0.8];
+  const canvas = page.getByLabelText("3D-Szene des Hauses").element().getBoundingClientRect();
+  const [left, top] = [canvas.left + 30, canvas.top + canvas.height * 0.8];
 
-    await press("mouse", [
-      [left, top],
-      [left + 60, top + 10],
-      [left + 120, top + 20],
-    ]);
+  await press("mouse", [
+    [left, top],
+    [left + 60, top + 10],
+    [left + 120, top + 20],
+  ]);
 
-    await expect.poll(() => localStorage.getItem("sunreye.builder.view")).not.toBeNull();
-    await expect.element(count(0)).toBeVisible();
-  },
-  MINUTE,
-);
+  await expect.poll(() => localStorage.getItem("sunreye.builder.view")).not.toBeNull();
+  await expect.element(count(0)).toBeVisible();
+});

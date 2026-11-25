@@ -7,14 +7,13 @@
 //! unless the mode is `pv` or `minpv` (<https://docs.evcc.io/en/features/battery>).
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use axum::http::StatusCode;
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
 
 use super::devices::send;
-use super::{Core, get};
+use super::{Core, get, until};
 use crate::mqtt::fake::{self, Fake, Published};
 
 const MODE: &str = "evcc/loadpoints/1/mode";
@@ -89,16 +88,13 @@ impl Loadpoint {
         self.core.ask(&self.set_cookie, request).await
     }
 
-    /// Waits until the retained state reached the loadpoint, within two seconds.
+    /// Waits until the retained state reached the loadpoint.
     async fn until_read(&self) {
         let uri = format!("/api/v1/roles/ev.battery.boost?device={}", self.id);
-        for _ in 0..200 {
-            if self.ask(get(&uri)).await.0 == StatusCode::OK {
-                return;
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-        panic!("the retained state never arrived");
+        until("the retained state", async || {
+            (self.ask(get(&uri)).await.0 == StatusCode::OK).then_some(())
+        })
+        .await;
     }
 
     async fn write(&self, key: &str, value: f64) -> (StatusCode, Value) {

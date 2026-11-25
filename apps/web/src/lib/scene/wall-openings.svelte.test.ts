@@ -1,6 +1,6 @@
 import "../../app.css";
 import { afterEach, expect, test } from "vitest";
-import { render } from "vitest-browser-svelte";
+import { cleanup, render } from "vitest-browser-svelte";
 import type { Fitted, Geometry, Point } from "../../../../../packages/builder/src/builder/pv.ts";
 import type { Projector } from "../../../../../packages/builder/src/builder/drawing.svelte.ts";
 import { SceneCanvas } from "@sunreye/builder";
@@ -101,14 +101,16 @@ test("at night some windows glow warm, the same ones every time; by day none do"
 
   expect(lit.filter(Boolean).length).toBeLessThan(windows.length);
 
-  document.body.replaceChildren();
+  // Unmounted, not only taken off the page: a scene left mounted keeps its WebGL context and
+  // draws again beside the next.
+  cleanup();
 
   const again = await wall(MIDNIGHT);
 
   await settle(() => again()?.some(Boolean) === true);
   expect(again()).toEqual(lit);
 
-  document.body.replaceChildren();
+  cleanup();
 
   const day = await wall(NOON);
 

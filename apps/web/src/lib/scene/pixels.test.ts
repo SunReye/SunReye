@@ -30,9 +30,7 @@ function mean({ data }: { readonly data: ArrayLike<number> }): [number, number, 
 }
 
 // Generating every map twice takes seconds; the app does it once, in a worker (ADR 21).
-const GENERATES_ALL = { timeout: 30_000 };
-
-test("both groups' maps are generated, the same on every run", GENERATES_ALL, () => {
+test("both groups' maps are generated, the same on every run", () => {
   for (const make of Object.values(GROUPS)) {
     const [first, second]: Maps[] = [make(), make()];
 

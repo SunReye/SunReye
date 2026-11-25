@@ -3,7 +3,7 @@
 use std::net::{IpAddr, SocketAddr};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::Router;
 use axum::body::Body;
@@ -315,6 +315,24 @@ async fn a_method_a_route_lacks_is_a_problem() {
         problem(response).await,
         (StatusCode::METHOD_NOT_ALLOWED, "request.method".to_owned())
     );
+}
+
+/// The one hang guard of a wait here: a wait polls its condition, and a loaded machine makes it
+/// slower, never red.
+const HANG: Duration = Duration::from_secs(120);
+
+/// What `look` gives once it gives anything, looked at again every 10 ms.
+async fn until<T>(what: &str, mut look: impl AsyncFnMut() -> Option<T>) -> T {
+    tokio::time::timeout(HANG, async {
+        loop {
+            if let Some(found) = look().await {
+                return found;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("never held: {what}"))
 }
 
 fn get(uri: &str) -> Request<Body> {
