@@ -151,3 +151,4 @@ Plain values and helpers. Loads neither three.js nor Svelte, so a unit test reac
 - `editable`, `valueText`, `clock`, `Editable`, `EditableSetting`, `Outcome`, `Refused`: a setting as the value editor edits it.
 - `compact`, `found`, `queryWords`, `tokens`: the catalogue's search.
 - `COUNT_UP_MS`, `EXIT_MS`, `FIGURE_GLIDE_MS`, `SPRINGS`: motion durations.
+- `stringCss`, `stringColour`, `STRINGS`, `UNASSIGNED`: the colour a string is drawn in by its position, as CSS or a number (grey for none).
