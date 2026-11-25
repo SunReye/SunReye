@@ -40,8 +40,8 @@ export interface Shown {
   readonly snap: Snap | undefined;
   /** The chain's last point, which the line being drawn starts from. */
   readonly from: Spot | undefined;
-  /** A dragged line, or a dragged point's lines, where they would move to. */
-  readonly dragged: readonly { readonly from: Spot; readonly to: Spot }[] | undefined;
+  /** A dragged line where it would move to. */
+  readonly dragged: { readonly from: Spot; readonly to: Spot } | undefined;
   /** The pointer on the canvas, in pixels. */
   readonly pointer: readonly [number, number] | undefined;
   /** Why the last click drew nothing, until the next. */

@@ -123,13 +123,10 @@
 
   /** The line being drawn and the line being dragged, dashed. */
   const dashed = $derived.by((): Stroke[] => {
+    const moved = shown.dragged && [at(shown.dragged.from), at(shown.dragged.to)];
+    const [from, to] = moved ?? [];
     const look = { colour: "var(--brand)", dash: "6 4" };
-
-    const drag = (shown.dragged ?? []).flatMap((line, i) => {
-      const [from, to] = [at(line.from), at(line.to)];
-
-      return from && to ? [{ key: `dragged-${i}`, from, to, width: 3, ...look }] : [];
-    });
+    const drag = from && to ? [{ key: "dragged", from, to, width: 3, ...look }] : [];
 
     const line = drawing
       ? [{ key: "drawing", from: drawing.a, to: drawing.b, width: 2, ...look }]

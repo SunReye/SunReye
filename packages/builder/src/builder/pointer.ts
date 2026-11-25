@@ -24,7 +24,7 @@ export function listen(canvas: HTMLCanvasElement, { press, move, release }: Gest
 }
 
 /** Where `event` lands on `canvas`: −1 to 1 across, y up. */
-export function ndc(canvas: HTMLCanvasElement, event: MouseEvent): [number, number] {
+export function ndc(canvas: HTMLCanvasElement, event: PointerEvent): [number, number] {
   const box = canvas.getBoundingClientRect();
 
   return [
