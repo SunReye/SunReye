@@ -339,6 +339,15 @@ impl Scene {
     pub fn roofs(&self) -> Vec<RoofFace> {
         self.roof_faces()
             .map(|(block, face, corners, width)| {
+                let traced = self
+                    .blocks
+                    .get(block)
+                    .is_some_and(|b| b.free_form.is_some());
+                let width = if traced {
+                    along_longest(&corners, width)
+                } else {
+                    width
+                };
                 let mut roof = RoofFace::new(block, face, &corners, width);
                 roof.chimneys = self
                     .chimneys
@@ -639,6 +648,30 @@ fn normal(corners: &[Point]) -> Point {
 
 fn upward(n: Point) -> Point {
     if n[2] < 0.0 { n.map(|x| -x) } else { n }
+}
+
+/// A level free-form face's direction across: along its longest edge, as a traced flat roof's rows
+/// run along its edges; of edges as long to a centimetre, the one nearest `width`, pointing its way.
+/// A parametric block keeps its width's, which its stored modules are placed in.
+fn along_longest(corners: &[Point], width: Point) -> Point {
+    let edges = corners
+        .iter()
+        .zip(corners.iter().cycle().skip(1))
+        .map(|(a, b)| {
+            let [east, north, _] = sub(*b, *a);
+            if dot([east, north, 0.0], width) < 0.0 {
+                [-east, -north, 0.0]
+            } else {
+                [east, north, 0.0]
+            }
+        });
+    let length = |[east, north, _]: Point| east.hypot(north);
+    let longest = edges.clone().map(length).fold(0.0, f64::max);
+    let nearness = |edge: Point| dot(edge, width) / length(edge).max(EPSILON);
+    edges
+        .filter(|edge| length(*edge) > longest - 0.01)
+        .max_by(|a, b| nearness(*a).total_cmp(&nearness(*b)))
+        .unwrap_or(width)
 }
 
 fn unit(v: Point) -> Point {

@@ -764,3 +764,26 @@ fn existing_pv_stays_on_a_bent_traced_face() {
     assert_eq!(on(raised(3.0)), Ok(1));
     assert_eq!(on(raised(4.0)), Ok(1));
 }
+
+/// A level traced rectangle, 10 m by 6 m at 3 m, turned 15° from the scene's axes.
+fn turned_flat() -> Scene {
+    let (cos, sin) = (15f64.to_radians().cos(), 15f64.to_radians().sin());
+    let corners: Vec<[f64; 2]> = [[0.0, 0.0], [10.0, 0.0], [10.0, 6.0], [0.0, 6.0]]
+        .iter()
+        .map(|&[x, z]: &[f64; 2]| [x.mul_add(cos, -z * sin), x.mul_add(sin, z * cos)])
+        .collect();
+    let faces: Vec<[f64; 3]> = corners.iter().rev().map(|&[x, z]| [x, 3.0, z]).collect();
+    scene(0.0, &json!([free(&json!(corners), &json!([faces]))]))
+}
+
+#[test]
+fn a_level_traced_face_lays_its_rows_along_its_longest_edge() {
+    let face = turned_flat().roofs().remove(0);
+    let (cos, sin) = (15f64.to_radians().cos(), 15f64.to_radians().sin());
+
+    // The long edge runs along x turned 15° toward z, which is south: east and a little south.
+    assert!(near(&face.across, &[cos, -sin, 0.0]), "{:?}", face.across);
+    // Its outline is the rectangle itself, 10 m across and 6 m up.
+    let extent = |axis: usize| face.outline.iter().map(|p| p[axis]).fold(0.0, f64::max);
+    assert!((extent(0) - 10.0).abs() < 1e-9 && (extent(1) - 6.0).abs() < 1e-9);
+}
