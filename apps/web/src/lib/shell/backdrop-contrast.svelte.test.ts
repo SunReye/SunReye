@@ -6,7 +6,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { Toaster } from "../components/ui/sonner/index.js";
-import { stepUntil } from "../motion/clock.harness.ts";
+import { clearToasts, holdToasts } from "../components/toasts.harness.ts";
 import Backdrop from "./Backdrop.svelte";
 import {
   drifts,
@@ -152,8 +152,7 @@ type Ink = (typeof INKS)[number] | (typeof STATUSES)[number];
 
 /** The colour of each status toast's icon, per theme: a toast is ambient glass too (#760). */
 async function statusInks(): Promise<Record<Theme, Record<(typeof STATUSES)[number], Rgb>>> {
-  // A toast's time is the test's: it closes, and leaves once dismissed, as the clock is run on.
-  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  holdToasts();
   await render(Toaster);
 
   const read = async (theme: Theme) => {
@@ -187,14 +186,7 @@ async function statusInks(): Promise<Record<Theme, Record<(typeof STATUSES)[numb
   const inks = { light: await read("light"), dark: await read("dark") };
 
   // The toasts are out of the picture before it is measured.
-  toast.dismiss();
-  await stepUntil(
-    () => document.querySelectorAll("[data-sonner-toast]").length === 0,
-    () => {
-      vi.advanceTimersByTime(100);
-    },
-  );
-  vi.useRealTimers();
+  await clearToasts();
 
   return inks;
 }

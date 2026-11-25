@@ -2,9 +2,10 @@
 // A toast is one of the app's floating surfaces (ADR 21): the radius token and the bottom bar's
 // ambient glass, ring and elevation, whatever its type.
 import { toast } from "svelte-sonner";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
+import { clearToasts, holdToasts } from "./toasts.harness.ts";
 import { Toaster } from "./ui/sonner/index.js";
 import "../../app.css";
 
@@ -40,8 +41,10 @@ const TYPES = [
 
 const THEMES = ["light", "dark"] as const;
 
-afterEach(() => {
-  toast.dismiss();
+beforeEach(holdToasts);
+
+afterEach(async () => {
+  await clearToasts();
   root.classList.remove("dark");
 });
 

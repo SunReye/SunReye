@@ -1,7 +1,7 @@
-import { toast } from "svelte-sonner";
 import { afterEach, expect, test } from "vitest";
 import { cdp } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
+import { clearToasts, holdToasts } from "../components/toasts.harness.ts";
 import Gallery from "./Gallery.svelte";
 
 /** Every component folder of the kit, the app's and the package's (ADR 25), by name. */
@@ -12,7 +12,7 @@ const kit = Object.keys(
 const root = document.documentElement;
 
 afterEach(async () => {
-  toast.dismiss();
+  await clearToasts();
   root.classList.remove("dark");
   root.style.removeProperty("--radius");
   delete root.dataset["lowPower"];
@@ -74,6 +74,7 @@ test("the gallery shows every primitive built on the kit", async () => {
 const raised = (selector: string) => () => document.querySelector(`[data-sonner-toast]${selector}`);
 
 test("the gallery raises a toast of every type", async () => {
+  holdToasts();
   const screen = await render(Gallery);
   const demo = screen.container.querySelector('[data-gallery="sonner"]')!;
 
