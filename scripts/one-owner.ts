@@ -146,7 +146,8 @@ export const RULES: readonly Rule[] = [
       "builder/InspectorSheet.svelte": "The inspector sheet's drag.",
       "builder/drawing.svelte.ts": "The canvas's presses and drags.",
       "builder/hover.svelte.ts": "What a press on the canvas would do, shown under the mouse.",
-      "builder/pointing.svelte.ts": "The canvas's press, told its consumer before the drags hear it.",
+      "builder/pointing.svelte.ts":
+        "The canvas's press, told its consumer before the drags hear it.",
       "components/drill-in/push.svelte.ts": "The drill-in's edge-swipe back.",
       "components/value-editor/wheel.svelte": "The value editor's wheel.",
       "shell/Rail.svelte": "The rail's resize.",
