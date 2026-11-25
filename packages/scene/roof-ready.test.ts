@@ -11,6 +11,7 @@ import {
   pullEaves,
   pullRidges,
   readyRoofs,
+  rectangleAround,
   replay,
   setHeight,
 } from "./index.js";
@@ -234,4 +235,44 @@ test("a ready roof placed turned is that roof turned clockwise about its corner,
   });
 
   expect("refused" in replayed ? replayed : built(replayed.scene)).toEqual(built(turned.scene));
+});
+
+/** A point of a house 30° clockwise from x, its corner at (2, 1). */
+const turn = (x: number, z: number): [number, number] => [
+  2 + x * Math.cos(Math.PI / 6) - z * Math.sin(Math.PI / 6),
+  1 + x * Math.sin(Math.PI / 6) + z * Math.cos(Math.PI / 6),
+];
+
+test("a ready roof fits the smallest rectangle around a footprint, turned with it", () => {
+  // A 10 × 6 m house with a notch in its side.
+  const house = [turn(0, 0), turn(10, 0), turn(10, 6), turn(6, 6), turn(5, 5), turn(0, 6)];
+
+  const fit = rectangleAround(house);
+
+  if (!fit) throw new Error("no rectangle");
+
+  expect(fit.width * fit.depth).toBeCloseTo(60, 6);
+  const [short = 0, long = 0] = [fit.width, fit.depth].toSorted((a, b) => a - b);
+
+  expect(short).toBeCloseTo(6, 6);
+  expect(long).toBeCloseTo(10, 6);
+  expect(((fit.turn % 90) + 90) % 90).toBeCloseTo(30, 6);
+
+  // Placed there, the roof covers the house exactly: its corners are the house's.
+  const fitted = placeRoof(EMPTY, "flachdach", fit.at, { ...SIZE, ...fit }, fit.turn);
+
+  if ("refused" in fitted) throw new Error(fitted.refused);
+
+  for (const [x, z] of [turn(0, 0), turn(10, 0), turn(10, 6), turn(0, 6)]) {
+    expect(height(fitted.scene, Number(x.toFixed(9)), Number(z.toFixed(9)))).toBe(3);
+  }
+});
+
+test("a rectangle around nothing to fit is none", () => {
+  expect(
+    rectangleAround([
+      [0, 0],
+      [1, 1],
+    ]),
+  ).toBeNull();
 });

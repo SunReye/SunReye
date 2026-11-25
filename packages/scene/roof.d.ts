@@ -171,6 +171,16 @@ export declare function placeRoof(
   turn?: number,
 ): Edited;
 
+/** The smallest rectangle around `points` (x and z) seen from above, as `placeRoof` takes it: its
+ * corner, the degrees its width is turned clockwise from x, its width and its depth; null for
+ * points that bound no area. */
+export declare function rectangleAround(points: readonly (readonly [number, number])[]): {
+  readonly at: { readonly x: number; readonly z: number };
+  readonly turn: number;
+  readonly width: number;
+  readonly depth: number;
+} | null;
+
 /** The ready dormers, in the order a menu lists them. */
 export declare const readyDormers: readonly ReadyEntry[];
 
