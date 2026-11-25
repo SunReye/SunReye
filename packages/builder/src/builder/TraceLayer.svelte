@@ -1,7 +1,7 @@
 <!--
   A traced roof's lines and points over the canvas (ADR 20), its bent faces in the warning colour,
-  the line being drawn from the last click to the pointer's snap, and beside the pointer a chip
-  naming the snap and the line's length.
+  the line being drawn from the last click to the pointer's snap, the guide of the direction it is
+  snapped to, and beside the pointer a chip naming the snap, the line's length and its angle.
   It never takes the pointer: the canvas beneath traces.
 -->
 <script lang="ts">
@@ -111,6 +111,16 @@
 
   const ring = $derived(shown.snap && shown.snap.kind !== "free" ? at(shown.snap.at) : null);
 
+  /** The direction the line being drawn is snapped to, across the canvas. */
+  const guide = $derived.by(() => {
+    const from = shown.guide && at(shown.guide.from);
+    const to = shown.guide && at(shown.guide.to);
+
+    return from && to ? { from, to } : undefined;
+  });
+
+  const degrees = $derived(new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 0 }));
+
   /** The line being drawn and the line being dragged, dashed. */
   const dashed = $derived.by((): Stroke[] => {
     const moved = shown.dragged && [at(shown.dragged.from), at(shown.dragged.to)];
@@ -128,7 +138,9 @@
   const chip = $derived.by(() => {
     const words = [
       drawing && `${metres.format(drawing.length)} m`,
+      shown.guide && `${degrees.format(shown.guide.angle)}°`,
       shown.snap && NAMES[shown.snap.kind](),
+      shown.guide && m.builder_trace_free(),
       shown.refused && REFUSALS[shown.refused](),
     ].filter((word) => word !== undefined && word !== "");
 
@@ -148,6 +160,19 @@
       stroke-width="2"
     />
   {/each}
+  {#if guide}
+    <line
+      data-guide
+      x1={guide.from[0]}
+      y1={guide.from[1]}
+      x2={guide.to[0]}
+      y2={guide.to[1]}
+      stroke="var(--brand)"
+      stroke-opacity="0.5"
+      stroke-width="1"
+      stroke-dasharray="2 4"
+    />
+  {/if}
   {#each [...traced, ...dashed] as { key, from, to, colour, width, dash } (key)}
     <line
       x1={from[0]}

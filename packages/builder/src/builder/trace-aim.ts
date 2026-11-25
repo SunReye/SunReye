@@ -17,6 +17,8 @@ export interface Aimed {
   readonly snap?: Snap | undefined;
   /** The pointer's ray in the scene's frame, which finds what is drawn under it. */
   readonly ray?: Ray | undefined;
+  /** The line is drawn where the pointer is, never turned onto a direction (Shift held). */
+  readonly free?: boolean | undefined;
 }
 
 /** Metres a click snaps within where the ground cannot be measured. */

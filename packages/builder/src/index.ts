@@ -7,6 +7,8 @@ export { default as SceneCanvas } from "./builder/SceneCanvas.svelte";
 
 export { headingOf, parseView, presetView, type Preset, type View } from "./builder/camera.ts";
 
+export { detent, eaveHeading, withHeading } from "./builder/view-turn.ts";
+
 export type {
   Around,
   Editing,
@@ -21,7 +23,11 @@ export type {
 
 export { layingOf, type Laying, type LaySteps } from "./builder/gestures.ts";
 
-export type { LineRef, Placing, TraceEdit, Tracing } from "./builder/tracing.svelte.ts";
+export type { LineRef, Placing, Tracing } from "./builder/tracing.svelte.ts";
+
+/** An edit the tracing made, named with its operation's arguments, as the consumer may replay it
+ * where it keeps the scene (`@sunreye/scene`'s `replay`). */
+export type { TraceEdit } from "@sunreye/scene";
 
 export type { Aerial } from "./builder/supplied.ts";
 

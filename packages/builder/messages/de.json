@@ -300,6 +300,7 @@
   "builder_trace_lines": "Nachgezeichnete Dachlinien",
   "builder_snap_point": "Punkt",
   "builder_snap_line": "Auf Linie",
+  "builder_trace_free": "Umschalt: frei",
   "builder_trace_short": "Keine Länge",
   "builder_trace_joins": "Verbindet zwei Dächer",
   "builder_trace_crosses": "Linien kreuzen sich",

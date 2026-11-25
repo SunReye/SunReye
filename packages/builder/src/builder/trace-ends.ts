@@ -3,7 +3,8 @@
 import { snap, type End, type PointRef, type Snap, type Spot } from "@sunreye/scene";
 import { clickAt, type Aimed } from "./trace-aim.ts";
 import type { Scene } from "./pv.ts";
-import type { LineRef } from "./tracing.svelte.ts";
+import type { Guide } from "./trace-angle.ts";
+import type { LineRef } from "./trace-types.ts";
 
 /** A traced point's spot. */
 export function spotOf(scene: Scene, { block, point }: PointRef): Spot {
@@ -30,15 +31,18 @@ export function snapOf(scene: Scene, { at, reach, snap: picked }: Aimed): Snap {
   return picked ?? snap(scene, clickAt(at), reach);
 }
 
-/** Where a click ends a line: the traced point it snaps to, a place on the line it snaps to, else
- * the click itself. */
-export function ended(scene: Scene, aimed: Aimed): End {
-  const snapped = snapOf(scene, aimed);
-
+/** Where a click ends a line: the traced point it snaps to, a place on the line it snaps to, the
+ * direction it was turned onto, else the click itself. */
+export function ended(
+  { snap: snapped, guide }: Readonly<{ snap: Snap; guide: Guide | undefined }>,
+  aimed: Aimed,
+): End {
   if (snapped.kind === "point") return { block: snapped.block, point: snapped.point };
 
   // A line's place by its plan, where the scene's operations snap it to the line again.
-  return snapped.kind === "line" ? { x: snapped.at[0], z: snapped.at[2] } : clickAt(aimed.at);
+  if (snapped.kind === "line") return { x: snapped.at[0], z: snapped.at[2] };
+
+  return clickAt(guide === undefined ? aimed.at : snapped.at);
 }
 
 /** Whether two ends are the same traced point. */

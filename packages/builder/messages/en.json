@@ -300,6 +300,7 @@
   "builder_trace_lines": "Traced roof lines",
   "builder_snap_point": "Point",
   "builder_snap_line": "On line",
+  "builder_trace_free": "Shift: free",
   "builder_trace_short": "No length",
   "builder_trace_joins": "Joins two roofs",
   "builder_trace_crosses": "Lines cross",

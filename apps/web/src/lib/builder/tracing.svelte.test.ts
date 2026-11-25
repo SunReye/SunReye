@@ -206,6 +206,38 @@ test("a ready dormer held is placed on the face under the next click", async () 
   expect(edit && replay(start, edit)).toMatchObject({ scene: scenes[0] });
 });
 
+test("a line nearly square to the last snaps square, its guide and angle shown; Shift draws free", async () => {
+  const { at, edits, scenes } = await tracing();
+
+  await press("mouse", [at(2, 2)]);
+  await press("mouse", [at(2, 8)]);
+  await settle(() => scenes.length === 1);
+
+  const [x, y] = at(8, 8.3);
+
+  await cdp().send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
+  await expect.element(page.getByText("6,00 m · 90° · Umschalt: frei")).toBeVisible();
+  expect(document.querySelector("[data-guide]")).not.toBeNull();
+
+  await press("mouse", [[x, y]]);
+  await settle(() => scenes.length === 2);
+
+  const square = edits[1]?.kind === "add" ? edits[1].to : undefined;
+
+  expect(square && "z" in square ? square.z : Number.NaN).toBeCloseTo(8, 6);
+
+  const [fx, fy] = at(8.3, 2.3);
+  const shift = { button: "left", clickCount: 1, modifiers: 8, x: fx, y: fy } as const;
+
+  await cdp().send("Input.dispatchMouseEvent", { ...shift, type: "mousePressed" });
+  await cdp().send("Input.dispatchMouseEvent", { ...shift, type: "mouseReleased" });
+  await settle(() => scenes.length === 3);
+
+  const free = edits[2]?.kind === "add" ? edits[2].to : undefined;
+
+  expect(free && "x" in free ? free.x : Number.NaN).toBeCloseTo(8.3, 1);
+});
+
 test("a roof traced as a new roof beside another keeps to its own block, round to its first corner", async () => {
   const house = replay(EMPTY, {
     kind: "add",
