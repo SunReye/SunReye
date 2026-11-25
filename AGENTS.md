@@ -13,7 +13,7 @@ No code before the ADR that names it.
 
 `bun run gate` is the only check (ADR 13): every format, lint, type, build and test step, serially, stopping at the first failure. Run it green before a branch merges into its milestone branch or `v5`.
 
-The pre-commit hook runs `bun run gate:fast`, the gate's steps that need no SPA build and no compiled core. A green hook is not a green gate.
+The pre-commit hook runs `bun run hook` (`scripts/hook.ts`): format and lint of the staged files, types, the bun tests the staged files reach and `cargo test` of the staged crates. A green hook is not a green gate.
 
 ## TDD
 

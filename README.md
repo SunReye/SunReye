@@ -68,7 +68,7 @@ Open `http://127.0.0.1:8099` and set the admin password.
 
 `AGENTS.md` holds the rules, for people and agents alike: an ADR before the code it names, a failing test before the behaviour, conventional commits.
 
-`bun run gate` is the only check. The pre-commit hook runs its fast steps; the whole gate runs before a merge.
+`bun run gate` is the only check. The pre-commit hook checks what a commit stages (`bun run hook`); the whole gate runs before a merge.
 
 A device profile is the easiest contribution: [docs/profiles.md](docs/profiles.md).
 
