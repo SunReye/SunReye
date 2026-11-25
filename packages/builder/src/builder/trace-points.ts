@@ -12,7 +12,7 @@ import {
   type TraceEdit,
 } from "@sunreye/scene";
 import type { Scene } from "./pv.ts";
-import { spotOf } from "./trace-ends.ts";
+import { shifted, spotOf } from "./trace-ends.ts";
 import { clickAt, type Aimed } from "./trace-aim.ts";
 import { faceUnder } from "./trace-place.ts";
 import type { LineRef, Placing } from "./trace-types.ts";
@@ -57,6 +57,32 @@ export function lineMoved(scene: Scene, { block, line }: LineRef, at: Spot, to: 
   const by = { x: to[0] - at[0], z: to[2] - at[2] };
 
   return { edited: moveLine(scene, block, line, by), edit: { kind: "move", block, line, by } };
+}
+
+/** Line `ref` being dragged from `at` to `to`: every line the move would shift or stretch, where
+ * it would go; refused, the line alone shifted. */
+export function lineDragged(scene: Scene, ref: LineRef, at: Spot, to: Spot): Dashed[] {
+  const { edited } = lineMoved(scene, ref, at, to);
+
+  if ("refused" in edited) return [shifted(scene, ref, at, to)];
+
+  const { block } = ref;
+  const before = scene.blocks[block]?.freeForm?.traced?.points ?? [];
+  const after = edited.scene.blocks[block]?.freeForm?.traced;
+
+  const moved = (point: number): boolean =>
+    after?.points[point]?.some((value, i) => value !== before[point]?.[i]) ?? false;
+
+  return (after?.lines ?? []).flatMap(([a = 0, b = 0]) =>
+    moved(a) || moved(b)
+      ? [
+          {
+            from: spotOf(edited.scene, { block, point: a }),
+            to: spotOf(edited.scene, { block, point: b }),
+          },
+        ]
+      : [],
+  );
 }
 
 /** Point `ref` dragged to `to`. */

@@ -16,8 +16,9 @@ import type { Plan } from "./plan.ts";
 import { direction, turned, type Guide } from "./trace-angle.ts";
 import type { Aimed } from "./trace-aim.ts";
 import type { Scene } from "./pv.ts";
-import { ended, samePoint, shifted, snapOf, spotOf } from "./trace-ends.ts";
+import { ended, samePoint, snapOf, spotOf } from "./trace-ends.ts";
 import {
+  lineDragged,
   lineMoved,
   lineSplit,
   pointLines,
@@ -144,7 +145,7 @@ export class TraceTool {
 
     if (!dragged || pressed === undefined) return;
 
-    if (line !== undefined) this.#dragged = [shifted(tracing.scene, line, pressed.at, at)];
+    if (line !== undefined) this.#dragged = lineDragged(tracing.scene, line, pressed.at, at);
     else if (pressed.point !== undefined && snapped !== undefined)
       this.#dragged = pointLines(tracing.scene, pressed.point, snapped.snap.at);
   }
@@ -286,7 +287,6 @@ export class TraceTool {
     }
 
     this.#answered();
-
     this.#chain(edited, into);
     this.#scene = edited.scene;
     tracing.ontrace(edited.scene, {

@@ -76,3 +76,21 @@ test("Del on a point tapped takes it out, its two lines joined", async () => {
   expect(edits.at(-1)).toMatchObject({ kind: "removePoint", block: 0 });
   expect(scenes.at(-1)?.blocks[0]?.freeForm?.faces[0]).toHaveLength(3);
 });
+
+test("a line dragged shows the whole straight run it moves and the lines it stretches", async () => {
+  const { at, edits } = await squareTraced();
+
+  await doubleClick(at(2, 5));
+  await settle(() => edits.some((edit) => edit.kind === "split"));
+
+  const mouse = { button: "left", pointerType: "mouse", clickCount: 1 } as const;
+  const [[gx, gy], [tx, ty]] = [at(2, 3.5), at(1, 3.5)];
+
+  await cdp().send("Input.dispatchMouseEvent", { ...mouse, type: "mousePressed", x: gx, y: gy });
+  await cdp().send("Input.dispatchMouseEvent", { ...mouse, type: "mouseMoved", x: tx, y: ty });
+
+  // The west side's two pieces and the north and south sides they stretch.
+  await settle(() => document.querySelectorAll('line[stroke-dasharray="6 4"]').length === 4);
+
+  await cdp().send("Input.dispatchMouseEvent", { ...mouse, type: "mouseReleased", x: tx, y: ty });
+});
