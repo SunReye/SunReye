@@ -3,7 +3,7 @@
 // telling what a press does, and Space held panning.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- three.js and the DOM, used in place. */
 import type { RoofFaceId } from "@sunreye/scene";
-import type { Group, PerspectiveCamera, Scene as Studio } from "three";
+import type { Group, OrthographicCamera, PerspectiveCamera, Scene as Studio } from "three";
 import { ContextPress, whereOn, type Asked } from "./context-press.ts";
 import type { Editing } from "./handles/grabbing.ts";
 import { Hover } from "./hover.svelte.ts";
@@ -45,7 +45,7 @@ export interface Pointing {
 }
 
 /** Asks for the menu with what the press struck, once someone listens. */
-function asking(camera: PerspectiveCamera, sources: Pointing, faceAt: FaceAt) {
+function asking(camera: PerspectiveCamera | OrthographicCamera, sources: Pointing, faceAt: FaceAt) {
   return (): ((asked: Asked) => void) | undefined => {
     const ask = sources.props().oncontext;
 
@@ -69,7 +69,7 @@ type FaceAt = (hit: Hit | null) => RoofFaceId | null;
 /** Tells the consumer of each primary press first, in the capture phase; returns the removal. */
 function pressing(
   canvas: HTMLCanvasElement,
-  camera: PerspectiveCamera,
+  camera: PerspectiveCamera | OrthographicCamera,
   sources: Pointing,
   faceAt: FaceAt,
 ): () => void {
@@ -96,7 +96,7 @@ function pressing(
 /** Listens on `canvas`, after the handles; returns the removal. */
 export function pointing(
   canvas: HTMLCanvasElement,
-  camera: PerspectiveCamera,
+  camera: PerspectiveCamera | OrthographicCamera,
   studio: Studio,
   render: () => void,
   sources: Pointing,

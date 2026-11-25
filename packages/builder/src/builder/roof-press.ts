@@ -3,7 +3,8 @@
 // hands both to the orbit controls. A mouse over the selected face shows the ghost module. Each
 // gesture is one undo step. Mouse, pen and touch.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- three.js and the DOM, used in place. */
-import type { Group, PerspectiveCamera } from "three";
+import type { Lens } from "./lens.ts";
+import type { Group } from "three";
 import { onPlane, type Aim } from "./aim.ts";
 import { hover, lay, select, type Roofwork, type Press } from "./gestures.ts";
 import type { Ghost } from "./pv.ts";
@@ -36,7 +37,7 @@ interface Held {
 /** Listens on a canvas, before the orbit controls and the click picking. */
 export class RoofPress {
   readonly #canvas: HTMLCanvasElement;
-  readonly #camera: PerspectiveCamera;
+  readonly #camera: Lens;
   readonly #sources: RoofSources;
   #held: Held | undefined;
 
@@ -45,7 +46,7 @@ export class RoofPress {
   /** Stops listening. */
   readonly dispose: () => void;
 
-  constructor(canvas: HTMLCanvasElement, camera: PerspectiveCamera, sources: RoofSources) {
+  constructor(canvas: HTMLCanvasElement, camera: Lens, sources: RoofSources) {
     this.#canvas = canvas;
     this.#camera = camera;
     this.#sources = sources;

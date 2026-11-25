@@ -1,8 +1,8 @@
 // A studio drawn in this browser's 3D quality (ADR 20 Look, Rendering quality) and under what
 // this browser draws of the weather (ADR 23 "Off switch"), and counted while it is on show: a
 // strain the frame watch measures then is its drawing's too.
+import type { Lens } from "../builder/lens.ts";
 import { untrack } from "svelte";
-import type { PerspectiveCamera } from "three";
 import { motion } from "../motion/tier.svelte.ts";
 import { focusEffects } from "./focus-effects.svelte.ts";
 import { perf } from "./perf.svelte.ts";
@@ -41,7 +41,7 @@ export function openStudio(
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws on it.
   canvas: HTMLCanvasElement,
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws with it.
-  camera: PerspectiveCamera,
+  camera: Lens,
 ): Opened {
   // Untracked: a caller's effect makes the studio once, and its own follows the look.
   const studio = new Studio(canvas, camera, (gpu) =>

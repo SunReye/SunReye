@@ -7,11 +7,12 @@ import {
   HemisphereLight,
   NeutralToneMapping,
   type Object3D,
-  type PerspectiveCamera,
   Scene,
   SRGBColorSpace,
   Vector3,
   WebGLRenderer,
+  type OrthographicCamera,
+  type PerspectiveCamera,
 } from "three";
 import { toThree } from "../builder/scene.ts";
 import { Environment } from "./environment.ts";
@@ -40,7 +41,7 @@ export class Studio {
   readonly #centre = new Vector3();
   #radius = 10;
   readonly #toward = new Vector3(0, 1, 0);
-  readonly camera: PerspectiveCamera;
+  readonly camera: PerspectiveCamera | OrthographicCamera;
   #size: readonly [number, number] = [1, 1];
 
   /** `look` is asked once, with the GPU this canvas draws on, where the browser tells. */
@@ -48,7 +49,7 @@ export class Studio {
     // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws on it.
     canvas: HTMLCanvasElement,
     // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws with it.
-    camera: PerspectiveCamera,
+    camera: PerspectiveCamera | OrthographicCamera,
     look: (gpu: string | null) => Look,
   ) {
     this.camera = camera;

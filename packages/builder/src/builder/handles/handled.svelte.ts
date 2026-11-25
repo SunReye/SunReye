@@ -1,8 +1,9 @@
 // The selected object's handles on a SceneCanvas (ADR 20): shown in the studio, grabbed by the
 // pointer, and the live value placed beside the dragging handle after each draw.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- three.js and the DOM, used in place. */
+import type { Lens } from "../lens.ts";
 import { untrack } from "svelte";
-import type { Group, PerspectiveCamera, Scene as Studio } from "three";
+import type { Group, Scene as Studio } from "three";
 import { getLocale } from "../../paraglide/runtime.js";
 import type { Point } from "../pv.ts";
 import type { Panel } from "../scene.ts";
@@ -49,7 +50,7 @@ export class Handled {
   /** Shows and grabs the handles; call during set-up, before the orbit controls listen. */
   attach(
     canvas: HTMLCanvasElement,
-    camera: PerspectiveCamera,
+    camera: Lens,
     studio: Studio,
     sources: Handling,
     render: () => void,

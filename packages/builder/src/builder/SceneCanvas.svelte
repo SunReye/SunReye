@@ -6,7 +6,7 @@
 
 <script lang="ts">
   import { untrack } from "svelte";
-  import { PerspectiveCamera, type Group } from "three";
+  import type { Group } from "three";
   import {
     openGarage,
     parkedKey,
@@ -16,8 +16,8 @@
   } from "../cars/garage.ts";
   import PerfOverlay from "../scene/PerfOverlay.svelte";
   import { Ghost, lit, type Lit, type SceneFailure, type Sky } from "../scene/stage.svelte.ts";
-  import { FOV, type View } from "./camera.ts";
-  import { fit, orbit } from "./orbit.svelte.ts";
+  import type { View } from "./camera.ts";
+  import { fit, lensOf, orbit, type Lens } from "./orbit.svelte.ts";
   import { m } from "../paraglide/messages.js";
   import type { Geometry, Point, RoofFace } from "./pv.ts";
   import {
@@ -193,7 +193,7 @@
   }
 
   /** The lit studio on `canvas`; null without WebGL2. */
-  function studioOn(canvas: HTMLCanvasElement, camera: PerspectiveCamera): Lit | null {
+  function studioOn(canvas: HTMLCanvasElement, camera: Lens): Lit | null {
     try {
       return lit(
         canvas,
@@ -218,7 +218,7 @@
   /** Answers a click with its hit and the roof face it selects, and marks the selected face. */
   function selecting(
     canvas: HTMLCanvasElement,
-    camera: PerspectiveCamera,
+    camera: Lens,
     { studio, opening }: Lit,
     drawn: () => Group | undefined,
   ): () => void {
@@ -256,14 +256,13 @@
   /** Draws on a change of geometry, view, sun or theme, a camera move or a resize; nothing before
    * the studio is prepared. Cars come once the house is on screen. */
   function stage(canvas: HTMLCanvasElement): () => void {
-    const camera = new PerspectiveCamera(FOV, 1, 0.1, 5000);
+    const camera = lensOf(untrack(() => navigation));
     const scene = studioOn(canvas, camera);
 
     if (scene === null) return () => {};
 
     const { studio, flight, opening } = scene;
     const { render } = opening;
-    const resize = fit(canvas, studio, camera, render);
     const kept = keep(scene, source, render);
     const handling = { editing: () => editing, drawn: kept.drawn, panels: source.panels };
     // Before the picking and the orbit controls: a press on a handle or a trace never reaches them.
@@ -285,6 +284,7 @@
     );
 
     const controls = orbit(canvas, camera, flight, render, orbiting, () => navigation);
+    const resize = fit(canvas, studio, camera, render, controls.target);
 
     opening
       .open(kept.built, () => onready?.(), parking.due)

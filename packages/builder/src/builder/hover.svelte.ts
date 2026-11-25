@@ -1,8 +1,9 @@
 // What the mouse is over in an editor's navigation (ADR 20 "Navigation"): the roof face it would
 // pick is outlined, and the cursor says what a press does.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- three.js and the DOM, used in place. */
+import type { Lens } from "./lens.ts";
 import { roofFaceKey, type RoofFaceId } from "@sunreye/scene";
-import type { Group, PerspectiveCamera } from "three";
+import type { Group } from "three";
 import { cursorOf } from "./cursor.ts";
 import type { Editing } from "./handles/grabbing.ts";
 import { ndc } from "./pointer.ts";
@@ -23,7 +24,7 @@ export class Hover {
   key = $state<string>();
 
   /** Follows the mouse over `canvas`, after the handles' listeners; returns the removal. */
-  attach(canvas: HTMLCanvasElement, camera: PerspectiveCamera, sources: Hovering): () => void {
+  attach(canvas: HTMLCanvasElement, camera: Lens, sources: Hovering): () => void {
     const under = (event: PointerEvent): Hit | null => {
       const group = sources.drawn();
 

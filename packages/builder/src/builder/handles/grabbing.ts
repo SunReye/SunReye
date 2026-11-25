@@ -3,7 +3,14 @@
 // Mouse, pen and touch alike. A second finger lets the drag go and hands both fingers to the orbit
 // controls, which pan and zoom.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- three.js and the DOM, used in place. */
-import { type Group, type PerspectiveCamera, Raycaster, Vector2, Vector3 } from "three";
+import {
+  type Group,
+  type OrthographicCamera,
+  type PerspectiveCamera,
+  Raycaster,
+  Vector2,
+  Vector3,
+} from "three";
 import { haptics } from "@sunreye/ui/haptics";
 import { spaceHeld } from "../space.ts";
 import { bodyAt, same } from "./body-at.ts";
@@ -86,7 +93,7 @@ interface Held {
   shown: string;
 }
 
-function rayAt(camera: PerspectiveCamera, at: readonly [number, number]): Ray {
+function rayAt(camera: PerspectiveCamera | OrthographicCamera, at: readonly [number, number]): Ray {
   const caster = new Raycaster();
 
   caster.setFromCamera(new Vector2(...at), camera);
@@ -97,7 +104,7 @@ function rayAt(camera: PerspectiveCamera, at: readonly [number, number]): Ray {
 /** Listens on a canvas, before the orbit controls and the click picking. */
 export class Grabbing {
   readonly #canvas: HTMLCanvasElement;
-  readonly #camera: PerspectiveCamera;
+  readonly #camera: PerspectiveCamera | OrthographicCamera;
   readonly #sources: Sources;
   #held: Held | undefined;
 
@@ -106,7 +113,11 @@ export class Grabbing {
   /** Stops listening. */
   readonly dispose: () => void;
 
-  constructor(canvas: HTMLCanvasElement, camera: PerspectiveCamera, sources: Sources) {
+  constructor(
+    canvas: HTMLCanvasElement,
+    camera: PerspectiveCamera | OrthographicCamera,
+    sources: Sources,
+  ) {
     this.#canvas = canvas;
     this.#camera = camera;
     this.#sources = sources;

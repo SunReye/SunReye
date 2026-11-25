@@ -3,11 +3,12 @@
 // lens glass over it all while the weather puts something on it (ADR 23).
 import {
   type Fog,
-  type PerspectiveCamera,
   type Scene,
   type Vector3,
   type WebGLRenderer,
   type WebGLRenderTarget,
+  type OrthographicCamera,
+  type PerspectiveCamera,
 } from "three";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { Composer } from "./composer.ts";
@@ -23,7 +24,7 @@ export type { Focus } from "./focus-pass.ts";
 
 export class Passes {
   readonly #renderer: WebGLRenderer;
-  readonly #camera: PerspectiveCamera;
+  readonly #camera: PerspectiveCamera | OrthographicCamera;
   readonly #composer: Composer;
   readonly #occlusion: OcclusionPass;
   readonly #focus: FocusPass;
@@ -42,7 +43,7 @@ export class Passes {
   constructor(
     renderer: WebGLRenderer,
     scene: Scene,
-    camera: PerspectiveCamera,
+    camera: PerspectiveCamera | OrthographicCamera,
     fog: Fog,
     drawWeather: (source: WebGLRenderTarget, frame: FocusFrame) => void,
   ) {

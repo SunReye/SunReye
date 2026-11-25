@@ -1,7 +1,7 @@
 // The studio kept lit for a canvas (ADR 20 Look): the sun, the theme and the 3D quality, each
 // change drawn once. Call during a component's set-up.
 import { createSubscriber } from "svelte/reactivity";
-import type { Group, PerspectiveCamera } from "three";
+import type { Group, OrthographicCamera, PerspectiveCamera } from "three";
 import type { Glow } from "../builder/scene.ts";
 import { motion } from "../motion/tier.svelte.ts";
 import { cssColour } from "./backdrop.ts";
@@ -155,7 +155,7 @@ export function lit(
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws on it.
   canvas: HTMLCanvasElement,
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws with it.
-  camera: PerspectiveCamera,
+  camera: PerspectiveCamera | OrthographicCamera,
   sky: () => Sky,
   drawn: () => void,
   editing: () => boolean = () => false,

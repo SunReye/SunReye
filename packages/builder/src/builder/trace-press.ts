@@ -3,7 +3,7 @@
 // to the orbit controls. A tap clicks; a drag from a traced line moves it; a finger's drag
 // clicks where it lets go. Escape ends the chain.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- three.js and the DOM, used in place. */
-import type { PerspectiveCamera } from "three";
+import type { Lens } from "./lens.ts";
 import { projector } from "./project.ts";
 import { aim, pvPoint, type Aimed } from "./trace-aim.ts";
 import { pick } from "./trace-pick.ts";
@@ -25,7 +25,7 @@ interface Held {
 
 export class TracePress {
   readonly #canvas: HTMLCanvasElement;
-  readonly #camera: PerspectiveCamera;
+  readonly #camera: Lens;
   readonly #tool: TraceTool;
   readonly #tracing: () => Tracing | undefined;
   readonly #handover = new Handover();
@@ -36,7 +36,7 @@ export class TracePress {
 
   constructor(
     canvas: HTMLCanvasElement,
-    camera: PerspectiveCamera,
+    camera: Lens,
     tool: TraceTool,
     tracing: () => Tracing | undefined,
   ) {
