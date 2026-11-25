@@ -1,7 +1,5 @@
-import { Glob } from "bun";
 import { expect, test } from "bun:test";
-import { SCENE } from "../apps/web/scene-tests.ts";
-import { realTime, SLOW } from "./fake-time.ts";
+import { realTime } from "./fake-time.ts";
 
 const SRC = "apps/web/src/";
 
@@ -74,7 +72,7 @@ test("a finish named for something else is no animation's end", () => {
   expect(calls(`const keys = ["finish", "start"];`)).toEqual([]);
 });
 
-test("a wait's budget above vitest's second is real time, named or not", () => {
+test("a wait's budget is real time, named or not: the config's hang guard is the only one", () => {
   expect(calls("await expect.poll(drawn, { timeout: 15_000 }).toBe(1);")).toEqual(["timeout"]);
   expect(calls("await expect.element(button, { timeout: 2000 }).toBeVisible();")).toEqual([
     "timeout",
@@ -86,7 +84,10 @@ test("a wait's budget above vitest's second is real time, named or not", () => {
       "const SLOW = { timeout: 15_000 };\n\nawait expect.poll(f, SLOW).toBe(1);",
     ),
   ).toEqual([{ call: "timeout", line: 3 }]);
-  expect(calls("await expect.poll(drawn, { timeout: 1000 }).toBe(1);")).toEqual([]);
+  expect(calls("await expect.poll(drawn, { timeout: 1000 }).toBe(1);")).toEqual(["timeout"]);
+  expect(calls("await expect.element(button, { timeout: 100 }).not.toBeVisible();")).toEqual([
+    "timeout",
+  ]);
 });
 
 test("a wait's budget is found beside other options and as oxfmt lays it out", () => {
@@ -131,7 +132,8 @@ test("a test's own budget is no wait's: it is a raised test budget", () => {
       `const MINUTE = { timeout: 60_000 };\ntest(\n  "drags",\n  MINUTE,\n  async () => {},\n);`,
     ),
   ).toEqual(budget);
-  expect(calls(`test("draws", { timeout: 10_000 }, async () => {});`)).toEqual([]);
+  expect(calls(`test("draws", { timeout: 10_000 }, async () => {});`)).toEqual(budget);
+  expect(calls(`test("draws", async () => {\n  await x();\n}, 5000);`)).toEqual(budget);
 });
 
 test("a timer after the clock went back to the wall's, in the same block, is real time", () => {
@@ -165,13 +167,13 @@ test("putting the wall clock back as a test ends is no real time", () => {
   expect(calls(source)).toEqual([]);
 });
 
-test("a wait's budget given as vi.waitFor's number is refused above vitest's", () => {
+test("a wait's budget given as vi.waitFor's number is refused", () => {
   expect(calls("await vi.waitFor(() => drawn(), 5000);")).toEqual(["timeout"]);
   expect(calls("await vi.waitFor(() => f(a, b), 15_000);")).toEqual(["timeout"]);
-  expect(calls("await vi.waitFor(() => drawn(), 500);")).toEqual([]);
+  expect(calls("await vi.waitFor(() => drawn(), 500);")).toEqual(["timeout"]);
 });
 
-test("a raised test or hook budget is refused outside the named slow scene files", () => {
+test("a raised test or hook budget is refused in every file", () => {
   expect(calls("vi.setConfig({ testTimeout: 60_000 });")).toEqual(["test budget"]);
   expect(calls("export default { test: { hookTimeout: 30_000 } };")).toEqual(["test budget"]);
   expect(calls(`test("draws", { timeout: 60_000 }, async () => {});`)).toEqual(["test budget"]);
@@ -179,25 +181,6 @@ test("a raised test or hook budget is refused outside the named slow scene files
   expect(
     calls(`const MINUTE = { timeout: 60_000 };\ntest("drags", MINUTE, async () => {});`),
   ).toEqual(["test budget"]);
-  expect(
-    found(`lib/${Object.keys(SLOW)[0]}`, `test("draws", { timeout: 60_000 }, async () => {});`),
-  ).toEqual([]);
-});
-
-test("every slow file is a serial scene file and says what it measured", () => {
-  const scenes = SCENE.map((pattern) => new Glob(pattern.replace(/^src\//u, "")));
-
-  for (const [path, why] of Object.entries(SLOW))
-    expect({
-      path,
-      // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- a glob, only matched.
-      scene: scenes.some((g) => g.match(`lib/${path}`)),
-      why: /\d s/u.test(why),
-    }).toEqual({
-      path,
-      scene: true,
-      why: true,
-    });
 });
 
 test("an idle callback or a page's timed wait is real time", () => {

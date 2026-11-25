@@ -46,8 +46,11 @@ function weatherCore(ghi: number, dhi: number) {
 }
 
 test("the dashboard's sky is the weather forecast in force now", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-11-14T12:05:00Z"));
+
   const { core, asked } = weatherCore(300, 285);
-  const before = Date.now();
+  const now = Date.now();
   let sky: LiveSky | undefined;
 
   const stop = $effect.root(() => {
@@ -65,9 +68,10 @@ test("the dashboard's sky is the weather forecast in force now", async () => {
     expect.arrayContaining(["weather.ghi", "weather.dhi", "weather.code"]),
   );
   // The forecast step in force now lies in the span.
-  expect(asked[0]?.from).toBeLessThanOrEqual(before - 3_600_000 + 1000);
-  expect(asked[0]?.to).toBeGreaterThan(before);
+  expect(asked[0]?.from).toBeLessThanOrEqual(now - 3_600_000);
+  expect(asked[0]?.to).toBeGreaterThan(now);
   stop();
+  vi.useRealTimers();
 });
 
 /** A core that measured a closed sky from `start`'s 20 to 5 minutes before, and whose answers

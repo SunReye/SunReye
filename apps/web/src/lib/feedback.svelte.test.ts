@@ -1,8 +1,9 @@
 import { toast } from "svelte-sonner";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../app.css";
+import { clearToasts, holdToasts } from "./components/toasts.harness.ts";
 import { Toaster } from "./components/ui/sonner/index.js";
 import { answered, confirmed, refused, refusedInline } from "./feedback.ts";
 import { haptics } from "@sunreye/ui/haptics";
@@ -15,8 +16,10 @@ async function toastOf(text: string): Promise<HTMLElement | null> {
   return page.getByText(text).element().closest<HTMLElement>("[data-sonner-toast]");
 }
 
-afterEach(() => {
-  toast.dismiss();
+beforeEach(holdToasts);
+
+afterEach(async () => {
+  await clearToasts();
   vi.restoreAllMocks();
 });
 

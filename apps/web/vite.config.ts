@@ -77,9 +77,16 @@ export default defineConfig({
   },
   test: {
     setupFiles: ["src/page.setup.ts"],
+    // The one hang guard per suite (scripts/fake-time.ts): no test or wait sets its own, and none
+    // is the thing tested. A loaded machine makes a run slower, never red.
+    testTimeout: 120_000,
+    hookTimeout: 120_000,
+    expect: { poll: { timeout: 60_000 } },
     browser: {
       enabled: true,
       headless: true,
+      // A page opened while every project's dependencies are bundled cold, on a loaded machine.
+      connectTimeout: 120_000,
       provider: playwright(),
       instances: [{ browser: "chromium" }],
       commands: { frameKnown },

@@ -2,10 +2,11 @@
 // The ambient glass is thin so the backdrop's lights show through it; its text must stay readable
 // wherever a light is brightest (ADR 21).
 import { toast } from "svelte-sonner";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { Toaster } from "../components/ui/sonner/index.js";
+import { clearToasts, holdToasts } from "../components/toasts.harness.ts";
 import Backdrop from "./Backdrop.svelte";
 import {
   drifts,
@@ -20,7 +21,10 @@ import {
 } from "./backdrop.harness.ts";
 import "../../app.css";
 
-afterEach(teardown);
+afterEach(() => {
+  vi.useRealTimers();
+  teardown();
+});
 
 type Rgb = readonly [number, number, number];
 
@@ -148,6 +152,7 @@ type Ink = (typeof INKS)[number] | (typeof STATUSES)[number];
 
 /** The colour of each status toast's icon, per theme: a toast is ambient glass too (#760). */
 async function statusInks(): Promise<Record<Theme, Record<(typeof STATUSES)[number], Rgb>>> {
+  holdToasts();
   await render(Toaster);
 
   const read = async (theme: Theme) => {
@@ -181,8 +186,7 @@ async function statusInks(): Promise<Record<Theme, Record<(typeof STATUSES)[numb
   const inks = { light: await read("light"), dark: await read("dark") };
 
   // The toasts are out of the picture before it is measured.
-  toast.dismiss();
-  await expect.poll(() => document.querySelectorAll("[data-sonner-toast]").length).toBe(0);
+  await clearToasts();
 
   return inks;
 }

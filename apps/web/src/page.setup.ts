@@ -5,7 +5,8 @@ import { cdp, commands } from "vitest/browser";
 import { cleanup } from "vitest-browser-svelte/pure";
 import { watchAnimations } from "./lib/motion/animations.harness.ts";
 import { watchFrames } from "./lib/motion/clock.harness.ts";
-import { watchDraws } from "./scene-draws.ts";
+import { emptyFrameLoop } from "./lib/motion/loop.harness.ts";
+import { drain, watchDraws } from "./scene-draws.ts";
 
 declare module "vitest" {
   export interface ProvidedContext {
@@ -39,20 +40,29 @@ beforeAll(() => {
 // what that test's own afterEach put back.
 beforeEach(async () => {
   cleanup();
+  // The last test's tweens leave Svelte's frame loop with its screen.
+  emptyFrameLoop();
   await cdp().send("Input.dispatchMouseEvent", { type: "mouseMoved", x: -1, y: -1 });
 });
 
-// Outside the scene project nothing draws with WebGL: every page shares one software renderer.
-const drew = inject("scene")
-  ? () => false
-  : watchDraws([WebGLRenderingContext, WebGL2RenderingContext]);
+const drawn = watchDraws([WebGLRenderingContext, WebGL2RenderingContext]);
 
 afterEach(() => {
-  if (drew())
+  const contexts = drawn();
+
+  // Outside the scene project nothing draws with WebGL: every page shares one software renderer.
+  if (!inject("scene") && contexts.size > 0)
     throw new Error(
       "This test drew with WebGL: list its file in scene-tests.ts, so it runs in the serial scene project.",
     );
 
+  // A draw runs in the GPU process after its call returns. Waited for here, a test's draws are its
+  // own: left queued, the next test's first call that waits on the GPU (a shader's compile) pays
+  // for them, more the more the machine is loaded.
+  for (const context of contexts) drain(context);
+});
+
+afterEach(() => {
   // A browser remembered without WebGL2, the 2D view chosen.
   localStorage.clear();
   sessionStorage.clear();

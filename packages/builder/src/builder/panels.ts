@@ -14,11 +14,10 @@ import {
 } from "three";
 import * as finish from "../scene/materials.ts";
 import type { Point } from "./pv.ts";
+import { stringColour } from "./string-colours.ts";
 import { normal } from "./vector.ts";
 
-/** Strings by position, then again; distinct from roofs and the sky. */
-const STRINGS = [0x1f5fbf, 0xe08a00, 0x2a9d5c, 0xb8336a, 0x6a4fb5, 0x0f8b8d] as const;
-const UNASSIGNED = 0x6b6f76;
+export { stringColour, stringCss } from "./string-colours.ts";
 
 /** In the builder, a module's cells glow faintly in its string's colour. */
 const IDENTITY = 0.3;
@@ -88,18 +87,6 @@ export function tint(group: Group, shares: readonly (number | null)[], glow: Glo
   }
 
   glows.needsUpdate = true;
-}
-
-/** `stringColour` as CSS. */
-export function stringCss(string: number | null | undefined): string {
-  return `#${stringColour(string).toString(16).padStart(6, "0")}`;
-}
-
-/** The colour a string is drawn in, in the scene and in the builder's grid. */
-export function stringColour(string: number | null | undefined): number {
-  return string === null || string === undefined
-    ? UNASSIGNED
-    : (STRINGS[string % STRINGS.length] ?? UNASSIGNED);
 }
 
 /** A point in three.js's frame. */

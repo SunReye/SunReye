@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { BoxGeometry, Color, Mesh, PerspectiveCamera, PlaneGeometry, Vector3 } from "three";
 import type { Face, Point } from "../../../../../packages/builder/src/builder/pv.ts";
 import { buildScene } from "../../../../../packages/builder/src/builder/scene.ts";
@@ -52,8 +52,23 @@ test("Mittel's shadow blurs alike along its length", () => {
   expect(Math.abs(fade(opened, 10) - fade(opened, 1.5))).toBeLessThanOrEqual(1);
 });
 
+/** A seeded stand-in for `Math.random`: the occlusion pass's noise, drawn with it, alike each run. */
+function seeded(): () => number {
+  let state = 1;
+
+  return () => {
+    state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
+
+    return state / 4_294_967_296;
+  };
+}
+
 test("Ultra's burst smooths the edges of the picture it settles on, and changes nothing else", () => {
+  // The count of shades below takes in the occlusion's noise, which is random by default.
+  const random = vi.spyOn(Math, "random").mockImplementation(seeded());
   const opened = post("ultra");
+
+  random.mockRestore();
 
   studio = opened;
   const settled = picture(opened);
