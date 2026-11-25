@@ -360,3 +360,87 @@ fn fill_rules_read_from_json_and_default_to_the_builders() {
         }
     );
 }
+
+/// A gable roof traced from a building model, about 8.77 m along its eave and 12° steep: its
+/// corners relative to the site, east, height and south, as tracing places them.
+fn traced_gable(face: usize, landscape: bool) -> Scene {
+    let points = [
+        [4.527_807, 6.143, 2.099_832],
+        [5.512_807, 5.313, -1.650_168],
+        [-2.965_193, 5.313, -3.877_168],
+        [-3.214_193, 5.523, -2.931_168],
+        [-3.951_193, 6.143, -0.132_168],
+        [-4.683_193, 5.527, 2.646_832],
+        [-4.938_193, 5.313, 3.611_832],
+        [-3.152_193, 5.313, 4.083_832],
+        [1.755_807, 5.313, 5.377_832],
+        [3.541_807, 5.313, 5.849_832],
+    ];
+    let faces = [vec![1, 2, 3, 4, 0], vec![4, 5, 6, 7, 8, 9, 0]];
+    let corners = |face: &Vec<usize>| face.iter().map(|&i| points[i]).collect::<Vec<_>>();
+    let footprint: Vec<[f64; 2]> = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0]
+        .iter()
+        .map(|&i: &usize| [points[i][0], points[i][2]])
+        .collect();
+    serde_json::from_value(json!({
+        "north": 0.0,
+        "blocks": [{
+            "x": 0.0, "z": 0.0, "width": 0.0, "depth": 0.0, "eave": 0.0, "rotation": 0.0,
+            "roof": { "kind": "flat" },
+            "freeForm": {
+                "footprint": footprint,
+                "faces": faces.iter().map(corners).collect::<Vec<_>>(),
+                "traced": {
+                    "points": points,
+                    "lines": [[0, 1], [1, 2], [2, 3], [3, 4], [0, 4], [4, 5], [5, 6], [6, 7], [7, 8], [8, 9], [9, 0]],
+                    "faces": faces,
+                    "set": [3, 5],
+                    "ridges": [0, 4],
+                },
+            },
+        }],
+        "obstacles": [],
+        "grids": [{
+            "block": 0, "face": face, "moduleType": 7, "landscape": landscape, "setback": 0.3,
+            "modules": [],
+        }],
+    }))
+    .unwrap()
+}
+
+#[test]
+fn filling_a_traced_face_lays_the_modules_that_fit_inside_its_setback() {
+    // Its outline is a few millimetres off square: 8.77 m along the eave, 3.965 m up the slope.
+    // Portrait: 0.3 + 6 × 1.154 + 1.134 ≤ 8.47 is 7 across, 0.3 + 1.742 + 1.722 > 3.665 one row.
+    // Landscape: 0.3 + 3 × 1.742 + 1.722 ≤ 8.47 is 4 across, 0.3 + 1.154 + 1.134 ≤ 3.665 two up.
+    for face in 0..2 {
+        for (landscape, count, rows) in [(false, 7, 1), (true, 8, 2)] {
+            let scene = traced_gable(face, landscape);
+            let roof = scene.roofs().remove(face);
+            let [wide, high] = SIZE.laid(landscape);
+
+            let filled = scene.fill(0, sized, FillRules::default());
+
+            assert_eq!(filled.len(), count, "face {face}, landscape {landscape}");
+            let mut ups: Vec<f64> = filled.iter().map(|[_, up]| *up).collect();
+            ups.dedup_by(|a, b| (*a - *b).abs() < 1e-9);
+            assert_eq!(ups.len(), rows, "rows along the eave: {filled:?}");
+            for [across, up] in filled {
+                let area = [[across, up], [across + wide, up + high]];
+                assert_eq!(roof.clear(area, 0.3), Ok(()), "{area:?}");
+            }
+        }
+    }
+}
+
+#[test]
+fn a_traced_faces_rows_run_along_its_eave() {
+    // Face 0's eave runs from its second corner to its third, level.
+    let roof = traced_gable(0, false).roofs().remove(0);
+    let [east, north] = [-2.965_193 - 5.512_807, -(-3.877_168 + 1.650_168)];
+    let length = f64::hypot(east, north);
+
+    let along = roof.across[0].mul_add(east, roof.across[1] * north) / length;
+
+    assert!(along > 1.0 - 1e-6, "{:?}", roof.across);
+}
