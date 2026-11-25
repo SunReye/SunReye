@@ -18,7 +18,9 @@ test("format and lint read only the staged files", () => {
   expect(run).toContain(
     "rsvelte format --check --no-error-on-unmatched-pattern apps/web/src/a.svelte packages/sdk/src/b.ts README.md",
   );
-  expect(run).toContain("oxlint --deny-warnings apps/web/src/a.svelte packages/sdk/src/b.ts");
+  expect(run).toContain(
+    "oxlint --deny-warnings --no-error-on-unmatched-pattern apps/web/src/a.svelte packages/sdk/src/b.ts",
+  );
 });
 
 test("the bun tests are those the staged files reach", () => {
