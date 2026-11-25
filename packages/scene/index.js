@@ -7,6 +7,8 @@ export function roofFaceKey({ block, face }) {
 
 export { addLine, loops, moveLine, removeLine, snap } from "./roof.js";
 
+export { movePoint, removePoint, splitLine } from "./roof-points.js";
+
 export { bent, lineKind, markLine, pullEaves, pullRidges, setHeight } from "./roof-pull.js";
 
 export { dormers, pullDormer } from "./roof-dormer.js";
