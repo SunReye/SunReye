@@ -8,64 +8,25 @@ import {
   moveLine,
   replay,
   snap,
-  type DormerSize,
   type End,
   type PointRef,
   type Refusal,
-  type RoofSize,
   type Snap,
   type Spot,
   type TraceEdit,
 } from "@sunreye/scene";
 import { haptics } from "@sunreye/ui/haptics";
+import type { Plan } from "./plan.ts";
+import { direction, turned, type Guide } from "./trace-angle.ts";
 import { clickAt, type Aimed } from "./trace-aim.ts";
 import type { Scene } from "./pv.ts";
 import { faceUnder } from "./trace-place.ts";
+import type { LineRef, Placing, Shown, Tracing } from "./trace-types.ts";
 
-/** A traced line, by its block and its place in the block's lines. */
-export interface LineRef {
-  readonly block: number;
-  readonly line: number;
-}
+export type { LineRef, Placing, Shown, Tracing } from "./trace-types.ts";
 
-/** An edit the tracing made, named with its operation's arguments, as the consumer may replay it
- * where it keeps the scene (`@sunreye/scene`'s `replay`). */
-export type { TraceEdit };
-
-/** A ready shape held for placing: the next tap places it, a roof centred on it, a dormer on the
- * traced face under it, its middle there. */
-export type Placing =
-  | { readonly kind: "roof"; readonly id: string; readonly size: RoofSize }
-  | { readonly kind: "dormer"; readonly id: string; readonly size: DormerSize };
-
-/** The tracing mode: the scene traced on, and where each edit goes. */
-export interface Tracing {
-  readonly scene: Scene;
-  /** Pixels a click snaps within; 12 without. */
-  readonly reach?: number;
-  /** The picked line: a tap on a line picks it, a tap elsewhere drops it. */
-  readonly line?: LineRef | undefined;
-  readonly onpickline?: ((line: LineRef | undefined) => void) | undefined;
-  /** A ready shape the next tap places, instead of tracing; reported as a `roof` or `dormer` edit,
-   * after which the consumer lets go of it. */
-  readonly placing?: Placing | undefined;
-  /** Each edit's next scene, and the edit: one undo step each. */
-  readonly ontrace: (scene: Scene, edit: TraceEdit) => void;
-}
-
-/** What the tracing shows beside the scene. */
-export interface Shown {
-  /** What the pointer snaps to. */
-  readonly snap: Snap | undefined;
-  /** The chain's last point, which the line being drawn starts from. */
-  readonly from: Spot | undefined;
-  /** A dragged line where it would move to. */
-  readonly dragged: { readonly from: Spot; readonly to: Spot } | undefined;
-  /** The pointer on the canvas, in pixels. */
-  readonly pointer: readonly [number, number] | undefined;
-  /** Why the last click drew nothing, until the next. */
-  readonly refused: Refusal | undefined;
-}
+/** What a pointer snaps to, and the guide of the direction it was turned onto. */
+type Snapped = Readonly<{ snap: Snap; guide: Guide | undefined }>;
 
 /** Metres an end already picked by its pixels is snapped within again: none to speak of. */
 const RESOLVED = 1e-3;
@@ -103,13 +64,13 @@ function snapOf(scene: Scene, { at, reach, snap: picked }: Aimed): Snap {
 
 /** Where a click ends a line: the traced point it snaps to, a place on the line it snaps to, else
  * the click itself. */
-function ended(scene: Scene, aimed: Aimed): End {
-  const snapped = snapOf(scene, aimed);
-
+function ended({ snap: snapped, guide }: Snapped, aimed: Aimed): End {
   if (snapped.kind === "point") return { block: snapped.block, point: snapped.point };
 
   // A line's place by its plan, where the scene's operations snap it to the line again.
-  return snapped.kind === "line" ? { x: snapped.at[0], z: snapped.at[2] } : clickAt(aimed.at);
+  if (snapped.kind === "line") return { x: snapped.at[0], z: snapped.at[2] };
+
+  return clickAt(guide === undefined ? aimed.at : snapped.at);
 }
 
 /** Whether two ends are the same traced point. */
@@ -124,6 +85,10 @@ export class TraceTool {
   #dragged = $state.raw<Shown["dragged"]>();
   #refused = $state.raw<Refusal>();
   #scene = $state.raw<Scene>();
+  #guide = $state.raw<Guide>();
+  /** The chain's first line and its last, as directions, which the next line is snapped by. */
+  #first: Plan | undefined;
+  #previous: Plan | undefined;
   #pressed: Pressed | undefined;
 
   readonly shown: Shown = $derived({
@@ -132,6 +97,7 @@ export class TraceTool {
     dragged: this.#dragged,
     pointer: this.#pointer,
     refused: this.#refused,
+    guide: this.#guide,
   });
 
   get #fromSpot(): Spot | undefined {
@@ -146,6 +112,25 @@ export class TraceTool {
   end(): void {
     this.#from = undefined;
     this.#start = undefined;
+    this.#first = undefined;
+    this.#previous = undefined;
+    this.#guide = undefined;
+  }
+
+  /** What `aimed` snaps to: a traced point or line, else, drawing on from a corner and not
+   * `free`, a direction the line nearly takes (angle-snap.ts); with the guide it took. */
+  #snapped(scene: Scene, aimed: Aimed): Snapped {
+    const snapped = snapOf(scene, aimed);
+    const from = this.#fromSpot;
+
+    if (snapped.kind !== "free" || from === undefined || aimed.free === true)
+      return { snap: snapped, guide: undefined };
+
+    const angled = turned(scene, aimed, from, { previous: this.#previous, first: this.#first });
+
+    return angled === undefined
+      ? { snap: snapped, guide: undefined }
+      : { snap: { kind: "free", at: angled.at }, guide: angled.guide };
   }
 
   /** The pointer on the canvas, in pixels; off it, nothing snaps. */
@@ -175,7 +160,10 @@ export class TraceTool {
     const { at } = aimed;
 
     this.#scene = tracing.scene;
-    this.#snap = line === undefined ? snapOf(tracing.scene, aimed) : undefined;
+    const snapped = line === undefined ? this.#snapped(tracing.scene, aimed) : undefined;
+
+    this.#snap = snapped?.snap;
+    this.#guide = snapped?.guide;
 
     if (dragged && line !== undefined && pressed !== undefined)
       this.#dragged = shifted(tracing.scene, line, pressed.at, at);
@@ -251,7 +239,7 @@ export class TraceTool {
    * chain's last point it ends the chain; anywhere else it draws the line to there. */
   #clicked(tracing: Tracing, aimed: Aimed, line: LineRef | undefined): void {
     const { reach } = aimed;
-    const end = ended(tracing.scene, aimed);
+    const end = ended(this.#snapped(tracing.scene, aimed), aimed);
     const from = this.#from;
 
     this.#refused = undefined;
@@ -271,6 +259,8 @@ export class TraceTool {
 
     this.#from = end;
     this.#start = "point" in end ? end : undefined;
+    this.#first = undefined;
+    this.#previous = undefined;
   }
 
   /** The line from the chain's last point to `end`; back on the chain's first point it closes its
@@ -289,8 +279,16 @@ export class TraceTool {
     const start = this.#start ?? { block: edited.block, point: edited.from };
     const closes = start.block === edited.block && start.point === edited.to;
 
+    const line = direction(
+      spotOf(edited.scene, { block: edited.block, point: edited.from }),
+      spotOf(edited.scene, { block: edited.block, point: edited.to }),
+    );
+
     this.#start = closes ? undefined : start;
     this.#from = closes ? undefined : { block: edited.block, point: edited.to };
+    this.#first = closes ? undefined : (this.#first ?? line);
+    this.#previous = closes ? undefined : line;
+    this.#guide = undefined;
     this.#scene = edited.scene;
     tracing.ontrace(edited.scene, { kind: "add", from, to: end, reach });
   }

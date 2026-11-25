@@ -73,7 +73,7 @@ export class TracePress {
 
     const picked = pick(scene, (spot) => project(pvPoint(scene.north, spot)), pointer, pixels);
 
-    return { ...aimed, snap: picked ?? { kind: "free", at: aimed.at } };
+    return { ...aimed, snap: picked ?? { kind: "free", at: aimed.at }, free: event.shiftKey };
   }
 
   readonly #press = (event: PointerEvent): void => {
