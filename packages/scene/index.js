@@ -13,7 +13,7 @@ export { bent, lineKind, markLine, pullEaves, pullRidges, setHeight } from "./ro
 
 export { dormers, pullDormer } from "./roof-dormer.js";
 
-export { placeRoof, readyRoofs } from "./roof-ready.js";
+export { placeRoof, readyRoofs, rectangleAround } from "./roof-ready.js";
 
 export { faceCount } from "./roof-count.js";
 
