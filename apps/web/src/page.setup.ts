@@ -5,6 +5,7 @@ import { cdp, commands } from "vitest/browser";
 import { cleanup } from "vitest-browser-svelte/pure";
 import { watchAnimations } from "./lib/motion/animations.harness.ts";
 import { watchFrames } from "./lib/motion/clock.harness.ts";
+import { emptyFrameLoop } from "./lib/motion/loop.harness.ts";
 import { drain, watchDraws } from "./scene-draws.ts";
 
 declare module "vitest" {
@@ -39,6 +40,8 @@ beforeAll(() => {
 // what that test's own afterEach put back.
 beforeEach(async () => {
   cleanup();
+  // The last test's tweens leave Svelte's frame loop with its screen.
+  emptyFrameLoop();
   await cdp().send("Input.dispatchMouseEvent", { type: "mouseMoved", x: -1, y: -1 });
 });
 
