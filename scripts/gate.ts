@@ -1,6 +1,6 @@
 // The one check (ADR 13): serial, cheapest first, stops at the first failure.
-// It runs before a merge; hosted CI will run the same command. `--fast` is what the pre-commit
-// hook runs: the steps marked fast, which need neither the SPA build nor the core compiled.
+// It runs before a merge; hosted CI will run the same command. `--fast` runs the steps marked fast,
+// which need neither the SPA build nor the core compiled; the pre-commit hook is `scripts/hook.ts`.
 // A check whose inputs hash as they did on its last green run is skipped; a step that builds what
 // a later one reads always runs; a tool installed outside the lock keys its steps with its version.
 // `GATE_FRESH=1` runs every step.
@@ -25,7 +25,7 @@ export interface Cache {
   readonly key: (step: Readonly<Step>) => string | null | Promise<string | null>;
 }
 
-const web = ["bun", "run", "--cwd", "apps/web"];
+export const web = ["bun", "run", "--cwd", "apps/web"];
 
 // The core's tests read the SDK's generated types and the profiles; the SPA's tools read profiles.
 const RUST: Reads = {
@@ -42,7 +42,7 @@ const RUST: Reads = {
   ],
 };
 
-const JS: Reads = {
+export const JS: Reads = {
   paths: [
     "apps/web",
     "packages",
@@ -60,7 +60,7 @@ const JS: Reads = {
   ],
 };
 
-const BOTH: Reads = { paths: [...new Set([...JS.paths, ...RUST.paths])] };
+export const BOTH: Reads = { paths: [...new Set([...JS.paths, ...RUST.paths])] };
 
 /** The core embeds the SPA's build (ADR 11). */
 const CORE: Reads = { ...RUST, built: ["apps/web/build"] };
