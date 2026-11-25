@@ -23,6 +23,7 @@
     "roof-ready-plans.js",
     "roof-snap.js",
     "roof.d.ts",
+    "scene-blocks.js",
     "scene-schema.js",
     "schema.d.ts",
     "README.md"

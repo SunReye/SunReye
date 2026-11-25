@@ -18,6 +18,14 @@ export * from "./roof.js";
  * A face index below it names a face of the block. */
 export declare function faceCount(scene: Scene, block: number): number;
 
+/** The scene with block `index` moved `by` metres east (x) and south (z), what stands on it
+ * carried; the same scene for no such block. */
+export declare function moveBlock(scene: Scene, index: number, by: readonly number[]): Scene;
+
+/** The scene without block `index` and what stands on it; later blocks' follow them down. The last
+ * block may go. The same scene for no such block. */
+export declare function removeBlock(scene: Scene, index: number): Scene;
+
 /** The scene's JSON Schema (2020-12), as the core reads a stored scene: every field it knows and
  * no other. Generated from the crates. */
 export declare const SCENE_SCHEMA: Json;
