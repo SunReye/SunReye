@@ -10,6 +10,7 @@
   "scripts": {
     "gate": "bun scripts/gate.ts",
     "gate:fast": "bun scripts/gate.ts --fast",
+    "hook": "bun scripts/hook.ts",
     "prepare": "husky",
     "image:smoke": "bun scripts/image-smoke.ts",
     "bench": "bun scripts/bench.ts",
