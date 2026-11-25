@@ -1,6 +1,6 @@
 // A block moved or removed with what stands on it (ADR 20): one copy for every consumer.
 import { expect, test } from "bun:test";
-import { moveBlock, removeBlock, type Scene } from "./index.js";
+import { centroidOf, moveBlock, removeBlock, turnBlock, type Scene } from "./index.js";
 
 const traced = {
   x: 0,
@@ -134,4 +134,72 @@ test("the last block may go: the scene keeps no house", () => {
   };
 
   expect(removeBlock(alone, 0).blocks).toEqual([]);
+});
+
+test("a parametric block turns about its footprint's centre, clockwise seen from above", () => {
+  const block = turnBlock(scene, 1, 90).blocks[1];
+
+  // The 10 by 8 footprint's centre, 25 and 4, stays; its corner swings round it.
+  expect(block).toEqual({ ...gable, x: 29, z: -1, rotation: 90 });
+});
+
+test("a traced block turns its footprint, faces and points about the footprint's centroid", () => {
+  const turned = turnBlock(scene, 0, 90);
+  const block = turned.blocks[0];
+
+  // The triangle's centroid, 8/3 and 4/3, stays.
+  expect(block?.rotation).toBe(90);
+  expect(block?.freeForm?.footprint).toEqual([
+    [4, -1.333333],
+    [4, 2.666667],
+    [0, 2.666667],
+  ]);
+  expect(block?.freeForm?.faces[0]).toEqual([
+    [4, 3, -1.333333],
+    [4, 3, 2.666667],
+    [0, 3, 2.666667],
+  ]);
+  expect(block?.freeForm?.traced?.points[1]).toEqual([4, 3, 2.666667]);
+  expect(block?.freeForm?.traced?.lines).toEqual(traced.freeForm.traced.lines);
+  // What stands on it is placed in its face, and turns with it.
+  expect(turned.chimneys).toEqual(scene.chimneys);
+});
+
+test("a turn's angle stays within a full turn, either way", () => {
+  expect(turnBlock(turnBlock(scene, 1, 300), 1, 100).blocks[1]?.rotation).toBe(40);
+  expect(turnBlock(scene, 1, -15).blocks[1]?.rotation).toBe(345);
+});
+
+test("a turn and its undoing leave a block where it stood", () => {
+  const back = turnBlock(turnBlock(scene, 0, 37), 0, -37).blocks[0];
+
+  for (const [index, [x = 0, z = 0]] of traced.freeForm.footprint.entries()) {
+    expect(back?.freeForm?.footprint[index]?.[0]).toBeCloseTo(x, 5);
+    expect(back?.freeForm?.footprint[index]?.[1]).toBeCloseTo(z, 5);
+  }
+
+  expect(back?.rotation).toBe(0);
+});
+
+test("no such block turns: the scene as it was", () => {
+  expect(turnBlock(scene, 7, 30)).toBe(scene);
+});
+
+test("a block turns about its footprint's centroid; a footprint enclosing nothing, its corners' mean", () => {
+  expect(
+    centroidOf([
+      [0, 0],
+      [6, 0],
+      [6, 2],
+      [2, 2],
+      [2, 6],
+      [0, 6],
+    ]),
+  ).toEqual([2.2, 2.2]);
+  expect(
+    centroidOf([
+      [0, 0],
+      [4, 0],
+    ]),
+  ).toEqual([2, 0]);
 });

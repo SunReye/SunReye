@@ -34,12 +34,12 @@ export class Shown {
     const found =
       editing === undefined
         ? []
-        : offered(editing.scene, editing.target, editing.laid, editing.turning);
+        : offered(editing.scene, editing.target, editing.laid, editing.turning, editing.ring);
 
     const key =
       editing === undefined
         ? ""
-        : `${editing.target.kind} ${editing.target.index} ${editing.turning}`;
+        : `${editing.target.kind} ${editing.target.index} ${editing.turning} ${editing.ring}`;
 
     const fresh = key !== this.#selected;
 

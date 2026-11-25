@@ -408,12 +408,14 @@ impl Scene {
     }
 
     /// Each block's roof faces in the shading frame, in the order its grids name them, with the
-    /// direction of the block's width.
+    /// direction of the block's width: a traced block's turns with it, so what stands on a level
+    /// face turns with the face.
     pub(crate) fn roof_faces(&self) -> impl Iterator<Item = (usize, usize, Vec<Point>, Point)> {
         self.blocks.iter().enumerate().flat_map(|(b, block)| {
             let frame = self.frame(block);
-            let [east, north, _] = frame.place([1.0, 0.0, 0.0]);
-            let [east0, north0, _] = frame.place([0.0; 3]);
+            let turned = self.prism(0.0, 0.0, block.rotation);
+            let [east, north, _] = turned.place([1.0, 0.0, 0.0]);
+            let [east0, north0, _] = turned.place([0.0; 3]);
             let width = [east - east0, north - north0, 0.0];
             sheltering(block)
                 .into_iter()

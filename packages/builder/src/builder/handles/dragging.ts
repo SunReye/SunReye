@@ -20,6 +20,7 @@ import type { Grip } from "./grips.ts";
 import { onRoof } from "./on-roof.ts";
 import { onLevel } from "./shallow.ts";
 import { along, edges, pull, snapTurn } from "./snapping.ts";
+import { ringTurned, roofRingTurned, type Settle } from "./turning.ts";
 
 /** Where a drag began: its grip, its ray, and the height of the plane it slides in. */
 export interface Grab {
@@ -30,6 +31,8 @@ export interface Grab {
   readonly height: number;
   /** The point grabbed, in three.js's frame: what a shallow view's drag moves. */
   readonly at?: Triple | undefined;
+  /** An editor's ring: its turn settles lightly or turns free, not in Home's 5° steps. */
+  readonly settle?: Settle | undefined;
 }
 
 export interface Dragged {
@@ -212,11 +215,21 @@ function shiftWhole({ scene, target, from, to }: Slide): Dragged {
   return { scene: moveBlock(scene, target.index, by), value: by, unit: "m" };
 }
 
+/** The ring: Home's turn in 5° steps, or an editor's, which settles lightly and turns a traced
+ * block too. */
+function turning(slide: Slide, { settle }: Grab, body: Body | undefined): Dragged | null {
+  if (settle === undefined && body?.kind === "rect") return spin(slide, body);
+
+  return ringTurned(slide.scene, slide.target, [slide.from, slide.to], settle ?? "light");
+}
+
 /** A drag in a level plane: a fence's point, or a body. */
 function levelled(slide: Slide, grab: Grab): Dragged | null {
   if (grab.grip === "point") return repoint(slide, grab.point ?? -1);
 
   const body = bodyOf(slide.scene, slide.target);
+
+  if (grab.grip === "turn") return turning(slide, grab, body);
 
   if (body === undefined) {
     const block = slide.target.kind === "block" && grab.grip === "move";
@@ -236,6 +249,8 @@ function fitted(
   crate: Crate,
 ): Dragged | null {
   if (target.kind !== "opening") {
+    if (grab.grip === "turn") return roofRingTurned(scene, target, grab, now);
+
     return grab.grip === "move" ? onRoof(scene, target, [grab, now], crate) : null;
   }
 

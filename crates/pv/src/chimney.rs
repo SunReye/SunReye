@@ -25,6 +25,9 @@ pub struct Chimney {
     pub depth: f64,
     /// Its level top stands this high over the roof where its upper side meets it.
     pub height: f64,
+    /// Degrees it is turned in its face, clockwise seen from above; none stored unturned.
+    #[serde(default, skip_serializing_if = "crate::turned::is_zero")]
+    pub turn: f64,
 }
 
 /// A strike this close to a chimney's sides or top, in metres, still lands on it.
@@ -49,20 +52,23 @@ impl Footing {
 }
 
 impl Chimney {
-    /// Its footprint on `face`: the lower left and upper right corner in the face's outline.
-    pub(crate) fn area(&self, face: &RoofFace) -> [[f64; 2]; 2] {
-        let half_up = self.depth / 2.0 / face.plane.tilt.to_radians().cos();
-        let half_across = self.width / 2.0;
+    /// Half its footprint on `face`, across and up the slope, before its turn.
+    fn half(&self, face: &RoofFace) -> [f64; 2] {
         [
-            [self.across - half_across, self.up - half_up],
-            [self.across + half_across, self.up + half_up],
+            self.width / 2.0,
+            self.depth / 2.0 / face.plane.tilt.to_radians().cos(),
         ]
     }
 
-    /// Its footprint's corners on `face`, from the lower left.
+    /// What its footprint covers on `face`: the lower left and upper right corner in the face's
+    /// outline, round it however it is turned.
+    pub(crate) fn area(&self, face: &RoofFace) -> [[f64; 2]; 2] {
+        crate::turned::bounds(&self.corners(face))
+    }
+
+    /// Its footprint's corners on `face`, from its own lower left.
     fn corners(&self, face: &RoofFace) -> [[f64; 2]; 4] {
-        let [[l, b], [r, t]] = self.area(face);
-        [[l, b], [r, b], [r, t], [l, t]]
+        crate::turned::corners([self.across, self.up], self.half(face), self.turn)
     }
 
     /// Whether it stands wholly on `face`.
@@ -127,13 +133,12 @@ impl Chimney {
     /// Whether a strike at `point` lands on it, standing on `face`.
     fn struck(&self, face: &RoofFace, point: Point) -> bool {
         let footing = self.footing(face);
-        let [[left, low], [right, high]] = self.area(face);
         let [east, north, up] = point;
-        let [across, sloped] = along(face, [east - face.origin[0], north - face.origin[1]]);
+        let at = along(face, [east - face.origin[0], north - face.origin[1]]);
         // Up the face, metres along the slope per metre seen from above.
         let edge = EDGE / face.plane.tilt.to_radians().cos();
-        (left - EDGE..=right + EDGE).contains(&across)
-            && (low - edge..=high + edge).contains(&sloped)
+        let centre = [self.across, self.up];
+        crate::turned::within(centre, self.half(face), self.turn, at, [EDGE, edge])
             && (footing.low() - EDGE..=footing.top + EDGE).contains(&up)
     }
 }

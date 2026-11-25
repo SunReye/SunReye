@@ -5,12 +5,15 @@ import type { Footing, Modules, Point, Scene } from "../pv.ts";
 import { bodyOf, onWorld, ridge, type Rect, type Round, type Target } from "./body.ts";
 import { wallOf } from "../wall-openings.ts";
 import { turn, world, type Triple } from "./frame.ts";
+import { roofRing, tracedRing } from "./turning.ts";
 
 export type { Target } from "./body.ts";
 
 export type { Ray, Triple } from "./frame.ts";
 
 export { drag, turned, type Dragged, type Grab } from "./dragging.ts";
+
+export { settled } from "./turning.ts";
 
 /** What a handle drags: a wall arrow's width, depth or radius, an opening's height, the ridge's
  * pitch, the ring's turn, the footprint's place, a block's knob that carries it, or a fence's
@@ -133,7 +136,7 @@ function chimneyHandles(footing: Footing | null | undefined): Handle[] {
   const [east, north] = [0, 1].map((i) => foot.reduce((sum, p) => sum + (p[i] ?? 0), 0) / 4);
   const handle: Handle = { grip: "move", at: [east ?? 0, top, 0 - (north ?? 0)], outline };
 
-  return [handle];
+  return [handle, ...roofRing(foot)];
 }
 
 /** A roof window's pane outlined in its roof face; its upper edge's middle, where the live value
@@ -147,7 +150,7 @@ function windowHandles(pane: readonly Point[] | null | undefined): Handle[] {
   const outline = pane.map(([east, north, up]): Triple => [east, up, 0 - north]);
   const mid = (i: 0 | 1 | 2): number => (right[i] + left[i]) / 2;
 
-  return [{ grip: "move", at: [mid(0), mid(2), 0 - mid(1)], outline }];
+  return [{ grip: "move", at: [mid(0), mid(2), 0 - mid(1)], outline }, ...roofRing(pane)];
 }
 
 /** Metres an opening's outline stands off its wall, clear of its frame. */
@@ -199,7 +202,7 @@ export function handles(scene: Scene, target: Target, laid: Laid = NONE): Handle
 
   const body = bodyOf(scene, target);
 
-  if (body === undefined) return [];
+  if (body === undefined) return tracedRing(scene, target);
 
   if (body.kind === "round") return roundHandles(scene.north, body);
 
