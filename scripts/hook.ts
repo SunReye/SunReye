@@ -62,7 +62,9 @@ export function hookSteps(staged: Readonly<Staged>): readonly Step[] {
       ? [{ run: ["rsvelte", "format", "--check", "--no-error-on-unmatched-pattern", ...formatted] }]
       : []),
     ...(crates.length > 0 ? [{ run: ["cargo", "fmt", "--check", ...packages(crates)] }] : []),
-    ...(linted.length > 0 ? [{ run: ["oxlint", "--deny-warnings", ...linted] }] : []),
+    ...(linted.length > 0
+      ? [{ run: ["oxlint", "--deny-warnings", "--no-error-on-unmatched-pattern", ...linted] }]
+      : []),
     { run: ["bun", "scripts/native-controls.ts"], reads: JS },
     { run: ["bun", "scripts/one-owner.ts"], reads: JS },
     { run: ["bun", "scripts/fake-time.ts"], reads: JS },
