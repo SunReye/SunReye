@@ -10,7 +10,7 @@ use futures_util::stream;
 use serde_json::{Value, json};
 
 use super::devices::{gateway, send};
-use super::{Core, HOME, from, get, problem, with_cookie};
+use super::{Core, HOME, from, get, problem, until, with_cookie};
 use crate::transport::fake;
 
 const SLUG: &str = "deye-sun15k-sg05lp3";
@@ -56,16 +56,11 @@ impl Core {
 
     /// The import's status once it no longer runs.
     async fn finished(&self, set_cookie: &str) -> Value {
-        let mut status = Value::Null;
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
-        while tokio::time::Instant::now() < deadline {
-            status = self.ask(set_cookie, get("/api/v1/import")).await.1;
-            if status["state"] != "running" {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-        status
+        until("the import finished", async || {
+            let status = self.ask(set_cookie, get("/api/v1/import")).await.1;
+            (status["state"] != "running").then_some(status)
+        })
+        .await
     }
 }
 

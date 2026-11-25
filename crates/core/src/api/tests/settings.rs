@@ -7,7 +7,7 @@ use axum::http::StatusCode;
 use serde_json::{Value, json};
 
 use super::devices::{delete, send};
-use super::{Core, get, problem};
+use super::{Core, get, problem, until};
 use crate::transport::fake::{self, Fake, Write, Writes};
 
 const CHARGE: &str = "battery.max_charge_current";
@@ -306,14 +306,11 @@ async fn a_write_whose_request_is_dropped_mid_recipe_is_still_logged_and_starts_
         write = plant.device.writes.recv() => assert!(write.is_some()),
     }
 
-    let mut log = json!([]);
-    for _ in 0..1000 {
-        log = plant.log().await;
-        if log != json!([]) {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
+    let log = until("the write logged", async || {
+        let log = plant.log().await;
+        (log != json!([])).then_some(log)
+    })
+    .await;
     assert_eq!(log[0]["outcome"], "unknown");
     assert_eq!(
         plant.write(CHARGE, json!(60)).await,
