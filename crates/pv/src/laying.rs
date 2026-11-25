@@ -15,6 +15,8 @@ const REACH: f64 = 0.2;
 const STEP: f64 = 0.01;
 /// Modules a row or a filled face's side holds at most, so a huge face cannot stall a caller.
 const LIMIT: u32 = 200;
+/// Centimetre steps a filled face's first column or row moves in at most when it holds no module.
+const SKEW: u32 = 5;
 
 /// A module that is not laid yet: where it would lie, and whether it fits there.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -173,6 +175,55 @@ impl<'a> Laying<'a> {
     }
 }
 
+/// Where a filled face's first column or row lies under `alignment`, of modules `extent` long and
+/// `gap` apart that way on an outline from `low` to `reach`.
+fn first(
+    alignment: Alignment,
+    setback: f64,
+    [extent, gap]: [f64; 2],
+    (low, reach): (f64, f64),
+) -> f64 {
+    match alignment {
+        Alignment::LowerLeft => setback,
+        Alignment::Centred => {
+            let pitch = extent + gap;
+            let free = 2.0f64.mul_add(-setback, reach - low);
+            let count = ((free + gap) / pitch).floor().clamp(0.0, f64::from(LIMIT));
+            let spare = pitch.mul_add(-count, free + gap).max(0.0);
+            low + setback + spare / 2.0
+        }
+    }
+}
+
+/// A traced face is a few millimetres off square, so a filled face's first column or row on the
+/// setback can cross it all along: `start` with each that holds no module a centimetre further
+/// in, a few times at most. None where neither moves.
+fn nudged(
+    start: [f64; 2],
+    column: impl Fn([f64; 2]) -> bool,
+    row: impl Fn([f64; 2]) -> bool,
+) -> Option<[f64; 2]> {
+    let step = |at: f64, holds: bool| {
+        if holds {
+            at
+        } else {
+            snap(at + STEP, TOLERANCE)
+        }
+    };
+    let mut at = start;
+    let mut moved = false;
+    for _ in 0..SKEW {
+        let (column, row) = (column(at), row(at));
+        if column && row {
+            break;
+        }
+        let [across, up] = at;
+        at = [step(across, column), step(up, row)];
+        moved = true;
+    }
+    moved.then_some(at)
+}
+
 /// `pair`'s across for axis 0, its up for axis 1.
 const fn pick([across, up]: [f64; 2], axis: usize) -> f64 {
     if axis == 0 { across } else { up }
@@ -227,7 +278,8 @@ impl Scene {
 
     /// The places "Fill face" adds to grid `grid` under `rules`: the free roof row by row from
     /// the setback's lower left, or centred in it, in the grid's orientation, each `rules.gap`
-    /// off the next and `rules.keep_out` off what stands on the roof. None fits, none.
+    /// off the next and `rules.keep_out` off what stands on the roof; a first column or row that
+    /// holds none moved in by centimetres where that lays more. None fits, none.
     #[must_use]
     pub fn fill(
         &self,
@@ -240,26 +292,17 @@ impl Scene {
             return Vec::new();
         };
         let gap = rules.gap.max(GAP);
-        let landscape = laying.grid.landscape;
-        let setback = laying.grid.setback;
+        let (landscape, setback) = (laying.grid.landscape, laying.grid.setback);
         let [wide, high] = laying.size.laid(landscape);
         let span = |axis: usize| {
             let along = laying.face.outline.iter().map(|p| pick(*p, axis));
             let low = along.clone().fold(f64::INFINITY, f64::min);
             (low, along.fold(0.0, f64::max))
         };
-        let lines = |extent: f64, axis: usize| {
-            let (low, reach) = span(axis);
-            let start = match rules.alignment {
-                Alignment::LowerLeft => setback,
-                Alignment::Centred => {
-                    let free = 2.0f64.mul_add(-setback, reach - low);
-                    let pitch = extent + gap;
-                    let count = ((free + gap) / pitch).floor().clamp(0.0, f64::from(LIMIT));
-                    let spare = pitch.mul_add(-count, free + gap).max(0.0);
-                    low + setback + spare / 2.0
-                }
-            };
+        let start =
+            |extent: f64, axis: usize| first(rules.alignment, setback, [extent, gap], span(axis));
+        let lines = |start: f64, extent: f64, axis: usize| {
+            let (_, reach) = span(axis);
             (0..LIMIT)
                 .map(move |line| (extent + gap).mul_add(f64::from(line), start))
                 .take_while(move |near| near + extent <= reach)
@@ -279,10 +322,21 @@ impl Scene {
                     .iter()
                     .all(|hole| polygon::apart(hole, area, rules.keep_out - TOLERANCE))
         };
-        lines(high, 1)
-            .flat_map(|up| lines(wide, 0).map(move |across| [across, up]))
-            .filter(|at| clear(laying.area(*at, landscape)))
-            .collect()
+        let fits = |at: [f64; 2]| clear(laying.area(at, landscape));
+        let lay = |[across, up]: [f64; 2]| -> Vec<[f64; 2]> {
+            lines(up, high, 1)
+                .flat_map(|up| lines(across, wide, 0).map(move |across| [across, up]))
+                .filter(|at| fits(*at))
+                .collect()
+        };
+        let square = [start(wide, 0), start(high, 1)];
+        let laid = lay(square);
+        let column = |[across, up]: [f64; 2]| lines(up, high, 1).any(|up| fits([across, up]));
+        let row = |[across, up]: [f64; 2]| lines(across, wide, 0).any(|across| fits([across, up]));
+        nudged(square, column, row)
+            .map(lay)
+            .filter(|shifted| shifted.len() > laid.len())
+            .unwrap_or(laid)
     }
 
     /// The index of the first grid whose face a strike at `point` lands on, inside its setback.

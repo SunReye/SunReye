@@ -354,3 +354,15 @@ fn walls_and_roofs_carry_their_blocks_colours() {
     assert_eq!(colour(Surface::Roof), [Some("#9c4a32"); 2]);
     assert_eq!(colour(Surface::Wall), [Some("#f2f0eb"); 4]);
 }
+
+#[test]
+fn a_block_keeps_the_name_it_is_given_and_one_blank_or_too_long_is_refused() {
+    let with = |extra: Value| house(&gable(&extra), &json!({})).check_blocks();
+
+    let named = house(&gable(&json!({ "name": "Garage" })), &json!({}));
+
+    assert_eq!(named.blocks[0].name.as_deref(), Some("Garage"));
+    assert_eq!(with(json!({ "name": "Garage" })), Ok(()));
+    assert_eq!(with(json!({ "name": "  " })), Err(0));
+    assert_eq!(with(json!({ "name": "x".repeat(81) })), Err(0));
+}

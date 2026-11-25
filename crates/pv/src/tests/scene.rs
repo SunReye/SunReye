@@ -5,6 +5,7 @@ use crate::{Block, Crown, Face, Obstacle, Occluder, Overhang, Point, Roof, Scene
 
 fn block(roof: Roof) -> Block {
     Block {
+        name: None,
         x: 0.0,
         z: 0.0,
         width: 10.0,

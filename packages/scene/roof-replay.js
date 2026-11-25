@@ -15,7 +15,7 @@ import { placeDormer } from "./roof-ready-dormer.js";
  * @type {{ [K in TraceEdit["kind"]]: (scene: Scene, edit: Extract<TraceEdit, { kind: K }>) => Edited }}
  */
 const OPERATIONS = {
-  add: (scene, { from, to, reach }) => addLine(scene, from, to, reach),
+  add: (scene, { from, to, reach, into }) => addLine(scene, from, to, reach, into),
   move: (scene, { block, line, by }) => moveLine(scene, block, line, by),
   remove: (scene, { block, line }) => removeLine(scene, block, line),
   pull: (scene, { block, which, height }) =>

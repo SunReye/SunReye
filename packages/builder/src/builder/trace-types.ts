@@ -26,6 +26,10 @@ export interface Tracing {
   /** A ready shape the next tap places, instead of tracing; reported as a `roof` or `dormer` edit,
    * after which the consumer lets go of it. */
   readonly placing?: Placing | undefined;
+  /** The roof the lines go into, wherever they touch another: traced block `into`, or a new block
+   * for `"new"` (a roof at another height beside one, ADR 20 "One roof, one block"); without, a
+   * line goes into the roof it touches. */
+  readonly into?: number | "new" | undefined;
   /** Each edit's next scene, and the edit: one undo step each. */
   readonly ontrace: (scene: Scene, edit: TraceEdit) => void;
 }

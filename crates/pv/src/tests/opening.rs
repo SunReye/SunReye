@@ -5,6 +5,7 @@ use crate::{Block, Light, Opening, OpeningKind, Overhang, Roof, Scene, Wall};
 /// A 10 m × 8 m block at the origin with 3 m walls, and a carport beside it.
 fn house(openings: Vec<Opening>) -> Scene {
     let block = |x: f64, open: bool| Block {
+        name: None,
         x,
         z: 0.0,
         width: 10.0,

@@ -787,3 +787,26 @@ fn a_level_traced_face_lays_its_rows_along_its_longest_edge() {
     let extent = |axis: usize| face.outline.iter().map(|p| p[axis]).fold(0.0, f64::max);
     assert!((extent(0) - 10.0).abs() < 1e-9 && (extent(1) - 6.0).abs() < 1e-9);
 }
+
+#[test]
+fn a_pitched_traced_face_lays_its_rows_along_its_eave_not_its_longest_edge() {
+    // One face 4 m along its eave at z = 8 and 8 m back to z = 0, rising 30°, turned 15°.
+    let (cos, sin) = (15f64.to_radians().cos(), 15f64.to_radians().sin());
+    let turn = |[x, z]: [f64; 2]| [x.mul_add(cos, -z * sin), x.mul_add(sin, z * cos)];
+    let corners: Vec<[f64; 2]> = [[0.0, 8.0], [4.0, 8.0], [4.0, 0.0], [0.0, 0.0]]
+        .into_iter()
+        .map(turn)
+        .collect();
+    let ridge = 8f64.mul_add(30f64.to_radians().tan(), 3.0);
+    let face: Vec<[f64; 3]> = corners
+        .iter()
+        .zip([3.0, 3.0, ridge, ridge])
+        .map(|(&[x, z], y)| [x, y, z])
+        .collect();
+    let scene = scene(0.0, &json!([free(&json!(corners), &json!([face]))]));
+
+    let roof = scene.roofs().remove(0);
+
+    assert!(near(&roof.across, &[cos, -sin, 0.0]), "{:?}", roof.across);
+    assert!((roof.plane.tilt - 30.0).abs() < 1e-9);
+}

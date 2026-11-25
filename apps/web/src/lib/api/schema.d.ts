@@ -1176,6 +1176,8 @@ export interface components {
              */
             eave: number;
             freeForm?: components["schemas"]["FreeForm"] | null;
+            /** @description What the person calls it, as "Garage"; numbered by its place without one. */
+            name?: string | null;
             /** @description A carport: a post at each corner instead of walls. */
             open?: boolean;
             /** @description How far the roof reaches past the walls; none when stored without it. */
