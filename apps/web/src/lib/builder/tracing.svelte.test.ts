@@ -35,18 +35,21 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+/** Where the scene lands on the page, and each edit's scene and edit. */
+interface Traced {
+  readonly at: (x: number, z: number, height?: number) => [number, number];
+  readonly scenes: Scene[];
+  readonly edits: TraceEdit[];
+}
+
 /** A canvas in the tracing mode, kept on the scene each edit hands back; `placing` held until a
  * ready shape is placed. */
 async function tracing(
   start: Scene = EMPTY,
   held?: Placing,
-): Promise<{
-  readonly at: (x: number, z: number, height?: number) => [number, number];
-  readonly scenes: Scene[];
-  readonly edits: TraceEdit[];
-}> {
-  const scenes: Scene[] = [];
-  const edits: TraceEdit[] = [];
+  into?: number | "new",
+): Promise<Traced> {
+  const [scenes, edits]: [Scene[], TraceEdit[]] = [[], []];
   let project: Projector | undefined;
 
   const screen = await render(SceneCanvas, {
@@ -59,6 +62,7 @@ async function tracing(
     tracing: {
       scene: start,
       placing: held,
+      into,
       ontrace: (scene: Scene, edit: TraceEdit) => {
         traced(scene, edit);
       },
@@ -68,7 +72,7 @@ async function tracing(
   const traced = (scene: Scene, edit: TraceEdit): void => {
     scenes.push(scene);
     edits.push(edit);
-    void screen.rerender({ tracing: { scene, ontrace: traced } });
+    void screen.rerender({ tracing: { scene, into, ontrace: traced } });
   };
 
   await settle(() => project !== undefined);
@@ -200,4 +204,37 @@ test("a ready dormer held is placed on the face under the next click", async () 
     "4.0",
   ]);
   expect(edit && replay(start, edit)).toMatchObject({ scene: scenes[0] });
+});
+
+test("a roof traced as a new roof beside another keeps to its own block, round to its first corner", async () => {
+  const house = replay(EMPTY, {
+    kind: "add",
+    from: { x: 2, z: 2 },
+    to: { x: 2, z: 6 },
+    reach: 0.3,
+  });
+
+  if ("refused" in house) throw new Error(house.refused);
+
+  const { at, scenes, edits } = await tracing(house.scene, undefined, "new");
+
+  for (const [x, z] of [
+    [2, 6],
+    [6, 6],
+    [6, 2],
+    [2, 2],
+    [2, 6],
+  ] as const) {
+    // oxlint-disable-next-line no-await-in-loop -- one click after another, as the person traces.
+    await press("mouse", [at(x, z)]);
+  }
+
+  await settle(() => scenes.length === 4);
+
+  const last = scenes.at(-1);
+
+  expect(last?.blocks).toHaveLength(2);
+  expect(last?.blocks[0]?.freeForm?.traced?.lines).toHaveLength(1);
+  expect(last?.blocks[1]?.freeForm?.faces).toHaveLength(1);
+  expect(edits.map((edit) => edit.kind === "add" && edit.into)).toEqual(["new", 1, 1, 1]);
 });

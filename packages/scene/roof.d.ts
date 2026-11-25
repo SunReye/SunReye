@@ -52,9 +52,17 @@ export type Edited =
 export declare function snap(scene: Scene, click: Click, reach: number): Snap;
 
 /** The scene with a line from `from` to `to`, each click snapped within `reach` metres. The line
- * splits every line it crosses, and the one a click snaps onto; a line touching no traced block
- * starts a new one. The block's faces follow its loops. */
-export declare function addLine(scene: Scene, from: End, to: End, reach: number): Edited;
+ * splits every line of its block it crosses, and the one a click snaps onto; a line touching no
+ * traced block starts a new one. `into` names its block: traced block `into`, or a new block for
+ * `"new"`, wherever it touches another (a roof at another height beside it); refused (`"missing"`)
+ * for a block that is no traced roof. The block's faces follow its loops. */
+export declare function addLine(
+  scene: Scene,
+  from: End,
+  to: End,
+  reach: number,
+  into?: number | "new",
+): Edited;
 
 /** The scene with line `line` of block `block` moved level by `by` metres, its points with it;
  * refused when it would cross a line. The block's faces follow. */
@@ -200,7 +208,13 @@ export interface Place {
  * consumer keeping the scene elsewhere makes the same next scene with `replay`. An add carries the
  * metres its clicks snapped within; `which` is the eaves or ridges pulled, `as` what a line is made. */
 export type TraceEdit =
-  | { readonly kind: "add"; readonly from: End; readonly to: End; readonly reach: number }
+  | {
+      readonly kind: "add";
+      readonly from: End;
+      readonly to: End;
+      readonly reach: number;
+      readonly into?: number | "new";
+    }
   | { readonly kind: "move"; readonly block: number; readonly line: number; readonly by: Place }
   | { readonly kind: "remove"; readonly block: number; readonly line: number }
   | { readonly kind: "pull"; readonly block: number; readonly which: Kind; readonly height: number }
