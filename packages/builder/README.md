@@ -154,4 +154,4 @@ Plain values and helpers. Loads neither three.js nor Svelte, so a unit test reac
 - `COUNT_UP_MS`, `EXIT_MS`, `FIGURE_GLIDE_MS`, `SPRINGS`: motion durations.
 - `stringCss`, `stringColour`, `STRINGS`, `UNASSIGNED`: the colour a string is drawn in by its position, as CSS or a number (grey for none).
 - `headingOf`, `withHeading`, `eaveHeading`, `detent`, `View`: a view's heading, the view turned to one (a `steady` view lands without a flight), the heading that lays a roof face's eave level, and a heading settled into nearby stops.
-- `angleOf`, `turnedBy`: the turn an object stands at, as its inspector shows it, and the scene with it turned exactly by some degrees about its middle (a traced block about its footprint's centroid); none for what does not turn.
+- `angleOf`, `turnedBy`: the turn an object stands at, as its inspector shows it, and the scene with it turned exactly by some degrees about its middle (a traced block about its footprint's centroid, a roof chimney or roof window in its face); none for what does not turn.

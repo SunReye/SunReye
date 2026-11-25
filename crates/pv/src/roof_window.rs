@@ -25,6 +25,9 @@ pub struct RoofWindow {
     /// Its size: across the slope, and up it.
     pub width: f64,
     pub length: f64,
+    /// Degrees it is turned in its face, clockwise seen from above; none stored unturned.
+    #[serde(default, skip_serializing_if = "crate::turned::is_zero")]
+    pub turn: f64,
 }
 
 /// Metres a new roof window keeps from its face's edges.
@@ -37,13 +40,21 @@ const HEIGHTS: [f64; 4] = [0.6, 0.4, 0.75, 0.25];
 const TRIES: u8 = 60;
 
 impl RoofWindow {
-    /// Its pane on its face: the lower left and upper right corner in the face's outline.
+    /// What its pane covers on its face: the lower left and upper right corner in the face's
+    /// outline, round it however it is turned.
     pub(crate) fn area(&self) -> Area {
-        let (half_across, half_up) = (self.width / 2.0, self.length / 2.0);
-        [
-            [self.across - half_across, self.up - half_up],
-            [self.across + half_across, self.up + half_up],
-        ]
+        crate::turned::bounds(&self.corners())
+    }
+
+    /// Its pane's corners in its face's outline, from its own lower left.
+    fn corners(&self) -> [[f64; 2]; 4] {
+        let half = [self.width / 2.0, self.length / 2.0];
+        crate::turned::corners([self.across, self.up], half, self.turn)
+    }
+
+    /// Its pane on `face`, in the shading frame.
+    fn pane(&self, face: &RoofFace) -> [Point; 4] {
+        self.corners().map(|corner| face.point(corner))
     }
 
     fn face<'a>(&self, roofs: &'a [RoofFace]) -> Option<&'a RoofFace> {
@@ -99,7 +110,7 @@ impl Scene {
                     .map(RoofWindow::area)
                     .collect();
                 if window.fits(face, &earlier) {
-                    Ok(face.corners(window.area()))
+                    Ok(window.pane(face))
                 } else {
                     Err(index)
                 }
@@ -114,7 +125,7 @@ impl Scene {
         let roofs = self.roofs();
         let windows = self.roof_windows.iter();
         windows
-            .map(|window| Some(window.face(&roofs)?.corners(window.area())))
+            .map(|window| Some(window.pane(window.face(&roofs)?)))
             .collect()
     }
 
@@ -124,9 +135,9 @@ impl Scene {
         let roofs = self.roofs();
         self.roof_windows.iter().position(|window| {
             let at = window.face(&roofs).and_then(|face| face.locate(point));
-            let [[left, low], [right, high]] = window.area();
-            at.is_some_and(|[across, up]| {
-                (left..=right).contains(&across) && (low..=high).contains(&up)
+            let half = [window.width / 2.0, window.length / 2.0];
+            at.is_some_and(|at| {
+                crate::turned::within([window.across, window.up], half, window.turn, at, [0.0; 2])
             })
         })
     }
@@ -190,6 +201,7 @@ impl Scene {
                     up: snap(up, 0.1),
                     width,
                     length,
+                    turn: 0.0,
                 })
                 .find(|window| window.lies(face, CLEAR) && window.fits(face, &taken))
         })
