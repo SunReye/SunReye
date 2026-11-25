@@ -3,11 +3,12 @@
 // to the orbit controls. A tap clicks; a drag from a traced line moves it; a finger's drag
 // clicks where it lets go. Escape ends the chain.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- three.js and the DOM, used in place. */
-import type { PerspectiveCamera } from "three";
+import type { Lens } from "./lens.ts";
 import { projector } from "./project.ts";
 import { aim, pvPoint, type Aimed } from "./trace-aim.ts";
 import { pick } from "./trace-pick.ts";
 import { Handover, listen } from "./pointer.ts";
+import { spaceHeld } from "./space.ts";
 import type { TraceTool, Tracing } from "./tracing.svelte.ts";
 
 /** Pixels a click snaps within by default. */
@@ -24,7 +25,7 @@ interface Held {
 
 export class TracePress {
   readonly #canvas: HTMLCanvasElement;
-  readonly #camera: PerspectiveCamera;
+  readonly #camera: Lens;
   readonly #tool: TraceTool;
   readonly #tracing: () => Tracing | undefined;
   readonly #handover = new Handover();
@@ -35,7 +36,7 @@ export class TracePress {
 
   constructor(
     canvas: HTMLCanvasElement,
-    camera: PerspectiveCamera,
+    camera: Lens,
     tool: TraceTool,
     tracing: () => Tracing | undefined,
   ) {
@@ -78,7 +79,9 @@ export class TracePress {
   readonly #press = (event: PointerEvent): void => {
     const tracing = this.#tracing();
 
-    if (this.#handover.handed(event) || tracing === undefined || event.button !== 0) return;
+    const passed = this.#handover.handed(event) || tracing === undefined || event.button !== 0;
+
+    if (passed || spaceHeld()) return;
 
     if (this.#held !== undefined) {
       this.#another(event);

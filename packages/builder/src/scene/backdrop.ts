@@ -1,4 +1,4 @@
-// The studio's surroundings (ADR 20 Look): a backdrop in the page colour with no horizon, a floor
+// The studio's surroundings (ADR 20 Look): a flat backdrop in the page colour, a floor
 // that fades into it, and the sky that lights the scene. Browser-only: colours come from CSS.
 import {
   Color,
@@ -17,7 +17,6 @@ import { Sky } from "three/addons/objects/Sky.js";
 import type { Clouds } from "./light.ts";
 import { floor } from "./materials.ts";
 import { untone } from "./tone.ts";
-import { backdropAt } from "./vignette.ts";
 
 /** Metres of floor each way; it fades long before its edge. */
 const FLOOR = 400;
@@ -46,27 +45,15 @@ export function cssColour(expression: string): Color {
   return new Color().setRGB(r / 255, g / 255, b / 255, SRGBColorSpace);
 }
 
-/** A soft vignette that lands on the page colour after tone mapping: no horizon shows. */
+/** The page colour, as it lands after tone mapping: a flat backdrop, so the floor fades into the
+ * page with no horizon, and no lighter middle glows behind the house. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- cloned, never changed.
-export function backdrop(page: Color, exposure: number, dark: boolean): DataTexture {
-  const size = 64;
-  const data = new Float32Array(size * size * 4);
-
-  const linear = [page.r, page.g, page.b] as const;
-
-  for (let y = 0; y < size; y++)
-    for (let x = 0; x < size; x++) {
-      data.set(
-        [...untone(backdropAt(linear, dark, x / size, y / size), exposure), 1],
-        (y * size + x) * 4,
-      );
-    }
-
-  const texture = new DataTexture(data, size, size, RGBAFormat, FloatType);
+export function backdrop(page: Color, exposure: number): DataTexture {
+  const data = new Float32Array([...untone([page.r, page.g, page.b], exposure), 1]);
+  const texture = new DataTexture(data, 1, 1, RGBAFormat, FloatType);
 
   texture.colorSpace = LinearSRGBColorSpace;
   texture.magFilter = texture.minFilter = LinearFilter;
-  texture.flipY = true;
   texture.needsUpdate = true;
 
   return texture;

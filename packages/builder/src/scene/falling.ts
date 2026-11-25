@@ -52,14 +52,16 @@ const EXPOSURE = 0.06;
 
 /** What falls as it lands on screen, by theme: linear, and how opaque. Rain is dark on the light
  * page, where white would not show, and pale on the dark one, never glowing. A flake is white
- * above and its `rim` shade below, which sets it off the white page. */
+ * above and its `rim` shade below, which sets it off the white page. On the light page both are
+ * drawn over the backdrop in the tone curve's shoulder, which takes contrast: light rain is
+ * stronger than whole, as a streak's own coverage keeps its alpha under one. */
 const SHADE = {
   rain: {
-    light: { colour: [0.035, 0.05, 0.085], rim: [0, 0, 0], opacity: 1 },
+    light: { colour: [0.035, 0.05, 0.085], rim: [0, 0, 0], opacity: 1.6 },
     dark: { colour: [0.3, 0.34, 0.4], rim: [0, 0, 0], opacity: 0.11 },
   },
   snow: {
-    light: { colour: [0.9, 0.92, 0.95], rim: [0.3, 0.37, 0.52], opacity: 0.95 },
+    light: { colour: [0.9, 0.92, 0.95], rim: [0.3, 0.37, 0.52], opacity: 1 },
     dark: { colour: [0.9, 0.92, 0.95], rim: [0.45, 0.5, 0.6], opacity: 0.9 },
   },
 } as const;

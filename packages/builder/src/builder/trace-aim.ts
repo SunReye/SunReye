@@ -1,8 +1,9 @@
 // Where a pointer aims while tracing a roof (ADR 20): the plain ground under it in the scene's
 // frame, how many metres a click's snap reaches there, and a scene spot in the pv crate's frame.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- three.js and the DOM, used in place. */
+import type { Lens } from "./lens.ts";
 import type { Click, Snap, Spot } from "@sunreye/scene";
-import { type PerspectiveCamera, Raycaster, Vector2 } from "three";
+import { Raycaster, Vector2 } from "three";
 import { inScene, level, world, type Ray } from "./handles/frame.ts";
 import { ndc } from "./pointer.ts";
 import type { Point } from "./pv.ts";
@@ -31,7 +32,7 @@ export function pvPoint(north: number, spot: readonly number[]): Point {
 /** The ray through the canvas point `shift` pixels off `event`, in the scene's frame. */
 function rayAt(
   canvas: HTMLCanvasElement,
-  camera: PerspectiveCamera,
+  camera: Lens,
   north: number,
   event: PointerEvent,
   [dx, dy]: readonly [number, number],
@@ -62,7 +63,7 @@ function ground(ray: Ray): Spot | null {
  * carries heights comes with tracing on it (ADR 20): a click then lands on it. */
 export function aim(
   canvas: HTMLCanvasElement,
-  camera: PerspectiveCamera,
+  camera: Lens,
   north: number,
   event: PointerEvent,
   pixels: number,

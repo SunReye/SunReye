@@ -1,5 +1,6 @@
 // What a handle drag makes of the scene (ADR 20): from the ray that grabbed it to the pointer's
 // ray now, snapped. Pure; the drag slides in a level plane, the pitch in an upright one.
+import { moveBlock } from "@sunreye/scene";
 import type { Modules, Pv, Scene } from "../pv.ts";
 import { slide as slideOpening, type Fitter } from "../wall-openings.ts";
 import { bodyOf, on, ridge, type Body, type Rect, type Round, type Target } from "./body.ts";
@@ -202,13 +203,28 @@ export interface Crate extends Fitter {
   readonly laid: Pick<Modules, "walls" | "roofs">;
 }
 
+/** A free-form block has no rectangle: a move shifts the whole of it, the shift snapped. */
+function shiftWhole({ scene, target, from, to }: Slide): Dragged {
+  const by = [snap(to[0] - from[0], LENGTH), snap(to[2] - from[2], LENGTH)].map((value) =>
+    tidy(value),
+  );
+
+  return { scene: moveBlock(scene, target.index, by), value: by, unit: "m" };
+}
+
 /** A drag in a level plane: a fence's point, or a body. */
 function levelled(slide: Slide, grab: Grab): Dragged | null {
   if (grab.grip === "point") return repoint(slide, grab.point ?? -1);
 
   const body = bodyOf(slide.scene, slide.target);
 
-  return body === undefined ? null : slid(grab.grip, slide, body);
+  if (body === undefined) {
+    const block = slide.target.kind === "block" && grab.grip === "move";
+
+    return block && slide.scene.blocks[slide.target.index] !== undefined ? shiftWhole(slide) : null;
+  }
+
+  return slid(grab.grip, slide, body);
 }
 
 /** A drag the crate keeps in its place: an opening slides in its wall's plane, a chimney and a roof

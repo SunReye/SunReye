@@ -15,7 +15,7 @@ import type { Hit } from "./strike.ts";
 const MODULE_OFF = 0.6;
 
 /** The face `hit` struck: a roof's point, or a module's middle; null off every roof. */
-function faceOf(hit: Hit | null, roofs: readonly RoofFace[], panels: readonly Panel[]) {
+export function faceOf(hit: Hit | null, roofs: readonly RoofFace[], panels: readonly Panel[]) {
   if (hit?.kind === "point") return roofFaceAt(roofs, hit.point);
 
   if (hit?.kind !== "grid") return null;
@@ -56,13 +56,14 @@ export function selector({ roofs, panels, onpick, onselect }: Selecting) {
   };
 }
 
-/** Keeps the outline of the face whose key `selected` gives, of `roofs`, in the studio; returns
- * its removal. */
+/** Keeps the outline of the face whose key `selected` gives, of `roofs`, in the studio, in
+ * `colour`; returns its removal. */
 export function marked(
   studio: Studio,
   roofs: () => readonly RoofFace[] | undefined,
   selected: () => string | undefined,
   render: () => void,
+  colour = "var(--brand)",
 ): () => void {
   let shown: ReturnType<typeof markedFace> | undefined;
 
@@ -82,7 +83,7 @@ export function marked(
     const roof = key === undefined ? undefined : roofs()?.find((r) => roofFaceKey(r) === key);
 
     untrack(() => {
-      replace(roof && markedFace(roof, cssColour("var(--brand)")));
+      replace(roof && markedFace(roof, cssColour(colour)));
       render();
     });
   });

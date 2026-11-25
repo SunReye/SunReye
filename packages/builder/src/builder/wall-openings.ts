@@ -86,20 +86,6 @@ export function duplicate(pv: Pick<Pv, "refit">, scene: Scene, index: number): S
   return original === undefined ? null : pasted(pv, scene, original);
 }
 
-const lowered = (opening: Opening): Opening => ({ ...opening, block: opening.block - 1 });
-
-/** The scene without block `index`'s openings, later blocks' following it down. */
-export function withOpenings(scene: Scene, index: number): Scene {
-  if (scene.openings === undefined) return scene;
-
-  return {
-    ...scene,
-    openings: scene.openings
-      .filter((opening) => opening.block !== index)
-      .map((opening) => (opening.block > index ? lowered(opening) : opening)),
-  };
-}
-
 /** A wall in three.js's frame. */
 export interface OnWall {
   /** The point `along` it at `height`, `off` metres out. */

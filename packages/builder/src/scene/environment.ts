@@ -49,7 +49,7 @@ export class Environment {
 
     this.#backdropped = backdropped;
     this.#backdrop?.dispose();
-    this.#backdrop = backdrop(new Color(...air), look.exposure, look.dark);
+    this.#backdrop = backdrop(new Color(...air), look.exposure);
     this.#lit.background = this.#backdrop;
   }
 

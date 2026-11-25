@@ -1,8 +1,9 @@
 // What SceneCanvas draws and picks (ADR 20): the meshes kept in step with the geometry and the live
 // glow, the first build in slices, and the hits of a click.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- three.js and the DOM, used in place. */
+import type { Lens } from "./lens.ts";
 import { untrack } from "svelte";
-import { type Group, type PerspectiveCamera, type Scene as Studio } from "three";
+import { type Group, type Scene as Studio } from "three";
 import { cssColour } from "../scene/backdrop.ts";
 import { pause } from "../scene/prepare.ts";
 import type { Lit } from "../scene/stage.svelte.ts";
@@ -30,6 +31,10 @@ export { default as TraceLayer } from "./TraceLayer.svelte";
 export { TracingMode, type Traced } from "./tracing-mode.svelte.ts";
 
 export { projector, type Projector } from "./project.ts";
+
+export { pointing, type OnContext, type OnPress } from "./pointing.svelte.ts";
+
+export type { Navigation } from "./navigation.ts";
 
 /** SceneCanvas's props, read when needed. */
 export interface Source {
@@ -100,7 +105,7 @@ const CLICK = 5;
 /** Reports a click's hit, null for nothing struck; a press that moves further orbits instead. */
 export function picking(
   canvas: HTMLCanvasElement,
-  camera: PerspectiveCamera,
+  camera: Lens,
   drawn: () => Group | undefined,
   {
     panels,
@@ -208,7 +213,7 @@ export class RoofTool {
   /** Lays modules on the selected face and selects them for wiring; before the orbit controls. */
   attach(
     canvas: HTMLCanvasElement,
-    camera: PerspectiveCamera,
+    camera: Lens,
     sources: Pick<RoofSources, "roofwork" | "drawn" | "panels">,
   ): RoofPress {
     return new RoofPress(canvas, camera, {

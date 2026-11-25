@@ -1,9 +1,8 @@
 // Modules on the roof faces and their wiring into strings (ADR 20). Pure: each edit returns a new scene; the
 // pv crate decides where a module lies and what fits.
-import type { StringDraft } from "@sunreye/scene";
+import { removeBlock, type StringDraft } from "@sunreye/scene";
 import type { GridModule, LaidGrid, ModuleGrid, Scene } from "./pv.ts";
 import { following, ordered } from "./wiring.ts";
-import { withOpenings } from "./wall-openings.ts";
 import type { Panel } from "./scene.ts";
 
 /** What the builder edits and saves: the scene and the strings its modules are wired into. */
@@ -113,37 +112,9 @@ export function fillGrid(
   ]);
 }
 
-/** The scene without block `index`: its grids, chimneys, roof windows, existing PV and equipment
- * go, later blocks' follow it down. */
-export function withoutBlock(scene: Scene, index: number): Scene {
-  const equipment = scene.equipment
-    ?.filter((marker) => marker.block !== index)
-    .map((marker) => (marker.block > index ? onBlock(marker, marker.block - 1) : marker));
-
-  const chimneys = scene.chimneys
-    ?.filter((item) => item.block !== index)
-    .map((item) => (item.block > index ? onBlock(item, item.block - 1) : item));
-
-  const windows = scene.roofWindows
-    ?.filter((item) => item.block !== index)
-    .map((item) => (item.block > index ? onBlock(item, item.block - 1) : item));
-
-  const existing = scene.existingPv
-    ?.filter((item) => item.block !== index)
-    .map((item) => (item.block > index ? onBlock(item, item.block - 1) : item));
-
-  const blocks = scene.blocks.toSpliced(index, 1);
-  const walled = withOpenings(scene, index);
-  const fielded = existing === undefined ? walled : { ...walled, existingPv: existing };
-  const glazed = windows === undefined ? fielded : { ...fielded, roofWindows: windows };
-  const kept = chimneys === undefined ? { ...glazed, blocks } : { ...glazed, blocks, chimneys };
-
-  return withGrids(equipment === undefined ? kept : { ...kept, equipment }, (grids) =>
-    grids
-      .filter((grid) => grid.block !== index)
-      .map((grid) => (grid.block > index ? changed(grid, { block: grid.block - 1 }) : grid)),
-  );
-}
+/** The scene without block `index`: its grids, chimneys, roof windows, existing PV, openings,
+ * markers and face details go, later blocks' follow it down. */
+export const withoutBlock = (scene: Scene, index: number): Scene => removeBlock(scene, index);
 
 /** The scene without the modules a roof chimney or roof window covers, as the crate names them: each its
  * grid's index and its own in it. The same scene where it stands on none. */
@@ -196,10 +167,6 @@ export function wiredIn(scene: Scene, index: number): WiredIn {
     modules: cells.length,
     optimized: cells.filter((cell) => cell.optimized === true).length,
   };
-}
-
-function onBlock<T extends { readonly block: number }>(item: T, block: number): T {
-  return { ...item, block };
 }
 
 function changed(grid: ModuleGrid, fields: Partial<ModuleGrid>): ModuleGrid {

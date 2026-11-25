@@ -37,9 +37,14 @@ test("fog softens ambient occlusion and hides it entirely at the fog limit", () 
   expect(veiled).toBeLessThan(clear / 2);
 
   // Lift the camera past the fog's 51 m limit and keep the floor's framing.
-  opened.camera.position.y = 60;
-  opened.camera.fov = (360 * Math.atan(Math.tan(Math.PI / 9) / 2)) / Math.PI;
-  opened.camera.updateProjectionMatrix();
+  const { camera } = opened;
+
+  if (!(camera instanceof PerspectiveCamera))
+    throw new TypeError("the studio's camera is a perspective one");
+
+  camera.position.y = 60;
+  camera.fov = (360 * Math.atan(Math.tan(Math.PI / 9) / 2)) / Math.PI;
+  camera.updateProjectionMatrix();
   expect(apart(draw(1, true), draw(1, false))).toBeLessThan(0.2);
 });
 

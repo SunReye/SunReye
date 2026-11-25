@@ -8,9 +8,9 @@ import {
   fresh,
   refit,
   slide as slideOn,
-  withOpenings,
   type OpeningGrip,
 } from "../../../../../packages/builder/src/builder/wall-openings.ts";
+import { withoutBlock } from "../../../../../packages/builder/src/builder/modules.ts";
 
 const wasm = new URL(import.meta.resolve("@sunreye/pv-wasm/pv.wasm"));
 
@@ -163,8 +163,7 @@ test("a removed block takes its openings with it, and later blocks' follow it do
     openings: [window, { ...window, block: 1 }],
   };
 
-  expect(withOpenings(two, 0).openings).toEqual([{ ...window, block: 0 }]);
-  expect(withOpenings(house, 0)).toEqual(house);
+  expect(withoutBlock(two, 0).openings).toEqual([{ ...window, block: 0 }]);
 });
 
 test("a duplicate stands to the right of its original on the same wall, like it in all but place", () => {

@@ -1,8 +1,9 @@
+import type { Lens } from "../builder/lens.ts";
+import { DEPTH_METRES, depthDefines } from "./depth-metres.ts";
 import {
   DoubleSide,
   type DepthTexture,
   type Fog,
-  type PerspectiveCamera,
   type Scene,
   ShaderMaterial,
   type Texture,
@@ -16,6 +17,7 @@ import { VERTEX } from "./lens-shaders.ts";
 
 const COMPOSITE = `
   #include <packing>
+  ${DEPTH_METRES}
 
   varying vec2 vUv;
   uniform sampler2D tScene;
@@ -31,7 +33,7 @@ const COMPOSITE = `
     vec4 scene = texture2D(tScene, vUv);
     float depth = texture2D(tDepth, vUv).x;
     vec3 ao = texture2D(tOcclusion, vUv).rgb;
-    float metres = -perspectiveDepthToViewZ(depth, cameraNear, cameraFar);
+    float metres = metresAt(depth, cameraNear, cameraFar);
     float fog = smoothstep(fogNear, fogFar, metres);
 
     // The scene already holds lit surfaces plus scattered light. Darken the surfaces alone.
@@ -47,7 +49,7 @@ export class OcclusionPass extends GTAOPass {
   readonly #fog: Fog;
 
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws with them.
-  constructor(scene: Scene, camera: PerspectiveCamera, depth: DepthTexture, fog: Fog) {
+  constructor(scene: Scene, camera: Lens, depth: DepthTexture, fog: Fog) {
     super(scene, camera, 1, 1);
     this.#fog = fog;
     this.output = GTAOPass.OUTPUT.Off;
@@ -66,6 +68,7 @@ export class OcclusionPass extends GTAOPass {
     this.#composite = new FullScreenQuad(
       new ShaderMaterial({
         uniforms: this.#uniforms,
+        defines: depthDefines(camera),
         vertexShader: VERTEX,
         fragmentShader: COMPOSITE,
         depthTest: false,

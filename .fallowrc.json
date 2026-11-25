@@ -14,6 +14,7 @@
     "packages/ui/src/calendar/**",
     "packages/ui/src/card/**",
     "packages/ui/src/checkbox/**",
+    "packages/ui/src/context-menu/**",
     "packages/ui/src/dialog/**",
     "packages/ui/src/drawer/**",
     "packages/ui/src/dropdown-menu/**",

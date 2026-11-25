@@ -7,7 +7,17 @@ export { default as SceneCanvas } from "./builder/SceneCanvas.svelte";
 
 export { headingOf, parseView, presetView, type Preset, type View } from "./builder/camera.ts";
 
-export type { Around, Editing, Hit, Panel, Projector, Roofwork } from "./builder/drawing.svelte.ts";
+export type {
+  Around,
+  Editing,
+  Hit,
+  Navigation,
+  OnContext,
+  OnPress,
+  Panel,
+  Projector,
+  Roofwork,
+} from "./builder/drawing.svelte.ts";
 
 export { layingOf, type Laying, type LaySteps } from "./builder/gestures.ts";
 

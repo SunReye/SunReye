@@ -6,7 +6,7 @@
 
 <script lang="ts">
   import { untrack } from "svelte";
-  import { PerspectiveCamera, type Group } from "three";
+  import type { Group } from "three";
   import {
     openGarage,
     parkedKey,
@@ -16,8 +16,8 @@
   } from "../cars/garage.ts";
   import PerfOverlay from "../scene/PerfOverlay.svelte";
   import { Ghost, lit, type Lit, type SceneFailure, type Sky } from "../scene/stage.svelte.ts";
-  import { FOV, type View } from "./camera.ts";
-  import { fit, orbit } from "./orbit.svelte.ts";
+  import type { View } from "./camera.ts";
+  import { fit, lensOf, orbit, type Lens } from "./orbit.svelte.ts";
   import { m } from "../paraglide/messages.js";
   import type { Geometry, Point, RoofFace } from "./pv.ts";
   import {
@@ -27,6 +27,7 @@
     marked,
     overlaid,
     picking,
+    pointing,
     projector,
     selector,
     TraceLayer,
@@ -35,6 +36,9 @@
     type Around,
     type Editing,
     type Hit,
+    type Navigation,
+    type OnContext,
+    type OnPress,
     type Roofwork,
     type Panel,
     type Projector,
@@ -66,6 +70,9 @@
     editing,
     roofwork,
     tracing,
+    navigation = "orbit",
+    oncontext,
+    onpress,
   }: {
     geometry: Geometry;
     /** The placed modules. */
@@ -114,6 +121,11 @@
     /** The tracing mode: seen from above, clicks trace a roof's lines over what is drawn, the
      * aerial image included, and each edit's next scene goes to `ontrace` (ADR 20). */
     tracing?: Tracing | undefined;
+    /** What the pointer does to the camera and shows on hover; read when the canvas is made. */
+    navigation?: Navigation;
+    /** A right click or a long press, not a drag: what it struck, its face, and where on the page. */
+    oncontext?: OnContext | undefined;
+    onpress?: OnPress | undefined;
   } = $props();
 
   const traceTool = new TraceTool();
@@ -181,7 +193,7 @@
   }
 
   /** The lit studio on `canvas`; null without WebGL2. */
-  function studioOn(canvas: HTMLCanvasElement, camera: PerspectiveCamera): Lit | null {
+  function studioOn(canvas: HTMLCanvasElement, camera: Lens): Lit | null {
     try {
       return lit(
         canvas,
@@ -206,7 +218,7 @@
   /** Answers a click with its hit and the roof face it selects, and marks the selected face. */
   function selecting(
     canvas: HTMLCanvasElement,
-    camera: PerspectiveCamera,
+    camera: Lens,
     { studio, opening }: Lit,
     drawn: () => Group | undefined,
   ): () => void {
@@ -227,23 +239,30 @@
       opening.render,
     );
 
+    const unpoint = pointing(canvas, camera, studio.scene, opening.render, {
+      navigation: untrack(() => navigation),
+      drawn,
+      panels: source.panels,
+      props: () => ({ roofs, selected, editing, tracing, oncontext, onpress }),
+    });
+
     return () => {
       unpick();
       unmark();
+      unpoint();
     };
   }
 
   /** Draws on a change of geometry, view, sun or theme, a camera move or a resize; nothing before
    * the studio is prepared. Cars come once the house is on screen. */
   function stage(canvas: HTMLCanvasElement): () => void {
-    const camera = new PerspectiveCamera(FOV, 1, 0.1, 5000);
+    const camera = lensOf(untrack(() => navigation));
     const scene = studioOn(canvas, camera);
 
     if (scene === null) return () => {};
 
     const { studio, flight, opening } = scene;
     const { render } = opening;
-    const resize = fit(canvas, studio, camera, render);
     const kept = keep(scene, source, render);
     const handling = { editing: () => editing, drawn: kept.drawn, panels: source.panels };
     // Before the picking and the orbit controls: a press on a handle or a trace never reaches them.
@@ -264,7 +283,8 @@
       ),
     );
 
-    const controls = orbit(canvas, camera, flight, render, orbiting);
+    const controls = orbit(canvas, camera, flight, render, orbiting, () => navigation);
+    const resize = fit(canvas, studio, camera, render, controls.target);
 
     opening
       .open(kept.built, () => onready?.(), parking.due)

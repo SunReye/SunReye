@@ -1,8 +1,9 @@
+import type { Lens } from "../builder/lens.ts";
+import { DEPTH_METRES, depthDefines } from "./depth-metres.ts";
 import {
   type DepthTexture,
   HalfFloatType,
   MathUtils,
-  type PerspectiveCamera,
   ShaderMaterial,
   type Texture,
   Uniform,
@@ -34,6 +35,7 @@ const PREFILTER = `
 
 const BLUR = `
   #include <packing>
+  ${DEPTH_METRES}
   ${FOCUS_MODEL}
 
   varying vec2 vUv;
@@ -48,7 +50,7 @@ const BLUR = `
   float blurAt(vec2 uv) {
     if (!depthOfField) return focusBlur(0.0, uv.y);
     float depth = texture2D(tDepth, uv).x;
-    float metres = -perspectiveDepthToViewZ(depth, cameraNear, cameraFar);
+    float metres = metresAt(depth, cameraNear, cameraFar);
     return focusBlur(metres, uv.y);
   }
 
@@ -90,7 +92,7 @@ const BLUR = `
 `;
 
 export class FocusPass extends Pass {
-  readonly #camera: PerspectiveCamera;
+  readonly #camera: Lens;
   readonly #drawOver: (frame: FocusFrame) => void;
   readonly #quad: FullScreenQuad;
   readonly #prefilter: FullScreenQuad;
@@ -101,7 +103,7 @@ export class FocusPass extends Pass {
 
   constructor(
     // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- read each frame.
-    camera: PerspectiveCamera,
+    camera: Lens,
     // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- sampled by the shader.
     depth: DepthTexture,
     drawOver: (frame: FocusFrame) => void,
@@ -128,6 +130,7 @@ export class FocusPass extends Pass {
       new ShaderMaterial({
         uniforms: this.#uniforms,
         vertexShader: VERTEX,
+        defines: depthDefines(camera),
         fragmentShader: BLUR,
         depthTest: false,
         depthWrite: false,
