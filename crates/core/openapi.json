@@ -243,6 +243,13 @@
               }
             ]
           },
+          "name": {
+            "description": "What the person calls it, as \"Garage\"; numbered by its place without one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "open": {
             "description": "A carport: a post at each corner instead of walls.",
             "type": "boolean"

@@ -7,7 +7,6 @@ import {
   addLine,
   moveLine,
   replay,
-  snap,
   type DormerSize,
   type End,
   type PointRef,
@@ -21,6 +20,7 @@ import { haptics } from "@sunreye/ui/haptics";
 import { clickAt, type Aimed } from "./trace-aim.ts";
 import type { Scene } from "./pv.ts";
 import { faceUnder } from "./trace-place.ts";
+import { ended, samePoint, shifted, snapOf, spotOf } from "./trace-ends.ts";
 
 /** A traced line, by its block and its place in the block's lines. */
 export interface LineRef {
@@ -49,6 +49,10 @@ export interface Tracing {
   /** A ready shape the next tap places, instead of tracing; reported as a `roof` or `dormer` edit,
    * after which the consumer lets go of it. */
   readonly placing?: Placing | undefined;
+  /** The roof the lines go into, wherever they touch another: traced block `into`, or a new block
+   * for `"new"` (a roof at another height beside one, ADR 20 "One roof, one block"); without, a
+   * line goes into the roof it touches. */
+  readonly into?: number | "new" | undefined;
   /** Each edit's next scene, and the edit: one undo step each. */
   readonly ontrace: (scene: Scene, edit: TraceEdit) => void;
 }
@@ -76,46 +80,6 @@ interface Pressed {
   readonly line: LineRef | undefined;
 }
 
-/** A traced point's spot. */
-function spotOf(scene: Scene, { block, point }: PointRef): Spot {
-  const [x = 0, y = 0, z = 0] = scene.blocks[block]?.freeForm?.traced?.points[point] ?? [];
-
-  return [x, y, z];
-}
-
-/** Line `line` shifted level by the move from `from` to `to`. */
-function shifted(scene: Scene, { block, line }: LineRef, from: Spot, to: Spot): Shown["dragged"] {
-  const [a = 0, b = 0] = scene.blocks[block]?.freeForm?.traced?.lines[line] ?? [];
-
-  const by = (point: number): Spot => {
-    const [x, y, z] = spotOf(scene, { block, point });
-
-    return [x + to[0] - from[0], y, z + to[2] - from[2]];
-  };
-
-  return { from: by(a), to: by(b) };
-}
-
-/** What an aimed pointer snaps to: what it picks as drawn, else by the ground under it. */
-function snapOf(scene: Scene, { at, reach, snap: picked }: Aimed): Snap {
-  return picked ?? snap(scene, clickAt(at), reach);
-}
-
-/** Where a click ends a line: the traced point it snaps to, a place on the line it snaps to, else
- * the click itself. */
-function ended(scene: Scene, aimed: Aimed): End {
-  const snapped = snapOf(scene, aimed);
-
-  if (snapped.kind === "point") return { block: snapped.block, point: snapped.point };
-
-  // A line's place by its plan, where the scene's operations snap it to the line again.
-  return snapped.kind === "line" ? { x: snapped.at[0], z: snapped.at[2] } : clickAt(aimed.at);
-}
-
-/** Whether two ends are the same traced point. */
-const samePoint = (a: End, b: End): boolean =>
-  "point" in a && "point" in b && a.block === b.block && a.point === b.point;
-
 export class TraceTool {
   #from = $state.raw<End>();
   #start = $state.raw<PointRef>();
@@ -125,6 +89,8 @@ export class TraceTool {
   #refused = $state.raw<Refusal>();
   #scene = $state.raw<Scene>();
   #pressed: Pressed | undefined;
+  /** The block this chain's first line made, traced into a new roof: its later lines join it. */
+  #made: number | undefined;
 
   readonly shown: Shown = $derived({
     snap: this.#snap,
@@ -146,6 +112,7 @@ export class TraceTool {
   end(): void {
     this.#from = undefined;
     this.#start = undefined;
+    this.#made = undefined;
   }
 
   /** The pointer on the canvas, in pixels; off it, nothing snaps. */
@@ -273,10 +240,27 @@ export class TraceTool {
     this.#start = "point" in end ? end : undefined;
   }
 
+  /** The chain after a line from `edited.from` to `edited.to`: back on its first point it closes
+   * its loop and ends; one begun on another roof's point, drawn into a new one, closes on its own
+   * point there. */
+  #chain(
+    edited: { readonly block: number; readonly from: number; readonly to: number },
+    into: number | "new" | undefined,
+  ): void {
+    const { block, from, to } = edited;
+    const start = this.#start?.block === block ? this.#start : { block, point: from };
+    const closes = start.point === to;
+
+    this.#made = !closes && into === "new" ? block : closes ? undefined : this.#made;
+    this.#start = closes ? undefined : start;
+    this.#from = closes ? undefined : { block, point: to };
+  }
+
   /** The line from the chain's last point to `end`; back on the chain's first point it closes its
    * loop and ends the chain. */
   #joined(tracing: Tracing, from: End, end: End, reach: number): void {
-    const edited = addLine(tracing.scene, from, end, reach);
+    const into = tracing.into === "new" ? (this.#made ?? "new") : tracing.into;
+    const edited = addLine(tracing.scene, from, end, reach, into);
 
     if ("refused" in edited) {
       this.#answered(edited.refused);
@@ -286,12 +270,14 @@ export class TraceTool {
 
     this.#answered();
 
-    const start = this.#start ?? { block: edited.block, point: edited.from };
-    const closes = start.block === edited.block && start.point === edited.to;
-
-    this.#start = closes ? undefined : start;
-    this.#from = closes ? undefined : { block: edited.block, point: edited.to };
+    this.#chain(edited, into);
     this.#scene = edited.scene;
-    tracing.ontrace(edited.scene, { kind: "add", from, to: end, reach });
+    tracing.ontrace(edited.scene, {
+      kind: "add",
+      from,
+      to: end,
+      reach,
+      ...(into !== undefined && { into }),
+    });
   }
 }

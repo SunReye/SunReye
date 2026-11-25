@@ -212,7 +212,11 @@ impl Scene {
                 let free = block.free_form.as_ref().is_none_or(|free| {
                     free.valid() && block.overhang == crate::Overhang::default()
                 });
+                let named = block.name.as_deref().is_none_or(|name| {
+                    !name.trim().is_empty() && name.chars().count() <= crate::BLOCK_NAME
+                });
                 !(reach.iter().all(|m| m.is_finite() && *m >= 0.0)
+                    && named
                     && painted(&block.roof_colour)
                     && painted(&block.wall_colour)
                     && free)

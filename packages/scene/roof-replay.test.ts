@@ -92,3 +92,26 @@ test("a line marked, a point set, a line moved and one removed replay as named",
 
   expect(removed.blocks[0]?.freeForm?.faces).toHaveLength(1);
 });
+
+test("a line added into a new roof is replayed into its own block beside the one it touches", () => {
+  const house = replayed(EMPTY, {
+    kind: "add",
+    from: { x: 0, z: 0 },
+    to: { x: 0, z: 4 },
+    reach: 0.3,
+  });
+
+  const garage = replayed(house, {
+    kind: "add",
+    from: { block: 0, point: 1 },
+    to: { x: 4, z: 4 },
+    reach: 0.3,
+    into: "new",
+  });
+
+  expect(garage.blocks).toHaveLength(2);
+  expect(garage.blocks[1]?.freeForm?.traced?.points).toEqual([
+    [0, 0, 4],
+    [4, 0, 4],
+  ]);
+});

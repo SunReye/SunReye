@@ -165,31 +165,59 @@ function under(scene, at) {
 }
 
 /**
+ * The block a line from `start` to `end` goes into: `into` where the person named one, a new block
+ * for `"new"`; else the one traced block it ends on, crosses or lies inside, a new one for none.
+ * Undefined where it would join two, or names a block that is no traced roof.
  * @param {Scene} scene
- * @param {End} from
- * @param {End} to
- * @param {number} reach
- * @returns {Edited}
+ * @param {Spot} start
+ * @param {Spot} end
+ * @param {readonly (number | undefined)[]} ends the blocks its ends snapped to
+ * @param {number | "new" | undefined} into
+ * @returns {{ readonly block: number } | { readonly refused: "joins" | "missing" }}
  */
-export function addLine(scene, from, to, reach) {
-  const start = landing(scene, from, reach);
-  const end = landing(scene, to, reach);
+function intoBlock(scene, start, end, ends, into) {
+  if (into === "new") return { block: scene.blocks.length };
 
-  if (start === undefined || end === undefined) return { refused: "missing" };
+  if (into !== undefined) {
+    return scene.blocks[into]?.freeForm?.traced === undefined
+      ? { refused: "missing" }
+      : { block: into };
+  }
 
   const touched = [
-    start.block ?? under(scene, start.at),
-    end.block ?? under(scene, end.at),
-    ...crossed(scene, start.at, end.at),
+    ends[0] ?? under(scene, start),
+    ends[1] ?? under(scene, end),
+    ...crossed(scene, start, end),
   ];
 
   const named = new Set(touched.filter((b) => b !== undefined));
 
   if (named.size > 1) return { refused: "joins" };
 
+  return { block: [...named][0] ?? scene.blocks.length };
+}
+
+/**
+ * @param {Scene} scene
+ * @param {End} from
+ * @param {End} to
+ * @param {number} reach
+ * @param {number | "new"} [into]
+ * @returns {Edited}
+ */
+export function addLine(scene, from, to, reach, into) {
+  const start = landing(scene, from, reach);
+  const end = landing(scene, to, reach);
+
+  if (start === undefined || end === undefined) return { refused: "missing" };
+
+  const target = intoBlock(scene, start.at, end.at, [start.block, end.block], into);
+
+  if ("refused" in target) return target;
+
   if (apart(start.at, end.at) < PLACE) return { refused: "short" };
 
-  const block = [...named][0] ?? scene.blocks.length;
+  const { block } = target;
   const first = withPoint(linesOf(scene.blocks[block]), start.at, start.set);
   const last = withPoint(first.lines, end.at, end.set);
   const lines = joined(last.lines, first.point, last.point);

@@ -2,7 +2,7 @@
 // a face by itself.
 
 import { expect, test } from "bun:test";
-import { addLine, loops, snap } from "./index.js";
+import { addLine, loops, snap, type End } from "./index.js";
 import { EMPTY, REACH, SQUARE, made, outlines, trace } from "./roof.harness.ts";
 
 test("four lines clicked into a loop make one face, counter-clockwise seen from above", () => {
@@ -134,4 +134,44 @@ test("a loop is found by itself, and a line that ends nowhere closes none", () =
 
   // Counter-clockwise seen from above: along +z first, then +x.
   expect(loops(points, lines)).toEqual([[1, 2, 3, 0]]);
+});
+
+test("a line traced into a new roof starts a block even where it shares a wall, and the next lines join it", () => {
+  const house = trace(EMPTY, ...SQUARE);
+  const first = addLine(house, { block: 0, point: 2 }, { x: 7, z: 4 }, REACH, "new");
+
+  if ("refused" in first) throw new Error(first.refused);
+
+  expect(first.block).toBe(1);
+
+  // Round the garage and back along the house's wall: each line stays the garage's.
+  let scene = first.scene;
+  let from: End = { block: 1, point: first.to };
+
+  for (const [x, z] of [
+    [7, 0],
+    [4, 0],
+    [4, 4],
+  ] as const) {
+    const added = addLine(scene, from, { x, z }, REACH, 1);
+
+    if ("refused" in added) throw new Error(added.refused);
+    scene = added.scene;
+    from = { block: 1, point: added.to };
+  }
+
+  expect(scene.blocks).toHaveLength(2);
+  expect(outlines(scene, 0)).toEqual(outlines(house, 0));
+  expect(outlines(scene, 1)).toEqual([
+    [
+      [4, 0],
+      [4, 4],
+      [7, 4],
+      [7, 0],
+    ],
+  ]);
+});
+
+test("a line traced into a block that is not a traced roof is refused", () => {
+  expect(addLine(EMPTY, { x: 0, z: 0 }, { x: 0, z: 4 }, REACH, 0)).toEqual({ refused: "missing" });
 });

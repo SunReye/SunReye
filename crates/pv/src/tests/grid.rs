@@ -21,6 +21,7 @@ fn house(north: f64, grids: Vec<ModuleGrid>) -> Scene {
     Scene {
         north,
         blocks: vec![Block {
+            name: None,
             x: 0.0,
             z: 0.0,
             width: 10.0,
