@@ -631,6 +631,11 @@
             "format": "double",
             "type": "number"
           },
+          "turn": {
+            "description": "Degrees it is turned in its face, clockwise seen from above; none stored unturned.",
+            "format": "double",
+            "type": "number"
+          },
           "up": {
             "format": "double",
             "type": "number"
@@ -3800,6 +3805,11 @@
             "type": "integer"
           },
           "length": {
+            "format": "double",
+            "type": "number"
+          },
+          "turn": {
+            "description": "Degrees it is turned in its face, clockwise seen from above; none stored unturned.",
             "format": "double",
             "type": "number"
           },

@@ -239,3 +239,71 @@ fn a_new_roof_window_takes_the_free_place_nearest_the_middle_of_the_first_face_w
     }
     assert_eq!(at(full.place_window(sized, [0.78, 1.18])).0, 1);
 }
+
+/// `points` in an order that ignores where an outline starts.
+fn sorted(points: &[Point]) -> Vec<f64> {
+    let mut sorted = points.to_vec();
+    sorted.sort_by(|a, b| a[0].total_cmp(&b[0]).then(a[1].total_cmp(&b[1])));
+    sorted.concat()
+}
+
+#[test]
+fn a_roof_window_turned_in_its_face_lies_and_is_struck_where_it_turned_to() {
+    let mut turned = window(3.0, 2.0);
+    turned["turn"] = json!(90.0);
+    let scene = house(&json!({ "roofWindows": [turned] }));
+
+    // A quarter turn lays its 1.18 m length across the face and its 0.78 m width up it.
+    let corners = [
+        on_face(2.41, 1.61),
+        on_face(3.59, 1.61),
+        on_face(3.59, 2.39),
+        on_face(2.41, 2.39),
+    ];
+    near(&sorted(&scene.panes().unwrap()[0]), &sorted(&corners));
+    assert_eq!(scene.roof_window_at(on_face(3.5, 2.0)), Some(0));
+    assert_eq!(scene.roof_window_at(on_face(3.0, 2.5)), None);
+    // Stored with its turn, read back the same; unturned, stored without one.
+    assert_eq!(scene.roof_windows[0].turn, 90.0);
+    let plain = house(&json!({ "roofWindows": [window(3.0, 2.0)] }));
+    assert!(
+        serde_json::to_value(plain.roof_windows[0])
+            .unwrap()
+            .get("turn")
+            .is_none()
+    );
+}
+
+#[test]
+fn a_chimney_turned_in_its_face_stands_and_is_struck_where_it_turned_to() {
+    let mut turned = chimney();
+    turned["width"] = json!(1.0);
+    turned["turn"] = json!(90.0);
+    let scene = house(&json!({ "chimneys": [turned] }));
+
+    // Its 0.6 m depth, 0.732 m along the 35° slope, now runs across; its 1 m width up the face.
+    let half = 0.3 / 35f64.to_radians().cos();
+    let foot = scene.footings()[0].unwrap().foot;
+    let corners = [
+        on_face(5.5 - half, 1.0),
+        on_face(5.5 + half, 1.0),
+        on_face(5.5 + half, 2.0),
+        on_face(5.5 - half, 2.0),
+    ];
+    near(&sorted(&foot), &sorted(&corners));
+    assert!(scene.check_chimneys().is_ok());
+    assert_eq!(scene.chimney_at(on_face(5.5, 1.9)), Some(0));
+    assert_eq!(scene.chimney_at(on_face(5.95, 1.5)), None);
+}
+
+#[test]
+fn a_turned_chimney_keeps_modules_off_all_it_covers() {
+    let mut turned = chimney();
+    turned["width"] = json!(1.4);
+    turned["turn"] = json!(90.0);
+    // Turned, it reaches from 0.8 m to 2.2 m up the face: a module ending 1.0 m up meets it.
+    let scene =
+        house(&json!({ "chimneys": [turned], "grids": grid(&json!([portrait(5.0, 2.1)])) }));
+
+    assert!(scene.modules(sized).is_err());
+}

@@ -159,6 +159,10 @@ export const SCENE_SCHEMA = {
           "description": "Its level top stands this high over the roof where its upper side meets it.",
           "type": "number"
         },
+        "turn": {
+          "description": "Degrees it is turned in its face, clockwise seen from above; none stored unturned.",
+          "type": "number"
+        },
         "up": {
           "type": "number"
         },
@@ -864,6 +868,10 @@ export const SCENE_SCHEMA = {
           "type": "integer"
         },
         "length": {
+          "type": "number"
+        },
+        "turn": {
+          "description": "Degrees it is turned in its face, clockwise seen from above; none stored unturned.",
           "type": "number"
         },
         "up": {
