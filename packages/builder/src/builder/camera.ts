@@ -1,18 +1,13 @@
 // The orbit camera's preset views and the view each browser keeps (ADR 20).
 import type { Geometry, Point, RoofFace } from "./pv.ts";
 import { toThree, type Triple } from "./scene.ts";
+import type { View } from "./view.ts";
+
+export { headingOf, type View } from "./view.ts";
 
 export const presets = ["north", "east", "south", "west", "top", "isometric"] as const;
 
 export type Preset = (typeof presets)[number];
-
-/** Where the camera stands and what it looks at, in three.js's frame. */
-export interface View {
-  readonly position: Triple;
-  readonly target: Triple;
-  /** It lands at once, without a flight: a hand turning the view moves it on each step. */
-  readonly steady?: boolean | undefined;
-}
 
 /** The camera's vertical field of view, in degrees. */
 export const FOV = 40;
@@ -60,14 +55,6 @@ function turned([x, y, z]: Triple, heading: number): Triple {
   const by = (heading * Math.PI) / 180;
 
   return [x * Math.cos(by) - z * Math.sin(by), y, x * Math.sin(by) + z * Math.cos(by)];
-}
-
-/** The compass bearing `view` looks toward, degrees clockwise from north, 0 to 360: a compass
- * drawn over it points north at its negative. */
-export function headingOf({ position, target }: View): number {
-  const bearing = (Math.atan2(target[0] - position[0], position[2] - target[2]) * 180) / Math.PI;
-
-  return (bearing + 360) % 360;
 }
 
 /** The camera at `preset` around the scene's bounding box, far enough to see all of it on a canvas

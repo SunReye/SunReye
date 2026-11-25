@@ -89,7 +89,7 @@ The scene canvas. Loads three.js: import it where a scene is drawn, or lazily.
   - `LaySteps`, the steps: `draft` (`./frame`'s `Draft`, its scene the one laid on), `laid` (`@sunreye/pv-wasm`'s `modules` of that scene), `pv` (its `lay` and `slide`), `sizes`, `ondrag(scene)` with each step's scene, `ondrop()` on release, one undo step, and `go(level)` with the module level a tap selects.
   - `Laying.selected`: the footprints of the modules marked selected, any number of them; a consumer may replace it to mark several.
   - "Fill face" is `@sunreye/pv-wasm`'s `fillFace(on, rules)`: the places a grid's free roof takes. `FillRules`, each optional, the frame's own without: `gap` (metres between modules, 0.02 and never less), `alignment` (`"lowerLeft"`, or `"centred"` to share the spare roof out on both sides) and `keepOut` (metres kept free round each roof chimney, roof window, existing PV and dormer).
-- Camera: `presetView` (a preset, turned to a compass heading), `headingOf` (the bearing a view looks toward, for a compass), `parseView`, `withHeading` (a view turned to a heading; a `steady` view lands without a flight), `eaveHeading` (the heading that lays a roof face's eave level) and `detent` (a heading settled into nearby stops), and the types `View` and `Preset`.
+- Camera: `presetView` (a preset, turned to a compass heading), `headingOf` (the bearing a view looks toward, for a compass), `parseView`, and the types `View` and `Preset`.
 - Language: `speak` sets the locale of every entry's words, `Locale`; a change shows without a reload.
 - `panels`, the modules a layout draws; `stringCss`, the colour a string is drawn in by its position, as CSS (grey for none); `sunAt`, the sun's direction at an instant.
 - Types the props name: `Around`, `Aerial`, `Editing` (its `wholeBlock` moves a picked block by its own surface), `Hit`, `Navigation`, `OnContext`, `OnPress`, `Laying`, `LaySteps`, `Panel`, `Projector`, `Roofwork`, `Tracing`, `TraceEdit`, `LineRef`, `Placing`.
@@ -153,3 +153,4 @@ Plain values and helpers. Loads neither three.js nor Svelte, so a unit test reac
 - `compact`, `found`, `queryWords`, `tokens`: the catalogue's search.
 - `COUNT_UP_MS`, `EXIT_MS`, `FIGURE_GLIDE_MS`, `SPRINGS`: motion durations.
 - `stringCss`, `stringColour`, `STRINGS`, `UNASSIGNED`: the colour a string is drawn in by its position, as CSS or a number (grey for none).
+- `headingOf`, `withHeading`, `eaveHeading`, `detent`, `View`: a view's heading, the view turned to one (a `steady` view lands without a flight), the heading that lays a roof face's eave level, and a heading settled into nearby stops.

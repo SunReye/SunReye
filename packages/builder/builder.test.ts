@@ -257,3 +257,13 @@ test("its values entry gives a string's colour without three.js, for a list that
   expect(names.filter((name) => !given.includes(name))).toEqual([]);
   expect((await reached(file)).filter((p) => p.startsWith("three"))).toEqual([]);
 });
+
+test("its values entry turns a view to a heading without three.js, for a plan's own camera", async () => {
+  const file = FILES.get("./values") ?? "";
+
+  const names = ["headingOf", "withHeading", "eaveHeading", "detent"];
+  const given = await exported(file);
+
+  expect(names.filter((name) => !given.includes(name))).toEqual([]);
+  expect((await reached(file)).filter((p) => p.startsWith("three"))).toEqual([]);
+});
