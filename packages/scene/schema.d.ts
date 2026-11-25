@@ -115,6 +115,11 @@ export interface components {
              * @description Its level top stands this high over the roof where its upper side meets it.
              */
             readonly height: number;
+            /**
+             * Format: double
+             * @description Degrees it is turned in its face, clockwise seen from above; none stored unturned.
+             */
+            readonly turn?: number;
             /** Format: double */
             readonly up: number;
             /**
@@ -543,6 +548,11 @@ export interface components {
             readonly face: number;
             /** Format: double */
             readonly length: number;
+            /**
+             * Format: double
+             * @description Degrees it is turned in its face, clockwise seen from above; none stored unturned.
+             */
+            readonly turn?: number;
             /** Format: double */
             readonly up: number;
             /**

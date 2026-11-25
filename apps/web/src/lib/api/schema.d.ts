@@ -1350,6 +1350,11 @@ export interface components {
              * @description Its level top stands this high over the roof where its upper side meets it.
              */
             height: number;
+            /**
+             * Format: double
+             * @description Degrees it is turned in its face, clockwise seen from above; none stored unturned.
+             */
+            turn?: number;
             /** Format: double */
             up: number;
             /**
@@ -2571,6 +2576,11 @@ export interface components {
             face: number;
             /** Format: double */
             length: number;
+            /**
+             * Format: double
+             * @description Degrees it is turned in its face, clockwise seen from above; none stored unturned.
+             */
+            turn?: number;
             /** Format: double */
             up: number;
             /**
