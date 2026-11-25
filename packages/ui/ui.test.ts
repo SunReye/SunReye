@@ -18,6 +18,7 @@ const KIT = [
   "calendar",
   "card",
   "checkbox",
+  "context-menu",
   "dialog",
   "drawer",
   "dropdown-menu",

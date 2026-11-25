@@ -1,7 +1,7 @@
 <script lang="ts">
   import { ContextMenu as ContextMenuPrimitive } from "bits-ui";
   import CheckIcon from "@lucide/svelte/icons/check";
-  import { cn, type WithoutChild } from "@sunreye/ui/utils";
+  import { cn, type WithoutChild } from "../utils.ts";
 
   let {
     ref = $bindable(null),

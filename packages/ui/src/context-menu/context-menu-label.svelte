@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { cn, type WithElementRef } from "@sunreye/ui/utils";
+  import { cn, type WithElementRef } from "../utils.ts";
   import type { HTMLAttributes } from "svelte/elements";
 
   let {
