@@ -182,6 +182,24 @@ function stops(scene: Scene, target: Target): number[] {
   ];
 }
 
+/** How far a turn `by` goes once settled: its walls into a stop within 3° while light, else its
+ * angle onto whole degrees, or tenths while free. */
+function settledBy(
+  by: number,
+  { walls, angle }: { readonly walls: number; readonly angle: number },
+  at: readonly number[],
+  settle: Settle,
+): number {
+  const stop = detent(walls + by, at, WITHIN);
+  const held = settle === "light" && Math.abs(normalised(stop - walls - by + 180) - 180) > 1e-9;
+
+  if (held) return stop - walls;
+
+  const step = settle === "free" ? 10 : 1;
+
+  return Math.round((angle + by) * step) / step - angle;
+}
+
 /** `target` turned by the pointer going round its middle from `from` to `to` (scene frame),
  * settled; null for what does not turn. */
 export function ringTurned(
@@ -202,13 +220,12 @@ export function ringTurned(
 
   // Its walls settle into a stop; its own turn moves as far.
   const walls = (target.kind === "block" ? wallsAt(scene, target.index) : undefined) ?? angle;
-  const stop = detent(walls + by, stops(scene, target), WITHIN);
-  const held = settle === "light" && Math.abs(normalised(stop - walls - by + 180) - 180) > 1e-9;
-  const step = settle === "free" ? 10 : 1;
 
-  const turned = held ? stop - walls : Math.round((angle + by) * step) / step - angle;
-
-  const next = turnedBy(scene, target, turned);
+  const next = turnedBy(
+    scene,
+    target,
+    settledBy(by, { walls, angle }, stops(scene, target), settle),
+  );
 
   return next && { scene: next, value: [angleOf(next, target) ?? 0], unit: "°" };
 }
