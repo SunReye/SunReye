@@ -3,6 +3,7 @@
 
 import { addLine, moveLine, removeLine } from "./roof.js";
 import { pullDormer } from "./roof-dormer.js";
+import { movePoint, removePoint, splitLine } from "./roof-points.js";
 import { markLine, pullEaves, pullRidges, setHeight } from "./roof-pull.js";
 import { placeRoof } from "./roof-ready.js";
 import { placeDormer } from "./roof-ready-dormer.js";
@@ -18,6 +19,9 @@ const OPERATIONS = {
   add: (scene, { from, to, reach, into }) => addLine(scene, from, to, reach, into),
   move: (scene, { block, line, by }) => moveLine(scene, block, line, by),
   remove: (scene, { block, line }) => removeLine(scene, block, line),
+  movePoint: (scene, { block, point, to }) => movePoint(scene, block, point, to),
+  split: (scene, { block, line, at }) => splitLine(scene, block, line, at),
+  removePoint: (scene, { block, point }) => removePoint(scene, block, point),
   pull: (scene, { block, which, height }) =>
     (which === "eave" ? pullEaves : pullRidges)(scene, block, height),
   mark: (scene, { block, line, as }) => markLine(scene, block, line, as),
