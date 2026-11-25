@@ -1,5 +1,6 @@
 import { expect, test } from "vitest";
-import { detent, eaveHeading, headingOf, presetView, withHeading } from "@sunreye/builder";
+import { presetView } from "@sunreye/builder";
+import { detent, eaveHeading, headingOf, withHeading } from "@sunreye/builder/values";
 import type { Geometry, RoofFace } from "../../../../../packages/builder/src/builder/pv.ts";
 
 const house: Geometry = {

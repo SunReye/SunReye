@@ -7,8 +7,6 @@ export { default as SceneCanvas } from "./builder/SceneCanvas.svelte";
 
 export { headingOf, parseView, presetView, type Preset, type View } from "./builder/camera.ts";
 
-export { detent, eaveHeading, withHeading } from "./builder/view-turn.ts";
-
 export type {
   Around,
   Editing,

@@ -1,6 +1,6 @@
 // The plan turned about the up axis (#74): to any heading, a face's eave level across the screen,
 // and gentle detents a turning hand settles into. Pure.
-import { headingOf, type View } from "./camera.ts";
+import { headingOf, type View } from "./view.ts";
 import type { RoofFace } from "./pv.ts";
 
 const RAD = Math.PI / 180;
