@@ -41,6 +41,8 @@ export interface components {
              */
             readonly eave: number;
             readonly freeForm?: components["schemas"]["FreeForm"] | null;
+            /** @description What the person calls it, as "Garage"; numbered by its place without one. */
+            readonly name?: string | null;
             /** @description A carport: a post at each corner instead of walls. */
             readonly open?: boolean;
             /** @description How far the roof reaches past the walls; none when stored without it. */

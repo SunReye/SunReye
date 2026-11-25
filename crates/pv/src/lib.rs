@@ -80,6 +80,9 @@ pub use year::{
     year_with,
 };
 
+/// Characters a block's name may hold.
+pub const BLOCK_NAME: usize = 80;
+
 /// The cell temperature in °C a string's open-circuit voltage is checked at (ADR 20).
 pub const COLD: f64 = -10.0;
 

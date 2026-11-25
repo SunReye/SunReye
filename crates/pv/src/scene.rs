@@ -70,6 +70,9 @@ pub struct Scene {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Block {
+    /// What the person calls it, as "Garage"; numbered by its place without one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     pub x: f64,
     pub z: f64,
     pub width: f64,

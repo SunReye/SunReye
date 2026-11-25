@@ -619,6 +619,7 @@ fn walled_house(module_type: u32) -> Scene {
     Scene {
         north: 0.0,
         blocks: vec![Block {
+            name: None,
             x: 0.0,
             z: 0.0,
             width: 10.0,
