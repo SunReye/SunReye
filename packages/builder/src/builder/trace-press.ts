@@ -52,18 +52,16 @@ export class TracePress {
     });
 
     canvas.addEventListener("pointerleave", this.#leave);
-    canvas.addEventListener("dblclick", this.#double);
     window.addEventListener("keydown", this.#key);
     this.dispose = () => {
       unlisten();
       canvas.removeEventListener("pointerleave", this.#leave);
-      canvas.removeEventListener("dblclick", this.#double);
       window.removeEventListener("keydown", this.#key);
     };
   }
 
   /** Where `event` aims, and what of the traced roof it picks as drawn. */
-  #aim(event: MouseEvent, tracing: Tracing): Aimed | null {
+  #aim(event: PointerEvent, tracing: Tracing): Aimed | null {
     const { scene } = tracing;
     const pixels = tracing.reach ?? REACH;
     const aimed = aim(this.#canvas, this.#camera, scene.north, event, pixels);
@@ -154,19 +152,7 @@ export class TracePress {
     if (this.#held === undefined) this.#tool.point();
   };
 
-  /** A double click puts a point into the traced line under it. */
-  readonly #double = (event: MouseEvent): void => {
-    const tracing = this.#tracing();
-    const aimed = tracing && this.#aim(event, tracing);
-
-    if (tracing && aimed) this.#tool.split(tracing, aimed);
-  };
-
   readonly #key = (event: KeyboardEvent): void => {
-    const tracing = this.#tracing();
-
     if (event.key === "Escape") this.#tool.end();
-    else if ((event.key === "Delete" || event.key === "Backspace") && tracing !== undefined)
-      this.#tool.removeTapped(tracing);
   };
 }

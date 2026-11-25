@@ -18,10 +18,7 @@ A traced roof is a free-form block whose `freeForm.traced` keeps its points (x, 
 
 - `snap(scene, click, reach): Snap`: what a click (`{ x, z, height? }`, metres) snaps to within `reach` metres seen from above: `{ kind: "point", block, point, at }`, `{ kind: "line", block, line, at }`, or `{ kind: "free", at }`. A point wins over a line.
 - `addLine(scene, from, to, reach, into?): Edited`: a line between two ends, each a click (snapped) or a traced point (`{ block, point }`). It splits the line a click snaps onto and every line it crosses, adding points but no line. A line touching no traced block, nor lying inside one of its faces, starts a new one; one joining two is refused (`"joins"`), as is one of no length (`"short"`). Chaining clicks passes the answer's `{ block, point: to }` as the next `from`. `into` names the line's block wherever it touches another: a traced block, or `"new"` for a new one (a roof at another height beside one); then it splits only its own block's lines, and a block that is no traced roof is refused (`"missing"`).
-- `moveLine(scene, block, line, { x, z }): Edited`: moves a line level with the straight run it lies in, their points with them; refused (`"crosses"`) when lines would cross.
-- `movePoint(scene, block, point, { x, z }): Edited`: moves a point level, keeping its height; refused (`"crosses"`) when lines would cross.
-- `splitLine(scene, block, line, { x, z }): Edited`: puts a point into a line where the place lies along it.
-- `removePoint(scene, block, point): Edited`: takes a point out, the two lines meeting there joined.
+- `moveLine(scene, block, line, { x, z }): Edited`: moves a line level, its points with it; refused (`"crosses"`) when lines would cross.
 - `removeLine(scene, block, line): Edited`: removes a line and the points no line uses; a block left without lines goes, and what named a later block moves up.
 - `loops(points, lines): number[][]`: the closed loops seen from above, counter-clockwise, as point indices.
 - `Edited` is `{ scene, faces, block, from, to }` or `{ refused }`: `faces[i]` is where the block's old face `i` went, `-1` when it went away; `from` and `to` are the line's points, with `Refusal` one of `"short"`, `"joins"`, `"crosses"`, `"missing"`.

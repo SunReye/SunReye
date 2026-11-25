@@ -6,7 +6,6 @@
 import { rebuild, withoutBlock } from "./roof-faces.js";
 import { within } from "./roof-nest.js";
 import { PLACE, along, apart, between, crossing, onSegment, touching } from "./roof-plan.js";
-import { compacted, straightRun } from "./roof-run.js";
 import { linesOf, snap, spot } from "./roof-snap.js";
 
 export { loops } from "./roof-plan.js";
@@ -239,10 +238,8 @@ export function moveLine(scene, block, line, by) {
 
   if (a === undefined || b === undefined) return { refused: "missing" };
 
-  const going = straightRun(lines, a, b);
-
   const points = lines.points.map((p, i) =>
-    going.has(i) ? [(p[0] ?? 0) + by.x, p[1] ?? 0, (p[2] ?? 0) + by.z] : p,
+    i === a || i === b ? [(p[0] ?? 0) + by.x, p[1] ?? 0, (p[2] ?? 0) + by.z] : p,
   );
 
   const moved = { ...lines, points };
@@ -275,5 +272,24 @@ export function removeLine(scene, block, line) {
     return { scene: withoutBlock(scene, block), faces, block: -1, from: -1, to: -1 };
   }
 
-  return { ...rebuild(scene, block, compacted(lines, left)), block, from: -1, to: -1 };
+  const used = [...lines.points.keys()].filter((p) => left.some((l) => l.includes(p)));
+  const renamed = new Map(used.map((p, i) => [p, i]));
+
+  /** @param {number} p */
+  const rename = (p) => {
+    const now = renamed.get(p);
+
+    return now === undefined ? [] : [now];
+  };
+
+  const kept = {
+    points: used.map((p) => lines.points[p] ?? []),
+    set: lines.set.flatMap((p) => rename(p)),
+    lines: left.map((l) => l.flatMap((p) => rename(p))),
+    faces: lines.faces.map((f) => f.flatMap((p) => rename(p))),
+    eaves: lines.eaves.flatMap((p) => rename(p)),
+    ridges: lines.ridges.flatMap((p) => rename(p)),
+  };
+
+  return { ...rebuild(scene, block, kept), block, from: -1, to: -1 };
 }
