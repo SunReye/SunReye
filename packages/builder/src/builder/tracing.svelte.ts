@@ -5,23 +5,28 @@
 // trace-press.ts's.
 import {
   addLine,
-  moveLine,
-  replay,
   type End,
   type PointRef,
   type Refusal,
   type Snap,
   type Spot,
-  type TraceEdit,
 } from "@sunreye/scene";
 import { haptics } from "@sunreye/ui/haptics";
 import type { Plan } from "./plan.ts";
 import { direction, turned, type Guide } from "./trace-angle.ts";
-import { clickAt, type Aimed } from "./trace-aim.ts";
+import type { Aimed } from "./trace-aim.ts";
 import type { Scene } from "./pv.ts";
-import { faceUnder } from "./trace-place.ts";
 import { ended, samePoint, shifted, snapOf, spotOf } from "./trace-ends.ts";
-import type { LineRef, Placing, Shown, Tracing } from "./trace-types.ts";
+import {
+  lineMoved,
+  lineSplit,
+  pointLines,
+  pointMoved,
+  pointRemoved,
+  readyPlaced,
+  type Made,
+} from "./trace-points.ts";
+import type { LineRef, Shown, Tracing } from "./trace-types.ts";
 
 export type { LineRef, Placing, Shown, Tracing } from "./trace-types.ts";
 
@@ -31,10 +36,11 @@ type Snapped = Readonly<{ snap: Snap; guide: Guide | undefined }>;
 /** Metres an end already picked by its pixels is snapped within again: none to speak of. */
 const RESOLVED = 1e-3;
 
-/** A press: where it landed, and the traced line it took, which a drag moves. */
+/** A press: where it landed, and the traced line or point it took, which a drag moves. */
 interface Pressed {
   readonly at: Spot;
   readonly line: LineRef | undefined;
+  readonly point: PointRef | undefined;
 }
 
 export class TraceTool {
@@ -61,6 +67,11 @@ export class TraceTool {
     refused: this.#refused,
     guide: this.#guide,
   });
+
+  /** A traced point or line under the pointer, with no line being drawn: it would be grabbed. */
+  get grabbing(): boolean {
+    return this.#from === undefined && this.#snap !== undefined && this.#snap.kind !== "free";
+  }
 
   get #fromSpot(): Spot | undefined {
     const [from, scene] = [this.#from, this.#scene];
@@ -107,13 +118,16 @@ export class TraceTool {
     const snapped = snapOf(tracing.scene, aimed);
     const { at } = aimed;
 
+    const idle = this.#from === undefined && tracing.placing === undefined;
+
     const line =
-      this.#from === undefined && snapped.kind === "line"
-        ? { block: snapped.block, line: snapped.line }
-        : undefined;
+      idle && snapped.kind === "line" ? { block: snapped.block, line: snapped.line } : undefined;
+
+    const point =
+      idle && snapped.kind === "point" ? { block: snapped.block, point: snapped.point } : undefined;
 
     this.#scene = tracing.scene;
-    this.#pressed = { at, line };
+    this.#pressed = { at, line, point };
   }
 
   /** The pointer moved: its snap, and a dragged line where it would go. */
@@ -128,8 +142,11 @@ export class TraceTool {
     this.#snap = snapped?.snap;
     this.#guide = snapped?.guide;
 
-    if (dragged && line !== undefined && pressed !== undefined)
-      this.#dragged = shifted(tracing.scene, line, pressed.at, at);
+    if (!dragged || pressed === undefined) return;
+
+    if (line !== undefined) this.#dragged = [shifted(tracing.scene, line, pressed.at, at)];
+    else if (pressed.point !== undefined && snapped !== undefined)
+      this.#dragged = pointLines(tracing.scene, pressed.point, snapped.snap.at);
   }
 
   /** A press put back: nothing happens. */
@@ -146,8 +163,42 @@ export class TraceTool {
 
     if (pressed === undefined) return;
 
-    if (dragged && pressed.line !== undefined) this.#moved(tracing, pressed, aimed.at);
-    else if (!dragged || finger) this.#clicked(tracing, aimed, pressed.line);
+    if (dragged && pressed.line !== undefined)
+      this.#apply(tracing, lineMoved(tracing.scene, pressed.line, pressed.at, aimed.at));
+    else if (dragged && pressed.point !== undefined && !finger) {
+      const to = this.#snapped(tracing.scene, aimed).snap.at;
+
+      this.#apply(tracing, pointMoved(tracing.scene, pressed.point, to));
+    } else if (!dragged || finger) this.#clicked(tracing, aimed, pressed.line);
+  }
+
+  /** A double click: on a traced line, with no chain, a point is put into it there. */
+  split(tracing: Tracing, aimed: Aimed): void {
+    const snapped = snapOf(tracing.scene, aimed);
+
+    if (this.#from !== undefined || snapped.kind !== "line") return;
+
+    this.#apply(tracing, lineSplit(tracing.scene, snapped, aimed.at));
+  }
+
+  /** Del: the point tapped, before a line is drawn from it, is taken out. */
+  removeTapped(tracing: Tracing): void {
+    const start = this.#start;
+
+    if (start === undefined || this.#from === undefined || !samePoint(this.#from, start)) return;
+
+    this.end();
+    this.#apply(tracing, pointRemoved(tracing.scene, start));
+  }
+
+  /** An edit made: its scene handed on, or why not said. */
+  #apply(tracing: Tracing, { edited, edit }: Readonly<Made>): void {
+    this.#answered("refused" in edited ? edited.refused : undefined);
+
+    if ("refused" in edited || edit === undefined) return;
+
+    this.#scene = edited.scene;
+    tracing.ontrace(edited.scene, edit);
   }
 
   #answered(refused?: Refusal): void {
@@ -155,47 +206,6 @@ export class TraceTool {
 
     if (refused === undefined) haptics.selection();
     else haptics.error();
-  }
-
-  /** A dragged line let go: it moves, unless lines would cross. */
-  #moved(tracing: Tracing, { line, at }: Pressed, to: Spot): void {
-    if (line === undefined) return;
-
-    const by = { x: to[0] - at[0], z: to[2] - at[2] };
-    const edited = moveLine(tracing.scene, line.block, line.line, by);
-
-    if ("refused" in edited) {
-      this.#answered(edited.refused);
-
-      return;
-    }
-
-    this.#answered();
-    tracing.ontrace(edited.scene, { kind: "move", ...line, by });
-  }
-
-  /** A tap with a ready shape held: it is placed there, a roof centred on the ground under it, a
-   * dormer on the face drawn under it. */
-  #placed(tracing: Tracing, placing: Placing, aimed: Aimed): void {
-    const { scene } = tracing;
-    const { x, z } = clickAt(aimed.at);
-    const face = placing.kind === "dormer" ? faceUnder(scene, { x, z }, aimed.ray) : undefined;
-
-    this.end();
-
-    const edit: TraceEdit | undefined =
-      placing.kind === "roof"
-        ? {
-            ...placing,
-            at: { x: x - placing.size.width / 2, z: z - placing.size.depth / 2 },
-          }
-        : face && { ...placing, ...face };
-
-    const edited = edit === undefined ? { refused: "missing" as const } : replay(scene, edit);
-
-    this.#answered("refused" in edited ? edited.refused : undefined);
-
-    if (edit !== undefined && !("refused" in edited)) tracing.ontrace(edited.scene, edit);
   }
 
   /** A click: with no chain, a tap on a line picks it and one elsewhere starts a chain; on the
@@ -207,8 +217,10 @@ export class TraceTool {
 
     this.#refused = undefined;
 
-    if (tracing.placing !== undefined) this.#placed(tracing, tracing.placing, aimed);
-    else if (from === undefined) this.#started(tracing, end, line);
+    if (tracing.placing !== undefined) {
+      this.end();
+      this.#apply(tracing, readyPlaced(tracing.scene, tracing.placing, aimed));
+    } else if (from === undefined) this.#started(tracing, end, line);
     else if (samePoint(from, end)) this.end();
     // Ends picked by pixels are resolved already: the scene's snap in metres must not move them.
     else this.#joined(tracing, from, end, aimed.snap === undefined ? reach : RESOLVED);

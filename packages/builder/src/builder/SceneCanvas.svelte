@@ -307,7 +307,11 @@
 </script>
 
 <div class="scene">
-  <canvas aria-label={label} {@attach stage}></canvas>
+  <canvas
+    aria-label={label}
+    {@attach stage}
+    style:cursor={tracing && traceTool.grabbing ? "grab" : undefined}
+  ></canvas>
   <canvas
     bind:this={ghost.canvas}
     class={["ghost", ghost.phase, ghost.instant && "instant"]}

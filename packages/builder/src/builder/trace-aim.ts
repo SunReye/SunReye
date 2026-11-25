@@ -36,7 +36,7 @@ function rayAt(
   canvas: HTMLCanvasElement,
   camera: Lens,
   north: number,
-  event: PointerEvent,
+  event: MouseEvent,
   [dx, dy]: readonly [number, number],
 ): Ray {
   // A press may come before the first draw has placed the camera's matrices.
@@ -67,7 +67,7 @@ export function aim(
   canvas: HTMLCanvasElement,
   camera: Lens,
   north: number,
-  event: PointerEvent,
+  event: MouseEvent,
   pixels: number,
 ): Aimed | null {
   const ray = rayAt(canvas, camera, north, event, [0, 0]);

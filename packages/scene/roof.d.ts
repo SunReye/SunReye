@@ -64,14 +64,28 @@ export declare function addLine(
   into?: number | "new",
 ): Edited;
 
-/** The scene with line `line` of block `block` moved level by `by` metres, its points with it;
- * refused when it would cross a line. The block's faces follow. */
+/** The scene with line `line` of block `block` moved level by `by` metres, its points with it, and
+ * with it the straight run it lies in: on through each point only two lines meet at, while they
+ * keep straight. Refused when it would cross a line. The block's faces follow. */
 export declare function moveLine(
   scene: Scene,
   block: number,
   line: number,
   by: { readonly x: number; readonly z: number },
 ): Edited;
+
+/** The scene with block `block`'s point `point` moved level to `to`, keeping its height; refused
+ * when lines would cross. Its faces follow. */
+export declare function movePoint(scene: Scene, block: number, point: number, to: Place): Edited;
+
+/** The scene with block `block`'s line `line` split by a new point nearest `at` along it, at the
+ * height between its ends, an eave or a ridge both ends are; refused for a line too short. */
+export declare function splitLine(scene: Scene, block: number, line: number, at: Place): Edited;
+
+/** The scene without block `block`'s point `point`: the two lines meeting there joined into one,
+ * or the lines meeting there gone with it when more or fewer meet. Refused where a line would
+ * cross another, or none would be left. */
+export declare function removePoint(scene: Scene, block: number, point: number): Edited;
 
 /** The scene without line `line` of block `block`, and without the points no line uses then. A
  * block left with no line goes, and everything named by a later block moves up. */
@@ -217,6 +231,14 @@ export type TraceEdit =
     }
   | { readonly kind: "move"; readonly block: number; readonly line: number; readonly by: Place }
   | { readonly kind: "remove"; readonly block: number; readonly line: number }
+  | {
+      readonly kind: "movePoint";
+      readonly block: number;
+      readonly point: number;
+      readonly to: Place;
+    }
+  | { readonly kind: "split"; readonly block: number; readonly line: number; readonly at: Place }
+  | { readonly kind: "removePoint"; readonly block: number; readonly point: number }
   | { readonly kind: "pull"; readonly block: number; readonly which: Kind; readonly height: number }
   | { readonly kind: "mark"; readonly block: number; readonly line: number; readonly as: Kind }
   | {
@@ -242,6 +264,7 @@ export type TraceEdit =
       readonly height: number;
     };
 
-/** The scene `edit` makes of `scene`: `addLine`, `moveLine`, `removeLine`, `pullEaves` or
+/** The scene `edit` makes of `scene`: `addLine`, `moveLine`, `removeLine`, `movePoint`,
+ * `splitLine`, `removePoint`, `pullEaves` or
  * `pullRidges`, `markLine`, `setHeight`, `placeRoof`, `placeDormer` or `pullDormer`, as it names. */
 export declare function replay(scene: Scene, edit: TraceEdit): Edited;
