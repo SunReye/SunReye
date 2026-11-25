@@ -158,8 +158,9 @@ export interface RoofSize {
   readonly ridge: number;
 }
 
-/** The scene with ready roof `id` placed with its corner at `at`, as a new traced block: the
- * lines a person could have traced, pulled up to `size`'s heights, then edited as any traced roof.
+/** The scene with ready roof `id` placed with its corner at `at`, as a new traced block, turned
+ * `turn` degrees clockwise seen from above about that corner (none without): the lines a person
+ * could have traced, pulled up to `size`'s heights, then edited as any traced roof.
  * Refused (`"joins"`) where it would touch a traced block, `"short"` without a positive size,
  * `"missing"` for an id that is no ready roof. `faces` is empty, `from` and `to` -1. */
 export declare function placeRoof(
@@ -167,6 +168,7 @@ export declare function placeRoof(
   id: string,
   at: { readonly x: number; readonly z: number },
   size: RoofSize,
+  turn?: number,
 ): Edited;
 
 /** The ready dormers, in the order a menu lists them. */
@@ -225,7 +227,13 @@ export type TraceEdit =
       readonly point: number;
       readonly height: number;
     }
-  | { readonly kind: "roof"; readonly id: string; readonly at: Place; readonly size: RoofSize }
+  | {
+      readonly kind: "roof";
+      readonly id: string;
+      readonly at: Place;
+      readonly size: RoofSize;
+      readonly turn?: number;
+    }
   | {
       readonly kind: "dormer";
       readonly block: number;

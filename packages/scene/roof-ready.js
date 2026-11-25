@@ -95,14 +95,17 @@ function edits(plan, block, size) {
 }
 
 /**
- * `plan` moved by `at`.
+ * `plan` turned `turn` degrees clockwise seen from above about its corner, then moved by `at`.
  * @param {Plan} plan
  * @param {{ readonly x: number, readonly z: number }} at
+ * @param {number} turn
  * @returns {Plan}
  */
-function moved(plan, at) {
+function moved(plan, at, turn) {
+  const [sin, cos] = [Math.sin((turn * Math.PI) / 180), Math.cos((turn * Math.PI) / 180)];
+
   /** @param {Flat} p @returns {Flat} */
-  const by = ([x, z]) => [at.x + x, at.z + z];
+  const by = ([x, z]) => [at.x + x * cos - z * sin, at.z + x * sin + z * cos];
 
   return {
     paths: plan.paths.map((path) => path.map((p) => by(p))),
@@ -116,9 +119,10 @@ function moved(plan, at) {
  * @param {string} id
  * @param {{ readonly x: number, readonly z: number }} at
  * @param {RoofSize} size
+ * @param {number} [turn]
  * @returns {Edited}
  */
-export function placeRoof(scene, id, at, size) {
+export function placeRoof(scene, id, at, size, turn = 0) {
   const roof = ROOFS.find((r) => r.id === id);
 
   if (roof === undefined) return { refused: "missing" };
@@ -130,7 +134,7 @@ export function placeRoof(scene, id, at, size) {
   /** @type {Edited} */
   let last = { scene, faces: [], block, from: -1, to: -1 };
 
-  for (const edit of edits(moved(roof.plan(size), at), block, size)) {
+  for (const edit of edits(moved(roof.plan(size), at, turn), block, size)) {
     if ("refused" in last) return last;
 
     const next = edit(last.scene, last);

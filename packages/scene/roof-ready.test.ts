@@ -11,6 +11,7 @@ import {
   pullEaves,
   pullRidges,
   readyRoofs,
+  replay,
   setHeight,
 } from "./index.js";
 import { EMPTY, made, trace } from "./roof.harness.ts";
@@ -172,12 +173,18 @@ test("a ready roof is a traced block of its own, moved to its corner, and edited
 test("a ready roof is refused onto another traced roof, without a size, or by an id it does not know", () => {
   const house = placed("satteldach");
 
-  expect(placeRoof(house, "flachdach", { x: 10, z: 0 }, SIZE)).toEqual({ refused: "joins" });
-  expect(placeRoof(house, "flachdach", { x: 5, z: -2 }, SIZE)).toEqual({ refused: "joins" });
+  expect(placeRoof(house, "flachdach", { x: 10, z: 0 }, SIZE)).toEqual({
+    refused: "joins",
+  });
+  expect(placeRoof(house, "flachdach", { x: 5, z: -2 }, SIZE)).toEqual({
+    refused: "joins",
+  });
   expect(placeRoof(EMPTY, "flachdach", { x: 0, z: 0 }, { ...SIZE, width: 0 })).toEqual({
     refused: "short",
   });
-  expect(placeRoof(EMPTY, "kuppel", { x: 0, z: 0 }, SIZE)).toEqual({ refused: "missing" });
+  expect(placeRoof(EMPTY, "kuppel", { x: 0, z: 0 }, SIZE)).toEqual({
+    refused: "missing",
+  });
 });
 
 test("every ready roof places flat at any size and corner: square, deep, and with no rise", () => {
@@ -202,4 +209,29 @@ test("every ready roof places flat at any size and corner: square, deep, and wit
   const away = made(placeRoof(EMPTY, "krueppelwalmdach", { x: 3.5, z: -2 }, SIZE));
 
   expect(height(away, 3.5, 0)).toBe(5);
+});
+
+test("a ready roof placed turned is that roof turned clockwise about its corner, seen from above", () => {
+  const turned = placeRoof(EMPTY, "satteldach", { x: 2, z: 1 }, SIZE, 90);
+
+  if ("refused" in turned) throw new Error(turned.refused);
+
+  // 10 m along x turned a quarter clockwise runs along +z; 8 m along z then runs along -x.
+  expect(height(turned.scene, 2, 1)).toBe(3);
+  expect(height(turned.scene, 2, 11)).toBe(3);
+  expect(height(turned.scene, -6, 11)).toBe(3);
+  expect(height(turned.scene, -2, 1)).toBe(7);
+  expect(height(turned.scene, -2, 11)).toBe(7);
+  expect(bent(turned.scene, 0)).toEqual([]);
+  expect(built(turned.scene)).toHaveLength(2);
+
+  const replayed = replay(EMPTY, {
+    kind: "roof",
+    id: "satteldach",
+    at: { x: 2, z: 1 },
+    size: SIZE,
+    turn: 90,
+  });
+
+  expect("refused" in replayed ? replayed : built(replayed.scene)).toEqual(built(turned.scene));
 });
