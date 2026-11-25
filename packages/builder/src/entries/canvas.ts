@@ -14,5 +14,3 @@ export { parked, type Parked } from "../cars/parked.ts";
 export type { SceneFailure } from "../scene/stage.svelte.ts";
 
 export { idle, rememberedWebgl2, rememberWebgl2, warm } from "../scene/warm.ts";
-
-export { backdropAt, type Linear } from "../scene/vignette.ts";

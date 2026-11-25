@@ -117,7 +117,6 @@ What screens read of the canvas before it loads, or without it. Loads neither th
 - `parked`, `Parked`: the cars standing at the scene's car places, from the live values.
 - `fetchPv`: fetches the engine `@sunreye/pv-wasm` ships and instantiates it.
 - `warm`, `idle`, `rememberWebgl2`, `rememberedWebgl2`, `SceneFailure`: warming the studio up ahead of a scene, and remembering whether the browser draws one.
-- `backdropAt`, `Linear`: the stand-in's backdrop.
 
 ## `@sunreye/builder/motion`
 

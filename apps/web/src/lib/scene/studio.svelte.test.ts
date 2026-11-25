@@ -24,7 +24,6 @@ import { look } from "./probe.harness.ts";
 import type { Level } from "../../../../../packages/builder/src/scene/quality.ts";
 import { SAMPLES } from "../../../../../packages/builder/src/scene/refine.ts";
 import { Studio } from "../../../../../packages/builder/src/scene/studio.ts";
-import { backdropAt } from "../../../../../packages/builder/src/scene/vignette.ts";
 
 let studio: Studio | undefined;
 
@@ -143,13 +142,13 @@ test("below Ultra a settled picture is left as drawn", () => {
   expect(opened.refine()).toBe(false);
 });
 
-/** The picture's middle pixel, as drawn. */
+/** The drawn pixel at (`x`, `y`), its middle without. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own objects.
-function middle(opened: Studio): number[] {
+function middle(opened: Studio, x = 32, y = 32): number[] {
   const gl = opened.renderer.getContext();
   const pixel = new Uint8Array(4);
 
-  gl.readPixels(32, 32, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+  gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
 
   return [...pixel.subarray(0, 3)];
 }
@@ -159,20 +158,24 @@ test.each([
   ["dark", true, [0.012, 0.014, 0.02]],
   ["tinted", false, [0.9, 0.8, 0.6]],
 ] as const)(
-  "an empty studio's backdrop lands on its vignette of the %s page colour",
+  "an empty studio's backdrop lands on the %s page colour everywhere: no lighter middle, no darker rim",
   (_, dark, page) => {
     const opened = open();
 
     opened.light(daylight([0, -0.5, 0.866]), theme(dark), new Color(...page));
     opened.render();
 
-    // What the hero's stand-in paints there, as sRGB bytes.
-    const wanted = backdropAt(page, dark, 0.5, 0.5).map((v) =>
-      Math.round(new Color(v, v, v).convertLinearToSRGB().r * 255),
-    );
+    // The page colour, as sRGB bytes: what the hero's stand-in paints too.
+    const wanted = page.map((v) => Math.round(new Color(v, v, v).convertLinearToSRGB().r * 255));
 
-    for (const [i, byte] of middle(opened).entries()) {
-      expect(Math.abs(byte - (wanted[i] ?? 0))).toBeLessThanOrEqual(1);
+    for (const [x, y] of [
+      [32, 32],
+      [1, 1],
+      [62, 62],
+    ] as const) {
+      for (const [i, byte] of middle(opened, x, y).entries()) {
+        expect(Math.abs(byte - (wanted[i] ?? 0))).toBeLessThanOrEqual(1);
+      }
     }
   },
 );
