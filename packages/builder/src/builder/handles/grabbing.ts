@@ -3,23 +3,17 @@
 // Mouse, pen and touch alike. A second finger lets the drag go and hands both fingers to the orbit
 // controls, which pan and zoom.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- three.js and the DOM, used in place. */
-import {
-  type Group,
-  type OrthographicCamera,
-  type PerspectiveCamera,
-  Raycaster,
-  Vector2,
-  Vector3,
-} from "three";
+import { type Group, type OrthographicCamera, type PerspectiveCamera, Vector3 } from "three";
 import { haptics } from "@sunreye/ui/haptics";
 import { spaceHeld } from "../space.ts";
 import { bodyAt, same } from "./body-at.ts";
 import type { Pv, Scene } from "../pv.ts";
 import { strike, toThree, type Panel } from "../scene.ts";
 import { PER_PIXEL, sense, turnOf } from "./dial.ts";
-import { handleOf } from "./gizmo.ts";
+import { handleOf, rayAt } from "./gizmo.ts";
 import {
   drag,
+  settled,
   handles,
   turned,
   type Dragged,
@@ -48,6 +42,8 @@ export interface Editing {
   /** A press on a picked block's own surface, its roof included, moves it: an editor's navigation,
    * where a drag on empty ground pans, not orbits (ADR 20 "Navigation"). */
   readonly wholeBlock?: boolean;
+  /** An editor's ring beside the other handles: its turn settles lightly, Shift turns it free. */
+  readonly ring?: boolean;
   /** Each step of a drag, shown at once. */
   readonly ondrag: (scene: Scene) => void;
   /** The drag let go: one undo step. */
@@ -91,14 +87,7 @@ interface Held {
   readonly dial: -1 | 0 | 1;
   /** The turn as last shown, as text: a turn ticks when it changes. */
   shown: string;
-}
-
-function rayAt(camera: PerspectiveCamera | OrthographicCamera, at: readonly [number, number]): Ray {
-  const caster = new Raycaster();
-
-  caster.setFromCamera(new Vector2(...at), camera);
-
-  return { origin: caster.ray.origin.toArray(), direction: caster.ray.direction.toArray() };
+  free: boolean;
 }
 
 /** Listens on a canvas, before the orbit controls and the click picking. */
@@ -206,6 +195,7 @@ export class Grabbing {
           ? sense(editing, grab.ray, this.#camera.getWorldDirection(new Vector3()).toArray())
           : 0,
       shown: String(turnOf(editing)),
+      free: event.shiftKey,
     };
     this.#canvas.style.cursor = "grabbing";
   }
@@ -225,6 +215,7 @@ export class Grabbing {
 
     event.stopImmediatePropagation();
     held.at = [event.clientX, event.clientY];
+    held.free = event.shiftKey;
     held.moving ||= travel(held) >= SLIP;
 
     if (held.moving) this.#step(held, rayAt(this.#camera, ndc(this.#canvas, event)));
@@ -232,7 +223,8 @@ export class Grabbing {
 
   /** What the held drag makes of the scene now. */
   #dragged(held: Held, ray: Ray): Dragged | null {
-    const { editing, grab } = held;
+    const { editing } = held;
+    const grab = settled(held.grab, editing.ring, held.free);
 
     const sweep = (held.at[0] - held.down[0]) * PER_PIXEL * held.dial;
 

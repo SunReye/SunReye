@@ -36,12 +36,16 @@ const scene = (...blocks: readonly Block[]): Scene => ({ north: 0, blocks, obsta
 
 const BLOCK: Target = { kind: "block", index: 0 };
 
-test("a free-form block has no handles", () => {
+test("a free-form block's one handle is its ring, in the turn mode or beside an editor's", () => {
   const laid = { walls: [], footings: [], panes: [], roofs: [] };
 
-  expect(handles(scene(FREE), BLOCK)).toEqual([]);
-  expect(offered(scene(FREE), BLOCK, laid, false)).toEqual([]);
-  expect(offered(scene(FREE), BLOCK, laid, true)).toEqual([]);
+  const grips = (turning: boolean, ring = false) =>
+    offered(scene(FREE), BLOCK, laid, turning, ring).map(({ grip }) => grip);
+
+  expect(handles(scene(FREE), BLOCK).map(({ grip }) => grip)).toEqual(["turn"]);
+  expect(grips(false)).toEqual([]);
+  expect(grips(true)).toEqual(["turn"]);
+  expect(grips(false, true)).toEqual(["turn"]);
 });
 
 test("a block dragged beside a free-form block snaps to no edge of its unused rectangle", () => {
