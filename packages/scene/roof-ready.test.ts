@@ -11,6 +11,8 @@ import {
   pullEaves,
   pullRidges,
   readyRoofs,
+  rectangleAround,
+  replay,
   setHeight,
 } from "./index.js";
 import { EMPTY, made, trace } from "./roof.harness.ts";
@@ -172,12 +174,18 @@ test("a ready roof is a traced block of its own, moved to its corner, and edited
 test("a ready roof is refused onto another traced roof, without a size, or by an id it does not know", () => {
   const house = placed("satteldach");
 
-  expect(placeRoof(house, "flachdach", { x: 10, z: 0 }, SIZE)).toEqual({ refused: "joins" });
-  expect(placeRoof(house, "flachdach", { x: 5, z: -2 }, SIZE)).toEqual({ refused: "joins" });
+  expect(placeRoof(house, "flachdach", { x: 10, z: 0 }, SIZE)).toEqual({
+    refused: "joins",
+  });
+  expect(placeRoof(house, "flachdach", { x: 5, z: -2 }, SIZE)).toEqual({
+    refused: "joins",
+  });
   expect(placeRoof(EMPTY, "flachdach", { x: 0, z: 0 }, { ...SIZE, width: 0 })).toEqual({
     refused: "short",
   });
-  expect(placeRoof(EMPTY, "kuppel", { x: 0, z: 0 }, SIZE)).toEqual({ refused: "missing" });
+  expect(placeRoof(EMPTY, "kuppel", { x: 0, z: 0 }, SIZE)).toEqual({
+    refused: "missing",
+  });
 });
 
 test("every ready roof places flat at any size and corner: square, deep, and with no rise", () => {
@@ -202,4 +210,69 @@ test("every ready roof places flat at any size and corner: square, deep, and wit
   const away = made(placeRoof(EMPTY, "krueppelwalmdach", { x: 3.5, z: -2 }, SIZE));
 
   expect(height(away, 3.5, 0)).toBe(5);
+});
+
+test("a ready roof placed turned is that roof turned clockwise about its corner, seen from above", () => {
+  const turned = placeRoof(EMPTY, "satteldach", { x: 2, z: 1 }, SIZE, 90);
+
+  if ("refused" in turned) throw new Error(turned.refused);
+
+  // 10 m along x turned a quarter clockwise runs along +z; 8 m along z then runs along -x.
+  expect(height(turned.scene, 2, 1)).toBe(3);
+  expect(height(turned.scene, 2, 11)).toBe(3);
+  expect(height(turned.scene, -6, 11)).toBe(3);
+  expect(height(turned.scene, -2, 1)).toBe(7);
+  expect(height(turned.scene, -2, 11)).toBe(7);
+  expect(bent(turned.scene, 0)).toEqual([]);
+  expect(built(turned.scene)).toHaveLength(2);
+
+  const replayed = replay(EMPTY, {
+    kind: "roof",
+    id: "satteldach",
+    at: { x: 2, z: 1 },
+    size: SIZE,
+    turn: 90,
+  });
+
+  expect("refused" in replayed ? replayed : built(replayed.scene)).toEqual(built(turned.scene));
+});
+
+/** A point of a house 30° clockwise from x, its corner at (2, 1). */
+const turn = (x: number, z: number): [number, number] => [
+  2 + x * Math.cos(Math.PI / 6) - z * Math.sin(Math.PI / 6),
+  1 + x * Math.sin(Math.PI / 6) + z * Math.cos(Math.PI / 6),
+];
+
+test("a ready roof fits the smallest rectangle around a footprint, turned with it", () => {
+  // A 10 × 6 m house with a notch in its side.
+  const house = [turn(0, 0), turn(10, 0), turn(10, 6), turn(6, 6), turn(5, 5), turn(0, 6)];
+
+  const fit = rectangleAround(house);
+
+  if (!fit) throw new Error("no rectangle");
+
+  expect(fit.width * fit.depth).toBeCloseTo(60, 6);
+  const [short = 0, long = 0] = [fit.width, fit.depth].toSorted((a, b) => a - b);
+
+  expect(short).toBeCloseTo(6, 6);
+  expect(long).toBeCloseTo(10, 6);
+  expect(((fit.turn % 90) + 90) % 90).toBeCloseTo(30, 6);
+
+  // Placed there, the roof covers the house exactly: its corners are the house's.
+  const fitted = placeRoof(EMPTY, "flachdach", fit.at, { ...SIZE, ...fit }, fit.turn);
+
+  if ("refused" in fitted) throw new Error(fitted.refused);
+
+  for (const [x, z] of [turn(0, 0), turn(10, 0), turn(10, 6), turn(0, 6)]) {
+    expect(height(fitted.scene, Number(x.toFixed(9)), Number(z.toFixed(9)))).toBe(3);
+  }
+});
+
+test("a rectangle around nothing to fit is none", () => {
+  expect(
+    rectangleAround([
+      [0, 0],
+      [1, 1],
+    ]),
+  ).toBeNull();
 });

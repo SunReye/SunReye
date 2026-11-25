@@ -22,7 +22,7 @@ const OPERATIONS = {
     (which === "eave" ? pullEaves : pullRidges)(scene, block, height),
   mark: (scene, { block, line, as }) => markLine(scene, block, line, as),
   height: (scene, { block, point, height }) => setHeight(scene, block, point, height),
-  roof: (scene, { id, at, size }) => placeRoof(scene, id, at, size),
+  roof: (scene, { id, at, size, turn }) => placeRoof(scene, id, at, size, turn),
   dormer: (scene, { block, face, id, at, size }) => placeDormer(scene, block, face, id, at, size),
   pullDormer: (scene, { block, face, which, height }) =>
     pullDormer(scene, block, face, which, height),
