@@ -46,25 +46,6 @@ test("Esc on a new roof's outline left open takes it out as one edit", async () 
   expect(scenes.at(-1)?.blocks).toEqual([]);
 });
 
-test("Esc on an outline left open takes it out, a roof named or not", async () => {
-  const { at, scenes, edits } = await tracing();
-
-  for (const [x, z] of [
-    [2, 2],
-    [2, 8],
-    [8, 8],
-  ] as const) {
-    // oxlint-disable-next-line no-await-in-loop -- one click after another, as the person traces.
-    await press("mouse", [at(x, z)]);
-  }
-
-  await settle(() => scenes.length === 2);
-  await userEvent.keyboard("{Escape}");
-  await settle(() => edits.length === 3);
-
-  expect(edits.at(-1)).toEqual({ kind: "removeBlock", block: 0 });
-});
-
 test("a chain started elsewhere first takes out an outline left open before", async () => {
   const { at, scenes, edits } = await tracing(leftOpen(), undefined, "new");
 
@@ -84,37 +65,4 @@ test("a chain started on an open outline's end goes on with it", async () => {
 
   expect(edits[0]).toMatchObject({ kind: "add" });
   expect(scenes.at(-1)?.blocks[0]?.freeForm?.traced?.lines).toHaveLength(3);
-});
-
-test("tracing turned off ends its chain: turned on again, a click starts another", async () => {
-  const { at, edits, retool } = await tracing();
-
-  await press("mouse", [at(2, 2)]);
-  await press("mouse", [at(2, 8)]);
-  await settle(() => edits.length === 1);
-
-  await retool("off");
-  await retool("draw");
-
-  await press("mouse", [at(8, 8)]);
-  await press("mouse", [at(8, 2)]);
-  await settle(() => edits.length === 3);
-
-  expect(edits.map((edit) => edit.kind)).toEqual(["add", "removeBlock", "add"]);
-});
-
-test("switched to editing, the chain ends: a traced point is dragged, no line drawn on", async () => {
-  const { at, scenes, edits, retool } = await tracing();
-
-  await press("mouse", [at(2, 2)]);
-  await press("mouse", [at(2, 8)]);
-  await press("mouse", [at(8, 8)]);
-  await settle(() => edits.length === 2);
-
-  await retool("edit");
-  await press("mouse", [at(8, 8), at(8.5, 7.5), at(9, 7)]);
-  await settle(() => edits.length === 3);
-
-  expect(edits.at(-1)).toMatchObject({ kind: "movePoint" });
-  expect(scenes.at(-1)?.blocks[0]?.freeForm?.traced?.lines).toHaveLength(2);
 });

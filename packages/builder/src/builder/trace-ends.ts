@@ -6,13 +6,6 @@ import type { Scene } from "./pv.ts";
 import type { Guide } from "./trace-angle.ts";
 import type { LineRef } from "./trace-types.ts";
 
-/** Where chain end `end` stands in `scene`; none without either. */
-export function endSpot(scene: Scene | undefined, end: End | undefined): Spot | undefined {
-  if (end === undefined || scene === undefined) return undefined;
-
-  return "point" in end ? spotOf(scene, end) : [end.x, end.height ?? 0, end.z];
-}
-
 /** A traced point's spot. */
 export function spotOf(scene: Scene, { block, point }: PointRef): Spot {
   const [x = 0, y = 0, z = 0] = scene.blocks[block]?.freeForm?.traced?.points[point] ?? [];

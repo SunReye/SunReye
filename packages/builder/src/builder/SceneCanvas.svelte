@@ -128,7 +128,7 @@
     onpress?: OnPress | undefined;
   } = $props();
 
-  const traceTool = new TraceTool(() => tracing);
+  const traceTool = new TraceTool();
 
   /** Where a point of the scene lands on the canvas, as last drawn. */
   let projected = $state.raw<Projector>();

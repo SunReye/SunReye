@@ -138,18 +138,6 @@
     return [...line, ...drag];
   });
 
-  /** Each dragged line's length, beside its middle. */
-  const lengths = $derived(
-    (shown.dragged ?? []).flatMap((line, i) => {
-      const [a, b] = [at(line.from), at(line.to)];
-      const length = Math.hypot(...line.to.map((v, axis) => v - (line.from[axis] ?? 0)));
-
-      return a && b
-        ? [{ key: `length-${i}`, x: (a[0] + b[0]) / 2, y: (a[1] + b[1]) / 2, length }]
-        : [];
-    }),
-  );
-
   const chip = $derived.by(() => {
     const words = [
       drawing && `${metres.format(drawing.length)} m`,
@@ -207,14 +195,6 @@
     <circle cx={x} cy={y} r="8" fill="none" stroke="var(--brand)" stroke-width="2" />
   {/each}
 </svg>
-{#each lengths as { key, x, y, length } (key)}
-  <output
-    data-dragged-length
-    class="canvas-chip pointer-events-none absolute flex h-6 -translate-x-1/2 -translate-y-1/2 items-center rounded-md px-1.5 text-[11px] whitespace-nowrap tabular-nums ring-1 ring-border/60 elevation-1"
-    style:left="{x}px"
-    style:top="{y}px">{metres.format(length)} m</output
-  >
-{/each}
 {#if chip}
   <!-- The same canvas chip as a handle's live value; it never takes the pointer. -->
   <output

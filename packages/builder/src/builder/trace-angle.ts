@@ -3,9 +3,8 @@
 import { angleSnap } from "./angle-snap.ts";
 import { distance, type Plan } from "./plan.ts";
 import type { Scene } from "./pv.ts";
-import type { Snap, Spot } from "@sunreye/scene";
+import type { Spot } from "@sunreye/scene";
 import type { Aimed } from "./trace-aim.ts";
-import { snapOf, spotOf } from "./trace-ends.ts";
 
 /** A guide the line being drawn snapped to: through its corner, and its angle in degrees. */
 export interface Guide {
@@ -18,7 +17,7 @@ export interface Guide {
 const NEAR = 10;
 
 /** The unit direction from `a` to `b` seen from above; undefined for none. */
-function direction(a: readonly number[], b: readonly number[]): Plan | undefined {
+export function direction(a: readonly number[], b: readonly number[]): Plan | undefined {
   const [dx, dz] = [(b[0] ?? 0) - (a[0] ?? 0), (b[2] ?? 0) - (a[2] ?? 0)];
   const length = Math.hypot(dx, dz);
 
@@ -44,7 +43,7 @@ function edgesNear(scene: Scene, [x, , z]: Spot, near: number): Plan[] {
 
 /** Where the line from `from` to `aimed` ends turned onto a direction, and its guide; undefined
  * when it nearly takes none. */
-function turned(
+export function turned(
   scene: Scene,
   aimed: Aimed,
   from: Spot,
@@ -63,33 +62,3 @@ function turned(
     guide: { from: [ax, 0, az], to: [bx, 0, bz], angle: angled.angle },
   };
 }
-
-/** What a pointer snaps to, and the guide of the direction it was turned onto. */
-export type Snapped = Readonly<{ snap: Snap; guide: Guide | undefined }>;
-
-/** What `aimed` snaps to: a traced point or line, else, drawing on from `from` and not `free`, a
- * direction the line nearly takes (angle-snap.ts); with the guide it took. */
-export function snappedFrom(
-  scene: Scene,
-  aimed: Aimed,
-  from: Spot | undefined,
-  chain: { readonly previous: Plan | undefined; readonly first: Plan | undefined },
-): Snapped {
-  const snapped = snapOf(scene, aimed);
-
-  if (snapped.kind !== "free" || from === undefined || aimed.free === true)
-    return { snap: snapped, guide: undefined };
-
-  const angled = turned(scene, aimed, from, chain);
-
-  return angled === undefined
-    ? { snap: snapped, guide: undefined }
-    : { snap: { kind: "free", at: angled.at }, guide: angled.guide };
-}
-
-/** A traced line, by its block and its two points, in the scene that has it. */
-export type Edge = Readonly<{ block: number; from: number; to: number; scene: Scene }>;
-
-/** Line `edge`'s direction seen from above. */
-export const bearing = ({ block, from, to, scene }: Edge): Plan | undefined =>
-  direction(spotOf(scene, { block, point: from }), spotOf(scene, { block, point: to }));
