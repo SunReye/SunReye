@@ -337,7 +337,7 @@ Points, edges, roof faces and walls closed into a solid, made of one or more par
 _Avoid_: Block, house
 
 **Point**:
-A corner of a building, where its edges meet; its height comes from the roof faces it belongs to.
+A corner of a building, where its edges meet.
 _Avoid_: Vertex, node
 
 **Edge**:
@@ -345,8 +345,8 @@ A straight line between two points of a building: a footprint edge, an eave, a r
 _Avoid_: Segment, side
 
 **Face**:
-A flat surface of a building bounded by its edges: a roof face or a wall.
-_Avoid_: Polygon, plane, surface
+A flat surface of a building bounded by its edges.
+_Avoid_: Polygon, surface
 
 **Wall**:
 A building's side over one footprint edge, from the ground up to the roof above it, gable and step included.
@@ -361,7 +361,7 @@ A piece of a building with its own footprint, eave and roof faces; parts touch o
 _Avoid_: Block, section, wing
 
 **Module field**:
-Modules laid on one roof face by one fill, edited as one object, each module keeping its own place and any override. German UI: Modulfeld.
+Modules on one roof face grouped as one object, made by a fill and joined by modules placed on that face, each module keeping its own place and any override. German UI: Modulfeld.
 _Avoid_: Module grid, array, panel layout
 
 **Mode**:
