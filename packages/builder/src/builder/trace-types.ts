@@ -1,5 +1,13 @@
 // What the tracing mode (tracing.svelte.ts) takes from its consumer and shows beside the scene.
-import type { DormerSize, Refusal, RoofSize, Snap, Spot, TraceEdit } from "@sunreye/scene";
+import type {
+  DormerSize,
+  PointRef,
+  Refusal,
+  RoofSize,
+  Snap,
+  Spot,
+  TraceEdit,
+} from "@sunreye/scene";
 import type { Scene } from "./pv.ts";
 import type { Guide } from "./trace-angle.ts";
 
@@ -49,4 +57,11 @@ export interface Shown {
   /** The direction the line being drawn is snapped to, through its corner, and its angle in
    * degrees. */
   readonly guide: Guide | undefined;
+}
+
+/** A press: where it landed, and the traced line or point it took, which a drag moves. */
+export interface Pressed {
+  readonly at: Spot;
+  readonly line: LineRef | undefined;
+  readonly point: PointRef | undefined;
 }
