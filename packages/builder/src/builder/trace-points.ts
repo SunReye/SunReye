@@ -5,6 +5,7 @@ import {
   movePoint,
   removePoint,
   replay,
+  slopeHeight,
   splitLine,
   type Edited,
   type PointRef,
@@ -15,7 +16,7 @@ import type { Scene } from "./pv.ts";
 import { shifted, spotOf } from "./trace-ends.ts";
 import { clickAt, type Aimed } from "./trace-aim.ts";
 import { faceUnder } from "./trace-place.ts";
-import type { LineRef, Placing } from "./trace-types.ts";
+import type { Dragged, LineRef, Placing } from "./trace-types.ts";
 
 /** A dashed line drawn beside the scene. */
 export type Dashed = { readonly from: Spot; readonly to: Spot };
@@ -85,8 +86,50 @@ function lineDragged(scene: Scene, ref: LineRef, at: Spot, to: Spot): Dashed[] {
   );
 }
 
-/** The lines a drag of `pressed` to `at` would move, dashed; a point goes to `snapped`. */
-export function draggedLines(
+type Pitched = Dragged["pitches"][number];
+
+/** Face corners' pitch in degrees, by their normal (Newell's), and their middle. */
+function pitchOf(corners: readonly (readonly number[])[]): Pitched {
+  let [nx, ny, nz] = [0, 0, 0];
+
+  for (const [i, [x = 0, y = 0, z = 0]] of corners.entries()) {
+    const [x2 = 0, y2 = 0, z2 = 0] = corners[(i + 1) % corners.length] ?? [];
+
+    nx += (y - y2) * (z + z2);
+    ny += (z - z2) * (x + x2);
+    nz += (x - x2) * (y + y2);
+  }
+
+  const mean = (axis: number) =>
+    corners.reduce((sum, corner) => sum + (corner[axis] ?? 0), 0) / corners.length;
+
+  const tilt = Math.acos(Math.abs(ny) / (Math.hypot(nx, ny, nz) || 1));
+
+  return { at: [mean(0), mean(1), mean(2)], degrees: (tilt * 180) / Math.PI };
+}
+
+/** Point `ref` dragged to `to`, with `level` as `pointMoved`: its lines where they would go, and
+ * the pitch of each face it is on. */
+function pointDragged(scene: Scene, ref: PointRef, to: Spot, level: boolean): Dragged {
+  const { edited } = pointMoved(scene, ref, to, level);
+
+  if ("refused" in edited) return { lines: pointLines(scene, ref, to), pitches: [] };
+
+  const block = edited.scene.blocks[ref.block]?.freeForm;
+
+  const faces = (block?.traced?.faces ?? []).flatMap((loop, face) =>
+    loop.includes(ref.point) ? [block?.faces[face] ?? []] : [],
+  );
+
+  return {
+    lines: pointLines(edited.scene, ref, spotOf(edited.scene, ref)),
+    pitches: faces.filter((corners) => corners.length >= 3).map((corners) => pitchOf(corners)),
+  };
+}
+
+/** What a drag of `pressed` to `at` would move; a point goes to `snapped`, keeping its height with
+ * `level`. */
+export function draggedView(
   scene: Scene,
   {
     line,
@@ -95,21 +138,30 @@ export function draggedLines(
   }: Readonly<{ line?: LineRef | undefined; point?: PointRef | undefined; at: Spot }>,
   at: Spot,
   snapped: Spot | undefined,
-): Dashed[] | undefined {
-  if (line !== undefined) return lineDragged(scene, line, from, at);
+  level = false,
+): Dragged | undefined {
+  if (line !== undefined) return { lines: lineDragged(scene, line, from, at), pitches: [] };
 
   return point === undefined || snapped === undefined
     ? undefined
-    : pointLines(scene, point, snapped);
+    : pointDragged(scene, point, snapped, level);
 }
 
-/** Point `ref` dragged to `to`. */
-export function pointMoved(scene: Scene, { block, point }: PointRef, to: Spot): Made {
+/** Point `ref` dragged to `to`: an eave point down its faces' slope, so they keep their pitch,
+ * unless `level` keeps its height. */
+export function pointMoved(
+  scene: Scene,
+  { block, point }: PointRef,
+  to: Spot,
+  level = false,
+): Made {
   const place = { x: to[0], z: to[2] };
+  const height = level ? null : slopeHeight(scene, block, point, place);
+  const click = height === null ? place : { ...place, height };
 
   return {
-    edited: movePoint(scene, block, point, place),
-    edit: { kind: "movePoint", block, point, to: place },
+    edited: movePoint(scene, block, point, click),
+    edit: { kind: "movePoint", block, point, to: click },
   };
 }
 

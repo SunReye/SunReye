@@ -96,7 +96,12 @@ export class TracePress {
     const onscreen = seenOnscreen(this.#canvas, this.#camera, this.#house(), scene.north);
     const picked = pick(scene, onscreen, pointer, pixels);
 
-    return { ...aimed, snap: picked ?? { kind: "free", at: aimed.at }, free: event.shiftKey };
+    return {
+      ...aimed,
+      snap: picked ?? { kind: "free", at: aimed.at },
+      free: event.shiftKey,
+      level: event.altKey,
+    };
   }
 
   readonly #press = (event: PointerEvent): void => {

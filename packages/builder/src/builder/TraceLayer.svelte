@@ -134,7 +134,7 @@
   const dashed = $derived.by((): Stroke[] => {
     const look = { colour: "var(--brand)", dash: "6 4" };
 
-    const drag = (shown.dragged ?? []).flatMap((line, i) => {
+    const drag = (shown.dragged?.lines ?? []).flatMap((line, i) => {
       const [from, to] = [at(line.from), at(line.to)];
 
       return from && to ? [{ key: `dragged-${i}`, from, to, width: 3, ...look }] : [];
@@ -149,13 +149,22 @@
 
   /** Each dragged line's length, beside its middle. */
   const lengths = $derived(
-    (shown.dragged ?? []).flatMap((line, i) => {
+    (shown.dragged?.lines ?? []).flatMap((line, i) => {
       const [a, b] = [at(line.from), at(line.to)];
       const length = Math.hypot(...line.to.map((v, axis) => v - (line.from[axis] ?? 0)));
 
       return a && b
         ? [{ key: `length-${i}`, x: (a[0] + b[0]) / 2, y: (a[1] + b[1]) / 2, length }]
         : [];
+    }),
+  );
+
+  /** Each face a dragged point is on: its pitch, at its middle. */
+  const pitches = $derived(
+    (shown.dragged?.pitches ?? []).flatMap(({ at: middle, degrees: pitch }, i) => {
+      const on = at(middle);
+
+      return on ? [{ key: `pitch-${i}`, x: on[0], y: on[1], pitch }] : [];
     }),
   );
 
@@ -231,6 +240,14 @@
     class="canvas-chip pointer-events-none absolute flex h-6 -translate-x-1/2 -translate-y-1/2 items-center rounded-md px-1.5 text-[11px] whitespace-nowrap tabular-nums ring-1 ring-border/60 elevation-1"
     style:left="{x}px"
     style:top="{y}px">{metres.format(length)} m</output
+  >
+{/each}
+{#each pitches as { key, x, y, pitch } (key)}
+  <output
+    data-dragged-pitch
+    class="canvas-chip pointer-events-none absolute flex h-6 -translate-x-1/2 -translate-y-1/2 items-center rounded-md px-1.5 text-[11px] font-medium whitespace-nowrap tabular-nums ring-1 ring-border/60 elevation-1"
+    style:left="{x}px"
+    style:top="{y}px">{degrees.format(pitch)}°</output
   >
 {/each}
 {#if chip}

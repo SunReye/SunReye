@@ -2,7 +2,16 @@
 // and a line dragged with the straight run it lies in. Faces follow each.
 
 import { expect, test } from "bun:test";
-import { moveLine, movePoint, removePoint, splitLine, type Scene } from "./index.js";
+import {
+  moveLine,
+  movePoint,
+  pullEaves,
+  pullRidges,
+  removePoint,
+  slopeHeight,
+  splitLine,
+  type Scene,
+} from "./index.js";
 import { EMPTY, SQUARE, made, outlines, trace } from "./roof.harness.ts";
 
 /** The traced point of block 0 at `[x, z]` seen from above. */
@@ -117,4 +126,27 @@ test("a run goes on through a point a few centimetres off it, as a building mode
   const moved = made(moveLine(scene, 0, piece, { x: -1, z: 0 }));
 
   expect(outlines(moved)[1]).toContainEqual([-1, 4]);
+});
+
+/** The 4 m square as a gable: its ridge from (0, 2) to (4, 2) at 5 m, its eaves at 3 m. */
+function gable(): Scene {
+  return made(pullRidges(made(pullEaves(trace(square(), [0, 2], [4, 2]), 0, 3)), 0, 5));
+}
+
+test("an eave corner dragged out keeps its face's pitch: it drops down the slope's plane", () => {
+  const scene = gable();
+  const corner = pointAt(scene, [4, 0]);
+
+  expect(slopeHeight(scene, 0, corner, { x: 4, z: -1 })).toBeCloseTo(2);
+  expect(slopeHeight(scene, 0, corner, { x: 5, z: 0 })).toBeCloseTo(3);
+
+  const moved = made(movePoint(scene, 0, corner, { x: 4, z: -1, height: 2 }));
+
+  expect(moved.blocks[0]?.freeForm?.traced?.points[corner]).toEqual([4, 2, -1]);
+});
+
+test("a ridge point has no slope to follow: it keeps its height", () => {
+  const scene = gable();
+
+  expect(slopeHeight(scene, 0, pointAt(scene, [4, 2]), { x: 5, z: 2 })).toBeNull();
 });

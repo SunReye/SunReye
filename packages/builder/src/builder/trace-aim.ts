@@ -19,6 +19,8 @@ export interface Aimed {
   readonly ray?: Ray | undefined;
   /** The line is drawn where the pointer is, never turned onto a direction (Shift held). */
   readonly free?: boolean | undefined;
+  /** A dragged eave point keeps its height, its faces' pitch giving (Alt held). */
+  readonly level?: boolean | undefined;
 }
 
 /** Metres a click snaps within where the ground cannot be measured. */

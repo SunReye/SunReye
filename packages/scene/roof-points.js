@@ -2,12 +2,13 @@
 // out. Each changes the block's lines, which `rebuild` makes faces of again. Pure.
 
 import { rebuild } from "./roof-faces.js";
+import { kinds, plane } from "./roof-heights.js";
 import { touching } from "./roof-plan.js";
 import { compacted } from "./roof-run.js";
 import { linesOf } from "./roof-snap.js";
 
 /** @import { Scene } from "./schema.d.ts" */
-/** @import { Edited, Place } from "./roof.d.ts" */
+/** @import { Click, Edited, Place } from "./roof.d.ts" */
 /** @import { Lines } from "./roof-faces.js" */
 
 /** Metres a point put into a line keeps off its ends. */
@@ -22,11 +23,12 @@ const tangled = (lines) =>
   lines.lines.some((l, i) => lines.lines.slice(i + 1).some((m) => touching(lines.points, l, m)));
 
 /**
- * Block `block`'s point `point` moved level to `to`; refused where lines would cross.
+ * Block `block`'s point `point` moved to `to`, level unless `to` brings a height; refused where
+ * lines would cross.
  * @param {Scene} scene
  * @param {number} block
  * @param {number} point
- * @param {Place} to
+ * @param {Click} to
  * @returns {Edited}
  */
 export function movePoint(scene, block, point, to) {
@@ -35,12 +37,42 @@ export function movePoint(scene, block, point, to) {
 
   if (at === undefined) return { refused: "missing" };
 
-  const points = lines.points.map((p, i) => (i === point ? [to.x, p[1] ?? 0, to.z] : p));
+  const points = lines.points.map((p, i) =>
+    i === point ? [to.x, to.height ?? p[1] ?? 0, to.z] : p,
+  );
+
   const moved = { ...lines, points };
 
   if (tangled(moved)) return { refused: "crosses" };
 
   return { ...rebuild(scene, block, moved), block, from: point, to: point };
+}
+
+/**
+ * The height eave point `point` of block `block` takes at `to` on its faces' planes, so they keep
+ * their pitch, the mean where it is on several; null for a point no eave or on no face.
+ * @param {Scene} scene
+ * @param {number} block
+ * @param {number} point
+ * @param {Place} to
+ * @returns {number | null}
+ */
+export function slopeHeight(scene, block, point, to) {
+  const lines = linesOf(scene.blocks[block]);
+
+  if (kinds(lines)[point] !== "eave") return null;
+
+  const heights = lines.faces
+    .filter((face) => face.includes(point))
+    .flatMap((face) => {
+      const on = plane(face.map((p) => lines.points[p] ?? []));
+
+      return on ? [on(to.x, to.z)] : [];
+    });
+
+  return heights.length === 0
+    ? null
+    : heights.reduce((sum, height) => sum + height, 0) / heights.length;
 }
 
 /**
