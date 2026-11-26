@@ -8,9 +8,9 @@ ADR 20 drew the plan and the 3D view as separate canvases with separate navigati
 
 ## Decision
 
-**One editor, two cameras.** 2D is a camera mode of the one editor: orthographic, from above, and rotatable so an eave lies level on screen. Both views share one selection, one mode and one undo history. A host may show the 2D and the 3D camera side by side, each a canvas of the one editor.
+**One editor, two cameras.** 2D is a camera mode of the one editor: orthographic, from above, and rotatable so an eave lies level on screen; turning it turns the camera, never the scene (ADR 30, *Coordinates*). Both views share one selection, one mode and one undo history. A host may show the 2D and the 3D camera side by side, each a canvas of the one editor.
 
-**Navigation.** In Select (ADR 31) a drag orbits in 3D and pans in 2D. Carried from ADR 20 (2026-11-25): the wheel and a pinch zoom to the cursor; the middle button and Space held pan; the right button opens the menu only when released where it was pressed.
+**Navigation.** In Select (ADR 31) a drag orbits in 3D and pans in 2D; a Shift-drag and a held press on a module are ADR 31's. Carried from ADR 20 (2026-11-25): the wheel and a pinch zoom to the cursor; the middle button and Space held pan; the right button opens the menu only when released where it was pressed.
 
 **Editor look.** The model is white. Ambient occlusion and sun shadows fall on the model only. Handles, rings, labels, outlines and every helper are drawn after the model, never in its occlusion or its shadows. Tilt-shift and depth of field are off in the editor; they belong to Home's dashboard alone (ADR 35, *Camera effects*).
 
