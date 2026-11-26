@@ -17,7 +17,7 @@ One physical or logical unit that produces readings: an inverter, a battery, a m
 _Avoid_: Inverter (as the general term), asset
 
 **Pending device**:
-A device without a connection: it can be named by strings and equipment markers and produces no readings until it is given one.
+A device without a connection: it can be named by strings and equipment objects and produces no readings until it is given one.
 _Avoid_: Planned device, placeholder, draft device
 
 **Plant document**:
@@ -265,7 +265,7 @@ To put a module into a string, at a place in its wiring order; to unwire takes i
 _Avoid_: Paint, assign (alone), link
 
 **Wiring mode**:
-The builder's state while its Strings group or a string is open: every string's wiring order is drawn and a drag across modules selects them. German UI: Verdrahten.
+The Wire mode, entered by opening the Strings group or a string: every string's wiring order is drawn and a drag across modules selects them. German UI: Verdrahten.
 _Avoid_: Paint mode, string tool
 
 **Selection**:
@@ -353,7 +353,7 @@ Modules laid on one roof face by one fill, edited as one object, each module kee
 _Avoid_: Module grid, array, panel layout
 
 **Mode**:
-What the editor does with the selection until Esc or another mode: Select, Move, Rotate, Resize, Edit shape, or a drawing tool. Each shows only its own handles.
+What the editor does with the selection until Esc or another mode: Select, Move, Rotate, Resize, Edit shape, Lay row, Wire, or a drawing tool. Each shows only its own handles; a tool mode owns its drag.
 _Avoid_: Tool (alone), Turn mode, context toolbar (its actions are in the right-click menu)
 
 **Edit shape**:
@@ -365,7 +365,7 @@ The camera facing one roof face square on, orthographic, eave level at the botto
 _Avoid_: Face view, fly-in
 
 **Site context**:
-The aerial image, terrain and neighbouring buildings around the plant, loaded from a state's public data on request.
+The aerial image, terrain and, later, neighbouring buildings around the plant, loaded from a state's public data on request.
 _Avoid_: Surroundings (ground surfaces and fences), map, environment
 
 **Setback**:
@@ -377,7 +377,7 @@ How "Fill face" lays a face's free roof: the gap between modules, never under 2 
 _Avoid_: Fill settings, spacing
 
 **Overhang**:
-How far a part's roof reaches past its walls: at the eaves and at the verges.
+How far a roof reaches past the wall below it, set on each eave edge.
 _Avoid_: Eave depth, soffit
 
 **Free-form roof face**:
@@ -393,7 +393,7 @@ Giving a traced roof its heights: its eave points to one height, its ridge point
 _Avoid_: Extrude, lift
 
 **Dormer**:
-A small roof traced inside a face of a traced roof: a closed loop of lines whose faces are its own. It cuts its outline out of the face it stands on, which keeps no modules there, and its front and cheeks are walls up from that face. German UI: Gaube.
+A part standing on a roof face, with roof faces of its own. It cuts its footprint out of the face's module area, and its front and cheeks are walls up from that face. German UI: Gaube.
 _Avoid_: Roof extension, Dachaufbau
 
 **Ready roof**:
@@ -440,9 +440,9 @@ _Avoid_: Surrounding shape, context building
 A picture of the ground from above, north up over its extent, from a state's service, for tracing; draped on the terrain and roof faces, and hidden after tracing.
 _Avoid_: Satellite tiles, map, orthophoto
 
-**Equipment marker**:
-A place on a building's wall where an inverter or a battery stands, linked to its device; its live label hangs above it.
-_Avoid_: Pin, icon
+**Equipment object**:
+An inverter, battery, meter or wallbox in the scene, on a wall or the ground, linked to its device; its live label hangs above it.
+_Avoid_: Equipment marker, pin, icon
 
 **Opening**:
 A window or a door in a building's wall: a window, a French window, a front door or a garage door. It is drawn and never shades.
