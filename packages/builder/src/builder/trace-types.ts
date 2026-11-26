@@ -45,14 +45,21 @@ export interface Tracing {
   readonly ontrace: (scene: Scene, edit: TraceEdit) => void;
 }
 
+/** What a drag would move: its lines, dashed, and the faces' pitches in degrees, at their middles. */
+export interface Dragged {
+  readonly lines: readonly { readonly from: Spot; readonly to: Spot }[];
+  readonly pitches: readonly { readonly at: Spot; readonly degrees: number }[];
+}
+
 /** What the tracing shows beside the scene. */
 export interface Shown {
   /** What the pointer snaps to. */
   readonly snap: Snap | undefined;
   /** The chain's last point, which the line being drawn starts from. */
   readonly from: Spot | undefined;
-  /** A dragged line, or a dragged point's lines, where they would move to. */
-  readonly dragged: readonly { readonly from: Spot; readonly to: Spot }[] | undefined;
+  /** A dragged line, or a dragged point's lines, where they would move to, and the pitch of each
+   * face a dragged point is on. */
+  readonly dragged: Dragged | undefined;
   /** The pointer on the canvas, in pixels. */
   readonly pointer: readonly [number, number] | undefined;
   /** Why the last click drew nothing, until the next. */

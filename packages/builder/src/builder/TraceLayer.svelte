@@ -10,23 +10,31 @@
   import { m } from "../paraglide/messages.js";
   import type { Projector } from "./drawing.svelte.ts";
   import { pvPoint } from "./trace-aim.ts";
+  import type { Seen } from "./trace-sight.ts";
   import type { Shown, Tracing } from "./tracing.svelte.ts";
+  import TraceCorners from "./TraceCorners.svelte";
+  import TraceValues from "./TraceValues.svelte";
 
   let {
     tracing,
     shown,
     project,
+    seen = () => true,
   }: {
     tracing: Tracing;
     shown: Shown;
     /** Where a point of the scene lands on the canvas, as last drawn. */
     project: Projector;
+    /** Whether the camera sees a spot past the house: a hidden point and its lines are faint. */
+    seen?: Seen | undefined;
   } = $props();
 
   const north = $derived(tracing.scene.north);
 
   /** A scene spot on the canvas; null behind the camera. */
   const at = (spot: readonly number[]) => project(pvPoint(north, spot));
+
+  const visible = ([x = 0, y = 0, z = 0]: readonly number[]) => seen([x, y, z], north);
 
   /** A stroke on the canvas: a traced line, the picked one stronger, or a dashed one being drawn
    * or dragged. */
@@ -46,6 +54,7 @@
       if (!lines) return [];
 
       const points = lines.points.map((point) => at(point));
+      const hidden = lines.points.map((point) => !visible(point));
 
       return lines.lines.flatMap(([a = 0, b = 0], line) => {
         const [from, to] = [points[a], points[b]];
@@ -53,7 +62,9 @@
 
         const look = picked
           ? { colour: "var(--destructive)", width: 4 }
-          : { colour: "var(--brand)", width: 2.5 };
+          : hidden[a] === true || hidden[b] === true
+            ? { colour: "var(--muted-foreground)", width: 1.5 }
+            : { colour: "var(--brand)", width: 2.5 };
 
         return from && to ? [{ key: `${index}/${line}`, from, to, dash: "", ...look }] : [];
       });
@@ -78,7 +89,7 @@
       (block.freeForm?.traced?.points ?? []).flatMap((point) => {
         const on = at(point);
 
-        return on ? [on] : [];
+        return on ? [{ on, hidden: !visible(point) }] : [];
       }),
     ),
   );
@@ -125,7 +136,7 @@
   const dashed = $derived.by((): Stroke[] => {
     const look = { colour: "var(--brand)", dash: "6 4" };
 
-    const drag = (shown.dragged ?? []).flatMap((line, i) => {
+    const drag = (shown.dragged?.lines ?? []).flatMap((line, i) => {
       const [from, to] = [at(line.from), at(line.to)];
 
       return from && to ? [{ key: `dragged-${i}`, from, to, width: 3, ...look }] : [];
@@ -140,13 +151,22 @@
 
   /** Each dragged line's length, beside its middle. */
   const lengths = $derived(
-    (shown.dragged ?? []).flatMap((line, i) => {
+    (shown.dragged?.lines ?? []).flatMap((line, i) => {
       const [a, b] = [at(line.from), at(line.to)];
       const length = Math.hypot(...line.to.map((v, axis) => v - (line.from[axis] ?? 0)));
 
       return a && b
         ? [{ key: `length-${i}`, x: (a[0] + b[0]) / 2, y: (a[1] + b[1]) / 2, length }]
         : [];
+    }),
+  );
+
+  /** Each face a dragged point is on: its pitch, at its middle. */
+  const pitches = $derived(
+    (shown.dragged?.pitches ?? []).flatMap(({ at: middle, degrees: pitch }, i) => {
+      const on = at(middle);
+
+      return on ? [{ key: `pitch-${i}`, x: on[0], y: on[1], pitch }] : [];
     }),
   );
 
@@ -200,26 +220,6 @@
       stroke-linecap="round"
     />
   {/each}
-  {#each corners as [x, y], i (i)}
-    <circle cx={x} cy={y} r="3.5" fill="var(--background)" stroke="var(--brand)" stroke-width="2" />
-  {/each}
-  {#each ring ? [ring] : [] as [x, y] (`${x},${y}`)}
-    <circle cx={x} cy={y} r="8" fill="none" stroke="var(--brand)" stroke-width="2" />
-  {/each}
+  <TraceCorners {corners} {ring} />
 </svg>
-{#each lengths as { key, x, y, length } (key)}
-  <output
-    data-dragged-length
-    class="canvas-chip pointer-events-none absolute flex h-6 -translate-x-1/2 -translate-y-1/2 items-center rounded-md px-1.5 text-[11px] whitespace-nowrap tabular-nums ring-1 ring-border/60 elevation-1"
-    style:left="{x}px"
-    style:top="{y}px">{metres.format(length)} m</output
-  >
-{/each}
-{#if chip}
-  <!-- The same canvas chip as a handle's live value; it never takes the pointer. -->
-  <output
-    class="canvas-chip pointer-events-none absolute flex h-7 translate-x-3.5 -translate-y-full items-center rounded-md px-2 text-xs whitespace-nowrap tabular-nums ring-1 ring-border/60 elevation-1"
-    style:left="{chip.at[0]}px"
-    style:top="{chip.at[1] - 8}px">{chip.text}</output
-  >
-{/if}
+<TraceValues {lengths} {pitches} {chip} format={{ metres, degrees }} />

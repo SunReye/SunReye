@@ -24,6 +24,8 @@ export { marked, selector } from "./roof-select.svelte.ts";
 
 export { TracePress } from "./trace-press.ts";
 
+export { sight, type Seen } from "./trace-sight.ts";
+
 export { TraceTool, type Tracing } from "./tracing.svelte.ts";
 
 export { default as TraceLayer } from "./TraceLayer.svelte";

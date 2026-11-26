@@ -7,13 +7,7 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import type { Group } from "three";
-  import {
-    openGarage,
-    parkedKey,
-    type Garage,
-    type ModelLoader,
-    type Parked,
-  } from "../cars/garage.ts";
+  import { parkLater, type ModelLoader, type Parked } from "../cars/park-later.svelte.ts";
   import PerfOverlay from "../scene/PerfOverlay.svelte";
   import { Ghost, lit, type Lit, type SceneFailure, type Sky } from "../scene/stage.svelte.ts";
   import type { View } from "./camera.ts";
@@ -30,6 +24,7 @@
     pointing,
     projector,
     selector,
+    sight,
     TraceLayer,
     TracePress,
     TraceTool,
@@ -42,6 +37,7 @@
     type Roofwork,
     type Panel,
     type Projector,
+    type Seen,
     type Tracing,
   } from "./drawing.svelte.ts";
 
@@ -133,6 +129,12 @@
   /** Where a point of the scene lands on the canvas, as last drawn. */
   let projected = $state.raw<Projector>();
 
+  /** What the camera saw past the house, as last drawn. */
+  let seen = $state.raw<Seen>();
+
+  /** The house as drawn, once the studio keeps it. */
+  let house: (() => Group | undefined) | undefined;
+
   const roofTool = new RoofTool();
 
   const handled = new Handled();
@@ -149,49 +151,6 @@
 
   const orbiting = { view: () => view, locked: () => locked, onview: (to: View) => onview(to) };
 
-  /** Parks the cars once `due`, each change after the last; the default body loaded and their
-   * programs compiled first. No car is drawn when the body cannot be read. A live tick that moves
-   * only power or SOC brings nothing: an arrival snapshots the canvas, a stutter on every tick. */
-  function parkLater(
-    canvas: HTMLCanvasElement,
-    opening: Lit["opening"],
-    open: () => Promise<Garage>,
-  ) {
-    let due = $state(false);
-    let parking: Promise<Garage | null> | undefined;
-    let parked: Promise<unknown> = Promise.resolve();
-    let brought = parkedKey([]);
-
-    $effect(() => {
-      const arriving = cars;
-      const key = parkedKey(arriving);
-
-      if (due && key !== brought) {
-        brought = key;
-        parking ??= open().catch(() => null);
-        parked = parked
-          .then(() => parking)
-          .then(
-            (ready) =>
-              ready &&
-              opening.arrive(canvas, ghost, () => {
-                ready.park(arriving);
-              }),
-          )
-          .catch(() => {});
-      }
-    });
-
-    return {
-      due: () => {
-        due = true;
-      },
-      dispose: () => {
-        void parking?.then((ready) => ready?.dispose());
-      },
-    };
-  }
-
   /** The lit studio on `canvas`; null without WebGL2. */
   function studioOn(canvas: HTMLCanvasElement, camera: Lens): Lit | null {
     try {
@@ -204,6 +163,7 @@
 
           handled.place(project);
           projected = project;
+          seen = tracing && sight(camera.clone(), house?.());
           onrender?.(project);
         },
         () => editing !== undefined || roofwork !== undefined || tracing !== undefined,
@@ -266,7 +226,9 @@
     const kept = keep(scene, source, render);
     const handling = { editing: () => editing, drawn: kept.drawn, panels: source.panels };
     // Before the picking and the orbit controls: a press on a handle or a trace never reaches them.
-    const tracePress = new TracePress(canvas, camera, traceTool, () => tracing);
+    const tracePress = new TracePress(canvas, camera, traceTool, () => tracing, kept.drawn);
+
+    house = kept.drawn;
     const unhandle = handled.attach(canvas, camera, studio.scene, handling, render);
     const unlay = overlaid(studio.scene, () => roofTool.shown(roofwork), render);
     const roofSources = { roofwork: () => roofwork, drawn: kept.drawn, panels: source.panels };
@@ -274,14 +236,9 @@
 
     const unselect = selecting(canvas, camera, scene, kept.drawn);
 
-    const parking = parkLater(canvas, opening, () =>
-      openGarage(
-        studio.scene,
-        // A car that parks, leaves or changes body casts another shadow.
-        opening.recast,
-        untrack(() => model),
-      ),
-    );
+    // A car that parks, leaves or changes body casts another shadow.
+    const garage = { scene: studio.scene, recast: opening.recast, model: () => model };
+    const parking = parkLater(canvas, opening, ghost, () => cars, garage);
 
     const controls = orbit(canvas, camera, flight, render, orbiting, () => navigation);
     const resize = fit(canvas, studio, camera, render, controls.target);
@@ -320,7 +277,7 @@
   ></canvas>
   <PerfOverlay />
   {#if tracing !== undefined && projected !== undefined}
-    <TraceLayer {tracing} shown={traceTool.shown} project={projected} />
+    <TraceLayer {tracing} shown={traceTool.shown} project={projected} {seen} />
   {/if}
   {#if handled.label !== undefined}
     {@const { text, left, top } = handled.label}
