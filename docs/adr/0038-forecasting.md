@@ -1,6 +1,6 @@
 # 38. Forecasting
 
-Status: accepted (2026-11-26)
+Status: accepted (2026-11-26), amended (2026-11-26)
 
 ## Context
 
@@ -10,7 +10,7 @@ The core forecasts only solar power, inside its own modules: the solar forecast 
 
 **One crate.** `crates/forecast` makes the solar forecast and the load forecasts. It is pure as `pv` is (ADR 17): no I/O, no async runtime, no provider knowledge. It takes history, weather forecasts, calendar facts and the layout, and returns forecast series; the core fetches, schedules and writes them to the forecast store (ADR 15).
 - *Solar.* The solar forecast's model run and the correction learner (ADR 17) move into the crate, which calls `pv` for the physics.
-- *Load.* A load model is the crate's seam: it learns from a point's history and forecasts it. Two implementations stand behind it (*Load models*).
+- *Load.* A load model is the crate's seam: it learns from a point's history and forecasts it. Similar days is its one implementation (*Load models*).
 - *Grid.* Every forecast runs at 15-minute steps for today and two more days, the weather forecast's and the spot price's reach, and issues when a weather forecast or a new day's history is stored. Targets are UTC instants; a day of 23 or 25 hours has 92 or 100 quarter hours (ADR 3).
 - *One value.* A forecast carries one value per target, the expected value, so forecasts of parts sum to the forecast of the whole.
 
@@ -22,14 +22,13 @@ The core forecasts only solar power, inside its own modules: the solar forecast 
 - Not the battery's state of charge: that is the outcome of a plan, which the EMS stage writes as `plan.*` (ADR 15).
 
 **Load models.**
-- *Similar days,* the first: per point, a profile by day type and quarter hour, exponentially weighted as the correction is, with a temperature term where the point's load follows the outdoor temperature. It reads the day type, the quarter hour, the temperature forecast and the point's mean over the 7 days before the issue.
-- *Gradient boosting,* the second: the same inputs, trained by `perpetual`, a pure-Rust gradient-boosting library, one thread per point inside the core's compute pool. It is an optional dependency of the crate, built for the core only: the browser forecasts no loads.
-- *Choice.* Once a point has 60 days of history, a weekly backtest in the compute pool picks its model: each model forecasts each of the last 60 days, trained only on the days before it, and nothing is stored. The quarter-hour error decides; the point switches only to a model at least 5 % better.
+- *Similar days:* per point, a profile by day type and quarter hour, exponentially weighted as the correction is, with a temperature term where the point's load follows the outdoor temperature. It reads the day type, the quarter hour, the temperature forecast and the point's mean over the 7 days before the issue.
+- *A second model* comes only with evidence: gradient boosting is first tested offline, on history exported from real plants, and joins behind the seam only where it is clearly more accurate there.
 - *A wallbox* is forecast from its history alone; reading EVCC's charging plan waits for the EMS stage.
 - *Before 14 days* of history: the root's own consumption follows ADR 28's standard household profile, scaled to the plant's mean once it has a day of data; every other point is flat at its own mean of the days so far. Until ADR 28's profile exists, the root is flat too. Such forecasts are marked `estimated` in the capabilities document.
 - *Training* reads the last 365 days at most, as quarter-hour means, and skips a quarter hour in which the point or a child of it was unmeasured.
 - *Topology.* A point's learned state belongs to its place in the topology version (ADR 14): it starts again when the point's children change, since its own consumption then means something else. A point the topology no longer has is forecast at 0 W, superseding its earlier issues, as a removed string is (ADR 17).
-- *Learned state,* the profiles and the boosted models, is stored in SQLite as the correction's grid is, with the model's format version, and learned again when it changes: the profiles daily, the boosted models weekly, a few hundred kB per point. Backups carry it: it reveals less than the history they carry already.
+- *Learned state,* the profiles, is stored in SQLite as the correction's grid is, with the model's format version, and learned again daily and when the version changes, a few kB per point. Backups carry it: it reveals less than the history they carry already.
 
 **Day types.** Working day, Saturday, or Sunday and public holiday. The admin picks the plant's federal state in the location settings, preset from the location offline where that is cheap; the crate carries Germany's public holiday rules, Easter's included, and needs no network. Without a state, or outside Germany, only weekends set the day type. School holidays wait.
 
@@ -56,15 +55,15 @@ Where the measured energy is near zero, as an idle wallbox's, both read "—". T
 ## Considered options
 
 - **The solar forecast alone, in the core** (ADR 17). Replaced: loads need forecasting too, and a pure crate is tested without I/O.
-- **LightGBM** through its C++ library. Rejected: a C++ toolchain in the build, a harder static arm64 binary, and no WASM. Pure-Rust ports of it (`silvic-core`) were too young; one can replace `perpetual` behind the seam.
+- **LightGBM** through its C++ library. Rejected: a C++ toolchain in the build, a harder static arm64 binary, and no WASM. Pure-Rust ports of it (`silvic-core`) were too young.
 - **Gradient boosting first.** Rejected: it needs months of history and explains nothing; it earns its place by accuracy.
+- **Gradient boosting (`perpetual`) beside similar days, a weekly 60-day backtest choosing per point.** Rejected (amended 2026-11-26): a single household's load is mostly people's choices, which no model forecasts a day ahead; what is predictable, the daily shape, day types, temperature and recent level, similar days already reads. Boosting would add dependencies, binary size, memory and a weekly training run on the smallest boards, and the backtest machinery exists only to choose between the two. Tested offline first instead.
 - **The house load and its points forecast apart.** Rejected: they would not sum.
 - **A new term for the unmeasured remainder.** Rejected: ADR 14's own consumption already is it.
 - **Keeping the old scene path until step 3.** Rejected: it is the double geometry ADR 30 removes.
 - **The crates single-threaded, the core splitting work.** Rejected: the crate knows where its independent work lies.
 - **A Raspberry Pi 5 as the reference, and a hosted CI container.** Rejected: Home must run on the smallest boards, and ADR 24's local harness already measures there.
 - **BDEW's H25 for every point before 14 days.** Rejected: it carries no licence (ADR 28), shapes a wallbox as a household, and counted once per point it multiplies the house load.
-- **Choosing a model by stored accuracy.** Rejected: the model not in use issues nothing to judge.
 - **Accuracy stored as history.** Rejected: it needs roles and keys of its own, and is cheap to compute when read.
 - **A reserved quantile column.** Rejected: the forecast table holds days, so adding one later is a quick rebuild, not a data migration.
 - **`pv` and `forecast` always built for speed.** Rejected: a setting chosen without a measurement; speed, memory and binary size each have a budget instead.
