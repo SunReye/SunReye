@@ -30,10 +30,16 @@ function cornersOf(outline: readonly Point[] | null | undefined) {
 /** An arrow `grip` at the middle of the edge from `from` to `to`, pointing out along `way`. */
 function arrow(grip: "width" | "depth", from: Triple, to: Triple, way: Triple) {
   const axis = unit(way);
-  const mid = (i: 0 | 1 | 2) => (from[i] + to[i]) / 2 + axis[i] * ARROW;
-  const at: Triple = [mid(0), mid(1), mid(2)];
+  const mid = (i: 0 | 1 | 2) => (from[i] + to[i]) / 2;
+  const edge: Triple = [mid(0), mid(1), mid(2)];
 
-  return { grip, at, axis };
+  const at: Triple = [
+    edge[0] + axis[0] * ARROW,
+    edge[1] + axis[1] * ARROW,
+    edge[2] + axis[2] * ARROW,
+  ];
+
+  return { grip, at, axis, edge, span: Math.hypot(...way) };
 }
 
 /** An arrow at the middle of each of the outline's right and upper edges, pointing out. */
