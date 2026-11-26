@@ -251,6 +251,8 @@ export type TraceEdit =
     }
   | { readonly kind: "split"; readonly block: number; readonly line: number; readonly at: Place }
   | { readonly kind: "removePoint"; readonly block: number; readonly point: number }
+  /** A whole block taken out: an outline left open, which no roof is. */
+  | { readonly kind: "removeBlock"; readonly block: number }
   | { readonly kind: "pull"; readonly block: number; readonly which: Kind; readonly height: number }
   | { readonly kind: "mark"; readonly block: number; readonly line: number; readonly as: Kind }
   | {

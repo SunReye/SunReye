@@ -6,6 +6,7 @@ import { pullDormer } from "./roof-dormer.js";
 import { movePoint, removePoint, splitLine } from "./roof-points.js";
 import { markLine, pullEaves, pullRidges, setHeight } from "./roof-pull.js";
 import { placeRoof } from "./roof-ready.js";
+import { removeBlock } from "./scene-blocks.js";
 import { placeDormer } from "./roof-ready-dormer.js";
 
 /** @import { Scene } from "./schema.d.ts" */
@@ -22,6 +23,19 @@ const OPERATIONS = {
   movePoint: (scene, { block, point, to }) => movePoint(scene, block, point, to),
   split: (scene, { block, line, at }) => splitLine(scene, block, line, at),
   removePoint: (scene, { block, point }) => removePoint(scene, block, point),
+  removeBlock: (scene, { block }) => {
+    const faces = scene.blocks[block]?.freeForm?.faces;
+
+    if (faces === undefined) return { refused: "missing" };
+
+    return {
+      scene: removeBlock(scene, block),
+      faces: faces.map(() => -1),
+      block: -1,
+      from: -1,
+      to: -1,
+    };
+  },
   pull: (scene, { block, which, height }) =>
     (which === "eave" ? pullEaves : pullRidges)(scene, block, height),
   mark: (scene, { block, line, as }) => markLine(scene, block, line, as),
