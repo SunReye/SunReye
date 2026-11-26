@@ -39,8 +39,9 @@ export interface Dragged {
   readonly scene: Scene;
   /** What the handle shows while dragging: one length or angle, or x and z for a move. */
   readonly value: readonly number[];
-  /** `roof`: a roof object's metres from its face's eave and its nearer verge. */
-  readonly unit: "m" | "°" | "roof";
+  /** `roof`: a roof object's metres from its face's eave and its nearer verge; `size`: its size,
+   * in metres to the centimetre. */
+  readonly unit: "m" | "°" | "roof" | "size";
 }
 
 const LENGTH = 0.1;
@@ -204,7 +205,7 @@ function slid(grip: Grip, slide: Slide, body: Body): Dragged | null {
  * out. */
 export interface Crate extends Fitter {
   readonly pv: Pick<Pv, "refit" | "glide" | "glideWindow">;
-  readonly laid: Pick<Modules, "walls" | "roofs">;
+  readonly laid: Pick<Modules, "walls" | "roofs"> & Partial<Pick<Modules, "footings" | "panes">>;
 }
 
 /** A free-form block has no rectangle: a move shifts the whole of it, the shift snapped. */
@@ -252,7 +253,7 @@ function fitted(
   if (target.kind !== "opening") {
     if (grab.grip === "turn") return roofRingTurned(scene, target, grab, now);
 
-    return grab.grip === "move" ? onRoof(scene, target, [grab, now], crate) : null;
+    return onRoof(scene, target, [grab, now], crate);
   }
 
   return grab.grip === "move" || grab.grip === "width" || grab.grip === "height"

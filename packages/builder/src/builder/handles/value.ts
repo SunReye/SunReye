@@ -3,13 +3,13 @@ import { m } from "../../paraglide/messages.js";
 import { isLocale } from "../../paraglide/runtime.js";
 import type { Reading } from "./grabbing.ts";
 
-/** One length to the decimetre or an angle in degrees; a move's x and z; a roof object's metres
- * from its eave and verge. */
+/** One length to the decimetre, a roof object's size to the centimetre, or an angle in degrees;
+ * a move's x and z; a roof object's metres from its eave and verge. */
 export function valueText(
   { value, unit }: Pick<Reading, "value" | "unit">,
   locale: string,
 ): string {
-  const digits = unit === "°" ? 0 : 1;
+  const digits = unit === "°" ? 0 : unit === "size" ? 2 : 1;
 
   const format = new Intl.NumberFormat(locale, {
     minimumFractionDigits: digits,
@@ -27,5 +27,5 @@ export function valueText(
 
   if (second !== undefined) return `x ${format.format(first)} · z ${format.format(second)} m`;
 
-  return unit === "m" ? `${format.format(first)} m` : `${format.format(first)}°`;
+  return unit === "°" ? `${format.format(first)}°` : `${format.format(first)} m`;
 }
