@@ -4,12 +4,15 @@ import {
   type Camera,
   DepthTexture,
   HalfFloatType,
+  type Object3D,
   type Scene,
   type WebGLRenderer,
   WebGLRenderTarget,
 } from "three";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { OverlayPass } from "./overlay-pass.ts";
+import { hideOverlays } from "./overlays.ts";
 
 /**
  * three.js's composer clones one target for both of its buffers, so a multisampled scene makes
@@ -26,16 +29,34 @@ export class Composer extends EffectComposer {
     depthTexture: this.depth,
   });
 
+  readonly #studio: Scene;
+  /** The overlays this frame hides from the scene's passes, for the pass that draws them. */
+  #overlays: readonly Object3D[] = [];
+
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws with it.
   constructor(renderer: WebGLRenderer, scene: Scene, camera: Camera) {
     super(renderer, new WebGLRenderTarget(1, 1, { type: HalfFloatType }));
+    this.#studio = scene;
     this.addPass(new RenderPass(scene, camera));
+    this.overlay = new OverlayPass(camera, this.depth, () => this.#overlays);
   }
 
+  /** Draws the overlays this frame holds back from the scene's passes; added where they belong. */
+  readonly overlay: OverlayPass;
+
   override render(deltaTime?: number): void {
+    const { hidden, show } = hideOverlays(this.#studio);
+
+    this.#overlays = hidden;
     this.readBuffer = this.scene;
     this.writeBuffer = this.renderTarget1;
-    super.render(deltaTime);
+
+    try {
+      super.render(deltaTime);
+    } finally {
+      show();
+      this.#overlays = [];
+    }
   }
 
   /** As three.js's, but the scene's target is read once and never written. */
@@ -54,5 +75,6 @@ export class Composer extends EffectComposer {
   override dispose(): void {
     super.dispose();
     this.scene.dispose();
+    this.overlay.dispose();
   }
 }

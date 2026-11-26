@@ -5,6 +5,7 @@
 import type { Color, Group, Scene as Studio } from "three";
 import { ease, MOTION_MS, motionMs } from "../../motion.ts";
 import { cssColour } from "../../scene/backdrop.ts";
+import { asOverlay } from "../../scene/overlays.ts";
 import { free, gizmo } from "./gizmo.ts";
 import { appear, fit, type ToScreen } from "./screen.ts";
 import type { Editing } from "./grabbing.ts";
@@ -35,12 +36,19 @@ export class Shown {
     const found =
       editing === undefined
         ? []
-        : offered(editing.scene, editing.target, editing.laid, editing.turning, editing.ring);
+        : offered(
+            editing.scene,
+            editing.target,
+            editing.laid,
+            editing.turning,
+            editing.ring,
+            editing.mode,
+          );
 
     const key =
       editing === undefined
         ? ""
-        : `${editing.target.kind} ${editing.target.index} ${editing.turning} ${editing.ring}`;
+        : `${editing.target.kind} ${editing.target.index} ${editing.turning} ${editing.ring} ${editing.mode}`;
 
     const fresh = key !== this.#selected;
 
@@ -96,6 +104,6 @@ export class Shown {
 
     this.#group = next;
 
-    if (next !== undefined) this.#studio.add(next);
+    if (next !== undefined) this.#studio.add(asOverlay(next));
   }
 }

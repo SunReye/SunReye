@@ -4,6 +4,7 @@
 // wiring in its tint from a start marker with the selection over it. Built anew for each step; it only shows, a press strikes the roof under
 // it.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- three.js objects, built in place. */
+import { asOverlay } from "../scene/overlays.ts";
 import {
   BufferGeometry,
   type Color,
@@ -93,7 +94,7 @@ export function markedFace({ origin, across, up, outline: edge }: RoofFace, colo
   group.name = "marked face";
   group.add(outline(corners, colour, OVER));
 
-  return group;
+  return asOverlay(group);
 }
 
 /** Flat polygons filled in one colour; they never write depth, so what lies under them shows. */
@@ -214,7 +215,7 @@ export function overlay(shown: Shown, tints: Tints): Group {
     part.renderOrder = ON_TOP;
   });
 
-  return group;
+  return asOverlay(group);
 }
 
 /** Frees the overlay's geometries and materials. */
