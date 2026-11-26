@@ -377,7 +377,7 @@ How "Fill face" lays a face's free roof: the gap between modules, never under 2 
 _Avoid_: Fill settings, spacing
 
 **Overhang**:
-How far a roof reaches past the wall below it, set on each eave edge.
+How far a roof reaches past the wall below it: at each eave edge, and at the verges.
 _Avoid_: Eave depth, soffit
 
 **Free-form roof face**:
