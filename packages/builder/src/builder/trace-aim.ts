@@ -53,26 +53,27 @@ function rayAt(
   return inScene(north, { origin: origin.toArray(), direction: direction.toArray() });
 }
 
-/** Where a ray lands on the plain ground; null off it. */
-function ground(ray: Ray): Spot | null {
-  const on = level(ray, 0);
+/** Where a ray lands on the level `height` metres up, the plain ground at 0; null off it. */
+function ground(ray: Ray, height: number): Spot | null {
+  const on = level(ray, height);
 
   return on && [on[0], on[1], on[2]];
 }
 
-/** Where `event` lands on the plain ground, and the metres `pixels` reach there; null off the
- * ground. What it picks of the traced roof by pixels is `pick`'s (trace-pick.ts). A surface that
- * carries heights comes with tracing on it (ADR 20): a click then lands on it. */
+/** Where `event` lands on the plain ground, or on the level `height` metres up, as a raised point
+ * being dragged is, and the metres `pixels` reach there; null off it. What it picks of the traced
+ * roof by pixels is `pick`'s (trace-pick.ts). A surface that carries heights comes with tracing on
+ * it (ADR 20): a click then lands on it. */
 export function aim(
   canvas: HTMLCanvasElement,
   camera: Lens,
   north: number,
   event: MouseEvent,
-  pixels: number,
+  [pixels, height]: readonly [number, number],
 ): Aimed | null {
   const ray = rayAt(canvas, camera, north, event, [0, 0]);
-  const at = ground(ray);
-  const beside = ground(rayAt(canvas, camera, north, event, [pixels, 0]));
+  const at = ground(ray, height);
+  const beside = ground(rayAt(canvas, camera, north, event, [pixels, 0]), height);
 
   if (at === null) return null;
 

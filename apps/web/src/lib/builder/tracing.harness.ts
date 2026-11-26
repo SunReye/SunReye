@@ -1,7 +1,7 @@
 // The canvas in the tracing mode for the builder's tracing tests: a plain ground seen from above,
 // kept on the scene each edit hands back.
 import { render } from "vitest-browser-svelte";
-import { presetView } from "../../../../../packages/builder/src/builder/camera.ts";
+import { presetView, type Preset } from "../../../../../packages/builder/src/builder/camera.ts";
 import type { Geometry, Scene } from "../../../../../packages/builder/src/builder/pv.ts";
 import type { Placing, Projector, TraceEdit } from "@sunreye/builder";
 import { SceneCanvas } from "@sunreye/builder";
@@ -36,13 +36,26 @@ export interface Traced {
   readonly retool: (to: "off" | "draw" | "edit") => Promise<void>;
 }
 
+/** Where pv point `point` lands on the page, by the canvas's last projection. */
+function onPage(
+  canvas: Element,
+  project: Projector | undefined,
+  point: readonly [number, number, number],
+): [number, number] {
+  const { left, top } = canvas.getBoundingClientRect();
+  const [px = 0, py = 0] = project?.(point) ?? [];
+
+  return [left + px, top + py];
+}
+
 /** A canvas in the tracing mode, kept on the scene each edit hands back; `placing` held until a
- * ready shape is placed. */
+ * ready shape is placed; seen from `preset`, from above unless named. */
 export async function tracing(
   start: Scene = EMPTY,
   held?: Placing,
   into?: number | "new",
   drawing?: false,
+  preset: Preset = "top",
 ): Promise<Traced> {
   const [scenes, edits]: [Scene[], TraceEdit[]] = [[], []];
   let project: Projector | undefined;
@@ -60,7 +73,7 @@ export async function tracing(
 
   const screen = await render(SceneCanvas, {
     geometry: ground,
-    view: presetView("top", ground),
+    view: presetView(preset, ground),
     onview: () => {},
     onrender: (next: Projector) => {
       project = next;
@@ -73,12 +86,7 @@ export async function tracing(
   const canvas = screen.getByLabelText("3D-Szene des Hauses").element();
 
   return {
-    at: (x, z, height = 0) => {
-      const { left, top } = canvas.getBoundingClientRect();
-      const [px = 0, py = 0] = project?.([x, -z, height]) ?? [];
-
-      return [left + px, top + py];
-    },
+    at: (x, z, height = 0) => onPage(canvas, project, [x, -z, height]),
     scenes,
     edits,
     retool: (to) => {

@@ -1,5 +1,5 @@
 import "../../app.css";
-import { addLine, type Scene } from "@sunreye/scene";
+import { addLine, pullEaves, type Scene } from "@sunreye/scene";
 import { afterEach, expect, test, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 import { settle } from "../motion/clock.harness.ts";
@@ -75,4 +75,21 @@ test("a traced point is dragged, and one tapped is taken out with Del", async ()
 
   expect(edits[1]).toMatchObject({ kind: "removePoint", block: 0 });
   expect(scenes.at(-1)?.blocks[0]?.freeForm?.faces[0]).toHaveLength(3);
+});
+
+test("seen in 3D, a raised point dragged lands under the pointer, at its own height", async () => {
+  const pulled = pullEaves(square(), 0, 3);
+
+  if ("refused" in pulled) throw new Error(pulled.refused);
+
+  const { at, scenes } = await tracing(pulled.scene, undefined, undefined, false, "isometric");
+
+  await press("mouse", [at(8, 8, 3), at(8.5, 8.5, 3), at(9, 9, 3)]);
+  await settle(() => scenes.length === 1);
+
+  const moved = scenes[0]?.blocks[0]?.freeForm?.traced?.points ?? [];
+
+  expect(moved.some(([x = 0, y = 0, z = 0]) => Math.hypot(x - 9, z - 9) < 0.1 && y === 3)).toBe(
+    true,
+  );
 });

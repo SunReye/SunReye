@@ -20,12 +20,21 @@ const TAP = 5;
 interface Held {
   readonly pointer: number;
   readonly down: readonly [number, number];
+  /** The height of the traced point or line pressed, whose level the drag moves on. */
+  readonly height: number;
   dragged: boolean;
 }
 
 /** Not drawing, a press on nothing traced is the picking's and the camera's. */
 function leftToPicking(tracing: Tracing, aimed: Aimed): boolean {
   return tracing.drawing === false && aimed.snap?.kind === "free";
+}
+
+/** The height of the traced point or line `aimed` picks; the ground's for none. */
+function grabbedHeight(aimed: Aimed | null): number {
+  const snap = aimed?.snap;
+
+  return snap === undefined || snap.kind === "free" ? 0 : (snap.at[1] ?? 0);
 }
 
 export class TracePress {
@@ -68,11 +77,12 @@ export class TracePress {
     };
   }
 
-  /** Where `event` aims, and what of the traced roof it picks as drawn. */
-  #aim(event: MouseEvent, tracing: Tracing): Aimed | null {
+  /** Where `event` aims, on the level of what is held, and what of the traced roof it picks as
+   * drawn. */
+  #aim(event: MouseEvent, tracing: Tracing, height = this.#held?.height ?? 0): Aimed | null {
     const { scene } = tracing;
     const pixels = tracing.reach ?? REACH;
-    const aimed = aim(this.#canvas, this.#camera, scene.north, event, pixels);
+    const aimed = aim(this.#canvas, this.#camera, scene.north, event, [pixels, height]);
     const project = projector(this.#canvas, this.#camera);
     const box = this.#canvas.getBoundingClientRect();
     const pointer = [event.clientX - box.left, event.clientY - box.top] as const;
@@ -97,14 +107,20 @@ export class TracePress {
       return;
     }
 
-    const aimed = this.#aim(event, tracing);
+    const height = grabbedHeight(this.#aim(event, tracing));
+    const aimed = this.#aim(event, tracing, height);
 
     if (aimed === null || leftToPicking(tracing, aimed)) return;
 
     event.stopImmediatePropagation();
     this.#canvas.setPointerCapture(event.pointerId);
     this.#tool.press(tracing, aimed);
-    this.#held = { pointer: event.pointerId, down: [event.clientX, event.clientY], dragged: false };
+    this.#held = {
+      pointer: event.pointerId,
+      down: [event.clientX, event.clientY],
+      height,
+      dragged: false,
+    };
   };
 
   /** A second finger hands the canvas to the orbit controls: the press is put back. */
@@ -150,7 +166,7 @@ export class TracePress {
     event.stopImmediatePropagation();
     this.#held = undefined;
 
-    const aimed = event.type === "pointerup" ? this.#aim(event, tracing) : null;
+    const aimed = event.type === "pointerup" ? this.#aim(event, tracing, held.height) : null;
 
     if (aimed === null) this.#tool.abort();
     else this.#tool.release(tracing, aimed, held.dragged, event.pointerType === "touch");
