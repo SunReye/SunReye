@@ -1,6 +1,5 @@
 // What a handle drag makes of the scene (ADR 20): from the ray that grabbed it to the pointer's
 // ray now, snapped. Pure; the drag slides in a level plane, the pitch in an upright one.
-import { moveBlock } from "@sunreye/scene";
 import type { Modules, Pv, Scene } from "../pv.ts";
 import { slide as slideOpening, type Fitter } from "../wall-openings.ts";
 import { bodyOf, on, ridge, type Body, type Rect, type Round, type Target } from "./body.ts";
@@ -19,6 +18,7 @@ import {
 import type { Grip } from "./grips.ts";
 import { onRoof } from "./on-roof.ts";
 import { onLevel } from "./shallow.ts";
+import { tracedSlid } from "./traced.ts";
 import { along, edges, pull, snapTurn } from "./snapping.ts";
 import { ringTurned, roofRingTurned, type Settle } from "./turning.ts";
 
@@ -208,15 +208,6 @@ export interface Crate extends Fitter {
   readonly laid: Pick<Modules, "walls" | "roofs"> & Partial<Pick<Modules, "footings" | "panes">>;
 }
 
-/** A free-form block has no rectangle: a move shifts the whole of it, the shift snapped. */
-function shiftWhole({ scene, target, from, to }: Slide): Dragged {
-  const by = [snap(to[0] - from[0], LENGTH), snap(to[2] - from[2], LENGTH)].map((value) =>
-    tidy(value),
-  );
-
-  return { scene: moveBlock(scene, target.index, by), value: by, unit: "m" };
-}
-
 /** The ring: Home's turn in 5° steps, or an editor's, which settles lightly and turns a traced
  * block too. */
 function turning(slide: Slide, { settle }: Grab, body: Body | undefined): Dragged | null {
@@ -233,11 +224,7 @@ function levelled(slide: Slide, grab: Grab): Dragged | null {
 
   if (grab.grip === "turn") return turning(slide, grab, body);
 
-  if (body === undefined) {
-    const block = slide.target.kind === "block" && grab.grip === "move";
-
-    return block && slide.scene.blocks[slide.target.index] !== undefined ? shiftWhole(slide) : null;
-  }
+  if (body === undefined) return tracedSlid(slide, grab.grip);
 
   return slid(grab.grip, slide, body);
 }
