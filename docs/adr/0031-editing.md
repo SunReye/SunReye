@@ -22,10 +22,12 @@ ADR 20's editor moved, turned and sized by what a press landed on: a picked obje
 | Line | L | draws lines |
 | Rectangle | | draws a rectangle |
 | Roof from lines | | makes roof faces from drawn lines |
+| Lay row | | lays modules along a drag |
+| Wire | | selects modules in a drag's order to wire them (ADR 35) |
 
 A mode chosen with nothing selected asks the person to pick an object.
 
-**Select only selects.** In Select, any drag orbits in 3D and pans in 2D (ADR 32). A press on an object never moves it; ADR 20's press-on-object move, block knob and turn mode go.
+**Select only selects.** In Select, any drag orbits in 3D and pans in 2D (ADR 32). A press on an object never moves it; ADR 20's press-on-object move, block knob and turn mode go. A tool mode (Wire, Lay row, a drawing tool) owns its drag.
 
 **Handles per mode.** Each mode shows only its own handles:
 - *Move:* arrows along the ground axes and the eave's direction, and a free drag.
@@ -38,9 +40,13 @@ While dragging, a value box shows the live value. Typing sets an exact value; Ta
 
 **Drawing.** Drawing tools are modes and end with Esc. They work in 2D and 3D, on the ground or at the level of a picked part.
 
-**Named operations.** Every edit is a named operation of the geometry engine (ADR 30), reached through `@sunreye/scene`. The editor, the embedding app's tools and undo replay the same operations.
+**Named operations.** Every edit is a named operation of the geometry engine (ADR 30), reached through `@sunreye/scene`. The editor and undo replay the same operations.
 
-**In memory until saved.** Edits and their history live in memory until saved, in Home and in the embedding app. No edit waits on the network. Each operation completes within one frame (16 ms) on a mid-range laptop, measured on a large house by test.
+**In memory.** The whole editor runs in memory: the scene, its edits and their undo history. No edit or drag sends a request. Save writes a new snapshot of the whole scene. Each operation completes within one frame (16 ms) on a mid-range laptop, measured on a large house by test.
+
+**One user.** One person edits a plant at a time; there are no reservations or locks.
+
+**Touch.** A long press stands for the right click, the wall spot's menu (ADR 35) included. The modes are buttons in a mode bar. A Snap toggle stands for Alt.
 
 **Actions.** The floating context toolbar goes. Actions live in the right-click menu, the host's toolbar and keyboard shortcuts.
 
@@ -50,17 +56,14 @@ While dragging, a value box shows the live value. Typing sets an exact value; Ta
 | --- | --- |
 | Roof | buildings, parts, points, neighbours, ground |
 | Modules | modules, module fields, roof items |
-| Wiring | modules, optimizers, strings, AC circuits |
-| Equipment | inverters, batteries, meters |
+| Wiring | modules, optimizers, strings, AC circuits, inverters, batteries, meters, wallboxes |
 
 Everything else stays visible and is not pickable.
 
 ## Open
 
-- **Touch.** What on a phone or tablet stands for the right click (the wall spot's menu, ADR 35, included), the mode keys and Alt. ADR 20 required editing at every width.
-- **Drags on modules.** ADR 35's wiring mode selects modules by a drag across them, and laying modules lays a row by a drag across free roof; whether those drags survive "any drag orbits".
 - **Home's filters.** Which of Home's builder levels (ADR 35, *Layout*) take which filter.
-- **Shortcuts.** Keys for Rectangle and Roof from lines.
+- **Shortcuts.** Keys for Rectangle, Roof from lines, Lay row and Wire.
 - **Shallow views.** Whether ADR 20's rule for drags seen from under 15° carries over to Move's arrows.
 
 ## Considered options
@@ -68,6 +71,8 @@ Everything else stays visible and is not pickable.
 - **Handles shown on selection** (the session's first round). Replaced by the owner: handles show only in the chosen mode.
 - **A turn mode, other transforms by direct drag** (ADR 20, 2026-11-20). Replaced by modes for every verb.
 - **Lengths snapped to 10 cm, angles to 5°** (ADR 20). Replaced by magnetic snapping.
+- **A request per edit or drag.** Rejected: drags sent a stream of requests and slowed the editor.
+- **Several editors of one plant, with reservations.** Rejected for now: most people work alone on a plant.
 
 ## Consequences
 
