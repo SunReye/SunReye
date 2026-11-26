@@ -23,10 +23,10 @@ It replaces ADR 20's flight in front of a face on a phone.
 
 ## Open
 
-- **Roof view on a steep or small face.** The margin, and what shows of the neighbouring faces.
-- **2D's rotation.** Whether the 2D camera turns to an eave by a command, by picking an edge, or freely.
-- **Roof view while wiring.** Whether the Verdrahtung filter opens the roof view, as ADR 20's phone flew onto a face to wire it.
-- **Touch navigation.** Two-finger pan and pinch are ADR 20's; whether one finger in 2D pans as a mouse drag does.
+- **Roof view on a steep or small face.** (step 2) The margin, and what shows of the neighbouring faces.
+- **2D's rotation.** (step 2) Whether the 2D camera turns to an eave by a command, by picking an edge, or freely.
+- **Roof view while wiring.** (step 2) Whether the Verdrahtung filter opens the roof view, as ADR 20's phone flew onto a face to wire it.
+- **Touch navigation.** (step 2) Two-finger pan and pinch are ADR 20's; whether one finger in 2D pans as a mouse drag does.
 
 ## Considered options
 
