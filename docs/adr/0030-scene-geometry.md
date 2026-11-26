@@ -14,7 +14,7 @@ ADR 20 grew one amendment at a time into two geometries: parametric blocks (a re
 
 **Building.** A building (German UI: Gebäude) is points, edges, roof faces and walls. It replaces the block.
 
-**Parts.** A building is made of parts, each with its own wall line and roof faces. Parts touch or stack, move together with their building, and are picked alone. A garage against the house, an annex or a stepped roof are parts of one building; a separate garage or a neighbour's house is its own building. A carport is a part with open walls (ADR 35).
+**Parts.** A building is made of parts, each with its own wall line and roof faces. Parts touch or stack, move together with their building, and are picked alone. A garage against the house, an annex or a stepped roof are parts of one building; a separate garage or a neighbour's house is its own building.
 - *Standing on.* A part stands on the ground, the default; at a fixed height; or on a roof face, named by id, whose plane it follows.
 - A part standing on or against a roof face cuts its wall line out of that face's module area, as a dormer does.
 
@@ -65,6 +65,7 @@ Other features wait.
 
 ## Open
 
+- **Eave height stored** (step 1). Where a base edge's height is kept: on the face, its part or its edge.
 - **Dormer heights** (step 1). Whether a dormer's eave height is measured from the ground or from the face it stands on.
 - **Roof lines** (step 1). Whether eave and verge stay stored kinds of edge or follow from the base edges.
 - **Narrow parts** (step 1). A traced part narrower than its overhangs set in from both sides: refused, or its overhangs reduced to fit.
