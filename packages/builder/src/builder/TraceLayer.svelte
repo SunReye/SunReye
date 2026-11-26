@@ -10,23 +10,29 @@
   import { m } from "../paraglide/messages.js";
   import type { Projector } from "./drawing.svelte.ts";
   import { pvPoint } from "./trace-aim.ts";
+  import type { Seen } from "./trace-sight.ts";
   import type { Shown, Tracing } from "./tracing.svelte.ts";
 
   let {
     tracing,
     shown,
     project,
+    seen = () => true,
   }: {
     tracing: Tracing;
     shown: Shown;
     /** Where a point of the scene lands on the canvas, as last drawn. */
     project: Projector;
+    /** Whether the camera sees a spot past the house: a hidden point and its lines are faint. */
+    seen?: Seen | undefined;
   } = $props();
 
   const north = $derived(tracing.scene.north);
 
   /** A scene spot on the canvas; null behind the camera. */
   const at = (spot: readonly number[]) => project(pvPoint(north, spot));
+
+  const visible = ([x = 0, y = 0, z = 0]: readonly number[]) => seen([x, y, z], north);
 
   /** A stroke on the canvas: a traced line, the picked one stronger, or a dashed one being drawn
    * or dragged. */
@@ -46,6 +52,7 @@
       if (!lines) return [];
 
       const points = lines.points.map((point) => at(point));
+      const hidden = lines.points.map((point) => !visible(point));
 
       return lines.lines.flatMap(([a = 0, b = 0], line) => {
         const [from, to] = [points[a], points[b]];
@@ -53,7 +60,9 @@
 
         const look = picked
           ? { colour: "var(--destructive)", width: 4 }
-          : { colour: "var(--brand)", width: 2.5 };
+          : hidden[a] === true || hidden[b] === true
+            ? { colour: "var(--muted-foreground)", width: 1.5 }
+            : { colour: "var(--brand)", width: 2.5 };
 
         return from && to ? [{ key: `${index}/${line}`, from, to, dash: "", ...look }] : [];
       });
@@ -78,7 +87,7 @@
       (block.freeForm?.traced?.points ?? []).flatMap((point) => {
         const on = at(point);
 
-        return on ? [on] : [];
+        return on ? [{ on, hidden: !visible(point) }] : [];
       }),
     ),
   );
@@ -200,8 +209,17 @@
       stroke-linecap="round"
     />
   {/each}
-  {#each corners as [x, y], i (i)}
-    <circle cx={x} cy={y} r="3.5" fill="var(--background)" stroke="var(--brand)" stroke-width="2" />
+  {#each corners as { on: [x, y], hidden }, i (i)}
+    <circle
+      cx={x}
+      cy={y}
+      r="3.5"
+      fill="var(--background)"
+      stroke={hidden ? "var(--muted-foreground)" : "var(--brand)"}
+      stroke-width="2"
+      opacity={hidden ? 0.5 : 1}
+      data-hidden={hidden || undefined}
+    />
   {/each}
   {#each ring ? [ring] : [] as [x, y] (`${x},${y}`)}
     <circle cx={x} cy={y} r="8" fill="none" stroke="var(--brand)" stroke-width="2" />

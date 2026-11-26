@@ -3,10 +3,11 @@
 // to the orbit controls. A tap clicks; a drag from a traced line moves it; a finger's drag
 // clicks where it lets go. Escape ends the chain.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- three.js and the DOM, used in place. */
+import type { Object3D } from "three";
 import type { Lens } from "./lens.ts";
-import { projector } from "./project.ts";
-import { aim, pvPoint, type Aimed } from "./trace-aim.ts";
+import { aim, type Aimed } from "./trace-aim.ts";
 import { pick } from "./trace-pick.ts";
+import { seenOnscreen } from "./trace-sight.ts";
 import { Handover, listen } from "./pointer.ts";
 import { spaceHeld } from "./space.ts";
 import type { TraceTool, Tracing } from "./tracing.svelte.ts";
@@ -42,6 +43,7 @@ export class TracePress {
   readonly #camera: Lens;
   readonly #tool: TraceTool;
   readonly #tracing: () => Tracing | undefined;
+  readonly #house: () => Object3D | undefined;
   readonly #handover = new Handover();
   #held: Held | undefined;
 
@@ -53,11 +55,13 @@ export class TracePress {
     camera: Lens,
     tool: TraceTool,
     tracing: () => Tracing | undefined,
+    house: () => Object3D | undefined,
   ) {
     this.#canvas = canvas;
     this.#camera = camera;
     this.#tool = tool;
     this.#tracing = tracing;
+    this.#house = house;
 
     const unlisten = listen(canvas, {
       press: this.#press,
@@ -83,13 +87,14 @@ export class TracePress {
     const { scene } = tracing;
     const pixels = tracing.reach ?? REACH;
     const aimed = aim(this.#canvas, this.#camera, scene.north, event, [pixels, height]);
-    const project = projector(this.#canvas, this.#camera);
     const box = this.#canvas.getBoundingClientRect();
     const pointer = [event.clientX - box.left, event.clientY - box.top] as const;
 
     if (aimed === null) return null;
 
-    const picked = pick(scene, (spot) => project(pvPoint(scene.north, spot)), pointer, pixels);
+    // What the house hides from a 3D camera is never grabbed.
+    const onscreen = seenOnscreen(this.#canvas, this.#camera, this.#house(), scene.north);
+    const picked = pick(scene, onscreen, pointer, pixels);
 
     return { ...aimed, snap: picked ?? { kind: "free", at: aimed.at }, free: event.shiftKey };
   }
