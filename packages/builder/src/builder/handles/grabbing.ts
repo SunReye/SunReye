@@ -21,6 +21,7 @@ import {
   type Grab,
   type Handle,
   type Laid,
+  type Mode,
   type Ray,
   type Target,
   type Triple,
@@ -37,6 +38,8 @@ export interface Editing {
   readonly laid: Laid;
   /** The turn mode: a drag anywhere turns the object, and nothing else of it drags. */
   readonly turning: boolean;
+  /** An editor's Move or Resize: its own handles alone; in Resize the object itself stays put. */
+  readonly mode?: Mode | undefined;
   /** A press on a picked block's own surface, its roof included, moves it: an editor's navigation,
    * where a drag on empty ground pans, not orbits (ADR 20 "Navigation"). */
   readonly wholeBlock?: boolean;
@@ -132,7 +135,8 @@ export class Grabbing {
     if (editing.turning && handle === null) return { grip: "turn", ray, height: 0 };
 
     // Out of the turn mode a press on the object itself moves it, though a handle reaches over it.
-    const own = editing.turning || onIt(handle) ? undefined : this.#bodyGrabbed(at, editing, ray);
+    const still = editing.turning || editing.mode === "resize" || onIt(handle);
+    const own = still ? undefined : this.#bodyGrabbed(at, editing, ray);
 
     if (own !== undefined) return own;
 

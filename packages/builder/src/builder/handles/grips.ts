@@ -6,7 +6,7 @@ import { bodyOf, onWorld, ridge, type Rect, type Round, type Target } from "./bo
 import { wallOf } from "../wall-openings.ts";
 import { turn, world, type Triple } from "./frame.ts";
 import { roofArrows } from "./sizing.ts";
-import { tracedArrows } from "./traced.ts";
+import { tracedArrows, tracedOutline } from "./traced.ts";
 import { roofRing, tracedRing } from "./turning.ts";
 
 export type { Target } from "./body.ts";
@@ -30,6 +30,10 @@ export type Grip =
   | "move"
   | "carry"
   | "point";
+
+/** An editor's mode beside the turn mode: Move offers what carries the object, Resize what sizes
+ * it; each with the outline, so what is picked stays in sight. */
+export type Mode = "move" | "resize";
 
 export interface Handle {
   readonly grip: Grip;
@@ -236,7 +240,13 @@ export function handles(scene: Scene, target: Target, laid: Laid = NONE): Handle
 
   const body = bodyOf(scene, target);
 
-  if (body === undefined) return [...tracedRing(scene, target), ...tracedArrows(scene, target)];
+  if (body === undefined) {
+    return [
+      ...tracedRing(scene, target),
+      ...tracedOutline(scene, target),
+      ...tracedArrows(scene, target),
+    ];
+  }
 
   if (body.kind === "round") return roundHandles(scene.north, body);
 
