@@ -90,6 +90,9 @@ interface Held {
   free: boolean;
 }
 
+/** Whether `handle` sits on its object: the ridge's knob, a fence's point. */
+const onIt = (handle: Handle | null) => handle?.grip === "pitch" || handle?.grip === "point";
+
 /** Listens on a canvas, before the orbit controls and the click picking. */
 export class Grabbing {
   readonly #canvas: HTMLCanvasElement;
@@ -134,6 +137,11 @@ export class Grabbing {
     // The turn mode: off the ring, which may lie outside the canvas, the canvas is a dial.
     if (editing.turning && handle === null) return { grip: "turn", ray, height: 0 };
 
+    // Out of the turn mode a press on the object itself moves it, though a handle reaches over it.
+    const own = editing.turning || onIt(handle) ? undefined : this.#bodyGrabbed(at, editing, ray);
+
+    if (own !== undefined) return own;
+
     if (handle !== null) {
       // A block's knob carries it as its footprint would.
       const grip = handle.grip === "carry" ? "move" : handle.grip;
@@ -141,7 +149,7 @@ export class Grabbing {
       return { grip, point: handle.point, ray, height: handle.at[1], at: handle.at };
     }
 
-    return this.#bodyGrabbed(at, editing, ray);
+    return undefined;
   }
 
   /** The selected object's own surface under the press, which moves it whole. */

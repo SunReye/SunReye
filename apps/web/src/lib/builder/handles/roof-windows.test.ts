@@ -77,6 +77,8 @@ test("a roof window off its face is not drawn, and the handles still outline it"
   expect(pv.geometry(off).roofWindows).toBeNull();
   expect(handles(off, TARGET, pv.modules(off, SIZES)).map(({ grip }) => grip)).toEqual([
     "move",
+    "width",
+    "depth",
     "turn",
   ]);
   expect(handles(scene, TARGET)).toEqual([]);
@@ -94,7 +96,7 @@ test("a roof window's handle outlines its pane, at the middle of its upper edge"
   const [move, ...rest] = handles(scene, TARGET, laid);
   const [east, north, up] = onSouth(3, 2.59);
 
-  expect(rest.map(({ grip }) => grip)).toEqual(["turn"]);
+  expect(rest.map(({ grip }) => grip)).toEqual(["width", "depth", "turn"]);
   expect(move?.grip).toBe("move");
   expect(move?.outline).toHaveLength(4);
   // three.js: x east, y up, z south.

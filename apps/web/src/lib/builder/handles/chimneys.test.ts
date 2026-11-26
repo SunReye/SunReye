@@ -62,10 +62,10 @@ test("a strike on a chimney's top or side drills to it; on the roof beside it, t
   expect(at(4, -6.771, 3.86)).toEqual({ kind: "block", index: 0 });
 });
 
-test("a chimney's handle outlines its foot on the roof; an editor's ring lies round it", () => {
+test("a chimney's handle outlines its foot on the roof; arrows size it, a ring turns it", () => {
   const [move, ...rest] = handles(scene, TARGET, laid);
 
-  expect(rest.map(({ grip }) => grip)).toEqual(["turn"]);
+  expect(rest.map(({ grip }) => grip)).toEqual(["width", "depth", "turn"]);
   expect(move?.grip).toBe("move");
   // Three.js's frame: x east, y up, z south.
   expect(move?.outline?.map((p) => p.map((m) => Math.round(m * 100) / 100 + 0))).toEqual([

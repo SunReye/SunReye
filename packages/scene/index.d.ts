@@ -3,7 +3,7 @@
 
 export type * from "./schema.d.ts";
 
-import type { ModuleGrid, Scene } from "./schema.d.ts";
+import type { Block, ModuleGrid, Scene } from "./schema.d.ts";
 
 /** A roof face, named as a module grid, a roof chimney and a roof window name it (ADR 20). */
 export type RoofFaceId = Pick<ModuleGrid, "block" | "face">;
@@ -30,6 +30,21 @@ export declare function centroidOf(footprint: readonly (readonly number[])[]): [
  * its footprint, what stands on its roof turning with it; a traced block keeps its turn so far as
  * its rotation. The same scene for no such block. */
 export declare function turnBlock(scene: Scene, index: number, by: number): Scene;
+/** Traced block `block`'s footprint as a rectangle: its first corner, the way its first and second
+ * sides run and their lengths; null unless it has four square corners. */
+export declare function rectangleOf(block: Block | undefined): {
+  corner: [number, number];
+  axes: [[number, number], [number, number]];
+  lengths: [number, number];
+} | null;
+/** The scene with traced block `index`'s side `side` set to `length` metres, the side across from
+ * it staying, every point moved in step along it, heights kept. */
+export declare function stretchBlock(
+  scene: Scene,
+  index: number,
+  side: 0 | 1,
+  length: number,
+): Scene;
 
 /** The scene without block `index` and what stands on it; later blocks' follow them down. The last
  * block may go. The same scene for no such block. */

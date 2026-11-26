@@ -12,3 +12,7 @@ test("a chimney or a roof window on its face shows how far it stands from the ea
   expect(valueText({ value: [2.2, 4.7], unit: "roof" }, "en")).toBe("Eave 2.2 m · Verge 4.7 m");
   expect(valueText({ value: [2.2, 4.7], unit: "roof" }, "de")).toBe("Traufe 2,2 m · Ortgang 4,7 m");
 });
+
+test("a roof object's size shows to the centimetre", () => {
+  expect(valueText({ value: [1.03], unit: "size" }, "en")).toBe("1.03 m");
+});
