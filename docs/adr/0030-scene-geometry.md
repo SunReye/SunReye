@@ -47,7 +47,7 @@ ADR 20 grew one amendment at a time into two geometries: parametric blocks (a re
 **Build order.** The core is rebuilt in Home from the ground up:
 1. `crates/scene`: the geometry engine;
 2. the one editor, 3D with a 2D view, on it (ADRs 31, 32);
-3. shading, simulation and the electrical primitives (`crates/pv`, ADR 34);
+3. shading, simulation, the electrical primitives and results (`crates/pv`, ADRs 34, 37);
 4. site context (ADR 33).
 
 Other features wait.
