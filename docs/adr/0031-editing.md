@@ -56,7 +56,8 @@ While dragging, a value box shows the live value. Typing sets an exact value; Ta
 | --- | --- |
 | Roof | buildings, parts, points, neighbours, ground |
 | Modules | modules, module fields, roof items |
-| Wiring | modules, optimizers, strings, AC circuits, inverters, batteries, meters, wallboxes |
+| Wiring | modules, optimizers, strings, AC circuits |
+| Equipment | inverters, batteries, meters, wallboxes |
 
 Everything else stays visible and is not pickable.
 
