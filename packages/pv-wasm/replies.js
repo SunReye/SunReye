@@ -67,18 +67,13 @@ export const isFaces = (value) =>
 /**
  * The roof faces and the grids, and what the builder's handles stand on.
  * @param {unknown} laid
- * @returns {laid is Pick<Modules, "roofs" | "grids" | "walls" | "footings">}
+ * @returns {laid is Pick<Modules, "roofs" | "grids" | "walls" | "sides" | "footings">}
  */
 const isLaid = (laid) =>
   isRecord(laid) &&
-  "roofs" in laid &&
-  Array.isArray(laid.roofs) &&
-  "grids" in laid &&
-  Array.isArray(laid.grids) &&
-  "walls" in laid &&
-  Array.isArray(laid.walls) &&
-  "footings" in laid &&
-  Array.isArray(laid.footings);
+  ["roofs", "grids", "walls", "sides", "footings"].every((key) =>
+    Array.isArray(Object.getOwnPropertyDescriptor(laid, key)?.value),
+  );
 
 /**
  * @param {unknown} value

@@ -110,6 +110,8 @@ export interface Modules {
   readonly misplaced: Misplaced | null;
   /** By block, each of its walls. */
   readonly walls: readonly Readonly<Record<Wall, WallFrame>>[];
+  /** By block, each side of a free-form block's footprint in its order, null for one without length; none for a block of four walls. */
+  readonly sides: readonly (readonly (WallFrame | null)[])[];
   /** By chimney; null for one that names no roof face. */
   readonly footings: readonly (Footing | null)[];
   /** By roof window, its pane's corners from the lower left; null for one on no roof face. */

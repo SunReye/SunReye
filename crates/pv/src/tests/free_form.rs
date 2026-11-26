@@ -5,7 +5,8 @@ use serde_json::{Value, json};
 
 use super::fixtures::{MODULE, shaded_substrings};
 use crate::{
-    Misplaced, ModuleType, Occluder, Place, Plane, Point, RoofFace, Scene, Size, Sun, Surface,
+    Misplaced, ModuleType, Mount, Occluder, Place, Plane, Point, RoofFace, Scene, Size, Sun,
+    Surface,
 };
 
 fn scene(north: f64, blocks: &Value) -> Scene {
@@ -809,4 +810,124 @@ fn a_pitched_traced_face_lays_its_rows_along_its_eave_not_its_longest_edge() {
 
     assert!(near(&roof.across, &[cos, -sin, 0.0]), "{:?}", roof.across);
     assert!((roof.plane.tilt - 30.0).abs() < 1e-9);
+}
+
+/// `scene` with marker `marker`.
+fn marked(block: &Value, marker: &Value) -> Scene {
+    serde_json::from_value(json!({
+        "north": 0.0, "blocks": [block], "obstacles": [], "equipment": [marker],
+    }))
+    .unwrap()
+}
+
+fn on_side(side: usize, along: f64) -> Value {
+    json!({
+        "device": 1, "kind": "inverter", "block": 0, "wall": { "side": side }, "along": along,
+        "inside": false,
+    })
+}
+
+#[test]
+fn a_marker_on_a_free_form_block_hangs_on_the_footprint_side_it_names() {
+    // Side 2 runs from (10, 8) to (0, 8): the front wall, its left end seen from outside at x 0.
+    let ridge = 4f64.mul_add(35f64.to_radians().tan(), 3.0);
+    let mounts = marked(&gable(), &on_side(2, 2.0)).mounts().unwrap();
+
+    let [Mount { at, above, out }] = mounts.as_slice() else {
+        panic!("{mounts:?}");
+    };
+    assert!(near(at, &[2.0, -8.1, 1.5]), "{at:?}");
+    assert!(near(above, &[2.0, -8.1, ridge + 1.0]), "{above:?}");
+    assert!(near(out, &[0.0, -1.0, 0.0]), "{out:?}");
+}
+
+#[test]
+fn a_footprint_side_counts_from_its_left_end_seen_from_outside_whichever_way_it_winds() {
+    // Wound the other way, the front wall is side 0, from (0, 8) to (10, 8).
+    let mut block = gable();
+    block["freeForm"]["footprint"] = json!([[0.0, 8.0], [10.0, 8.0], [10.0, 0.0], [0.0, 0.0]]);
+    let mut scene = marked(&block, &on_side(0, 2.0));
+    scene.equipment[0].inside = true;
+
+    let mounts = scene.mounts().unwrap();
+
+    assert!(near(&mounts[0].at, &[2.0, -7.9, 1.5]), "{:?}", mounts[0].at);
+}
+
+#[test]
+fn a_marker_hangs_at_most_half_way_up_its_wall() {
+    // A flat roof 2 m up.
+    let block = free(
+        &json!([[0.0, 0.0], [10.0, 0.0], [10.0, 8.0], [0.0, 8.0]]),
+        &json!([[
+            [0.0, 2.0, 8.0],
+            [10.0, 2.0, 8.0],
+            [10.0, 2.0, 0.0],
+            [0.0, 2.0, 0.0]
+        ]]),
+    );
+
+    let mounts = marked(&block, &on_side(1, 3.0)).mounts().unwrap();
+
+    // Side 1, the east wall seen from the east, starts at its south end.
+    assert!(
+        near(&mounts[0].at, &[10.1, -5.0, 1.0]),
+        "{:?}",
+        mounts[0].at
+    );
+}
+
+#[test]
+fn a_marker_on_no_side_past_its_sides_end_or_on_a_side_without_wall_is_refused() {
+    // The footprint reaches 4 m past the faces at the front: its front side carries no wall.
+    let mut open_front = gable();
+    open_front["freeForm"]["footprint"] =
+        json!([[0.0, 0.0], [10.0, 0.0], [10.0, 12.0], [0.0, 12.0]]);
+
+    for (block, marker) in [
+        (gable(), on_side(4, 1.0)),
+        (gable(), on_side(2, 10.5)),
+        (open_front, on_side(2, 2.0)),
+        (parametric(), on_side(0, 1.0)),
+    ] {
+        assert_eq!(marked(&block, &marker).mounts(), Err(0), "{marker}");
+    }
+}
+
+#[test]
+fn a_free_form_blocks_sides_carry_their_frames_from_their_left_ends_seen_from_outside() {
+    let sides = scene(0.0, &json!([parametric(), gable()])).sides();
+
+    assert_eq!(sides[0].len(), 0);
+    let front = sides[1][2].unwrap();
+    assert!(near(&front.left, &[0.0, -8.0, 0.0]), "{front:?}");
+    assert!(near(&front.right, &[1.0, 0.0, 0.0]), "{front:?}");
+    assert!(near(&front.out, &[0.0, -1.0, 0.0]), "{front:?}");
+}
+
+#[test]
+fn a_marker_naming_a_footprint_side_reads_and_writes_unchanged() {
+    let marker = on_side(2, 2.0);
+    let scene = marked(&gable(), &marker);
+
+    assert_eq!(serde_json::to_value(scene.equipment[0]).unwrap(), marker);
+}
+
+#[test]
+fn a_side_without_length_keeps_its_place_so_the_next_side_keeps_its_number() {
+    let mut block = gable();
+    block["freeForm"]["footprint"] = json!([
+        [0.0, 0.0],
+        [10.0, 0.0],
+        [10.0, 0.0],
+        [10.0, 8.0],
+        [0.0, 8.0]
+    ]);
+
+    let sides = scene(0.0, &json!([block])).sides();
+
+    assert_eq!(sides[0].len(), 5);
+    assert_eq!(sides[0][1], None);
+    let front = sides[0][3].unwrap();
+    assert!(near(&front.out, &[0.0, -1.0, 0.0]), "{front:?}");
 }

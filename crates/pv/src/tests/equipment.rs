@@ -40,7 +40,7 @@ fn marker(wall: Wall, along: f64, inside: bool) -> Equipment {
         device: 1,
         kind: EquipmentKind::Inverter,
         block: 0,
-        wall,
+        wall: wall.into(),
         along,
         inside,
     }
