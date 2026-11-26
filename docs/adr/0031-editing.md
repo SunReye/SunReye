@@ -8,6 +8,8 @@ ADR 20's editor moved, turned and sized by what a press landed on: a picked obje
 
 ## Decision
 
+**Every action in the menu.** Every action on an object is reachable through the in-scene context menu, opened by a right click or a long press. It offers exactly what applies to what is under the pointer and to the selection, in the current filter. Toolbars and keyboard shortcuts are shortcuts to the same actions, never the only way. The floating context toolbar goes.
+
 **Select first, then act.** A left click selects. A right click selects what it is on and opens the verbs for the selection: Move, Rotate, Resize, Delete, Properties. Choosing a mode shows its handles. One transform gizmo serves every kind of object.
 
 **Modes.** One mode is active at a time and sticks until Esc or another mode.
@@ -22,12 +24,14 @@ ADR 20's editor moved, turned and sized by what a press landed on: a picked obje
 | Line | L | draws lines |
 | Rectangle | | draws a rectangle |
 | Roof from lines | | makes roof faces from drawn lines |
-| Lay row | | lays modules along a drag |
+| Lay row | | on the selected roof face, in its roof view: a tap lays one module, a drag a row |
 | Wire | | selects modules in a drag's order to wire them (ADR 35) |
 
-Move, Rotate, Resize and Edit shape chosen with nothing selected ask the person to pick an object. Drawing tools and Wire need no selection.
+Move, Rotate, Resize and Edit shape chosen with nothing selected ask the person to pick an object, and Lay row a roof face. Drawing tools and Wire need no selection.
 
-**Select only selects.** No drag mutates in Select: any drag navigates (ADR 32), and a press on an object never moves it. Delete and the inspector's values edit in Select. ADR 20's press-on-object move, block knob and turn mode go. A tool mode (Wire, Lay row, a drawing tool) owns its drag.
+**Select only selects.** A drag in Select navigates (ADR 32), and a quick press on an object never moves it. Delete and the inspector's values edit in Select. ADR 20's press-on-object move, block knob and turn mode go. A tool mode (Wire, Lay row, a drawing tool) owns its drag.
+- *Several objects.* Shift- or Ctrl-click adds an object to the selection or takes it out; a Shift-drag draws a selection box. Only what the filter lets pick is selected. Move and Rotate act on the selection as one group, in one undo step; modules stay in their face's plane and snap.
+- *Holding a module,* the one exception. A press held 300 ms on a module lifts it, visibly, and the drag that follows moves it, or the selection it is in, in its face's plane with snapping, in one undo step. A press that moves sooner navigates. Move mode moves modules too.
 
 **Handles per mode.** Each mode shows only its own handles:
 - *Move:* arrows along the ground axes and the eave's direction, and a free drag.
@@ -47,22 +51,24 @@ While dragging, a value box shows the live value. Typing sets an exact value; Ta
 | move | ids, an offset |
 | rotate | ids, a centre, an angle |
 | resize | an id, a handle (edge, corner or pitch), a value |
-| move point | a point id, a position |
+| move point | a point id, a plan position |
 | insert point | an edge id, an offset |
 | delete point | a point id |
 | delete | ids |
 | draw line | points |
 | draw rectangle | its corners |
 | roof from lines | edge ids |
-| set overhang | an eave edge id, metres |
+| set overhang | a roof-outline edge id, metres |
 | add | an object, its place |
 | fill face | a face id, fill rules (ADR 35) |
 | lay row | a face id, a start, an end |
-| wire | module ids, a string id |
-| unwire | module ids |
+| wire | ids of modules, optimizers or micro-inverters; a string or AC circuit id |
+| unwire | those ids |
 
-- Each answers the changed meshes, or a refusal: `{ reason }`, a code the host words.
-- *A drag* is one transaction: begin (an operation and its arguments), preview (new arguments, answering the changed meshes, red where refused), commit (one undo step) or cancel (the scene as before).
+- *An answer* names the changed meshes, the ids created and deleted, the values derived (pitches, heights, lengths, areas) and any warnings.
+- *A refusal* names its reason, a code the host words, and the offending ids, drawn red.
+- *A drag* is one transaction: begin (an operation and its arguments), preview (new arguments, answered as above; a refused preview keeps the last valid one shown), commit (one undo step) or cancel (the scene as before).
+- *Load, save, undo and redo* are engine calls too.
 
 **In memory.** The engine holds the scene and its undo history; no edit or drag sends a request.
 - *Undo.* One history covers geometry and wiring alike: a snapshot per step, the last 200 kept.
@@ -72,15 +78,13 @@ While dragging, a value box shows the live value. Typing sets an exact value; Ta
 
 **One user.** No multiplayer for now: one person edits a plant at a time, without reservations or locks.
 
-**Touch.** A long press stands for the right click, the wall spot's menu (ADR 35) included. The modes are buttons in a mode bar. A Snap toggle stands for Alt.
-
-**Actions.** The floating context toolbar goes. Actions live in the right-click menu, the host's toolbar and keyboard shortcuts.
+**Touch.** A long press stands for the right click, the wall spot's menu (ADR 35) included. On a module it lifts the module after 300 ms as a held click does: a finger that then moves drags it, and one lifted without moving opens the menu. The modes are buttons in a mode bar. A Snap toggle stands for Alt.
 
 **Filters.** The host restricts what is pickable and which modes exist, by stage of work. Home's:
 
 | Filter | Pickable | Modes |
 | --- | --- | --- |
-| Dach | buildings, parts, faces, edges, points, openings, obstacles, ground items | Select, Move, Rotate, Resize, Edit shape, drawing tools |
+| Dach | buildings, parts, faces, edges, points, openings, obstacles, and on the ground surfaces, fences, car places and rack fields | Select, Move, Rotate, Resize, Edit shape, drawing tools |
 | Module | roof faces (opening the roof view, ADR 32), modules, module fields, roof items | Select, Move, Rotate, Resize, Lay row |
 | Verdrahtung | modules, optimizers, micro-inverters, strings, AC circuits | Select, Wire |
 | Equipment | inverters, batteries, meters, wallboxes | Select, Move, Rotate |
@@ -89,13 +93,13 @@ Everything else stays visible and is not pickable.
 
 ## Open
 
-- **Other operations.** The names and arguments of ADR 35's other edits: pulling up, setting a point's height, duplicating, clearing a face, keeping an auto-string proposal.
-- **Home's filters.** How Home's builder levels (ADR 35, *Layout*) choose a filter, and which filter picks neighbours.
-- **Multi-select.** Whether and how more than one object is selected outside Wire, as by Shift and click.
-- **Compass.** Whether a rotation's 0° is true north or the scene's x axis.
-- **Benchmark house.** The large house and the reference laptop the benchmark runs on.
-- **Shortcuts.** Keys for Rectangle, Roof from lines, Lay row and Wire.
-- **Shallow views.** Whether ADR 20's rule for drags seen from under 15° carries over to Move's arrows.
+- **Other operations** (step 2). The names and arguments of ADR 35's other edits: pulling up, duplicating, clearing a face, keeping an auto-string proposal, attaching an optimizer or micro-inverter.
+- **Home's filters** (step 2). How Home's builder levels (ADR 35, *Layout*) choose a filter, and which filter picks neighbours.
+- **Multi-select on touch** (step 2). What stands for Shift-click and the selection box.
+- **Rotation's zero** (step 2). The direction and sense a typed rotation is measured from.
+- **Benchmark house** (step 2). The large house and the reference laptop the benchmark runs on.
+- **Shortcuts** (step 2). Keys for Rectangle, Roof from lines, Lay row and Wire.
+- **Shallow views** (step 2). Whether ADR 20's rule for drags seen from under 15° carries over to Move's arrows.
 
 ## Considered options
 
@@ -104,6 +108,7 @@ Everything else stays visible and is not pickable.
 - **Lengths snapped to 10 cm, angles to 5°** (ADR 20). Replaced by magnetic snapping.
 - **A request per edit or drag.** Rejected: drags sent a stream of requests and slowed the editor.
 - **Several editors of one plant, with reservations.** Not for now.
+- **A plain drag that moves a module in Select.** Rejected: a drag meant to orbit moved modules (ADR 20); the held press is deliberate.
 
 ## Consequences
 
