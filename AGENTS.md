@@ -15,7 +15,7 @@ No code before the ADR that names it.
 
 ## Gate
 
-`bun run gate` is the only check (ADR 13): every format, lint, type, build and test step, serially, stopping at the first failure. Run it green before a branch merges into its milestone branch or `v5`.
+`bun run gate` is the only check (ADR 13): every format, lint, type, build and test step, serially, stopping at the first failure. Run it green before a branch merges into its milestone branch or `staging`.
 
 The pre-commit hook runs `bun run hook` (`scripts/hook.ts`): format and lint of the staged files, types, the bun tests the staged files reach and `cargo test` of the staged crates. A green hook is not a green gate.
 
@@ -55,8 +55,8 @@ Conventional commits, lowercase types: `type(scope): summary`. One logical chang
 
 ## Branches
 
-`v5` is the only main line, always green. ADRs change with the code they govern; a new ADR lands on `v5` before its milestone starts.
+`staging` is the only working line, always green; `master` keeps the v4 history and takes no merges. ADRs change with the code they govern; a new ADR lands on `staging` before its milestone starts.
 
-- **Milestone:** branch `m/<milestone-slug>` from `v5`. It merges into `v5` as one merge commit once its tickets are closed and the `code-review` skill has passed.
+- **Milestone:** branch `m/<milestone-slug>` from `staging`. It merges into `staging` as one merge commit once its tickets are closed and the `code-review` skill has passed.
 - **Ticket:** branch from the milestone branch, in its own worktree, and merge back into the milestone branch.
-- **Cleanup:** remove a ticket's worktree and branch as soon as it merges, and the milestone branch once it is in `v5`. Run `cargo clean` in any worktree before removing it. `git worktree list` shows only worktrees with work in progress.
+- **Cleanup:** remove a ticket's worktree and branch as soon as it merges, and the milestone branch once it is in `staging`. Run `cargo clean` in any worktree before removing it. `git worktree list` shows only worktrees with work in progress.
