@@ -20,7 +20,7 @@ ADR 25 kept SunReye Plan, the installers' app, in a second repository that reads
 |---|---|
 | `apps/home/core` | the core: the one process, its binary crate `sunreye-core` (ADRs 1, 2) |
 | `apps/home/web` | Home's SPA, which the core embeds (ADR 11) |
-| `crates/` | shared Rust: `pv`, `pv-wasm`, `profile`, `profile-wasm`, `synth`; `scene` and `economics` (ADR 28) when built |
+| `crates/` | shared Rust: `pv`, `pv-wasm`, `profile`, `profile-wasm`, `synth`; `scene`, `economics` (ADR 28) and `forecast` (ADR 38) when built |
 | `packages/` | shared TypeScript: `builder`, `scene`, `catalogue`, `ui`, `tokens`, `sdk`, `pv-wasm` (ADR 25) |
 
 - *Why `core` and `web`.* An app's folder holds one folder per deliverable, named for what it is in this repository's words: the glossary and the ADRs call the Rust process the core, and its crate is `sunreye-core`. A new name such as `hub` would be a second word for one thing.

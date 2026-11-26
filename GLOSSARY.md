@@ -565,7 +565,7 @@ The forecasts of one consuming measurement point's own consumption; summed, they
 _Avoid_: Consumption forecast, demand forecast
 
 **Forecast accuracy**:
-How far a series' day-ahead forecasts missed what was measured, over the last 30 days: per quarter hour, and in daily energy.
+How far a series' day-ahead forecasts missed what was measured, over the last 30 days: per quarter hour, and in energy.
 _Avoid_: Skill, forecast quality
 
 **Clear-sky index**:
