@@ -2,8 +2,6 @@
 // side split by a point clicked on it, or where another line or roof meets it, still one side to the
 // person who drags it; and lines kept without the points none of them uses. Pure.
 
-import { PLACE } from "./roof-plan.js";
-
 /** @import { Lines } from "./roof-faces.js" */
 
 /**
@@ -15,26 +13,48 @@ import { PLACE } from "./roof-plan.js";
 const neighbours = (lines, p) =>
   lines.lines.flatMap(([a, b]) => (a === p ? [b ?? -1] : b === p ? [a ?? -1] : []));
 
+/** The sine of the largest turn two lines make and still run straight on to a person: a building
+ * model's corners lie a few centimetres off. */
+const STRAIGHT = Math.sin((3 * Math.PI) / 180);
+
 /**
- * Whether `p` lies on the straight line through `a` and `b`, seen from above.
+ * Whether line `at`–`p` runs straight on from line `from`–`at`, seen from above.
  * @param {Lines} lines
- * @param {number} a
- * @param {number} b
+ * @param {number} from
+ * @param {number} at
  * @param {number} p
  * @returns {boolean}
  */
-function onLine(lines, a, b, p) {
-  const [ax = 0, , az = 0] = lines.points[a] ?? [];
-  const [bx = 0, , bz = 0] = lines.points[b] ?? [];
+function straightOn(lines, from, at, p) {
+  const [fx = 0, , fz = 0] = lines.points[from] ?? [];
+  const [ax = 0, , az = 0] = lines.points[at] ?? [];
   const [px = 0, , pz = 0] = lines.points[p] ?? [];
-  const length = Math.hypot(bx - ax, bz - az) || 1;
+  const [ux, uz, vx, vz] = [ax - fx, az - fz, px - ax, pz - az];
+  const lengths = Math.hypot(ux, uz) * Math.hypot(vx, vz) || 1;
 
-  return Math.abs((bx - ax) * (pz - az) - (bz - az) * (px - ax)) / length < PLACE;
+  return ux * vx + uz * vz > 0 && Math.abs(ux * vz - uz * vx) / lengths < STRAIGHT;
+}
+
+/**
+ * The one point not yet in `run` that a line from `at` runs straight on to from `from`; undefined
+ * for none or more than one.
+ * @param {Lines} lines
+ * @param {readonly number[]} run
+ * @param {number} from
+ * @param {number} at
+ * @returns {number | undefined}
+ */
+function onward(lines, [...run], from, at) {
+  const ahead = neighbours(lines, at).filter(
+    (p) => !run.includes(p) && straightOn(lines, from, at, p),
+  );
+
+  return ahead.length === 1 ? ahead[0] : undefined;
 }
 
 /**
  * The points of the straight run line `a`–`b` lies in: on from each end through every point one
- * line keeps it straight from, whatever other lines meet there.
+ * line runs straight on from, within a few degrees, whatever other lines meet there.
  * @param {Lines} lines
  * @param {number} a
  * @param {number} b
@@ -43,18 +63,16 @@ function onLine(lines, a, b, p) {
 export function straightRun(lines, a, b) {
   const run = new Set([a, b]);
 
-  for (const start of [a, b]) {
-    let at = start;
+  for (const [start, before] of [
+    [a, b],
+    [b, a],
+  ]) {
+    let [at, from] = [start, before];
 
-    for (;;) {
-      const ahead = neighbours(lines, at).filter((p) => !run.has(p) && onLine(lines, a, b, p));
-
-      if (ahead.length !== 1) break;
-
-      const [next = -1] = ahead;
-
+    for (let next = onward(lines, [...run], from, at); next !== undefined;) {
       run.add(next);
-      at = next;
+      [from, at] = [at, next];
+      next = onward(lines, [...run], from, at);
     }
   }
 

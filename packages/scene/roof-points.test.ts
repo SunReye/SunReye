@@ -109,3 +109,12 @@ test("a line dragged takes its run on through where an inner line meets it, whic
     ],
   ]);
 });
+
+test("a run goes on through a point a few centimetres off it, as a building model's corners lie", () => {
+  const cut = trace(square(), [0, 2], [4, 2]);
+  const scene = made(movePoint(cut, 0, pointAt(cut, [0, 2]), { x: 0.02, z: 2 }));
+  const piece = lineOf(scene, pointAt(scene, [0, 0]), pointAt(scene, [0.02, 2]));
+  const moved = made(moveLine(scene, 0, piece, { x: -1, z: 0 }));
+
+  expect(outlines(moved)[1]).toContainEqual([-1, 4]);
+});
