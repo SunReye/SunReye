@@ -19,6 +19,8 @@ export { faceCount } from "./roof-count.js";
 
 export { centroidOf, moveBlock, removeBlock, turnBlock } from "./scene-blocks.js";
 
+export { rectangleOf, stretchBlock } from "./roof-stretch.js";
+
 export { placeDormer, readyDormers } from "./roof-ready-dormer.js";
 
 export { replay } from "./roof-replay.js";

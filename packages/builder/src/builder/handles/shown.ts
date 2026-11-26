@@ -5,7 +5,8 @@
 import type { Color, Group, Scene as Studio } from "three";
 import { ease, MOTION_MS, motionMs } from "../../motion.ts";
 import { cssColour } from "../../scene/backdrop.ts";
-import { appear, free, gizmo } from "./gizmo.ts";
+import { free, gizmo } from "./gizmo.ts";
+import { appear, fit, type ToScreen } from "./screen.ts";
 import type { Editing } from "./grabbing.ts";
 import { offered } from "./offered.ts";
 
@@ -55,6 +56,12 @@ export class Shown {
     if (this.#group !== undefined) appear(this.#group, ease(this.#progress));
 
     this.#render();
+  }
+
+  /** Fits the handles to the view `screen` projects through, after a draw; draws again where
+   * that moved any. */
+  fit(screen: ToScreen): void {
+    if (this.#group !== undefined && fit(this.#group, screen)) this.#render();
   }
 
   dispose(): void {

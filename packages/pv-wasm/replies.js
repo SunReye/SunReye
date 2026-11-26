@@ -239,6 +239,15 @@ export const isStrungFace = (value) =>
       (isRecord(value.ok) && "refused" in value.ok && value.ok.refused === "input")));
 
 /**
+ * A yes or a no.
+ * @param {unknown} value
+ * @returns {value is Reply<boolean>}
+ */
+export const isTruth = (value) =>
+  isFailure(value) ||
+  (isRecord(value) && "ok" in value && (value.ok === true || value.ok === false));
+
+/**
  * An index or a count, or null where the crate has none.
  * @param {unknown} value
  * @returns {value is Reply<number | null>}

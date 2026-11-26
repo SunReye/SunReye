@@ -56,6 +56,7 @@ export function tracedRing(scene: Scene, target: Target) {
       grip: "turn" as const,
       at: world(scene.north, [cx, 0, cz]),
       radius: reach + RING,
+      inner: reach,
     },
   ];
 }
@@ -68,7 +69,7 @@ export function roofRing(outline: readonly Point[]) {
   const reach = Math.max(...outline.map(([e, n]) => Math.hypot(e - east, n - north)));
   const at: Triple = [east, up, 0 - north];
 
-  return [{ grip: "turn" as const, at, radius: reach + ROOF_RING }];
+  return [{ grip: "turn" as const, at, radius: reach + ROOF_RING, inner: reach }];
 }
 
 /** The turn `target` stands at, in degrees, as its inspector shows it: a traced block its turn so

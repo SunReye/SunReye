@@ -5,13 +5,15 @@ import type { Footing, Modules, Point, Scene } from "../pv.ts";
 import { bodyOf, onWorld, ridge, type Rect, type Round, type Target } from "./body.ts";
 import { wallOf } from "../wall-openings.ts";
 import { turn, world, type Triple } from "./frame.ts";
+import { roofArrows } from "./sizing.ts";
+import { tracedArrows } from "./traced.ts";
 import { roofRing, tracedRing } from "./turning.ts";
 
 export type { Target } from "./body.ts";
 
 export type { Ray, Triple } from "./frame.ts";
 
-export { drag, turned, type Dragged, type Grab } from "./dragging.ts";
+export { drag, turned, type Dragged, type Engine, type Grab } from "./dragging.ts";
 
 export { settled } from "./turning.ts";
 
@@ -39,6 +41,12 @@ export interface Handle {
   readonly outline?: readonly Triple[];
   /** Which of a fence's points it drags. */
   readonly point?: number;
+  /** A ring's object's reach from its middle, in metres: the ring stands clear of it. */
+  readonly inner?: number;
+  /** Where an arrow's side of its object is, and how far the object reaches along the arrow:
+   * the arrow stands clear of that side, and hides with an object too small to see. */
+  readonly edge?: Triple;
+  readonly span?: number;
 }
 
 /** Metres between a wall and its arrow; between the footprint's corners and the ring. */
@@ -50,6 +58,32 @@ const RING = 1;
 const OFF = 0.8;
 const LOW = 0.3;
 
+/** A rectangle's width and depth arrows, off its walls by their feet. */
+function rectArrows(
+  at: (u: number, y: number, w: number) => Triple,
+  outward: (u: number, w: number) => Triple,
+  { width, depth, height }: Rect,
+): Handle[] {
+  const low = Math.min(height / 2, LOW);
+
+  return [
+    {
+      grip: "width",
+      at: at(width + OFF, low, depth / 2),
+      axis: outward(1, 0),
+      edge: at(width, low, depth / 2),
+      span: width,
+    },
+    {
+      grip: "depth",
+      at: at(width / 2, low, depth + OFF),
+      axis: outward(0, 1),
+      edge: at(width / 2, low, depth),
+      span: depth,
+    },
+  ];
+}
+
 function rectHandles(north: number, rect: Rect, roof: ReturnType<typeof ridge>): Handle[] {
   const { width, depth, height } = rect;
   const at = (u: number, y: number, w: number): Triple => onWorld(north, rect, u, y, w);
@@ -60,12 +94,7 @@ function rectHandles(north: number, rect: Rect, roof: ReturnType<typeof ridge>):
     return world(north, [x, 0, z]);
   };
 
-  const low = Math.min(height / 2, LOW);
-
-  const sides: Handle[] = [
-    { grip: "width", at: at(width + OFF, low, depth / 2), axis: outward(1, 0) },
-    { grip: "depth", at: at(width / 2, low, depth + OFF), axis: outward(0, 1) },
-  ];
+  const sides = rectArrows(at, outward, rect);
 
   const pitch: Handle[] =
     roof === null ? [] : [{ grip: "pitch", at: at(roof.u, roof.top, roof.w) }];
@@ -84,6 +113,7 @@ function rectHandles(north: number, rect: Rect, roof: ReturnType<typeof ridge>):
       grip: "turn",
       at: at(width / 2, 0, depth / 2),
       radius: Math.hypot(width, depth) / 2 + RING,
+      inner: Math.hypot(width, depth) / 2,
     },
     {
       grip: "move",
@@ -136,7 +166,7 @@ function chimneyHandles(footing: Footing | null | undefined): Handle[] {
   const [east, north] = [0, 1].map((i) => foot.reduce((sum, p) => sum + (p[i] ?? 0), 0) / 4);
   const handle: Handle = { grip: "move", at: [east ?? 0, top, 0 - (north ?? 0)], outline };
 
-  return [handle, ...roofRing(foot)];
+  return [handle, ...roofArrows(foot), ...roofRing(foot)];
 }
 
 /** A roof window's pane outlined in its roof face; its upper edge's middle, where the live value
@@ -150,7 +180,11 @@ function windowHandles(pane: readonly Point[] | null | undefined): Handle[] {
   const outline = pane.map(([east, north, up]): Triple => [east, up, 0 - north]);
   const mid = (i: 0 | 1 | 2): number => (right[i] + left[i]) / 2;
 
-  return [{ grip: "move", at: [mid(0), mid(2), 0 - mid(1)], outline }, ...roofRing(pane)];
+  return [
+    { grip: "move", at: [mid(0), mid(2), 0 - mid(1)], outline },
+    ...roofArrows(pane),
+    ...roofRing(pane),
+  ];
 }
 
 /** Metres an opening's outline stands off its wall, clear of its frame. */
@@ -202,7 +236,7 @@ export function handles(scene: Scene, target: Target, laid: Laid = NONE): Handle
 
   const body = bodyOf(scene, target);
 
-  if (body === undefined) return tracedRing(scene, target);
+  if (body === undefined) return [...tracedRing(scene, target), ...tracedArrows(scene, target)];
 
   if (body.kind === "round") return roundHandles(scene.north, body);
 

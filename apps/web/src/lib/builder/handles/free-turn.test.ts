@@ -157,6 +157,14 @@ test("a typed turn is exact: a block by its turn, a box about its centre, a tree
   expect(angleOf(start, { kind: "obstacle", index: 1 })).toBeUndefined();
 });
 
+/** The crate, as far as a turn in a roof face asks it: nothing moves, everything stands. */
+const STILL = {
+  refit: () => ({ unfit: "room" as const }),
+  glide: () => null,
+  glideWindow: () => null,
+  roofObjectsStand: () => true,
+};
+
 describe("a roof chimney and a roof window", () => {
   const CHIMNEY = { block: 0, face: 1, across: 5, up: 2, width: 0.6, depth: 0.6, height: 1 };
   const WINDOW = { block: 0, face: 1, across: 2, up: 2, width: 0.78, length: 1.18, turn: 350 };
@@ -192,7 +200,7 @@ describe("a roof chimney and a roof window", () => {
 
   /** The crate, as far as a turn asks it: nothing. */
   const crate = {
-    pv: { refit: () => ({ unfit: "room" as const }), glide: () => null, glideWindow: () => null },
+    pv: STILL,
     laid: { walls: [], roofs: [] },
   };
 

@@ -43,6 +43,9 @@ export class Handled {
       : { text: valueText(reading, this.#locale()), left: beside[0], top: beside[1] };
   });
 
+  /** The handles shown, while attached. */
+  #shown: Shown | undefined;
+
   constructor(locale: () => string = getLocale) {
     this.#locale = locale;
   }
@@ -56,6 +59,8 @@ export class Handled {
     render: () => void,
   ): () => void {
     const shown = new Shown(studio, render);
+
+    this.#shown = shown;
 
     $effect(() => {
       const editing = sources.editing();
@@ -80,12 +85,15 @@ export class Handled {
     return () => {
       grabbing.dispose();
       shown.dispose();
+      this.#shown = undefined;
     };
   }
 
-  /** After each draw: the live value follows its handle. */
+  /** After each draw: the handles fit the view, and the live value follows its handle. */
   place(project: Project): void {
     const at = this.#reading?.at;
+
+    this.#shown?.fit(([x, y, z]) => project([x, 0 - z, y]));
 
     if (at !== undefined) this.#beside = project([at[0], 0 - at[2], at[1]]);
   }

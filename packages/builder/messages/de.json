@@ -5,6 +5,7 @@
   "builder_compass": "Nordrichtung (°)",
   "builder_block": "Baukörper {number}",
   "builder_add_block": "Baukörper hinzufügen",
+  "builder_value_edge": "{value} · an der Kante",
   "builder_value_roof": "Traufe {eave} m · Ortgang {verge} m",
   "builder_remove": "Entfernen",
   "field_x": "Position x (m)",

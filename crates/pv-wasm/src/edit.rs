@@ -65,6 +65,19 @@ impl Glide {
     }
 }
 
+/// A scene a drag would leave, asked whether its roof objects stand where they may.
+#[derive(Deserialize)]
+pub struct Standing {
+    scene: Scene,
+}
+
+impl Standing {
+    /// Whether every chimney and roof window stands where it may.
+    pub fn reply(&self) -> Value {
+        json!(self.scene.roof_objects_stand())
+    }
+}
+
 /// A strike on a scene, in the shading frame.
 #[derive(Deserialize)]
 pub struct Strike {

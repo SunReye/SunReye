@@ -7,7 +7,7 @@ import { type Group, type OrthographicCamera, type PerspectiveCamera, Vector3 } 
 import { haptics } from "@sunreye/ui/haptics";
 import { spaceHeld } from "../space.ts";
 import { bodyAt, same } from "./body-at.ts";
-import type { Pv, Scene } from "../pv.ts";
+import type { Scene } from "../pv.ts";
 import { strike, toThree, type Panel } from "../scene.ts";
 import { PER_PIXEL, sense, turnOf } from "./dial.ts";
 import { handleOf, rayAt } from "./gizmo.ts";
@@ -17,6 +17,7 @@ import {
   handles,
   turned,
   type Dragged,
+  type Engine,
   type Grab,
   type Handle,
   type Laid,
@@ -32,10 +33,7 @@ export interface Editing {
   readonly target: Target;
   /** The crate, which keeps a chimney on its face and an opening on its wall and finds the
    * chimney a press strikes; and what it laid out for `scene`, which their handles stand on. */
-  readonly pv: Pick<
-    Pv,
-    "refit" | "glide" | "glideWindow" | "chimneyAt" | "roofWindowAt" | "gridAt"
-  >;
+  readonly pv: Engine;
   readonly laid: Laid;
   /** The turn mode: a drag anywhere turns the object, and nothing else of it drags. */
   readonly turning: boolean;
@@ -51,11 +49,7 @@ export interface Editing {
 }
 
 /** A dragging handle's live value, and where it stands now. */
-export interface Reading {
-  readonly value: Dragged["value"];
-  readonly unit: Dragged["unit"];
-  readonly at: Triple;
-}
+export type Reading = Pick<Dragged, "value" | "unit" | "edge"> & { readonly at: Triple };
 
 export interface Sources {
   readonly editing: () => Editing | undefined;
@@ -89,6 +83,9 @@ interface Held {
   shown: string;
   free: boolean;
 }
+
+/** Whether `handle` sits on its object: the ridge's knob, a fence's point. */
+const onIt = (handle: Handle | null) => handle?.grip === "pitch" || handle?.grip === "point";
 
 /** Listens on a canvas, before the orbit controls and the click picking. */
 export class Grabbing {
@@ -134,6 +131,11 @@ export class Grabbing {
     // The turn mode: off the ring, which may lie outside the canvas, the canvas is a dial.
     if (editing.turning && handle === null) return { grip: "turn", ray, height: 0 };
 
+    // Out of the turn mode a press on the object itself moves it, though a handle reaches over it.
+    const own = editing.turning || onIt(handle) ? undefined : this.#bodyGrabbed(at, editing, ray);
+
+    if (own !== undefined) return own;
+
     if (handle !== null) {
       // A block's knob carries it as its footprint would.
       const grip = handle.grip === "carry" ? "move" : handle.grip;
@@ -141,7 +143,7 @@ export class Grabbing {
       return { grip, point: handle.point, ray, height: handle.at[1], at: handle.at };
     }
 
-    return this.#bodyGrabbed(at, editing, ray);
+    return undefined;
   }
 
   /** The selected object's own surface under the press, which moves it whole. */
@@ -256,7 +258,7 @@ export class Grabbing {
       (item) => item.grip === grab.grip && item.point === grab.point,
     )?.at;
 
-    if (at !== undefined) this.#sources.onreading({ value: dragged.value, unit: dragged.unit, at });
+    if (at !== undefined) this.#sources.onreading({ ...dragged, at });
   }
 
   /** Puts the dragged object back, unrecorded, and presses the first finger again where it is now,

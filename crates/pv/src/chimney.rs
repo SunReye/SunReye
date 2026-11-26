@@ -156,6 +156,13 @@ impl Scene {
             .map_or(Ok(()), Err)
     }
 
+    /// Whether every chimney and every roof window stands where it may: what a drag that sizes
+    /// one asks before each step (ADR 20).
+    #[must_use]
+    pub fn roof_objects_stand(&self) -> bool {
+        self.check_chimneys().is_ok() && self.panes().is_ok()
+    }
+
     /// Each chimney's footing, in the order of `chimneys`; none for one that names no roof face.
     #[must_use]
     pub fn footings(&self) -> Vec<Option<Footing>> {

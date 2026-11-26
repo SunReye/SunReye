@@ -566,6 +566,15 @@ mod exports {
     /// # Safety
     /// `input`/`input_len` name a live buffer from `reserve`.
     #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn roof_objects_stand(input: *const u8, input_len: usize) -> u64 {
+        // SAFETY: the caller guarantees the buffer, written through `reserve`.
+        let input = unsafe { std::slice::from_raw_parts(input, input_len) };
+        leak(super::edited(input, super::edit::Standing::reply))
+    }
+
+    /// # Safety
+    /// `input`/`input_len` name a live buffer from `reserve`.
+    #[unsafe(no_mangle)]
     pub unsafe extern "C" fn roof_window_at(input: *const u8, input_len: usize) -> u64 {
         // SAFETY: the caller guarantees the buffer, written through `reserve`.
         let input = unsafe { std::slice::from_raw_parts(input, input_len) };
