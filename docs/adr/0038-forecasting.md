@@ -14,6 +14,8 @@ The core forecasts only solar power, inside its own modules: the solar forecast 
 - *Grid.* Every forecast runs at 15-minute steps for today and two more days, the weather forecast's and the spot price's reach, and issues when a weather forecast or a new day's history is stored. Targets are UTC instants; a day of 23 or 25 hours has 92 or 100 quarter hours (ADR 3).
 - *One value.* A forecast carries one value per target, the expected value, so forecasts of parts sum to the forecast of the whole.
 
+**In the core.** Forecasts run in Home's core, whether or not anyone has a browser open. The core reads the last saved scene through `crates/scene` and shades it with `crates/pv` natively, the same code the browser runs as WASM (ADR 30), so the forecast shades as the builder shows. The browser makes no forecast and the core takes none from it.
+
 **What is forecast.**
 - The solar forecast, as ADR 17 says.
 - A load forecast per consuming measurement point, the root included: its own consumption (ADR 14), as `point.power` indexed by point id under the `plant` device, never below 0 W. A heat pump or wallbox on its own point is forecast as that point. The house load forecast is their sum, the `plant` device's `load.power`, so the parts sum to the whole as the house load itself does.
