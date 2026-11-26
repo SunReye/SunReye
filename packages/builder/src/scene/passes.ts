@@ -1,5 +1,5 @@
 // The studio's passes for its 3D quality (ADR 20 Look, Rendering quality): the scene into
-// multisampled HDR, ambient occlusion, tone mapping, Ultra's burst of refining frames, and the
+// multisampled HDR, ambient occlusion, the overlays over it, tone mapping, Ultra's burst of refining frames, and the
 // lens glass over it all while the weather puts something on it (ADR 23).
 import {
   type Fog,
@@ -56,6 +56,7 @@ export class Passes {
     });
     this.#composer.addPass(this.#occlusion);
     this.#composer.addPass(this.#focus);
+    this.#composer.addPass(this.#composer.overlay);
     this.#composer.addPass(new OutputPass());
     // Last, and off while the lens is clear: the tone-mapped picture then goes to the canvas.
     this.#lens.enabled = false;

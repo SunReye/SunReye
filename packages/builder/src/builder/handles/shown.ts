@@ -5,6 +5,7 @@
 import type { Color, Group, Scene as Studio } from "three";
 import { ease, MOTION_MS, motionMs } from "../../motion.ts";
 import { cssColour } from "../../scene/backdrop.ts";
+import { asOverlay } from "../../scene/overlays.ts";
 import { free, gizmo } from "./gizmo.ts";
 import { appear, fit, type ToScreen } from "./screen.ts";
 import type { Editing } from "./grabbing.ts";
@@ -96,6 +97,6 @@ export class Shown {
 
     this.#group = next;
 
-    if (next !== undefined) this.#studio.add(next);
+    if (next !== undefined) this.#studio.add(asOverlay(next));
   }
 }
