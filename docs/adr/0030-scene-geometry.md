@@ -32,7 +32,7 @@ ADR 20 grew one amendment at a time into two geometries: parametric blocks (a re
 
 **Permanent ids.** Points, edges, faces, parts, buildings and objects have permanent ids, never their place in a list.
 - An id is an integer from one counter per scene, saved with the scene and never reused. Redo gives back the same ids.
-- A wall item (an opening, an equipment object, ADR 34) names its part, a footprint edge by id and an offset in metres from that edge's start corner, edges running counter-clockwise seen from above. An offset past the edge's end flags the item "needs a new place".
+- A wall item (an opening, an equipment object, ADR 34) names its part, a footprint edge by id and an offset in metres from that edge's start corner. An offset past the edge's end flags the item "needs a new place".
 - A roof item (a module field, a roof chimney, a roof window, existing PV) names its part and roof face by id.
 - Splitting an edge moves each item to the piece it stands on, its offset measured from that piece's start. Deleting an edge flags its items "needs a new place"; they are kept, not dropped.
 
@@ -58,6 +58,8 @@ Other features wait.
 - **Dormer heights.** How a dormer's points stand on its face; ADR 20 kept them on the face's plane until set, never below it.
 - **Standing on.** How a part standing on another part or on a roof face is stored: a base height, or the id of the face it stands on.
 - **Roof lines.** Whether eave, ridge, hip, valley and verge stay stored kinds of edge, as ADR 20's tracing kept them, or are derived from the faces.
+- **A point's own height.** How a height set on one point (ADR 35, *Pulling up*) is kept when heights come from the faces' planes, and whether a later pull leaves it.
+- **Edge direction.** Which corner of an edge is its start.
 - **Resize and the recipe.** Whether Resize changes a recipe's arguments or drops it.
 - **Ids through topology edits.** Which piece of a split edge keeps its id; which id survives a deleted point that merges two edges; how faces split, merged or deleted pass on their roof items (re-homed or "needs a new place"); an opening that straddles a split.
 
@@ -65,10 +67,7 @@ Other features wait.
 
 - **Blocks beside free-form roofs** (ADR 20). Replaced by one geometry.
 - **Items named by list position** (ADR 20). Replaced by permanent ids: an index shifts on every insert and delete.
-- **A wall item at a fraction along its edge** (this ADR's first draft). Replaced by an offset in metres from the edge's start corner.
-- **Point heights as the truth** (this ADR's first draft). Replaced by one plane per face.
 - **A stored bent face** (ADR 20, 2026-11-23). Replaced by always-planar faces.
-- **A moved point rolled back unless every face stays planar** (this ADR's first draft). Replaced by faces tilting about their eaves.
 - **Operations in TypeScript in `@sunreye/scene`** (ADR 20, 2026-11-23). Replaced by one engine in Rust.
 - **Converting block scenes on load, one way** (this ADR's first draft). Rejected: development is early.
 - **A dormer as a loop of lines cut into its face** (ADR 20). Replaced by a part on the face.
