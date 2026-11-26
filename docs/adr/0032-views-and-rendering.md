@@ -8,7 +8,7 @@ ADR 20 drew the plan and the 3D view as separate canvases with separate navigati
 
 ## Decision
 
-**One editor, two cameras.** 2D is a camera mode of the one editor: orthographic, from above, and rotatable so an eave lies level on screen. Both views share one selection, one set of tools and one undo history.
+**One editor, two cameras.** 2D is a camera mode of the one editor: orthographic, from above, and rotatable so an eave lies level on screen. Both views share one selection, one mode and one undo history. A host may show the 2D and the 3D camera side by side, each a canvas of the one editor.
 
 **Navigation.** In Select (ADR 31) a drag orbits in 3D and pans in 2D. Carried from ADR 20 (2026-11-25): the wheel and a pinch zoom to the cursor; the middle button and Space held pan; the right button opens the menu only when released where it was pressed.
 
@@ -25,12 +25,11 @@ It replaces ADR 20's flight in front of a face on a phone.
 
 - **Roof view on a steep or small face.** The margin, and what shows of the neighbouring faces.
 - **2D's rotation.** Whether the 2D camera turns to an eave by a command, by picking an edge, or freely.
-- **Two views at once.** Whether a host may show the 2D and the 3D camera side by side, each a canvas of the one editor.
 - **Touch navigation.** Two-finger pan and pinch are ADR 20's; whether one finger in 2D pans as a mouse drag does.
 
 ## Considered options
 
-- **Separate navigations per canvas** (ADR 20, `orbit`, `plan`, `model`). Replaced by one editor with two cameras.
+- **Separate navigations per canvas** (ADR 20, `orbit`, `plan`, `model`), and a studio per canvas (ADR 25, *Two views on one scene*). Replaced by one editor with two cameras.
 - **A plan held north up** (ADR 20). Replaced by a 2D camera that turns to an eave.
 - **Flying in front of a face on a phone** (ADR 20). Replaced by the roof view.
 
