@@ -5,7 +5,7 @@ import { centroidOf } from "@sunreye/scene";
 import type { Scene } from "../pv.ts";
 import { bodyOf, onWorld } from "./body.ts";
 import { world } from "./frame.ts";
-import { handles, type Handle, type Laid, type Target } from "./grips.ts";
+import { handles, type Handle, type Laid, type Mode, type Target } from "./grips.ts";
 
 /** Metres a block's knob stands before its front wall and above the ground, and left of the
  * wall's middle, where the depth arrow is: clear of the wall's face, and in sight on a phone. */
@@ -40,20 +40,28 @@ function knob(scene: Scene, target: Target): Handle[] {
   return [{ grip: "carry", at: onWorld(scene.north, body, across, LOW, body.depth + BEFORE) }];
 }
 
+const MODES: Readonly<Record<Mode, ReadonlySet<Handle["grip"]>>> = {
+  move: new Set(["move", "carry", "point"]),
+  resize: new Set(["move", "width", "depth", "height", "radius", "pitch"]),
+};
+
 /** The handles to show and to grab for `target`, in the turn mode or out of it; an editor's
- * `ring` shows beside the others. */
+ * `ring` shows beside the others, and its `mode` keeps its own alone. */
 export function offered(
   scene: Scene,
   target: Target,
   laid: Laid,
   turning: boolean,
   ring = false,
+  mode?: Mode,
 ): Handle[] {
   const found = handles(scene, target, laid);
 
   if (turning) return found.filter(({ grip }) => grip === "turn");
 
-  return [...found.filter(({ grip }) => ring || grip !== "turn"), ...knob(scene, target)];
+  const all = [...found.filter(({ grip }) => ring || grip !== "turn"), ...knob(scene, target)];
+
+  return mode === undefined ? all : all.filter(({ grip }) => MODES[mode].has(grip));
 }
 
 /** Whether `target` has a ring to turn it by. */

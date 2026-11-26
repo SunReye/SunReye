@@ -36,12 +36,19 @@ export class Shown {
     const found =
       editing === undefined
         ? []
-        : offered(editing.scene, editing.target, editing.laid, editing.turning, editing.ring);
+        : offered(
+            editing.scene,
+            editing.target,
+            editing.laid,
+            editing.turning,
+            editing.ring,
+            editing.mode,
+          );
 
     const key =
       editing === undefined
         ? ""
-        : `${editing.target.kind} ${editing.target.index} ${editing.turning} ${editing.ring}`;
+        : `${editing.target.kind} ${editing.target.index} ${editing.turning} ${editing.ring} ${editing.mode}`;
 
     const fresh = key !== this.#selected;
 

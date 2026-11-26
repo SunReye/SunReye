@@ -15,6 +15,23 @@ const SHORTEST = 1;
 const LONGEST = 60;
 const STEP = 0.1;
 
+/** Traced block `target`'s footprint on the ground: what is picked, seen from anywhere. */
+export function tracedOutline(scene: Scene, target: Target) {
+  const footprint =
+    target.kind === "block" ? scene.blocks[target.index]?.freeForm?.footprint : undefined;
+
+  if (footprint === undefined || footprint.length === 0) return [];
+
+  const outline = footprint.map(([x = 0, z = 0]) => world(scene.north, [x, 0, z]));
+
+  const mean = (axis: 0 | 2) =>
+    outline.reduce((sum, point) => sum + point[axis], 0) / outline.length;
+
+  const at: Triple = [mean(0), 0, mean(2)];
+
+  return [{ grip: "move" as const, at, outline }];
+}
+
 /** A level drag of `target` in the scene's frame, from `from` to `to`. */
 export interface Slide {
   readonly scene: Scene;

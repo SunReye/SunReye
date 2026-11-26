@@ -41,9 +41,9 @@ const rounded = (point: readonly number[] = []) =>
 test("a ready roof has its ring, a width arrow east of it and a depth arrow south of it", () => {
   const found = handles(scene(READY), BLOCK);
 
-  expect(found.map(({ grip }) => grip)).toEqual(["turn", "width", "depth"]);
+  expect(found.map(({ grip }) => grip)).toEqual(["turn", "move", "width", "depth"]);
 
-  const [, width, depth] = found;
+  const [, , width, depth] = found;
 
   expect(rounded(width?.at)).toEqual([6.8, 0.3, 2]);
   expect(rounded(width?.axis)).toEqual([1, 0, 0]);
@@ -69,7 +69,7 @@ test("its width arrow dragged 1.24 m east stretches it to 7.2 m, its west side s
   expect(moved?.unit).toBe("m");
 });
 
-test("a traced roof on no rectangle keeps its ring alone", () => {
+test("a traced roof on no rectangle keeps its ring and its outline alone", () => {
   const triangle: Block = {
     ...READY,
     freeForm: {
@@ -82,5 +82,5 @@ test("a traced roof on no rectangle keeps its ring alone", () => {
     },
   };
 
-  expect(handles(scene(triangle), BLOCK).map(({ grip }) => grip)).toEqual(["turn"]);
+  expect(handles(scene(triangle), BLOCK).map(({ grip }) => grip)).toEqual(["turn", "move"]);
 });
