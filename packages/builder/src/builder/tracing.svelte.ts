@@ -50,10 +50,12 @@ export class TraceTool {
   /** The block this chain's first line made, traced into a new roof: its later lines join it. */
   #made: number | undefined;
 
-  /** `tracing`, read where it is drawn: turned off, as another tool does, the chain ends. */
+  /** `tracing`, read where it is drawn: turned off, or left to editing alone, the chain ends. */
   constructor(tracing: () => Tracing | undefined) {
+    const drawing = $derived(tracing() !== undefined && tracing()?.drawing !== false);
+
     $effect.pre(() => {
-      if (tracing() === undefined) this.end();
+      if (!drawing) this.end();
     });
   }
 

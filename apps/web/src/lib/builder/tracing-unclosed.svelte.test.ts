@@ -87,18 +87,34 @@ test("a chain started on an open outline's end goes on with it", async () => {
 });
 
 test("tracing turned off ends its chain: turned on again, a click starts another", async () => {
-  const { at, edits, paused } = await tracing();
+  const { at, edits, retool } = await tracing();
 
   await press("mouse", [at(2, 2)]);
   await press("mouse", [at(2, 8)]);
   await settle(() => edits.length === 1);
 
-  await paused(true);
-  await paused(false);
+  await retool("off");
+  await retool("draw");
 
   await press("mouse", [at(8, 8)]);
   await press("mouse", [at(8, 2)]);
   await settle(() => edits.length === 3);
 
   expect(edits.map((edit) => edit.kind)).toEqual(["add", "removeBlock", "add"]);
+});
+
+test("switched to editing, the chain ends: a traced point is dragged, no line drawn on", async () => {
+  const { at, scenes, edits, retool } = await tracing();
+
+  await press("mouse", [at(2, 2)]);
+  await press("mouse", [at(2, 8)]);
+  await press("mouse", [at(8, 8)]);
+  await settle(() => edits.length === 2);
+
+  await retool("edit");
+  await press("mouse", [at(8, 8), at(8.5, 7.5), at(9, 7)]);
+  await settle(() => edits.length === 3);
+
+  expect(edits.at(-1)).toMatchObject({ kind: "movePoint" });
+  expect(scenes.at(-1)?.blocks[0]?.freeForm?.traced?.lines).toHaveLength(2);
 });

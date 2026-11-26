@@ -31,8 +31,9 @@ export interface Traced {
   readonly at: (x: number, z: number, height?: number) => [number, number];
   readonly scenes: Scene[];
   readonly edits: TraceEdit[];
-  /** Tracing turned off, as another tool does, or on again on the last scene. */
-  readonly paused: (off: boolean) => Promise<void>;
+  /** Tracing turned off, as another tool does, or on again on the last scene, drawing or only
+   * editing what is traced. */
+  readonly retool: (to: "off" | "draw" | "edit") => Promise<void>;
 }
 
 /** A canvas in the tracing mode, kept on the scene each edit hands back; `placing` held until a
@@ -47,7 +48,9 @@ export async function tracing(
   let project: Projector | undefined;
 
   /** The tracing on `scene`, which each edit hands on. */
-  const on = (scene: Scene) => ({ scene, into, drawing, ontrace: traced });
+  let draws = drawing;
+
+  const on = (scene: Scene) => ({ scene, into, drawing: draws, ontrace: traced });
 
   function traced(scene: Scene, edit: TraceEdit): void {
     scenes.push(scene);
@@ -78,6 +81,10 @@ export async function tracing(
     },
     scenes,
     edits,
-    paused: (off) => screen.rerender({ tracing: off ? undefined : on(scenes.at(-1) ?? start) }),
+    retool: (to) => {
+      draws = to === "edit" ? false : drawing;
+
+      return screen.rerender({ tracing: to === "off" ? undefined : on(scenes.at(-1) ?? start) });
+    },
   };
 }
