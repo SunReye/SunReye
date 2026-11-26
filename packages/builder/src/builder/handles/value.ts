@@ -6,7 +6,7 @@ import type { Reading } from "./grabbing.ts";
 /** One length to the decimetre, a roof object's size to the centimetre, or an angle in degrees;
  * a move's x and z; a roof object's metres from its eave and verge. */
 export function valueText(
-  { value, unit }: Pick<Reading, "value" | "unit">,
+  { value, unit, edge }: Pick<Reading, "value" | "unit" | "edge">,
   locale: string,
 ): string {
   const digits = unit === "°" ? 0 : unit === "size" ? 2 : 1;
@@ -27,5 +27,7 @@ export function valueText(
 
   if (second !== undefined) return `x ${format.format(first)} · z ${format.format(second)} m`;
 
-  return unit === "°" ? `${format.format(first)}°` : `${format.format(first)} m`;
+  const text = unit === "°" ? `${format.format(first)}°` : `${format.format(first)} m`;
+
+  return edge ? m.builder_value_edge({ value: text }, isLocale(locale) ? { locale } : {}) : text;
 }

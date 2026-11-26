@@ -16,3 +16,8 @@ test("a chimney or a roof window on its face shows how far it stands from the ea
 test("a roof object's size shows to the centimetre", () => {
   expect(valueText({ value: [1.03], unit: "size" }, "en")).toBe("1.03 m");
 });
+
+test("a size stopped at the edge says so", () => {
+  expect(valueText({ value: [7.3], unit: "size", edge: true }, "en")).toBe("7.30 m · at the edge");
+  expect(valueText({ value: [7.3], unit: "size", edge: true }, "de")).toBe("7,30 m · an der Kante");
+});

@@ -5,6 +5,7 @@
   "builder_compass": "North bearing (°)",
   "builder_block": "Block {number}",
   "builder_add_block": "Add block",
+  "builder_value_edge": "{value} · at the edge",
   "builder_value_roof": "Eave {eave} m · Verge {verge} m",
   "builder_remove": "Remove",
   "field_x": "Position x (m)",

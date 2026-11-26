@@ -117,16 +117,75 @@ export function roofDragged(
   const { footings = [], panes = [] } = crate.laid;
   const outline = target.kind === "chimney" ? footings[target.index]?.foot : panes[target.index];
 
-  return roofSized(scene, target, [grab, now], outline);
+  return roofSized(scene, target, [grab, now], {
+    outline,
+    stands: (next) => crate.pv.roofObjectsStand(next),
+  });
+}
+
+/** Roof object `target` at size `size`, grown from `before` by the edge `wide` names: its
+ * centre moves half as far as the edge, along its own turned side, `scale` its size a metre on its
+ * face. */
+function resized(
+  scene: Scene,
+  target: Target,
+  item: Chimney | RoofWindow,
+  { wide, scale }: { readonly wide: boolean; readonly scale: number },
+) {
+  const [key, before] = sizeOf(item, wide);
+  const turn = ((item.turn ?? 0) * Math.PI) / 180;
+  // Its own axes on the face, turned clockwise as the crate turns them.
+  const [dx, dy] = wide ? [Math.cos(turn), -Math.sin(turn)] : [Math.sin(turn), Math.cos(turn)];
+
+  return (size: number): Scene => {
+    const half = (size - before) / scale / 2;
+
+    return put(scene, target, {
+      key,
+      size,
+      across: tidy(item.across + half * dx),
+      up: tidy(item.up + half * dy),
+    });
+  };
+}
+
+/** The size nearest `wanted`, from `before` toward it in whole centimetres, at which `at` leaves
+ * every roof object standing; `wanted` where it stood nowhere to begin with. */
+function reachable(
+  at: (size: number) => Scene,
+  [before, wanted]: readonly [number, number],
+  stands: (scene: Scene) => boolean,
+): number {
+  if (stands(at(wanted)) || !stands(at(before))) return wanted;
+
+  const steps = Math.round(Math.abs(wanted - before) * 100);
+  const way = Math.sign(wanted - before) / 100;
+  let [low, high] = [0, steps];
+
+  while (high - low > 1) {
+    const middle = Math.floor((low + high) / 2);
+
+    if (stands(at(tidy(before + middle * way)))) low = middle;
+    else high = middle;
+  }
+
+  return tidy(before + low * way);
 }
 
 /** A roof object's arrow dragged from `grab` to `now`, in the plane of its `outline`: its size to
- * whole centimetres, its centre moved half as far on its face. */
+ * whole centimetres, its centre moved half as far on its face, stopped where it would leave its
+ * face or meet another. */
 function roofSized(
   scene: Scene,
   target: Target,
   [grab, now]: readonly [Grab, Ray],
-  outline: readonly Point[] | null | undefined,
+  {
+    outline,
+    stands,
+  }: {
+    readonly outline: readonly Point[] | null | undefined;
+    readonly stands: (scene: Scene) => boolean;
+  },
 ): Dragged | null {
   const corners = cornersOf(outline);
   const item = itemOf(scene, target);
@@ -138,21 +197,12 @@ function roofSized(
 
   if (moved === null) return null;
 
-  const [key, before] = sizeOf(item, wide);
+  const [, before] = sizeOf(item, wide);
   // Size per metre on the face: a chimney's depth is level, its edge runs up the slope.
   const scale = before / moved.edge;
-  const size = clamp(Math.round((before + moved.along * scale) * 100) / 100, SHORTEST, LONGEST);
-  const half = (size - before) / scale / 2;
-  const turn = ((item.turn ?? 0) * Math.PI) / 180;
-  // Its own axes on the face, turned clockwise as the crate turns them.
-  const [dx, dy] = wide ? [Math.cos(turn), -Math.sin(turn)] : [Math.sin(turn), Math.cos(turn)];
+  const wanted = clamp(Math.round((before + moved.along * scale) * 100) / 100, SHORTEST, LONGEST);
+  const at = resized(scene, target, item, { wide, scale });
+  const size = reachable(at, [before, wanted], stands);
 
-  const sized: Sized = {
-    key,
-    size,
-    across: tidy(item.across + half * dx),
-    up: tidy(item.up + half * dy),
-  };
-
-  return { scene: put(scene, target, sized), value: [size], unit: "size" };
+  return { scene: at(size), value: [size], unit: "size", ...(size !== wanted && { edge: true }) };
 }

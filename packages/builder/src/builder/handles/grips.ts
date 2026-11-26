@@ -13,7 +13,7 @@ export type { Target } from "./body.ts";
 
 export type { Ray, Triple } from "./frame.ts";
 
-export { drag, turned, type Dragged, type Grab } from "./dragging.ts";
+export { drag, turned, type Dragged, type Engine, type Grab } from "./dragging.ts";
 
 export { settled } from "./turning.ts";
 
