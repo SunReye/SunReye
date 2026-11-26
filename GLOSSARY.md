@@ -349,7 +349,7 @@ A flat surface of a building bounded by its edges.
 _Avoid_: Polygon, surface
 
 **Base edge**:
-The level edge a roof face's pitch rises from, usually its eave.
+A roof face's lowest level outline edge, which its pitch rises from; an outline edge that is one is an eave, any other a verge.
 _Avoid_: Hinge, axis
 
 **Wall line**:
