@@ -6,7 +6,6 @@ import { cross } from "../vector.ts";
 import type { Target } from "./body.ts";
 import type { Crate, Dragged, Grab } from "./dragging.ts";
 import { level, meet, type Ray, type Triple } from "./frame.ts";
-import { roofSized } from "./sizing.ts";
 
 /** East, north, up as three.js has it: x east, y up, z south. */
 const three = ([east, north, up]: Point): Triple => [east, up, 0 - north];
@@ -80,24 +79,9 @@ function clearance(
   ];
 }
 
-/** A chimney's or a roof window's drag: its move, or an arrow that sizes it. */
-export function onRoof(
-  scene: Scene,
-  target: Target,
-  [grab, now]: readonly [Grab, Ray],
-  crate: Crate,
-): Dragged | null {
-  if (grab.grip === "move") return glided(scene, target, [grab, now], crate);
-
-  const { footings = [], panes = [] } = crate.laid;
-  const outline = target.kind === "chimney" ? footings[target.index]?.foot : panes[target.index];
-
-  return roofSized(scene, target, [grab, now], outline);
-}
-
 /** A chimney or a roof window follows the pointer in its roof face's plane, so it stays under it
  * from every view (ADR 20), where the crate lets it. */
-function glided(
+export function onRoof(
   scene: Scene,
   target: Target,
   [grab, now]: readonly [Grab, Ray],

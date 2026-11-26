@@ -4,8 +4,9 @@
 import type { Chimney, Point, RoofWindow, Scene } from "../pv.ts";
 import { cross, dot, unit } from "../vector.ts";
 import type { Target } from "./body.ts";
-import type { Dragged, Grab } from "./dragging.ts";
+import type { Crate, Dragged, Grab } from "./dragging.ts";
 import { clamp, meet, tidy, type Ray, type Triple } from "./frame.ts";
+import { onRoof } from "./on-roof.ts";
 
 /** Metres an arrow stands off its edge. */
 const ARROW = 0.3;
@@ -97,26 +98,40 @@ function travelled(
   return { along: dot(minus(to, from), unit(edge)), edge: Math.hypot(...edge) };
 }
 
+/** Roof object `target` in `scene`; none for anything else. */
+const itemOf = (scene: Scene, { kind, index }: Target) =>
+  kind === "chimney" ? scene.chimneys?.[index] : scene.roofWindows?.[index];
+
+/** A chimney's or a roof window's drag: its move, or an arrow that sizes it, on the outline the
+ * crate laid out for it. */
+export function roofDragged(
+  scene: Scene,
+  target: Target,
+  [grab, now]: readonly [Grab, Ray],
+  crate: Crate,
+): Dragged | null {
+  if (grab.grip === "move") return onRoof(scene, target, [grab, now], crate);
+
+  if (grab.grip !== "width" && grab.grip !== "depth") return null;
+
+  const { footings = [], panes = [] } = crate.laid;
+  const outline = target.kind === "chimney" ? footings[target.index]?.foot : panes[target.index];
+
+  return roofSized(scene, target, [grab, now], outline);
+}
+
 /** A roof object's arrow dragged from `grab` to `now`, in the plane of its `outline`: its size to
  * whole centimetres, its centre moved half as far on its face. */
-export function roofSized(
+function roofSized(
   scene: Scene,
   target: Target,
   [grab, now]: readonly [Grab, Ray],
   outline: readonly Point[] | null | undefined,
 ): Dragged | null {
   const corners = cornersOf(outline);
+  const item = itemOf(scene, target);
 
-  const item =
-    target.kind === "chimney" ? scene.chimneys?.[target.index] : scene.roofWindows?.[target.index];
-
-  if (
-    corners === undefined ||
-    item === undefined ||
-    (grab.grip !== "width" && grab.grip !== "depth")
-  ) {
-    return null;
-  }
+  if (corners === undefined || item === undefined) return null;
 
   const wide = grab.grip === "width";
   const moved = travelled(corners, wide, [grab.ray, now]);

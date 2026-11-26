@@ -16,7 +16,7 @@ const LONGEST = 60;
 const STEP = 0.1;
 
 /** A level drag of `target` in the scene's frame, from `from` to `to`. */
-interface Slide {
+export interface Slide {
   readonly scene: Scene;
   readonly target: Target;
   readonly from: Triple;

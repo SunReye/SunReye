@@ -16,7 +16,7 @@ import {
   type Triple,
 } from "./frame.ts";
 import type { Grip } from "./grips.ts";
-import { onRoof } from "./on-roof.ts";
+import { roofDragged } from "./sizing.ts";
 import { onLevel } from "./shallow.ts";
 import { tracedSlid } from "./traced.ts";
 import { along, edges, pull, snapTurn } from "./snapping.ts";
@@ -240,7 +240,7 @@ function fitted(
   if (target.kind !== "opening") {
     if (grab.grip === "turn") return roofRingTurned(scene, target, grab, now);
 
-    return onRoof(scene, target, [grab, now], crate);
+    return roofDragged(scene, target, [grab, now], crate);
   }
 
   return grab.grip === "move" || grab.grip === "width" || grab.grip === "height"
