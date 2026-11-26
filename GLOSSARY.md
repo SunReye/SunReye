@@ -261,16 +261,8 @@ The order a string runs through its modules, from its first.
 _Avoid_: Paint order
 
 **Wire**:
-To put a module into a string, at a place in its wiring order; to unwire takes it out. German UI: verdrahten, lösen.
-_Avoid_: Paint, assign (alone), link
-
-**Wiring mode**:
-The Wire mode, entered by opening the Strings group or a string: every string's wiring order is drawn and a drag across modules selects them. German UI: Verdrahten.
-_Avoid_: Paint mode, string tool
-
-**Selection**:
-The modules picked in the wiring mode, in the order they were crossed, before they are wired or unwired; held by the page, never stored.
-_Avoid_: Marked modules, lasso
+To put a module into a string, at a place in its wiring order; to unwire takes it out. Also the mode for it, where every string's wiring order is drawn and a drag across modules selects them. German UI: verdrahten, lösen; the mode Verdrahten.
+_Avoid_: Paint, assign (alone), link, wiring mode, string tool
 
 **Auto-stringing**:
 Wiring a roof face's unwired modules into new strings in a serpentine, as few as the inverter's limits allow; previewed before it is kept. German UI: Automatisch verdrahten.
@@ -341,8 +333,28 @@ The 3D geometry of the plant: buildings, obstacles, equipment, car places and wh
 _Avoid_: Model, 3D view
 
 **Building**:
-Points, edges, roof faces and walls closed into a solid, made of one or more parts. A wall is a footprint edge raised to the eave. German UI: Gebäude.
+Points, edges, roof faces and walls closed into a solid, made of one or more parts. German UI: Gebäude.
 _Avoid_: Block, house
+
+**Point**:
+A corner of a building, where its edges meet; its height comes from the roof faces it belongs to.
+_Avoid_: Vertex, node
+
+**Edge**:
+A straight line between two points of a building: a footprint edge, an eave, a ridge or any other roof line.
+_Avoid_: Segment, side
+
+**Face**:
+A flat surface of a building bounded by its edges: a roof face or a wall.
+_Avoid_: Polygon, plane, surface
+
+**Wall**:
+A building's side over one footprint edge, from the ground up to the roof above it, gable and step included.
+_Avoid_: Facade
+
+**Filter**:
+What the editor lets a person pick, and which modes it offers, at one stage of work: in Home Dach, Module, Verdrahtung and Equipment.
+_Avoid_: Stage, workspace, layer
 
 **Part**:
 A piece of a building with its own footprint, eave and roof faces; parts touch or stack and move with their building. A separate garage is its own building, not a part.
@@ -356,12 +368,16 @@ _Avoid_: Module grid, array, panel layout
 What the editor does with the selection until Esc or another mode: Select, Move, Rotate, Resize, Edit shape, Lay row, Wire, or a drawing tool. Each shows only its own handles; a tool mode owns its drag.
 _Avoid_: Tool (alone), Turn mode, context toolbar (its actions are in the right-click menu)
 
+**Selection**:
+What is picked in the editor, one for both cameras; in Wire, the modules crossed, in that order. Held by the page, never stored.
+_Avoid_: Marked modules, lasso
+
 **Edit shape**:
-The mode that moves, inserts and deletes a building's points and edges, every face staying planar.
+The mode that moves, inserts and deletes a building's points and edges; a moved point tilts its roof faces about their eaves, and every face stays flat.
 _Avoid_: Bent face (a face is always planar), vertex edit
 
 **Roof view**:
-The camera facing one roof face square on, orthographic, eave level at the bottom, orbit locked, for placing modules and equipment on it.
+The camera facing one roof face square on, orthographic, eave level at the bottom, orbit locked, for placing modules on it.
 _Avoid_: Face view, fly-in
 
 **Site context**:
@@ -380,16 +396,12 @@ _Avoid_: Fill settings, spacing
 How far a roof reaches past the wall below it: at each eave edge, and at the verges.
 _Avoid_: Eave depth, soffit
 
-**Free-form roof face**:
-A roof face given by its points rather than by a generator's recipe; it carries module fields like any other.
-_Avoid_: Custom roof, polygon roof, LoD2 face
-
 **Roof line**:
-A line traced along a roof seen from above: an eave, ridge, hip, valley or verge. A traced roof's lines are its source; every closed loop of them is a free-form roof face.
-_Avoid_: Edge, stroke, segment
+A line traced along a roof seen from above: an eave, ridge, hip, valley or verge. Every closed loop of them is a roof face.
+_Avoid_: Stroke
 
 **Pulling up**:
-Giving a traced roof its heights: its eave points to one height, its ridge points to another; every other point follows, so faces stay flat. A point's height may also be set by number, and no pull changes it then. German UI: Traufhöhe, Firsthöhe.
+Giving a traced roof its heights: its eave points to one height, its ridge points to another, which sets its faces; every other point takes its height from them. A point's height may also be set by number, and no pull changes it then. German UI: Höhe ziehen.
 _Avoid_: Extrude, lift
 
 **Dormer**:
@@ -433,11 +445,11 @@ An opaque box, cylinder, tree or hedge standing on the ground in the scene that 
 _Avoid_: Shader, object
 
 **Neighbour**:
-A building around the plant from the state's building model, with its real roof, on its own ground; read-only, it shades and is never saved, but a plant may keep its own edited copy.
+A building around the plant from the state's building model, with its real roof, on its own ground; read-only and never saved. A plant keeps only which neighbours it hides or deletes and its own edited copies. A hidden one still shades.
 _Avoid_: Surrounding shape, context building
 
 **Aerial image**:
-A picture of the ground from above, north up over its extent, from a state's service, for tracing; draped on the terrain and roof faces, and hidden after tracing.
+A picture of the ground from above, north up over its extent, from a state's service, for tracing; draped on the terrain, and shown or hidden by a toggle.
 _Avoid_: Satellite tiles, map, orthophoto
 
 **Equipment object**:
@@ -474,7 +486,7 @@ _Avoid_: Finish, texture, plaster
 
 **Fence**:
 A line on the plot with a height and a finish. Drawn only; it casts no shade.
-_Avoid_: Wall (a wall is an obstacle)
+_Avoid_: Wall (a building's side), garden wall (an obstacle)
 
 **Plant peak**:
 The most power the plant has moved recently, remembered with a six-hour half-life. A flow rail shows its share of it.
