@@ -16,23 +16,29 @@ Module ─┬─ (optimizer) ── String ─────── MPPT input ─�
 ```
 
 - Each kind has a type (its datasheet, as ADR 27's types) and instances with permanent ids (ADR 30).
-- Two primitives connect only where their ports match.
+- Two primitives connect only where their ports match. A port carries a DC curve (`IvCurve`) or an AC power (`AcPower`).
 
-**One physics seam.** Every kind implements one seam in the Rust engine: its inputs in, a DC curve or an AC power out. The solver walks the graph. A new kind plugs in by implementing the seam.
+**One physics seam.** From the module to an inverter's AC output, every kind implements one seam in the Rust engine (`crates/pv`, ADR 30): its inputs in, a DC curve or an AC power out. A new kind plugs in by implementing the seam.
+- The graph is compiled once into a flat plan. Curves pass up from the modules; the operating point passes back down.
+- The battery, the meter and the grid are a separate dispatch, with state of its own.
 
-**Optimizers and micro-inverters.** Each attaches to one, two or four modules, as its type says, and has its own id. It is checked against its datasheet's limits. It is shown as a marker on its modules, never placed on its own.
+**Optimizers and micro-inverters.** Each attaches to one, two or four modules, as its type says, and has its own id. It is checked against its datasheet's limits. It is shown as a marker on its modules, never placed on its own. Whether an optimizer bucks or bucks and boosts is data of its type.
 
-**AC circuit.** Micro-inverters join an AC circuit, the AC side's counterpart of a string; its type's datasheet gives how many may share one. Strings and AC circuits sit side by side under Wiring.
+**AC circuit.** Micro-inverters join an AC circuit, the AC side's counterpart of a string; the micro-inverter's type gives how many may share one. Strings and AC circuits sit side by side under Verdrahtung.
 
-**Module and module field.** The module is the primitive: an id, on a roof face. Filling a face creates a module field (German UI: Modulfeld), a group edited with the same modes as any object (ADR 31), with overrides per module. It replaces the module grid.
+**Module and module field.** The module is the primitive: an id, on a roof face or in a rack field on the ground (ADR 35, *Racks*).
+- Filling a face creates a module field (German UI: Modulfeld): a group edited with the same modes as any object (ADR 31), with overrides per module. It replaces the module grid.
+- A module placed by a tap or by Lay row joins a field on its face.
+- Resizing a field lays its modules again within its new size.
 
-**Equipment in the scene.** Inverters, batteries, meters and wallboxes are scene objects on a wall (an edge id and a fraction, ADR 30) or on the ground. They are edited with the same modes and linked to their electrical instance. They replace ADR 20's equipment markers.
+**Equipment in the scene.** Inverters, batteries, meters and wallboxes are scene objects on a wall (a wall item, ADR 30) or on the ground. They are edited with the same modes and linked to their electrical instance. They replace ADR 20's equipment markers.
 
 ## Open
 
-- **New types.** The datasheet fields of optimizer, micro-inverter and AC circuit types, and whether they join ADR 27's catalogue.
-- **Ports.** The port kinds and what makes two match.
-- **The `pv` crate.** How its string model and `estimate` become implementations of the seam, and which of ADR 20's warnings (MPPT window, cold voltage) move into each kind's checks.
+- **New types.** The datasheet fields of optimizer and micro-inverter types, and whether they join ADR 27's catalogue.
+- **Ports.** What besides the signal makes two ports match.
+- **DC-coupled battery.** Where a battery on an inverter's DC side joins the graph.
+- **The `pv` crate.** How its string model and `estimate` become implementations of the seam, and which of ADR 35's warnings (MPPT window, cold voltage) move into each kind's checks.
 - **Wallbox and car place.** How a wallbox object relates to a car place's EVCC device (ADR 35, *Car places*).
 - **Schema.** How the layout and the plant document (ADR 26) carry primitives and connections.
 - **Module field.** What a field holds beyond its modules (module type, orientation, gap), and when a module leaves its field.
