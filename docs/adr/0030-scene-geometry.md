@@ -44,6 +44,7 @@ Other features wait.
 
 - **Gables.** How a wall reaches above the eave under a gable or a stepped part.
 - **Verges.** Whether a verge edge carries an overhang as an eave edge does; ADR 35 keeps ADR 20's verge overhang until settled.
+- **Dormer heights.** How a dormer's points stand on its face; ADR 20 kept them on the face's plane until set, never below it.
 - **Roof lines.** Whether eave, ridge, hip, valley and verge stay stored kinds of edge, as ADR 20's tracing kept them, or are derived from the faces.
 
 ## Considered options
