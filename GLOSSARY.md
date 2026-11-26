@@ -17,7 +17,7 @@ One physical or logical unit that produces readings: an inverter, a battery, a m
 _Avoid_: Inverter (as the general term), asset
 
 **Pending device**:
-A device without a connection: it can be named by strings and equipment markers and produces no readings until it is given one.
+A device without a connection: it can be named by strings and equipment objects and produces no readings until it is given one.
 _Avoid_: Planned device, placeholder, draft device
 
 **Plant document**:
@@ -261,32 +261,28 @@ The order a string runs through its modules, from its first.
 _Avoid_: Paint order
 
 **Wire**:
-To put a module into a string, at a place in its wiring order; to unwire takes it out. German UI: verdrahten, lösen.
-_Avoid_: Paint, assign (alone), link
-
-**Wiring mode**:
-The builder's state while its Strings group or a string is open: every string's wiring order is drawn and a drag across modules selects them. German UI: Verdrahten.
-_Avoid_: Paint mode, string tool
-
-**Selection**:
-The modules picked in the wiring mode, in the order they were crossed, before they are wired or unwired; held by the page, never stored.
-_Avoid_: Marked modules, lasso
+To put a module into a string, at a place in its wiring order; to unwire takes it out. Also the mode for it, where every string's wiring order is drawn and a drag across modules selects them. German UI: verdrahten, lösen; the mode Verdrahten.
+_Avoid_: Paint, assign (alone), link, wiring mode, string tool
 
 **Auto-stringing**:
 Wiring a roof face's unwired modules into new strings in a serpentine, as few as the inverter's limits allow; previewed before it is kept. German UI: Automatisch verdrahten.
 _Avoid_: Auto-layout, auto-wiring, string wizard
 
-**Context toolbar**:
-The builder's small toolbar on the canvas beside what is selected, with that selection's commonest actions.
-_Avoid_: Floating menu, action bar, assign bar
-
 **Wall spot**:
-Where a tap struck a block's wall: the block, the wall, the metres along it and the height. What is added from the context toolbar goes there; held by the page, never stored.
+Where a right click struck a building's wall: the part, the wall, the place along it and the height. What is added from the right-click menu goes there; held by the page, never stored.
 _Avoid_: Wall selection, anchor, drop point
 
-**Turn mode**:
-The builder's state in which the picked object's ring shows and a drag turns it, entered by "Drehen" and left by "Fertig" or by picking anything else in the inspector. German UI: Drehen.
-_Avoid_: Rotate tool, rotation lock
+**Optimizer**:
+A DC converter attached to one, two or four modules, as its type says, between them and their string; drawn as a marker on its modules.
+_Avoid_: Power optimiser, module electronics
+
+**Micro-inverter**:
+An inverter attached to one, two or four modules, as its type says, feeding an AC circuit; drawn as a marker on its modules.
+_Avoid_: Microinverter, module inverter
+
+**AC circuit**:
+Micro-inverters joined on one AC line, as many as their type allows; the AC side's counterpart of a string.
+_Avoid_: AC string, branch circuit
 
 **MPPT window**:
 The voltages an MPPT input tracks between, with the start voltage it wakes at and its maximum input current: the input's limits from the inverter's datasheet.
@@ -333,12 +329,76 @@ Module types' datasheet values bundled with SunReye, each naming the maker's dat
 _Avoid_: Preset (a preset is a camera view), module database
 
 **Scene**:
-The 3D geometry of the plant: blocks, obstacles, equipment, car places and where each module sits. Part of the PV layout.
+The 3D geometry of the plant: buildings, obstacles, equipment, car places and where each module sits. Part of the PV layout.
 _Avoid_: Model, 3D view
 
-**Module grid**:
-The modules on one roof face, all of one module type, each at its own place and orientation inside the face's setback.
-_Avoid_: Array, panel layout
+**Building**:
+Points, edges, roof faces and walls closed into a solid, made of one or more parts. German UI: Gebäude.
+_Avoid_: Block, house
+
+**Point**:
+A corner of a building, where its edges meet.
+_Avoid_: Vertex, node
+
+**Edge**:
+A straight line between two points of a building: a wall-line edge, an eave, a ridge or any other roof line.
+_Avoid_: Segment, side
+
+**Face**:
+A flat surface of a building bounded by its edges.
+_Avoid_: Polygon, surface
+
+**Base edge**:
+A roof face's lowest level outline edge, which its pitch rises from; an outline edge that is one is an eave, any other a verge.
+_Avoid_: Hinge, axis
+
+**Wall line**:
+A part's outline where its walls stand, seen from above.
+_Avoid_: Footprint (of a building or part), ground plan
+
+**Roof outline**:
+A part's wall line widened by each edge's overhang: where its roof ends, seen from above.
+_Avoid_: Footprint (of a building or part), eave line
+
+**Wall**:
+A building's side over one edge of its part's wall line, from the ground up to the roof above it, gable and step included.
+_Avoid_: Facade
+
+**Filter**:
+What the editor lets a person pick, and which modes it offers, at one stage of work: in Home Dach, Module, Verdrahtung and Equipment.
+_Avoid_: Stage, workspace, layer
+
+**Part**:
+A piece of a building with its own wall line and roof faces, standing on the ground, at a height or on a roof face; parts touch or stack and move with their building. A separate garage is its own building, not a part.
+_Avoid_: Block, section, wing
+
+**Module field**:
+Modules on one roof face grouped as one object, made by a fill and joined by modules placed on that face, each module keeping its own place and any override. German UI: Modulfeld.
+_Avoid_: Module grid, array, panel layout
+
+**Mode**:
+What the editor does with the selection until Esc or another mode: Select, Move, Rotate, Resize, Edit shape, Lay row, Wire, or a drawing tool. Each shows only its own handles; a tool mode owns its drag.
+_Avoid_: Tool (alone), Turn mode, context toolbar (its actions are in the right-click menu)
+
+**Selection**:
+What is picked in the editor, one for both cameras: one object or several the filter lets pick, acted on as one group; in Wire, the modules crossed, in that order. Held by the page, never stored.
+_Avoid_: Marked modules, lasso
+
+**Held move**:
+Moving a module, or the selection it is in, by pressing it until it lifts, then dragging it in its face.
+_Avoid_: Drag-move, pick-up
+
+**Edit shape**:
+The mode that moves, inserts and deletes a building's points and edges; every face stays flat.
+_Avoid_: Bent face (a face is always planar), vertex edit
+
+**Roof view**:
+The camera facing one roof face square on, orthographic, eave level at the bottom, orbit locked, for placing modules on it.
+_Avoid_: Face view, fly-in
+
+**Site context**:
+The aerial image, terrain and, later, neighbouring buildings around the plant, loaded from a state's public data on request.
+_Avoid_: Surroundings (ground surfaces and fences), map, environment
 
 **Setback**:
 The margin along every edge of a roof face that no module may cross.
@@ -348,32 +408,20 @@ _Avoid_: Border, margin
 How "Fill face" lays a face's free roof: the gap between modules, never under 2 cm; the alignment, from the setback's lower left or centred in it; and the keep-out margin, kept free round each roof chimney, roof window, existing PV and dormer. A call's, never stored with the scene.
 _Avoid_: Fill settings, spacing
 
-**Block**:
-A building footprint with its roof: a rectangle under one roof kind, or a polygon under free-form roof faces.
-_Avoid_: Building, house
-
 **Overhang**:
-How far a block's roof reaches past its walls: at the eaves and at the verges.
+How far a roof reaches past the wall below it, at every edge of its roof outline, eaves and verges alike.
 _Avoid_: Eave depth, soffit
 
-**Free-form roof face**:
-A roof face given by its corners rather than by its block's roof kind; it carries module grids like any other.
-_Avoid_: Custom roof, polygon roof, LoD2 face
-
 **Roof line**:
-A line traced along a roof seen from above: an eave, ridge, hip, valley or verge. A traced roof's lines are its source; every closed loop of them is a free-form roof face.
-_Avoid_: Edge, stroke, segment
+A line traced along a roof seen from above: an eave, ridge, hip, valley or verge. Every closed loop of them is a roof face.
+_Avoid_: Stroke
 
 **Pulling up**:
-Giving a traced roof its heights: its eave points to one height, its ridge points to another; every other point follows, so faces stay flat. A point's height may also be set by number, and no pull changes it then. German UI: Traufhöhe, Firsthöhe.
+Giving a traced roof its heights: its eaves to one height, then its ridges to theirs, which sets its faces' pitches. German UI: Höhe ziehen.
 _Avoid_: Extrude, lift
 
-**Bent face**:
-A traced roof face whose corners lie more than 2 cm off its plane, as set heights can leave it. It is kept, drawn in the warning colour, and carries no modules until it is flat.
-_Avoid_: Warped face, invalid face
-
 **Dormer**:
-A small roof traced inside a face of a traced roof: a closed loop of lines whose faces are its own. It cuts its outline out of the face it stands on, which keeps no modules there, and its front and cheeks are walls up from that face. German UI: Gaube.
+A part standing on a roof face, with roof faces of its own. It cuts its wall line out of the face's module area, and its front and cheeks are walls up from that face. German UI: Gaube.
 _Avoid_: Roof extension, Dachaufbau
 
 **Ready roof**:
@@ -393,7 +441,7 @@ Rows of modules tilted off a flat roof face or level ground, at their own tilt a
 _Avoid_: Ground mount, elevation, substructure, Aufständerung
 
 **Roof chimney**:
-An upright box standing on one roof face of a block; no module may stand on its footprint.
+An upright box standing on one roof face of a part; no module may stand on its footprint.
 _Avoid_: Chimney obstacle, stack
 
 **3D quality**:
@@ -413,19 +461,19 @@ An opaque box, cylinder, tree or hedge standing on the ground in the scene that 
 _Avoid_: Shader, object
 
 **Neighbour**:
-An upright body around the plant, a footprint under a level top, that the builder's consumer supplies; it shades like an obstacle and is never saved with the scene.
+A building around the plant from the state's building model, with its real roof, on its own ground; read-only and never saved. A plant keeps only which neighbours it hides or deletes and its own edited copies. A hidden one still shades.
 _Avoid_: Surrounding shape, context building
 
 **Aerial image**:
-A picture of the ground from above, north up over its extent, that the builder's consumer supplies; it is draped on the ground and the roof faces and never saved.
+A picture of the ground from above, north up over its extent, from a state's service, for tracing; draped on the terrain, and shown or hidden by a toggle.
 _Avoid_: Satellite tiles, map, orthophoto
 
-**Equipment marker**:
-A place on a block's wall where an inverter or a battery stands, linked to its device; its live label hangs above it.
-_Avoid_: Pin, icon
+**Equipment object**:
+An inverter, battery, meter or wallbox in the scene, on a wall or the ground, linked to its device; its live label hangs above it.
+_Avoid_: Equipment marker, pin, icon
 
 **Opening**:
-A window or a door in a block's wall: a window, a French window, a front door or a garage door. It is drawn and never shades.
+A window or a door in a building's wall: a window, a French window, a front door or a garage door. It is drawn and never shades.
 _Avoid_: Hole, cutout, aperture
 
 **Car place**:
@@ -433,7 +481,7 @@ A parking spot in the scene, linked to one EVCC loadpoint device, optionally und
 _Avoid_: Garage, charger
 
 **Carport**:
-An open block: a post at each corner instead of walls, under a roof that carries modules like any other.
+An open part: a post at each corner instead of walls, under a roof that carries modules like any other.
 _Avoid_: Shelter
 
 **Car body**:
@@ -454,7 +502,7 @@ _Avoid_: Finish, texture, plaster
 
 **Fence**:
 A line on the plot with a height and a finish. Drawn only; it casts no shade.
-_Avoid_: Wall (a wall is an obstacle)
+_Avoid_: Wall (a building's side), garden wall (an obstacle)
 
 **Plant peak**:
 The most power the plant has moved recently, remembered with a six-hour half-life. A flow rail shows its share of it.
@@ -519,6 +567,10 @@ _Avoid_: Sample (a reading), preset (a camera view), demo weather
 **Typical year**:
 One year of weather for a rounded location, each calendar month taken whole from the past year closest to twenty or more of them, at quarter hours; the year an offer's expected yield (P50) is simulated on.
 _Avoid_: TMY, average year, reference year
+
+**Irradiance map**:
+A roof face's yearly irradiation per square metre, sampled over the face and drawn on it, shaded as the year's run shades.
+_Avoid_: Heat map, solar map
 
 **Cautious yield**:
 The yearly yield exceeded in nine years of ten (P90): the simulated typical year less 1.2816 deviations of past years' irradiation on the planes over the typical year's.
