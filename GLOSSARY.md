@@ -345,7 +345,7 @@ A straight line between two points of a building: a wall-line edge, an eave, a r
 _Avoid_: Segment, side
 
 **Face**:
-A flat surface of a building bounded by its edges. A roof face is its base edge and its pitch.
+A flat surface of a building bounded by its edges.
 _Avoid_: Polygon, surface
 
 **Base edge**:
@@ -354,11 +354,11 @@ _Avoid_: Hinge, axis
 
 **Wall line**:
 A part's outline where its walls stand, seen from above.
-_Avoid_: Footprint, ground plan
+_Avoid_: Footprint (of a building or part), ground plan
 
 **Roof outline**:
 A part's wall line widened by each edge's overhang: where its roof ends, seen from above.
-_Avoid_: Footprint, eave line
+_Avoid_: Footprint (of a building or part), eave line
 
 **Wall**:
 A building's side over one edge of its part's wall line, from the ground up to the roof above it, gable and step included.
