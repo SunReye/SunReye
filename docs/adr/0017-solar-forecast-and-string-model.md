@@ -1,6 +1,6 @@
 # 17. Solar forecast and string model
 
-Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12, 2026-11-13, 2026-11-15, 2026-11-16, 2026-11-17, 2026-11-18, 2026-11-19, 2026-11-20, 2026-11-22, 2026-11-23, 2026-11-24)
+Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12, 2026-11-13, 2026-11-15, 2026-11-16, 2026-11-17, 2026-11-18, 2026-11-19, 2026-11-20, 2026-11-22, 2026-11-23, 2026-11-24, 2026-11-26)
 
 ## Context
 
@@ -46,6 +46,8 @@ Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12, 2026-11-13, 2026
 - A rounded location (2026-11-23): `Location::rounded` is the one rounding to 0.01° the location module stores and the weather leaves the home at. A typical year belongs to a rounded location, so a consumer that caches one rounds with it; `pv-wasm` exposes it as `roundedLocation`, and the typical year, the irradiation and the cautious yield as `typicalYear`, `irradiation` and `cautious`.
 - Perez golden values are generated offline with pvlib and committed as fixtures. Open-Meteo's tilted irradiance is a looser cross-check.
 - The proof against pvlib (2026-11-24; tightened by #889 and #890, 2026-11-24): four plants, an open roof, a roof behind a long wall, east and west in parallel on one input and a row in a field of rows, are run by pvlib over one made-up hourly year and committed as fixtures; pvlib knows no scene, so shade comes from obstacles it models in two dimensions. pvlib takes a substring's edge for its beam's shade and its mean over its strip for its sky view, and so does the crate since #889. A year's run keeps each string's and input's energy within 0.1 % of pvlib's unshaded, a year and a month; shaded the same since a step traces the beam where the grid's nodes around the sun disagree (#890), as with the beam traced at every hour, and each substring's sky view within 0.001, by test. Before #890 a shaded month read up to 4.4 % off on the 2° grid, and the bounds were 0.2 % a year and 5 % a month behind the wall, 3 % in the field. Before #889 the sample points stood inset from the edges, which read winter months up to 7 % high on the rack field and summer about 1 % low behind the wall. The comparison is published in `docs/pv-proof.md`.
+
+**Forecasting crate** (2026-11-26, ADR 38). The solar forecast's model run and the correction learner move into `crates/forecast`, which calls this crate for the physics; the core keeps the weather device, scheduling and storage. Until `pv` reads `crates/scene` (ADR 30, step 3), the solar forecast, the correction and the estimates run unshaded on each string's plane from the layout form.
 
 **Parallel-string estimates.** The measured MPPT current is split by each string's modelled current. A string's estimate is the measured `pv.mppt.power` times its share, so the estimates sum to it. The modelled currents are the strings' latest solar forecasts at the target nearest the reading, which are split by modelled current; without one, or when they are all 0 W, the strings share equally. A string alone on its MPPT input is reported as measured. Estimates are history as `pv.string.power` (ADR 4), in the 1 W step the solar forecast issues them in (Storage), since a series' forecast and history share one step; the capabilities document marks them `estimated`.
 
