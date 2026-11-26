@@ -22,13 +22,13 @@ Module ─┬─ (optimizer) ── String ─────── MPPT input ─�
 - The graph is compiled once into a flat plan. Curves pass up from the modules; the operating point passes back down.
 - The battery, the meter and the grid are a separate dispatch, with state of its own.
 
-**Optimizers and micro-inverters.** Each attaches to one, two or four modules, as its type says, and has its own id. It is checked against its datasheet's limits. It is shown as a marker on its modules, never placed on its own. Whether an optimizer bucks or bucks and boosts is data of its type.
+**Optimizers and micro-inverters.** Each attaches to one, two or four modules, as its type says, and has its own id. It is checked against its datasheet's limits. It is shown as a marker on its modules, never placed on its own. Its type's data also says whether an optimizer bucks or bucks and boosts, and, for one serving several modules, whether their inputs run in series or each has its own MPP tracking.
 
 **AC circuit.** Micro-inverters join an AC circuit, the AC side's counterpart of a string; the micro-inverter's type gives how many may share one. Strings and AC circuits sit side by side under Verdrahtung.
 
 **Module and module field.** The module is the primitive: an id, on a roof face or in a rack field on the ground (ADR 35, *Racks*).
 - Filling a face creates a module field (German UI: Modulfeld): a group edited with the same modes as any object (ADR 31), with overrides per module. It replaces the module grid.
-- A module placed by a tap or by Lay row joins a field on its face.
+- A module laid by Lay row, by a tap or a drag (ADR 31), joins the field on its face, which it creates where the face has none.
 - Resizing a field lays its modules again within its new size.
 
 **Equipment in the scene.** Inverters, batteries, meters and wallboxes are scene objects on a wall (a wall item, ADR 30) or on the ground. They are edited with the same modes and linked to their electrical instance. They replace ADR 20's equipment markers.
