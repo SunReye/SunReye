@@ -488,7 +488,7 @@ fn an_open_free_form_block_stands_a_post_at_each_footprint_corner_up_to_the_face
 }
 
 #[test]
-fn a_wall_opening_or_an_equipment_marker_on_a_free_form_block_is_refused() {
+fn a_wall_opening_or_a_marker_naming_one_of_four_walls_on_a_free_form_block_is_refused() {
     // Its unused corner, size and eave would hold both.
     let mut block = gable();
     for (key, value) in [("width", 10.0), ("depth", 8.0), ("eave", 3.0)] {
