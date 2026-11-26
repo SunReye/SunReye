@@ -29,7 +29,7 @@ ADR 20's editor moved, turned and sized by what a press landed on: a picked obje
 
 Move, Rotate, Resize and Edit shape chosen with nothing selected ask the person to pick an object, and Lay row a roof face. Drawing tools and Wire need no selection.
 
-**Select only selects.** A drag in Select navigates (ADR 32), and a quick press on an object never moves it. Delete and the inspector's values edit in Select. ADR 20's press-on-object move, block knob and turn mode go. A tool mode (Wire, Lay row, a drawing tool) owns its drag.
+**Select only selects.** No drag mutates in Select: a drag navigates (ADR 32), and a quick press on an object never moves it. Delete and the inspector's values edit in Select. ADR 20's press-on-object move, block knob and turn mode go. A tool mode (Wire, Lay row, a drawing tool) owns its drag.
 - *Several objects.* Shift- or Ctrl-click adds an object to the selection or takes it out; a Shift-drag draws a selection box. Only what the filter lets pick is selected. Move and Rotate act on the selection as one group, in one undo step; modules stay in their face's plane and snap.
 - *Holding a module,* the one exception. A press held 300 ms on a module lifts it, visibly, and the drag that follows moves it, or the selection it is in, in its face's plane with snapping, in one undo step. A press that moves sooner navigates. Move mode moves modules too.
 
@@ -84,7 +84,7 @@ While dragging, a value box shows the live value. Typing sets an exact value; Ta
 
 | Filter | Pickable | Modes |
 | --- | --- | --- |
-| Dach | buildings, parts, faces, edges, points, openings, obstacles, and on the ground surfaces, fences, car places and rack fields | Select, Move, Rotate, Resize, Edit shape, drawing tools |
+| Dach | buildings, parts, faces, edges, points, openings, obstacles, ground items: ground surfaces, fences, car places, ground rack fields | Select, Move, Rotate, Resize, Edit shape, drawing tools |
 | Module | roof faces (opening the roof view, ADR 32), modules, module fields, roof items | Select, Move, Rotate, Resize, Lay row |
 | Verdrahtung | modules, optimizers, micro-inverters, strings, AC circuits | Select, Wire |
 | Equipment | inverters, batteries, meters, wallboxes | Select, Move, Rotate |
