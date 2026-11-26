@@ -12,10 +12,10 @@ import { commonDir, hasher } from "./gate-cache.ts";
 const FORMATTED = /\.(?:svelte|[cm]?[jt]s|json|jsonc|md|css|ya?ml|toml|html)$/u;
 const LINTED = /\.(?:svelte|[cm]?[jt]s)$/u;
 
-const CRATE = /^(crates\/[^/]+|packages\/catalogue)\/(?:.*\.rs|Cargo\.toml)$/u;
+const CRATE = /^(crates\/[^/]+|apps\/home\/core|packages\/catalogue)\/(?:.*\.rs|Cargo\.toml)$/u;
 
 const RUST =
-  /^(?:crates\/|packages\/catalogue\/.*\.rs$|Cargo\.(?:toml|lock)$|rust-toolchain\.toml$)/u;
+  /^(?:crates\/|apps\/home\/core\/|packages\/catalogue\/.*\.rs$|Cargo\.(?:toml|lock)$|rust-toolchain\.toml$)/u;
 
 /** The WASM the bun tests load, and the command that builds each. */
 const WASM: readonly (readonly [string, Step])[] = [
@@ -56,7 +56,7 @@ export function hookSteps(staged: Readonly<Staged>): readonly Step[] {
   const tested = crates.filter((crate) => !GATE_ONLY_CRATES.has(crate));
 
   return [
-    // Generates apps/web/.svelte-kit, which oxlint's type-aware mode reads.
+    // Generates apps/home/web/.svelte-kit, which oxlint's type-aware mode reads.
     { run: [...web, "sync"] },
     ...(formatted.length > 0
       ? [{ run: ["rsvelte", "format", "--check", "--no-error-on-unmatched-pattern", ...formatted] }]

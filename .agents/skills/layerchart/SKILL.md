@@ -83,12 +83,12 @@ LayerChart defaults to `currentColor`. Provide theme vars once in `app.css`:
 Without Tailwind or a preset also add `@import 'layerchart/core.css';` (declares
 `@layer theme, base, components, utilities` order; missing → styles flip in prod builds).
 
-### In this repo (apps/web, shadcn-svelte + Tailwind v4)
+### In this repo (apps/home/web, shadcn-svelte + Tailwind v4)
 
 Preferred path: install the shadcn-svelte `chart` wrapper, which pins theming + tooltip styling.
 
 ```bash
-cd apps/web && bun x shadcn-svelte@latest add -y -o chart
+cd apps/home/web && bun x shadcn-svelte@latest add -y -o chart
 ```
 
 ```svelte

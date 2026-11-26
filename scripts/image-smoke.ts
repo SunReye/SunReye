@@ -259,7 +259,7 @@ async function behindIngress(checks: () => Promise<Check[]>): Promise<Check[]> {
 }
 
 async function main(): Promise<number> {
-  await run(["bun", "run", "--cwd", "apps/web", "build"]);
+  await run(["bun", "run", "--cwd", "apps/home/web", "build"]);
   await build("core");
   await build("addon");
 

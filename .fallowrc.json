@@ -8,7 +8,7 @@
     "fixtures/consumer/**",
     "target/**",
     "**/.svelte-kit/**",
-    "apps/web/src/lib/components/ui/**",
+    "apps/home/web/src/lib/components/ui/**",
     "packages/ui/src/alert/**",
     "packages/ui/src/button/**",
     "packages/ui/src/calendar/**",
@@ -29,7 +29,7 @@
     "packages/ui/src/toggle-group/**",
     "packages/ui/src/track-active.ts",
     "packages/ui/src/utils.ts",
-    "apps/web/src/lib/hooks/**"
+    "apps/home/web/src/lib/hooks/**"
   ],
   "ignoreBinaries": ["systemd-analyze"],
   "ignoreDependencies": [
@@ -123,13 +123,13 @@
   "duplicates": {
     "minTokens": 40,
     "minLines": 5,
-    "ignore": ["apps/web/src/lib/api/schema.d.ts", "packages/scene/schema.d.ts"]
+    "ignore": ["apps/home/web/src/lib/api/schema.d.ts", "packages/scene/schema.d.ts"]
   },
   "boundaries": {
     "zones": [
       {
         "name": "web",
-        "patterns": ["apps/web/**"]
+        "patterns": ["apps/home/web/**"]
       },
       {
         "name": "sdk",

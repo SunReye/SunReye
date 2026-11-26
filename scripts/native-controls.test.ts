@@ -37,10 +37,10 @@ test("kit components, scripts, styles and comments are no finding", () => {
 });
 
 test("the rule covers every Svelte file of the SPA outside the kit", () => {
-  expect(covered("apps/web/src/lib/range/CustomBounds.svelte")).toBe(true);
-  expect(covered("apps/web/src/routes/+page.svelte")).toBe(true);
-  expect(covered("apps/web/src/lib/components/ui/table/table.svelte")).toBe(false);
-  expect(covered("apps/web/src/lib/range/range.ts")).toBe(false);
+  expect(covered("apps/home/web/src/lib/range/CustomBounds.svelte")).toBe(true);
+  expect(covered("apps/home/web/src/routes/+page.svelte")).toBe(true);
+  expect(covered("apps/home/web/src/lib/components/ui/table/table.svelte")).toBe(false);
+  expect(covered("apps/home/web/src/lib/range/range.ts")).toBe(false);
 });
 
 test("the rule covers the builder package's Svelte files too: it is drawn with the kit (ADR 25)", () => {

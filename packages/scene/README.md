@@ -4,7 +4,7 @@ SunReye's scene and layout types, generated from the crates, and the pure operat
 
 ## Types
 
-`Scene`, `Layout`, `LayoutChange`, `ModuleType` and every type they name, as the core's API reads and writes them. `schema.d.ts` and `scene-schema.js` are generated; `bun run --cwd apps/web api` rewrites them.
+`Scene`, `Layout`, `LayoutChange`, `ModuleType` and every type they name, as the core's API reads and writes them. `schema.d.ts` and `scene-schema.js` are generated; `bun run --cwd apps/home/web api` rewrites them.
 
 - `roofFaceKey(face)`, `RoofFaceId`: one key for a roof face, by block and face, however it was picked.
 - `faceCount(scene, block)`: how many roof faces a block has, as the `pv` crate lists them: a traced or free-form block its faces, a dormer's too; a flat or mono-pitch roof one, a gable two, a hip four; 0 for no block. A face index below it names a face, so a consumer checks one without the engine.

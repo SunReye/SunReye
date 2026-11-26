@@ -1,4 +1,4 @@
-// Generated from crates/core/openapi.json by `bun run --cwd packages/scene types`. Do not edit.
+// Generated from apps/home/core/openapi.json by `bun run --cwd packages/scene types`. Do not edit.
 
 export interface components {
     schemas: {

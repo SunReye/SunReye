@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { realTime } from "./fake-time.ts";
 
-const SRC = "apps/web/src/";
+const SRC = "apps/home/web/src/";
 
 const found = (path: string, source: string) => realTime(`${SRC}${path}`, source);
 

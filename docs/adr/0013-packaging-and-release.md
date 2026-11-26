@@ -1,6 +1,6 @@
 # 13. Packaging and release
 
-Status: accepted (2026-11-08), amended (2026-11-10, 2026-11-20, 2026-11-22)
+Status: accepted (2026-11-08), amended (2026-11-10, 2026-11-20, 2026-11-22, 2026-11-26)
 
 ## Context
 
@@ -8,7 +8,7 @@ v4 shipped images, an add-on, an appliance and an Android build, each with its o
 
 ## Decision
 
-- **Layout.** `crates/` (Rust: `core`, `profile`, `pv` and one WASM glue crate per artifact), `apps/web` (SPA), `apps/cloud` (relay, TypeScript on Cloudflare, ADR 16, created when its build starts), `packages/` (npm: authoring API, CLI, WASM), `profiles/` (official profiles), `packaging/` (the Dockerfile, the add-on manifest and the systemd unit), `docs/adr/`.
+- **Layout** (amended 2026-11-26, ADR 36). `apps/home/` (Home: `web`, the SPA, and `core`, the core's binary crate), `crates/` (shared Rust: `profile`, `pv` and one WASM glue crate per artifact), `apps/cloud` (relay, TypeScript on Cloudflare, ADR 16, created when its build starts), `packages/` (npm: authoring API, CLI, WASM), `profiles/` (official profiles), `packaging/` (the Dockerfile, the add-on manifest and the systemd unit), `docs/adr/`.
 - **First release.** A static Linux binary for amd64 and arm64 with a systemd unit, a multi-arch Docker image, and a Home Assistant add-on that wraps the image. The NixOS appliance and the Android app follow; no release gate depends on them.
 - **Beside v3, not over it.** The core starts at version 5.0.0. The Home Assistant add-on is a new add-on with its own slug in the same add-on repository, installed next to v3's: updating v3's add-on in place would leave a database v5 cannot read and v3 unable to export. The user exports from v3, imports into v5 (ADR 18), compares, then removes v3. v3 gets no further release. The v5 add-on maps `share` read-only for the import.
 - **Home Assistant add-on.** A skeleton test decides ingress: the SPA under a real ingress prefix. Pass: the add-on ships with ingress and a sidebar entry, and trusts HA's login (ADR 9). Fail: it exposes the core's own port with its own login. The core serves plain HTTP; TLS is a reverse-proxy job. The add-on's slug is `sunreye_v5`.

@@ -1,4 +1,4 @@
-// Generated from crates/core/openapi.json by `bun run --cwd packages/scene types`. Do not edit.
+// Generated from apps/home/core/openapi.json by `bun run --cwd packages/scene types`. Do not edit.
 
 /** The scene's JSON Schema (2020-12), as the core reads a stored scene. */
 export const SCENE_SCHEMA = {

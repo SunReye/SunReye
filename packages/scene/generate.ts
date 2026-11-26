@@ -14,12 +14,12 @@ const ROOTS = ["Scene", "Layout", "LayoutChange", "ModuleType"];
 const EMPTY = new Set(["paths", "webhooks", "$defs", "operations"]);
 
 const HEADER =
-  "// Generated from crates/core/openapi.json by `bun run --cwd packages/scene types`. Do not edit.\n\n";
+  "// Generated from apps/home/core/openapi.json by `bun run --cwd packages/scene types`. Do not edit.\n\n";
 
 /** A schema's name where another schema refers to it. */
 const REF = /(?<="\$ref":"#\/components\/schemas\/)[^"]+/gu;
 
-const source = new URL("../../crates/core/openapi.json", import.meta.url);
+const source = new URL("../../apps/home/core/openapi.json", import.meta.url);
 
 type Schemas = NonNullable<NonNullable<OpenAPI3["components"]>["schemas"]>;
 
@@ -60,7 +60,7 @@ function reached(
 function parsed(text: string): Document {
   const document: unknown = JSON.parse(text);
 
-  if (!isDocument(document)) throw new TypeError("crates/core/openapi.json has no schemas");
+  if (!isDocument(document)) throw new TypeError("apps/home/core/openapi.json has no schemas");
 
   return document;
 }

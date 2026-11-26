@@ -4,6 +4,10 @@ This codebase is yours: what it's for and how it's built are your call, and you'
 
 Bun is the JavaScript runtime and package manager.
 
+## Layout
+
+One repository, one bun and one Cargo workspace (ADR 36). Apps live in `apps/`; each app's `AGENTS.md` holds what applies only to it, and wins inside it. Shared Rust lives in `crates/`, shared TypeScript in `packages/`. Home is `apps/home`.
+
 ## Specs
 
 Specs are ADRs in `docs/adr/`, written by a `grilling` session. Domain terms live in `GLOSSARY.md`.

@@ -13,7 +13,7 @@
 import { Glob } from "bun";
 import { first, glass, handCard, literalMotion, unstopped } from "./one-owner-find.ts";
 
-const SRC = "apps/web/src/";
+const SRC = "apps/home/web/src/";
 
 /** The builder's sources, whose owners are named from here as the SPA's are from `lib/`. */
 const BUILDER = "packages/builder/src/";

@@ -17,7 +17,7 @@ jiff = { version = "0.2.41", default-features = false, features = [
   "tzdb-zoneinfo",
 ] }
 serde_json.workspace = true
-sunreye-core = { path = "../core" }
+sunreye-core = { path = "../../apps/home/core" }
 sunreye-profile.workspace = true
 sunreye-pv.workspace = true
 tokio = { version = "1.54.1", default-features = false, features = ["rt"] }

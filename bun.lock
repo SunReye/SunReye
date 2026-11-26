@@ -15,7 +15,7 @@
         "tsrs": "7.1.0-beta.tsrs4",
       },
     },
-    "apps/web": {
+    "apps/home/web": {
       "name": "@sunreye/web",
       "dependencies": {
         "@scalar/api-reference": "1.76.4",
@@ -594,7 +594,7 @@
 
     "@sunreye/ui": ["@sunreye/ui@workspace:packages/ui"],
 
-    "@sunreye/web": ["@sunreye/web@workspace:apps/web"],
+    "@sunreye/web": ["@sunreye/web@workspace:apps/home/web"],
 
     "@sveltejs/acorn-typescript": ["@sveltejs/acorn-typescript@1.0.13", "", { "peerDependencies": { "acorn": "^8.9.0" } }, "sha512-wgKggnhZVL9Bfx1OaKKTrYY9BFRk6C8UAkQNUcIv1+llzYrIqy+RZm5HPKzn0NpEBvTVhTqB4kQyllZywsRBRQ=="],
 
