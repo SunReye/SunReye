@@ -1,6 +1,6 @@
 // A traced block's lines as edits change them (ADR 20 "Points"): the straight run a line lies in, a
-// side split by a point clicked on it, or where another roof meets it, still one side to the person
-// who drags it; and lines kept without the points none of them uses. Pure.
+// side split by a point clicked on it, or where another line or roof meets it, still one side to the
+// person who drags it; and lines kept without the points none of them uses. Pure.
 
 import { PLACE } from "./roof-plan.js";
 
@@ -33,8 +33,8 @@ function onLine(lines, a, b, p) {
 }
 
 /**
- * The points of the straight run line `a`–`b` lies in: on from each end through every point only
- * two lines meet at, while the next one keeps the line straight.
+ * The points of the straight run line `a`–`b` lies in: on from each end through every point one
+ * line keeps it straight from, whatever other lines meet there.
  * @param {Lines} lines
  * @param {number} a
  * @param {number} b
@@ -47,16 +47,14 @@ export function straightRun(lines, a, b) {
     let at = start;
 
     for (;;) {
-      const next = neighbours(lines, at).filter((p) => !run.has(p));
+      const ahead = neighbours(lines, at).filter((p) => !run.has(p) && onLine(lines, a, b, p));
 
-      if (neighbours(lines, at).length !== 2 || next.length !== 1) break;
+      if (ahead.length !== 1) break;
 
-      const [ahead = -1] = next;
+      const [next = -1] = ahead;
 
-      if (!onLine(lines, a, b, ahead)) break;
-
-      run.add(ahead);
-      at = ahead;
+      run.add(next);
+      at = next;
     }
   }
 
