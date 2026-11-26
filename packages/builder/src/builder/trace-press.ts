@@ -53,12 +53,13 @@ export class TracePress {
 
     canvas.addEventListener("pointerleave", this.#leave);
     canvas.addEventListener("dblclick", this.#double);
-    window.addEventListener("keydown", this.#key);
+    // Before the page's own keys: a Del or Esc the tracing acts on is not theirs too.
+    window.addEventListener("keydown", this.#key, true);
     this.dispose = () => {
       unlisten();
       canvas.removeEventListener("pointerleave", this.#leave);
       canvas.removeEventListener("dblclick", this.#double);
-      window.removeEventListener("keydown", this.#key);
+      window.removeEventListener("keydown", this.#key, true);
     };
   }
 
@@ -93,7 +94,8 @@ export class TracePress {
 
     const aimed = this.#aim(event, tracing);
 
-    if (aimed === null) return;
+    // Not drawing, a press on nothing traced is the picking's and the camera's.
+    if (aimed === null || (tracing.drawing === false && aimed.snap?.kind === "free")) return;
 
     event.stopImmediatePropagation();
     this.#canvas.setPointerCapture(event.pointerId);
@@ -165,8 +167,14 @@ export class TracePress {
   readonly #key = (event: KeyboardEvent): void => {
     const tracing = this.#tracing();
 
-    if (event.key === "Escape" && tracing !== undefined) this.#tool.escape(tracing);
-    else if ((event.key === "Delete" || event.key === "Backspace") && tracing !== undefined)
-      this.#tool.removeTapped(tracing);
+    if (tracing === undefined) return;
+
+    const removing = event.key === "Delete" || event.key === "Backspace";
+
+    const acted =
+      (event.key === "Escape" && this.#tool.escape(tracing)) ||
+      (removing && this.#tool.removeTapped(tracing));
+
+    if (acted) event.stopPropagation();
   };
 }

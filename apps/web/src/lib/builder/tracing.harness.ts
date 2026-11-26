@@ -41,9 +41,19 @@ export async function tracing(
   start: Scene = EMPTY,
   held?: Placing,
   into?: number | "new",
+  drawing?: false,
 ): Promise<Traced> {
   const [scenes, edits]: [Scene[], TraceEdit[]] = [[], []];
   let project: Projector | undefined;
+
+  /** The tracing on `scene`, which each edit hands on. */
+  const on = (scene: Scene) => ({ scene, into, drawing, ontrace: traced });
+
+  function traced(scene: Scene, edit: TraceEdit): void {
+    scenes.push(scene);
+    edits.push(edit);
+    void screen.rerender({ tracing: on(scene) });
+  }
 
   const screen = await render(SceneCanvas, {
     geometry: ground,
@@ -52,21 +62,8 @@ export async function tracing(
     onrender: (next: Projector) => {
       project = next;
     },
-    tracing: {
-      scene: start,
-      placing: held,
-      into,
-      ontrace: (scene: Scene, edit: TraceEdit) => {
-        traced(scene, edit);
-      },
-    },
+    tracing: { ...on(start), placing: held },
   });
-
-  const traced = (scene: Scene, edit: TraceEdit): void => {
-    scenes.push(scene);
-    edits.push(edit);
-    void screen.rerender({ tracing: { scene, into, ontrace: traced } });
-  };
 
   await settle(() => project !== undefined);
 
@@ -81,9 +78,6 @@ export async function tracing(
     },
     scenes,
     edits,
-    paused: (off) =>
-      screen.rerender({
-        tracing: off ? undefined : { scene: scenes.at(-1) ?? start, into, ontrace: traced },
-      }),
+    paused: (off) => screen.rerender({ tracing: off ? undefined : on(scenes.at(-1) ?? start) }),
   };
 }
