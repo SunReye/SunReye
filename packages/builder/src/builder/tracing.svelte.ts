@@ -16,6 +16,7 @@ import type { Plan } from "./plan.ts";
 import { direction, turned, type Guide } from "./trace-angle.ts";
 import type { Aimed } from "./trace-aim.ts";
 import type { Scene } from "./pv.ts";
+import { openDropped, openSwept } from "./trace-open.ts";
 import { ended, samePoint, snapOf, spotOf } from "./trace-ends.ts";
 import {
   lineMoved,
@@ -26,7 +27,7 @@ import {
   readyPlaced,
   type Made,
 } from "./trace-points.ts";
-import type { LineRef, Shown, Tracing } from "./trace-types.ts";
+import type { LineRef, Pressed, Shown, Tracing } from "./trace-types.ts";
 
 export type { LineRef, Placing, Shown, Tracing } from "./trace-types.ts";
 
@@ -35,13 +36,6 @@ type Snapped = Readonly<{ snap: Snap; guide: Guide | undefined }>;
 
 /** Metres an end already picked by its pixels is snapped within again: none to speak of. */
 const RESOLVED = 1e-3;
-
-/** A press: where it landed, and the traced line or point it took, which a drag moves. */
-interface Pressed {
-  readonly at: Spot;
-  readonly line: LineRef | undefined;
-  readonly point: PointRef | undefined;
-}
 
 export class TraceTool {
   #from = $state.raw<End>();
@@ -81,8 +75,13 @@ export class TraceTool {
     return "point" in from ? spotOf(scene, from) : [from.x, from.height ?? 0, from.z];
   }
 
-  /** Ends the chain: the next click starts another. */
-  end(): void {
+  /** Ends the chain: the next click starts another. Given `tracing`, a new roof the chain left
+   * open is taken out. */
+  end(tracing?: Tracing): void {
+    const dropped = tracing && openDropped(tracing.scene, this.#made);
+
+    if (tracing && dropped) this.#apply(tracing, dropped);
+
     this.#from = undefined;
     this.#start = undefined;
     this.#made = undefined;
@@ -218,7 +217,7 @@ export class TraceTool {
       this.end();
       this.#apply(tracing, readyPlaced(tracing.scene, tracing.placing, aimed));
     } else if (from === undefined) this.#started(tracing, end, line);
-    else if (samePoint(from, end)) this.end();
+    else if (samePoint(from, end)) this.end(tracing);
     // Ends picked by pixels are resolved already: the scene's snap in metres must not move them.
     else this.#joined(tracing, from, end, aimed.snap === undefined ? reach : RESOLVED);
   }
@@ -229,8 +228,12 @@ export class TraceTool {
 
     if (line !== undefined) return;
 
-    this.#from = end;
-    this.#start = "point" in end ? end : undefined;
+    const { made, start } = openSwept(tracing.scene, end, tracing.into);
+
+    for (const each of made) this.#apply(tracing, each);
+
+    this.#from = start;
+    this.#start = "point" in start ? start : undefined;
     this.#first = undefined;
     this.#previous = undefined;
   }
