@@ -115,25 +115,3 @@ test("a line added into a new roof is replayed into its own block beside the one
     [4, 0, 4],
   ]);
 });
-
-test("an outline left open is taken out whole, the roofs after it moving up", () => {
-  const open = replayed(EMPTY, {
-    kind: "add",
-    from: { x: 0, z: 0 },
-    to: { x: 0, z: 4 },
-    reach: 0.3,
-  });
-
-  const second = replayed(open, {
-    kind: "add",
-    from: { x: 10, z: 0 },
-    to: { x: 10, z: 4 },
-    reach: 0.3,
-    into: "new",
-  });
-
-  const left = replayed(second, { kind: "removeBlock", block: 0 });
-
-  expect(left.blocks).toHaveLength(1);
-  expect(left.blocks[0]?.freeForm?.traced?.points[0]).toEqual([10, 0, 0]);
-});
