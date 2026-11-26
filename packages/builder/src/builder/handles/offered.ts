@@ -1,8 +1,10 @@
 // Which of the picked object's handles are offered (ADR 20, mistaken drags): the ring in the turn
-// mode and nothing else; out of it everything but the ring, and for a block the knob that carries
-// it, since its own surface orbits. Pure.
+// mode and nothing else; out of it everything but the ring, and for a block, traced too, the knob
+// that carries it, since its own surface orbits. Pure.
+import { centroidOf } from "@sunreye/scene";
 import type { Scene } from "../pv.ts";
 import { bodyOf, onWorld } from "./body.ts";
+import { world } from "./frame.ts";
 import { handles, type Handle, type Laid, type Target } from "./grips.ts";
 
 /** Metres a block's knob stands before its front wall and above the ground, and left of the
@@ -11,8 +13,24 @@ const BEFORE = 0.8;
 const LOW = 0.3;
 const ASIDE = 1.6;
 
+/** The knob before traced block `index`'s southernmost corner, under its centroid. */
+function tracedKnob(scene: Scene, index: number): Handle[] {
+  const footprint = scene.blocks[index]?.freeForm?.footprint;
+
+  if (footprint === undefined || footprint.length === 0) return [];
+
+  const [x] = centroidOf(footprint);
+  const south = Math.max(...footprint.map(([, z = 0]) => z));
+
+  return [{ grip: "carry", at: world(scene.north, [x, LOW, south + BEFORE]) }];
+}
+
 /** The knob before block `target`'s front wall; none for anything else. */
 function knob(scene: Scene, target: Target): Handle[] {
+  if (target.kind === "block" && scene.blocks[target.index]?.freeForm) {
+    return tracedKnob(scene, target.index);
+  }
+
   const body = target.kind === "block" ? bodyOf(scene, target) : undefined;
 
   if (body === undefined || body.kind === "round") return [];
