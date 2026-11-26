@@ -38,6 +38,9 @@ export interface Tracing {
    * for `"new"` (a roof at another height beside one, ADR 20 "One roof, one block"); without, a
    * line goes into the roof it touches. */
   readonly into?: number | "new" | undefined;
+  /** False for a pick tool: what is traced is edited, a press anywhere else is left to picking and
+   * the camera, and no tap draws (ADR 20 "Points"). */
+  readonly drawing?: false | undefined;
   /** Each edit's next scene, and the edit: one undo step each. */
   readonly ontrace: (scene: Scene, edit: TraceEdit) => void;
 }
