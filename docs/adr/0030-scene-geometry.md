@@ -10,7 +10,7 @@ ADR 20 grew one amendment at a time into two geometries: parametric blocks (a re
 
 **One geometry.** Every building is points, edges and planar faces, closed into a solid. A rectangle with a gable roof, a traced roof and a roof taken from a building model are the same thing once made. Templates, ready roofs and taking a roof from a building model are generators: they produce points, edges and faces.
 - A generated building keeps its recipe (the generator and its arguments). Move, Rotate and adding items keep it; an edit of its shape or topology drops it, and the geometry is all there is.
-- Regenerating from a recipe keeps the id of every element that survives.
+- *Resize.* A building that keeps its recipe is rebuilt from it with the new size, keeping the id of every element that survives. Without one, Resize stretches its wall line.
 
 **Building.** A building (German UI: Gebäude) is points, edges, roof faces and walls. It replaces the block.
 
@@ -18,22 +18,25 @@ ADR 20 grew one amendment at a time into two geometries: parametric blocks (a re
 - *Standing on.* A part stands on the ground, the default; at a fixed height; or on a roof face, named by id, whose plane it follows.
 - A part standing on or against a roof face cuts its wall line out of that face's module area, as a dormer does.
 
-**Dormers.** A dormer is a part standing on a roof face.
+**Dormers.** A dormer is a part standing on a roof face. Its eave height is measured above that face at the dormer's front edge; a ready dormer sets its default.
 
 **Coordinates.** Metres, right-handed: +x east, −z north, +y up. The origin is the plant's location; heights are from the ground at the origin. Faces are wound counter-clockwise seen from outside; a part's edges run counter-clockwise seen from above. Move and Rotate write into the points: a building has no transform of its own. The scene never turns to north: a 2D view turned to an eave turns its camera (ADR 32).
 
-**Roof faces.** A roof face is a base edge and a pitch. The base edge is level, usually the eave; a Mansard roof's upper face takes its lower edge. A flat face is pitch 0 at a height.
+**Roof faces.** A roof face is a base edge and a pitch. The base edge is the face's lowest level outline edge. A face without one, as a Mansard roof's upper face, measures its pitch from a level line through its lowest point. A flat face is pitch 0 at a height.
+- *Stored, not traced.* Traced lines are input only: the scene stores each face's base edge and pitch, and a traced ridge becomes pitches. An outline edge that is a face's base edge is an eave; any other is a verge.
 - *Computed lines.* Ridges, hips, valleys and apexes are where the faces' planes meet; the engine computes them. Every face is exactly planar. A 1 mm tolerance applies only to fitting an imported building model.
+- *Fixed faces.* An imported face that base edge and pitch cannot express is kept as a fixed face: drawn and shading, not edited. Changing it means tracing it again.
 - *Points.* A point stores its plan position (x, z) only. Its height always comes from its faces' planes.
 - *Pitch.* Typing a face's pitch keeps its base edge and moves the ridge. Dragging or tracing a ridge solves the pitches of the faces that meet there.
 - *A moved point* (Edit shape, ADR 31). A point on a base edge moves that edge, and its faces keep their pitch; a point on a computed line solves its faces' pitches. It is shown red, and refused, only where a face would collapse or cross itself.
 
 **Walls and outlines.** A part's stored outline is its wall line. Its roof outline is the wall line widened by each edge's overhang. Walls close up to the roof above them, gable triangles and steps between parts included; they are derived, never drawn.
-- *Eave height* is measured at the wall's top, on the wall line.
+- *Eave height* is stored per part: its walls' top, on the wall line, shared by all its base edges. Eaves at different heights are different parts.
+- *From the aerial image.* Seen from above, a building almost always sits inset under its roof. Tracing draws the roof's edge, and the walls stand inset from it by the default overhang, which each edge may reduce to zero.
 
 **Overhang.** Every roof-outline edge carries its own overhang: how far, measured level, the roof reaches past the wall below it. It starts at 0.5 m at an eave and 0.3 m at a verge, and is set per edge; a negative one is refused. The overhang continues its face's plane outward and down, so changing it never changes a pitch or a ridge. It shades and carries modules like the rest of its face.
 
-**Tracing.** Tracing is an operation that creates faces. Traced on the aerial image (ADR 33), a line is the roof's edge, and the walls are set in from it by each edge's overhang.
+**Tracing.** Tracing is an operation that creates faces. A part narrower than its overhangs set in from both sides takes them shrunk to fit, with a warning.
 
 **Permanent ids.** Points, edges, faces, parts, buildings and objects have permanent ids, never their place in a list.
 - An id is an integer from one counter per scene, saved with the scene. The counter only rises, through undo too: an undo step holds the scene's state, not the counter, so no id is reused.
@@ -41,7 +44,7 @@ ADR 20 grew one amendment at a time into two geometries: parametric blocks (a re
 - A roof item (a module field, a roof chimney, a roof window, existing PV) names its part and roof face by id.
 
 **Ids through topology edits.** Nothing is dropped: an item without a place is flagged "needs a new place" and kept.
-- *A split edge:* the start piece keeps the id; a wall item keeps its offset, measured on the piece it stands on.
+- *A split edge:* the start piece keeps the id; a wall item keeps its offset, measured on the piece it stands on. An opening across the split stays on the start piece, and needs a new place if it then reaches past its end.
 - *A deleted point* joining two edges: the first, by direction, keeps its id; the other's items are measured again on it.
 - *A split face:* the larger piece keeps the id; roof items go with the piece their centre is on.
 - *Merged faces:* the larger keeps its id.
@@ -63,22 +66,14 @@ ADR 20 grew one amendment at a time into two geometries: parametric blocks (a re
 
 Other features wait.
 
-## Open
-
-- **Eave height stored** (step 1). Where a base edge's height is kept: on the face, its part or its edge.
-- **Dormer heights** (step 1). Whether a dormer's eave height is measured from the ground or from the face it stands on.
-- **Roof lines** (step 1). Whether eave and verge stay stored kinds of edge or follow from the base edges.
-- **Narrow parts** (step 1). A traced part narrower than its overhangs set in from both sides: refused, or its overhangs reduced to fit.
-- **Shapes beyond base edge and pitch** (step 1). Which traced or imported roofs it cannot express, and what the engine does with them.
-- **Resize and the recipe** (step 1). Whether Resize changes a recipe's arguments or drops it.
-- **A straddling opening** (step 1). An opening across the point where its edge is split.
-
 ## Considered options
 
 - **Blocks beside free-form roofs** (ADR 20). Replaced by one geometry.
 - **Items named by list position** (ADR 20). Replaced by permanent ids: an index shifts on every insert and delete.
 - **A stored bent face** (ADR 20, 2026-11-23). Replaced by always-planar faces.
 - **A plane per face, point heights derived from it** (this ADR's first draft). Replaced by base edge and pitch: a face without an eave had no edge to tilt about, and a stored plane needed a tolerance.
+- **Roof lines stored as kinds of edge** (ADR 20's tracing). Replaced by base edges and pitches; eaves and verges follow from them.
+- **Refusing a part narrower than its overhangs.** Rejected: the overhangs shrink to fit, with a warning.
 - **A compass dial turning the scene to north** (ADR 20). Replaced by fixed axes, north along −z.
 - **Operations in TypeScript in `@sunreye/scene`** (ADR 20, 2026-11-23). Replaced by one engine in Rust.
 - **Converting block scenes on load, one way** (this ADR's first draft). Rejected: development is early.
