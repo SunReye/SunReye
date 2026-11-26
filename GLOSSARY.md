@@ -276,17 +276,21 @@ _Avoid_: Marked modules, lasso
 Wiring a roof face's unwired modules into new strings in a serpentine, as few as the inverter's limits allow; previewed before it is kept. German UI: Automatisch verdrahten.
 _Avoid_: Auto-layout, auto-wiring, string wizard
 
-**Context toolbar**:
-The builder's small toolbar on the canvas beside what is selected, with that selection's commonest actions.
-_Avoid_: Floating menu, action bar, assign bar
-
 **Wall spot**:
-Where a tap struck a block's wall: the block, the wall, the metres along it and the height. What is added from the context toolbar goes there; held by the page, never stored.
+Where a right click struck a building's wall: the part, the wall, the place along it and the height. What is added from the right-click menu goes there; held by the page, never stored.
 _Avoid_: Wall selection, anchor, drop point
 
-**Turn mode**:
-The builder's state in which the picked object's ring shows and a drag turns it, entered by "Drehen" and left by "Fertig" or by picking anything else in the inspector. German UI: Drehen.
-_Avoid_: Rotate tool, rotation lock
+**Optimizer**:
+A DC converter attached to one, two or four modules, as its type says, between them and their string; drawn as a marker on its modules.
+_Avoid_: Power optimiser, module electronics
+
+**Micro-inverter**:
+An inverter attached to one, two or four modules, as its type says, feeding an AC circuit; drawn as a marker on its modules.
+_Avoid_: Microinverter, module inverter
+
+**AC circuit**:
+Micro-inverters joined on one AC line, as many as their type allows; the AC side's counterpart of a string.
+_Avoid_: AC string, branch circuit
 
 **MPPT window**:
 The voltages an MPPT input tracks between, with the start voltage it wakes at and its maximum input current: the input's limits from the inverter's datasheet.
@@ -333,12 +337,36 @@ Module types' datasheet values bundled with SunReye, each naming the maker's dat
 _Avoid_: Preset (a preset is a camera view), module database
 
 **Scene**:
-The 3D geometry of the plant: blocks, obstacles, equipment, car places and where each module sits. Part of the PV layout.
+The 3D geometry of the plant: buildings, obstacles, equipment, car places and where each module sits. Part of the PV layout.
 _Avoid_: Model, 3D view
 
-**Module grid**:
-The modules on one roof face, all of one module type, each at its own place and orientation inside the face's setback.
-_Avoid_: Array, panel layout
+**Building**:
+Points, edges, roof faces and walls closed into a solid, made of one or more parts. A wall is a footprint edge raised to the eave. German UI: Gebäude.
+_Avoid_: Block, house
+
+**Part**:
+A piece of a building with its own footprint, eave and roof faces; parts touch or stack and move with their building. A separate garage is its own building, not a part.
+_Avoid_: Block, section, wing
+
+**Module field**:
+Modules laid on one roof face by one fill, edited as one object, each module keeping its own place and any override. German UI: Modulfeld.
+_Avoid_: Module grid, array, panel layout
+
+**Mode**:
+What the editor does with the selection until Esc or another mode: Select, Move, Rotate, Resize, Edit shape, or a drawing tool. Each shows only its own handles.
+_Avoid_: Tool (alone), Turn mode, context toolbar (its actions are in the right-click menu)
+
+**Edit shape**:
+The mode that moves, inserts and deletes a building's points and edges, every face staying planar.
+_Avoid_: Bent face (a face is always planar), vertex edit
+
+**Roof view**:
+The camera facing one roof face square on, orthographic, eave level at the bottom, orbit locked, for placing modules and equipment on it.
+_Avoid_: Face view, fly-in
+
+**Site context**:
+The aerial image, terrain and neighbouring buildings around the plant, loaded from a state's public data on request.
+_Avoid_: Surroundings (ground surfaces and fences), map, environment
 
 **Setback**:
 The margin along every edge of a roof face that no module may cross.
@@ -348,16 +376,12 @@ _Avoid_: Border, margin
 How "Fill face" lays a face's free roof: the gap between modules, never under 2 cm; the alignment, from the setback's lower left or centred in it; and the keep-out margin, kept free round each roof chimney, roof window, existing PV and dormer. A call's, never stored with the scene.
 _Avoid_: Fill settings, spacing
 
-**Block**:
-A building footprint with its roof: a rectangle under one roof kind, or a polygon under free-form roof faces.
-_Avoid_: Building, house
-
 **Overhang**:
-How far a block's roof reaches past its walls: at the eaves and at the verges.
+How far a part's roof reaches past its walls: at the eaves and at the verges.
 _Avoid_: Eave depth, soffit
 
 **Free-form roof face**:
-A roof face given by its corners rather than by its block's roof kind; it carries module grids like any other.
+A roof face given by its points rather than by a generator's recipe; it carries module fields like any other.
 _Avoid_: Custom roof, polygon roof, LoD2 face
 
 **Roof line**:
@@ -367,10 +391,6 @@ _Avoid_: Edge, stroke, segment
 **Pulling up**:
 Giving a traced roof its heights: its eave points to one height, its ridge points to another; every other point follows, so faces stay flat. A point's height may also be set by number, and no pull changes it then. German UI: Traufhöhe, Firsthöhe.
 _Avoid_: Extrude, lift
-
-**Bent face**:
-A traced roof face whose corners lie more than 2 cm off its plane, as set heights can leave it. It is kept, drawn in the warning colour, and carries no modules until it is flat.
-_Avoid_: Warped face, invalid face
 
 **Dormer**:
 A small roof traced inside a face of a traced roof: a closed loop of lines whose faces are its own. It cuts its outline out of the face it stands on, which keeps no modules there, and its front and cheeks are walls up from that face. German UI: Gaube.
@@ -393,7 +413,7 @@ Rows of modules tilted off a flat roof face or level ground, at their own tilt a
 _Avoid_: Ground mount, elevation, substructure, Aufständerung
 
 **Roof chimney**:
-An upright box standing on one roof face of a block; no module may stand on its footprint.
+An upright box standing on one roof face of a part; no module may stand on its footprint.
 _Avoid_: Chimney obstacle, stack
 
 **3D quality**:
@@ -413,19 +433,19 @@ An opaque box, cylinder, tree or hedge standing on the ground in the scene that 
 _Avoid_: Shader, object
 
 **Neighbour**:
-An upright body around the plant, a footprint under a level top, that the builder's consumer supplies; it shades like an obstacle and is never saved with the scene.
+A building around the plant from the state's building model, with its real roof, on its own ground; read-only, it shades and is never saved, but a plant may keep its own edited copy.
 _Avoid_: Surrounding shape, context building
 
 **Aerial image**:
-A picture of the ground from above, north up over its extent, that the builder's consumer supplies; it is draped on the ground and the roof faces and never saved.
+A picture of the ground from above, north up over its extent, from a state's service, for tracing; draped on the terrain and roof faces, and hidden after tracing.
 _Avoid_: Satellite tiles, map, orthophoto
 
 **Equipment marker**:
-A place on a block's wall where an inverter or a battery stands, linked to its device; its live label hangs above it.
+A place on a building's wall where an inverter or a battery stands, linked to its device; its live label hangs above it.
 _Avoid_: Pin, icon
 
 **Opening**:
-A window or a door in a block's wall: a window, a French window, a front door or a garage door. It is drawn and never shades.
+A window or a door in a building's wall: a window, a French window, a front door or a garage door. It is drawn and never shades.
 _Avoid_: Hole, cutout, aperture
 
 **Car place**:
@@ -433,7 +453,7 @@ A parking spot in the scene, linked to one EVCC loadpoint device, optionally und
 _Avoid_: Garage, charger
 
 **Carport**:
-An open block: a post at each corner instead of walls, under a roof that carries modules like any other.
+An open part or building: a post at each corner instead of walls, under a roof that carries modules like any other.
 _Avoid_: Shelter
 
 **Car body**:
