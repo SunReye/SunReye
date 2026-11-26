@@ -341,15 +341,27 @@ A corner of a building, where its edges meet.
 _Avoid_: Vertex, node
 
 **Edge**:
-A straight line between two points of a building: a footprint edge, an eave, a ridge or any other roof line.
+A straight line between two points of a building: a wall-line edge, an eave, a ridge or any other roof line.
 _Avoid_: Segment, side
 
 **Face**:
-A flat surface of a building bounded by its edges.
+A flat surface of a building bounded by its edges. A roof face is its base edge and its pitch.
 _Avoid_: Polygon, surface
 
+**Base edge**:
+The level edge a roof face's pitch rises from, usually its eave.
+_Avoid_: Hinge, axis
+
+**Wall line**:
+A part's outline where its walls stand, seen from above.
+_Avoid_: Footprint, ground plan
+
+**Roof outline**:
+A part's wall line widened by each edge's overhang: where its roof ends, seen from above.
+_Avoid_: Footprint, eave line
+
 **Wall**:
-A building's side over one footprint edge, from the ground up to the roof above it, gable and step included.
+A building's side over one edge of its part's wall line, from the ground up to the roof above it, gable and step included.
 _Avoid_: Facade
 
 **Filter**:
@@ -357,7 +369,7 @@ What the editor lets a person pick, and which modes it offers, at one stage of w
 _Avoid_: Stage, workspace, layer
 
 **Part**:
-A piece of a building with its own footprint, eave and roof faces; parts touch or stack and move with their building. A separate garage is its own building, not a part.
+A piece of a building with its own wall line and roof faces, standing on the ground, at a height or on a roof face; parts touch or stack and move with their building. A separate garage is its own building, not a part.
 _Avoid_: Block, section, wing
 
 **Module field**:
@@ -369,11 +381,15 @@ What the editor does with the selection until Esc or another mode: Select, Move,
 _Avoid_: Tool (alone), Turn mode, context toolbar (its actions are in the right-click menu)
 
 **Selection**:
-What is picked in the editor, one for both cameras; in Wire, the modules crossed, in that order. Held by the page, never stored.
+What is picked in the editor, one for both cameras: one object or several the filter lets pick, acted on as one group; in Wire, the modules crossed, in that order. Held by the page, never stored.
 _Avoid_: Marked modules, lasso
 
+**Held move**:
+Moving a module, or the selection it is in, by pressing it until it lifts, then dragging it in its face.
+_Avoid_: Drag-move, pick-up
+
 **Edit shape**:
-The mode that moves, inserts and deletes a building's points and edges; a moved point tilts its roof faces about their eaves, and every face stays flat.
+The mode that moves, inserts and deletes a building's points and edges; every face stays flat.
 _Avoid_: Bent face (a face is always planar), vertex edit
 
 **Roof view**:
@@ -393,7 +409,7 @@ How "Fill face" lays a face's free roof: the gap between modules, never under 2 
 _Avoid_: Fill settings, spacing
 
 **Overhang**:
-How far a roof reaches past the wall below it: at each eave edge, and at the verges.
+How far a roof reaches past the wall below it, at every edge of its roof outline, eaves and verges alike.
 _Avoid_: Eave depth, soffit
 
 **Roof line**:
@@ -401,11 +417,11 @@ A line traced along a roof seen from above: an eave, ridge, hip, valley or verge
 _Avoid_: Stroke
 
 **Pulling up**:
-Giving a traced roof its heights: its eave points to one height, its ridge points to another, which sets its faces; every other point takes its height from them. A point's height may also be set by number, and no pull changes it then. German UI: Höhe ziehen.
+Giving a traced roof its heights: its eaves to one height, then its ridges to theirs, which sets its faces' pitches. German UI: Höhe ziehen.
 _Avoid_: Extrude, lift
 
 **Dormer**:
-A part standing on a roof face, with roof faces of its own. It cuts its footprint out of the face's module area, and its front and cheeks are walls up from that face. German UI: Gaube.
+A part standing on a roof face, with roof faces of its own. It cuts its wall line out of the face's module area, and its front and cheeks are walls up from that face. German UI: Gaube.
 _Avoid_: Roof extension, Dachaufbau
 
 **Ready roof**:
@@ -465,7 +481,7 @@ A parking spot in the scene, linked to one EVCC loadpoint device, optionally und
 _Avoid_: Garage, charger
 
 **Carport**:
-An open part or building: a post at each corner instead of walls, under a roof that carries modules like any other.
+An open part: a post at each corner instead of walls, under a roof that carries modules like any other.
 _Avoid_: Shelter
 
 **Car body**:
@@ -551,6 +567,10 @@ _Avoid_: Sample (a reading), preset (a camera view), demo weather
 **Typical year**:
 One year of weather for a rounded location, each calendar month taken whole from the past year closest to twenty or more of them, at quarter hours; the year an offer's expected yield (P50) is simulated on.
 _Avoid_: TMY, average year, reference year
+
+**Irradiance map**:
+A roof face's yearly irradiation per square metre, sampled over the face and drawn on it, shaded as the year's run shades.
+_Avoid_: Heat map, solar map
 
 **Cautious yield**:
 The yearly yield exceeded in nine years of ten (P90): the simulated typical year less 1.2816 deviations of past years' irradiation on the planes over the typical year's.
