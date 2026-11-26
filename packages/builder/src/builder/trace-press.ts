@@ -165,7 +165,7 @@ export class TracePress {
   readonly #key = (event: KeyboardEvent): void => {
     const tracing = this.#tracing();
 
-    if (event.key === "Escape") this.#tool.end(tracing);
+    if (event.key === "Escape" && tracing !== undefined) this.#tool.escape(tracing);
     else if ((event.key === "Delete" || event.key === "Backspace") && tracing !== undefined)
       this.#tool.removeTapped(tracing);
   };

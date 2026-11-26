@@ -27,9 +27,12 @@ export const EMPTY: Scene = { north: 0, blocks: [], obstacles: [] };
 
 /** Where the scene lands on the page, and each edit's scene and edit. */
 export interface Traced {
+  /** Scene x and z to page pixels: north 0, so east is x and north is −z. */
   readonly at: (x: number, z: number, height?: number) => [number, number];
   readonly scenes: Scene[];
   readonly edits: TraceEdit[];
+  /** Tracing turned off, as another tool does, or on again on the last scene. */
+  readonly paused: (off: boolean) => Promise<void>;
 }
 
 /** A canvas in the tracing mode, kept on the scene each edit hands back; `placing` held until a
@@ -70,7 +73,6 @@ export async function tracing(
   const canvas = screen.getByLabelText("3D-Szene des Hauses").element();
 
   return {
-    // Scene x and z to page pixels: north 0, so east is x and north is −z.
     at: (x, z, height = 0) => {
       const { left, top } = canvas.getBoundingClientRect();
       const [px = 0, py = 0] = project?.([x, -z, height]) ?? [];
@@ -79,5 +81,9 @@ export async function tracing(
     },
     scenes,
     edits,
+    paused: (off) =>
+      screen.rerender({
+        tracing: off ? undefined : { scene: scenes.at(-1) ?? start, into, ontrace: traced },
+      }),
   };
 }
