@@ -32,9 +32,13 @@ The core forecasts only solar power, inside its own modules: the solar forecast 
 
 **Speed.**
 - *Parallel.* `pv` and `forecast` split their work over cores with `rayon`, over targets, modules and substrings, behind a `parallel` feature: on natively, off in WASM. `crates/scene` operations stay on one thread (ADR 31's 16 ms needs none); its meshes may build in parallel natively.
-- *Compute pool.* The core runs every forecast, learning and year's run in one compute pool (ADR 2).
-- *Release build.* `pv` and `forecast` are built at full optimisation in release, where the rest of the core is built for size (ADR 2).
-- *Benchmarks,* never asserted times: CI runs them on an arm64 runner in a container limited to 512 MB and one host core, a stand-in for a Rock Pi S class board, calibrated once against a real one, and flags a commit that slows one by more than 20 %. Budgets: a solar forecast issue within 5 s, a load forecast issue within 0.5 s, a year's run within 60 s, and the core's peak memory during any of them within 256 MB.
+- *Compute pool.* The core runs every forecast, learning and year's run in one compute pool (ADR 2), at most two jobs at once, so parallel jobs never add up past the memory budget.
+- *Memory by design.* Home must run on the smallest boards. A run streams through its targets rather than holding them all; the shading table is shared, never copied; learned state is loaded per point as it is used.
+- *Three budgets,* checked by benchmarks in CI, never by asserted times: on an arm64 runner in a container limited to 256 MB and one host core, a stand-in for a Rock Pi S class board, calibrated once against a real one.
+  - *Speed:* a solar forecast issue within 5 s, a load forecast issue within 0.5 s, a year's run within 60 s; a commit that slows one by more than 20 % is flagged.
+  - *Memory:* the core's peak resident memory within 64 MB during any of them.
+  - *Binary:* the release binary's size, set at its first measurement; a commit that grows it by more than 5 % is flagged.
+- *Build.* The core is built for size (ADR 2). A crate is built for speed only where a benchmark shows a speed budget needs it and the binary budget holds; this ADR then records the measured gain and cost.
 
 **During the rebuild.** Until `crates/pv` reads `crates/scene` (ADR 30, build order step 3), the solar forecast, the correction and the per-string estimates run unshaded, on each string's plane from the layout form. No old scene path is kept.
 
@@ -50,6 +54,8 @@ The core forecasts only solar power, inside its own modules: the solar forecast 
 - **Keeping the old scene path until step 3.** Rejected: it is the double geometry ADR 30 removes.
 - **The crates single-threaded, the core splitting work.** Rejected: the crate knows where its independent work lies.
 - **A Raspberry Pi 5 as the reference.** Rejected: Home must run on the smallest boards.
+- **`pv` and `forecast` always built for speed.** Rejected: a setting chosen without a measurement; speed, memory and binary size each have a budget instead.
+- **Peak memory of 256 MB.** Rejected by the owner: 64 MB, so Home runs on a board of the smallest class.
 
 ## Consequences
 
