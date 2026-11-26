@@ -23,6 +23,11 @@ interface Held {
   dragged: boolean;
 }
 
+/** Not drawing, a press on nothing traced is the picking's and the camera's. */
+function leftToPicking(tracing: Tracing, aimed: Aimed): boolean {
+  return tracing.drawing === false && aimed.snap?.kind === "free";
+}
+
 export class TracePress {
   readonly #canvas: HTMLCanvasElement;
   readonly #camera: Lens;
@@ -94,8 +99,7 @@ export class TracePress {
 
     const aimed = this.#aim(event, tracing);
 
-    // Not drawing, a press on nothing traced is the picking's and the camera's.
-    if (aimed === null || (tracing.drawing === false && aimed.snap?.kind === "free")) return;
+    if (aimed === null || leftToPicking(tracing, aimed)) return;
 
     event.stopImmediatePropagation();
     this.#canvas.setPointerCapture(event.pointerId);

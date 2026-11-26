@@ -18,7 +18,7 @@ export interface Guide {
 const NEAR = 10;
 
 /** The unit direction from `a` to `b` seen from above; undefined for none. */
-export function direction(a: readonly number[], b: readonly number[]): Plan | undefined {
+function direction(a: readonly number[], b: readonly number[]): Plan | undefined {
   const [dx, dz] = [(b[0] ?? 0) - (a[0] ?? 0), (b[2] ?? 0) - (a[2] ?? 0)];
   const length = Math.hypot(dx, dz);
 
@@ -44,7 +44,7 @@ function edgesNear(scene: Scene, [x, , z]: Spot, near: number): Plan[] {
 
 /** Where the line from `from` to `aimed` ends turned onto a direction, and its guide; undefined
  * when it nearly takes none. */
-export function turned(
+function turned(
   scene: Scene,
   aimed: Aimed,
   from: Spot,
