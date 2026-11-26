@@ -3,4 +3,4 @@
 pathIgnorePatterns = ["**/*.svelte.test.ts", "**/node_modules/**"]
 # Compiles the SPA's and the builder's messages first, so a unit test never reads stale
 # translations (ADR 11).
-preload = ["./apps/web/scripts/i18n.ts", "./packages/builder/scripts/i18n.ts"]
+preload = ["./apps/home/web/scripts/i18n.ts", "./packages/builder/scripts/i18n.ts"]

@@ -3,7 +3,7 @@
   "private": true,
   "license": "SEE LICENSE IN LICENSE",
   "workspaces": [
-    "apps/*",
+    "apps/*/*",
     "packages/*"
   ],
   "type": "module",
@@ -14,7 +14,7 @@
     "prepare": "husky",
     "image:smoke": "bun scripts/image-smoke.ts",
     "bench": "bun scripts/bench.ts",
-    "smoothness": "bun run --cwd apps/web smoothness",
+    "smoothness": "bun run --cwd apps/home/web smoothness",
     "build:profiles": "bun packages/sdk/src/cli.ts build profiles",
     "publish:profiles": "bun scripts/publish-profiles.ts",
     "release": "bun scripts/release.ts",

@@ -1,5 +1,5 @@
 // A block's roof faces, as the pv crate lists them (ADR 20); the engine agrees in
-// apps/web/src/lib/builder/face-count.test.ts.
+// apps/home/web/src/lib/builder/face-count.test.ts.
 import { expect, test } from "bun:test";
 import { faceCount, type Scene } from "./index.js";
 

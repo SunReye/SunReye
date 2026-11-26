@@ -8,7 +8,7 @@
 
 import { availableParallelism } from "node:os";
 import { Glob } from "bun";
-import { SCENE } from "../apps/web/scene-tests.ts";
+import { SCENE } from "../apps/home/web/scene-tests.ts";
 
 export interface Timed {
   readonly file: string;
@@ -106,7 +106,7 @@ async function lastTimes(web: string): Promise<Map<string, number>> {
 const UNTIMED_MS = { scene: 10_000, dom: 2000 };
 
 if (import.meta.main) {
-  const web = `${import.meta.dirname}/../apps/web`;
+  const web = `${import.meta.dirname}/../apps/home/web`;
 
   const n = Number(
     process.env["COMPONENT_SHARDS"] ?? Math.max(1, Math.floor(availableParallelism() / 6)),

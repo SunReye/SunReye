@@ -53,7 +53,7 @@ async function build(on: Buildx, version: string, args: readonly string[]): Prom
 
 async function exportBinaries(on: Buildx, version: string, dist: string): Promise<Binary[]> {
   // The core embeds the SPA's build (ADR 11).
-  await run(["bun", "run", "--cwd", "apps/web", "build"], on.repo);
+  await run(["bun", "run", "--cwd", "apps/home/web", "build"], on.repo);
 
   const out = await mkdtemp(join(tmpdir(), "sunreye-binaries-"));
   const local = ["--output", `type=local,dest=${out}`];

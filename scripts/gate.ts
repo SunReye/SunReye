@@ -25,12 +25,13 @@ export interface Cache {
   readonly key: (step: Readonly<Step>) => string | null | Promise<string | null>;
 }
 
-export const web = ["bun", "run", "--cwd", "apps/web"];
+export const web = ["bun", "run", "--cwd", "apps/home/web"];
 
 // The core's tests read the SDK's generated types and the profiles; the SPA's tools read profiles.
 const RUST: Reads = {
   paths: [
     "crates",
+    "apps/home/core",
     "profiles",
     "packages",
     "Cargo.toml",
@@ -44,7 +45,7 @@ const RUST: Reads = {
 
 export const JS: Reads = {
   paths: [
-    "apps/web",
+    "apps/home/web",
     "packages",
     "profiles",
     "tools",
@@ -63,7 +64,7 @@ export const JS: Reads = {
 export const BOTH: Reads = { paths: [...new Set([...JS.paths, ...RUST.paths])] };
 
 /** The core embeds the SPA's build (ADR 11). */
-const CORE: Reads = { ...RUST, built: ["apps/web/build"] };
+const CORE: Reads = { ...RUST, built: ["apps/home/web/build"] };
 const ALL: Reads = { paths: ["."] };
 
 /** cargo-deny and cargo-shear are installed outside the lock; their versions key their steps. */
@@ -82,7 +83,7 @@ const bans = (dir: string): Command => [
 ];
 
 const steps: readonly Step[] = [
-  // Generates apps/web/.svelte-kit, which oxlint's type-aware mode reads.
+  // Generates apps/home/web/.svelte-kit, which oxlint's type-aware mode reads.
   { run: [...web, "sync"], fast: true },
   // The core embeds the SPA's build (ADR 11), so every cargo step needs it.
   { run: [...web, "build"] },

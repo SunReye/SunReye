@@ -183,7 +183,7 @@ test("a command, flag or script that does not exist is reported", async () => {
     "sunreye export --out x.tar.gz",
     "sunreye backup b.tar --secret",
     "docker run --rm -v data:/data sunreye-v5 import x.tar.gz --map a=1",
-    "bun run --cwd apps/web deploy",
+    "bun run --cwd apps/home/web deploy",
     "bun packages/sdk/src/cli.ts sign my.ts",
     "SUNREYE_PORT=80 sunreye",
     "```",
@@ -193,7 +193,7 @@ test("a command, flag or script that does not exist is reported", async () => {
     "sunreye: no subcommand or flag `export`",
     "sunreye backup: no flag `--secret`",
     "sunreye import: no flag `--map`",
-    "bun run: apps/web has no script `deploy`",
+    "bun run: apps/home/web has no script `deploy`",
     "sunreye-profile: no command `sign`",
     "no variable `SUNREYE_PORT`",
   ]);

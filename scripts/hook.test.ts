@@ -13,13 +13,13 @@ test("nothing staged runs nothing", () => {
 });
 
 test("format and lint read only the staged files", () => {
-  const run = commands(["apps/web/src/a.svelte", "packages/sdk/src/b.ts", "README.md"]);
+  const run = commands(["apps/home/web/src/a.svelte", "packages/sdk/src/b.ts", "README.md"]);
 
   expect(run).toContain(
-    "rsvelte format --check --no-error-on-unmatched-pattern apps/web/src/a.svelte packages/sdk/src/b.ts README.md",
+    "rsvelte format --check --no-error-on-unmatched-pattern apps/home/web/src/a.svelte packages/sdk/src/b.ts README.md",
   );
   expect(run).toContain(
-    "oxlint --deny-warnings --no-error-on-unmatched-pattern apps/web/src/a.svelte packages/sdk/src/b.ts",
+    "oxlint --deny-warnings --no-error-on-unmatched-pattern apps/home/web/src/a.svelte packages/sdk/src/b.ts",
   );
 });
 
@@ -43,14 +43,14 @@ test("a staged crate is formatted and tested alone, and the WASM is rebuilt", ()
 
 test("the core's tests are left to the gate, which builds the SPA it embeds", () => {
   const steps = hookSteps({
-    files: ["crates/core/src/main.rs"],
+    files: ["apps/home/core/src/main.rs"],
     crateName: () => "sunreye-core",
     exists: () => true,
   });
 
-  expect(steps.map((step) => step.run.join(" ")).some((run) => run.startsWith("cargo test"))).toBe(
-    false,
-  );
+  const runs = steps.map((step) => step.run.join(" "));
+  expect(runs).toContain("cargo fmt --check -p sunreye-core");
+  expect(runs.some((run) => run.startsWith("cargo test"))).toBe(false);
 });
 
 test("missing WASM is built though no crate is staged", () => {

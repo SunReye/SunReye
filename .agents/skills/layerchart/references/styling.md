@@ -97,4 +97,4 @@ disable motion. Cloudflare/edge and high-DPI notes in guide.
 shadcn-svelte + Tailwind v4, `components.json` aliases `$lib/components/ui`. Prefer
 `bun x shadcn-svelte@latest add -y -o chart` → `Chart.Container` (maps `chartConfig` keys to
 `--color-<key>`), `Chart.Tooltip`, `Chart.ChartConfig`. Semantic colors only: `var(--chart-1..5)`,
-`text-muted-foreground`, never raw `bg-blue-500`. Follow `apps/web/DESIGN.md`.
+`text-muted-foreground`, never raw `bg-blue-500`. Follow `apps/home/web/DESIGN.md`.

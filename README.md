@@ -36,7 +36,7 @@ Needs Bun and the Rust toolchain `rust-toolchain.toml` pins.
 
 ```sh
 bun install
-bun run --cwd apps/web build      # the core embeds this build
+bun run --cwd apps/home/web build      # the core embeds this build
 cargo run -p sunreye-core -- --data-dir "$HOME/.sunreye" --listen 127.0.0.1:8099
 ```
 
@@ -44,12 +44,14 @@ Open `http://127.0.0.1:8099` and set the admin password.
 
 ## Layout
 
-- `crates/core`: the one process. Polling, storage, API, integrations; serves the web app.
+One repository, one bun and one Cargo workspace (ADR 36): apps under `apps/`, what they share under `crates/` and `packages/`.
+
+- `apps/home/core`: the core, the one process. Polling, storage, API, integrations; serves the web app.
+- `apps/home/web`: the SvelteKit app, built static; the core embeds it.
 - `crates/profile`, `crates/profile-wasm`: the profile format and its checks, natively and as WASM.
 - `crates/pv`, `crates/pv-wasm`: the PV model. The browser and the core run the same code.
 - `crates/synth`: generates ten years of a reference plant for the benchmark.
-- `apps/web`: the SvelteKit app, built static.
-- `packages/sdk`: `@sunreye/sdk` and the `sunreye-profile` CLI for profile authors.
+- `packages/`: the shared TypeScript packages (`@sunreye/builder`, `scene`, `catalogue`, `ui`, `tokens`, `pv-wasm`), and `@sunreye/sdk` with the `sunreye-profile` CLI for profile authors.
 - `profiles/`: the official profiles.
 - `packaging/`: Dockerfile, systemd unit, Home Assistant add-on.
 

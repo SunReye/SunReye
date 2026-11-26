@@ -13,7 +13,7 @@ import { buildProfiles } from "../packages/sdk/src/build.ts";
 import { compiledKeys, type Publication, publishProfiles } from "./publish-profiles.ts";
 
 const source = await Bun.file(
-  new URL("../crates/core/src/profiles/trust.rs", import.meta.url),
+  new URL("../apps/home/core/src/profiles/trust.rs", import.meta.url),
 ).text();
 
 function rust(keys: string): string {

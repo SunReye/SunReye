@@ -1,6 +1,6 @@
 # The core's image, the Home Assistant add-on's and the bare binary (ADR 13), from the repository
 # root, after the SPA build the core embeds (ADR 11):
-#   bun run --cwd apps/web build
+#   bun run --cwd apps/home/web build
 #   docker build -f packaging/Dockerfile --target core .
 # Every architecture is compiled on the build host, never emulated, so arm64 needs no QEMU.
 FROM --platform=$BUILDPLATFORM rust:1.99.1-alpine AS build

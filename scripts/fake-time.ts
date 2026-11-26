@@ -1,7 +1,7 @@
 // Component tests run side by side under load, so none may wait on the wall clock or on the
 // browser's frames: a file that needs time to pass fakes it (`vi.useFakeTimers`) and advances it.
 // No wait or test gives itself a budget: the one hang guard per suite is the config's
-// (`apps/web/vite.config.ts`), so a test asserts outcomes and order, never how long they took. A
+// (`apps/home/web/vite.config.ts`), so a test asserts outcomes and order, never how long they took. A
 // gate step; `bun scripts/fake-time.ts` lists the real-time calls in component tests and their
 // harnesses.
 //
@@ -10,7 +10,7 @@
 
 import { Glob } from "bun";
 
-const SRC = "apps/web/src/";
+const SRC = "apps/home/web/src/";
 
 export interface RealTime {
   readonly call: string;

@@ -97,8 +97,8 @@ An official profile is signed by the profile key and backed by a capture of a re
    bun run build:profiles
    ```
 
-3. Add the rendered file to `BUNDLED` in `crates/core/src/profiles.rs`, so the core embeds it.
-4. Add the capture as `crates/core/fixtures/capture/<id>.ndjson` with a replay test beside the existing ones in `crates/core/src/capture/tests.rs`.
+3. Add the rendered file to `BUNDLED` in `apps/home/core/src/profiles.rs`, so the core embeds it.
+4. Add the capture as `apps/home/core/fixtures/capture/<id>.ndjson` with a replay test beside the existing ones in `apps/home/core/src/capture/tests.rs`.
 5. Open a pull request. `bun run gate` must pass.
 
 A maintainer publishes with `bun run publish:profiles`, which signs with the key named by `SUNREYE_PROFILE_KEY`. Pending the key ceremony, it refuses: no profile is signed and none is official yet.
