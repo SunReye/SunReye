@@ -605,6 +605,18 @@ async fn a_form_entered_strings_optimizers_reach_the_model() {
     assert_near(optimized, 0.99 * plain, "optimized");
 }
 
+/// The 15 m wall 1 m in front of the left half of `walled_house`'s south face.
+const fn wall_in_front() -> Obstacle {
+    Obstacle::Box {
+        x: -3.0,
+        z: 9.0,
+        width: 7.9,
+        depth: 0.3,
+        height: 15.0,
+        rotation: 0.0,
+    }
+}
+
 /// A 10 m × 8 m gable house at 35°: on its south face, string 0 fills the left four columns
 /// and string 1 the right four, behind a 15 m wall 1 m in front of the left half.
 fn walled_house(module_type: u32) -> Scene {
@@ -633,14 +645,7 @@ fn walled_house(module_type: u32) -> Scene {
             wall_colour: None,
             free_form: None,
         }],
-        obstacles: vec![Obstacle::Box {
-            x: -3.0,
-            z: 9.0,
-            width: 7.9,
-            depth: 0.3,
-            height: 15.0,
-            rotation: 0.0,
-        }],
+        obstacles: vec![wall_in_front()],
         grids: vec![ModuleGrid {
             block: 0,
             face: 1,
