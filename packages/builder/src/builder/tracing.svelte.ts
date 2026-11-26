@@ -21,7 +21,7 @@ import { ended, endSpot, samePoint, snapOf } from "./trace-ends.ts";
 import {
   lineMoved,
   lineSplit,
-  draggedLines,
+  draggedView,
   pointMoved,
   pointRemoved,
   readyPlaced,
@@ -136,7 +136,7 @@ export class TraceTool {
     this.#guide = snapped?.guide;
 
     if (dragged && pressed !== undefined)
-      this.#dragged = draggedLines(tracing.scene, pressed, at, snapped?.snap.at);
+      this.#dragged = draggedView(tracing.scene, pressed, at, snapped?.snap.at, aimed.level);
   }
 
   /** Esc: a drag under way is put back; else the chain ends, as `end`. */
@@ -168,7 +168,7 @@ export class TraceTool {
     else if (dragged && pressed.point !== undefined && !finger) {
       const to = this.#snapped(tracing.scene, aimed).snap.at;
 
-      this.#apply(tracing, pointMoved(tracing.scene, pressed.point, to));
+      this.#apply(tracing, pointMoved(tracing.scene, pressed.point, to, aimed.level));
     } else if (!dragged || finger) this.#clicked(tracing, aimed, pressed.line);
   }
 

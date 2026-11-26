@@ -74,9 +74,19 @@ export declare function moveLine(
   by: { readonly x: number; readonly z: number },
 ): Edited;
 
-/** The scene with block `block`'s point `point` moved level to `to`, keeping its height; refused
- * when lines would cross. Its faces follow. */
-export declare function movePoint(scene: Scene, block: number, point: number, to: Place): Edited;
+/** The scene with block `block`'s point `point` moved to `to`: level, keeping its height, unless
+ * `to` brings one. Refused when lines would cross. Its faces follow. */
+export declare function movePoint(scene: Scene, block: number, point: number, to: Click): Edited;
+
+/** The height eave point `point` of block `block` takes at `to` on the planes of the faces it is
+ * on, so they keep their pitch; the mean where it is on several. Null for a point no eave, or on
+ * no face. */
+export declare function slopeHeight(
+  scene: Scene,
+  block: number,
+  point: number,
+  to: Place,
+): number | null;
 
 /** The scene with block `block`'s line `line` split by a new point nearest `at` along it, at the
  * height between its ends, an eave or a ridge both ends are; refused for a line too short. */
@@ -247,7 +257,7 @@ export type TraceEdit =
       readonly kind: "movePoint";
       readonly block: number;
       readonly point: number;
-      readonly to: Place;
+      readonly to: Click;
     }
   | { readonly kind: "split"; readonly block: number; readonly line: number; readonly at: Place }
   | { readonly kind: "removePoint"; readonly block: number; readonly point: number }
