@@ -69,18 +69,22 @@ test("near, the ring and the arrows stand where they are", () => {
   expect([width?.position.x, width?.position.y, width?.position.z]).toEqual([x, y, z]);
 });
 
+/** `value`, which the test's setup gives. */
+function must<T>(value: T | undefined): T {
+  if (value === undefined) throw new Error("missing from the setup");
+
+  return value;
+}
+
 test("a little farther, the ring grows and the arrow stands off, a fingertip clear of it", () => {
   const scale = 45;
-  const { ring, width } = fitted(scale);
-  const handle = found.find(({ grip }) => grip === "turn");
-  const arrow = found.find(({ grip }) => grip === "width");
-  const radius = (handle?.radius ?? 0) * (ring?.scale.x ?? 0) * scale;
+  const fitting = fitted(scale);
+  const [ring, width] = [must(fitting.ring), must(fitting.width)];
+  const { radius = 0, inner = 0 } = must(found.find(({ grip }) => grip === "turn"));
+  const { edge = [0, 0, 0] } = must(found.find(({ grip }) => grip === "width"));
 
-  expect(ring?.visible).toBe(true);
-  expect(width?.visible).toBe(true);
-  expect(ring?.scale.x).toBeGreaterThan(1);
-  expect(radius).toBeGreaterThanOrEqual((handle?.inner ?? 0) * scale + GAP - 1e-6);
-  expect(
-    apart(scale, width?.position ?? new Vector3(), new Vector3(...(arrow?.edge ?? [0, 0, 0]))),
-  ).toBeGreaterThanOrEqual(GAP - 1e-6);
+  expect([ring.visible, width.visible]).toEqual([true, true]);
+  expect(ring.scale.x).toBeGreaterThan(1);
+  expect(radius * ring.scale.x * scale).toBeGreaterThanOrEqual(inner * scale + GAP - 1e-6);
+  expect(apart(scale, width.position, new Vector3(...edge))).toBeGreaterThanOrEqual(GAP - 1e-6);
 });

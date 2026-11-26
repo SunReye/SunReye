@@ -88,6 +88,38 @@ function arrowFit(screen: ToScreen, { at, axis, edge, span = 0 }: Handle): Tripl
   return along(edge, axis, Math.min(Math.max(off, GAP / scale), Math.max(off, FAR)));
 }
 
+/** Where `handle` stands in the view `screen` projects through, and what it is scaled by; null
+ * where it hides. */
+function fitted(handle: Handle, screen: ToScreen): { at: Triple; scale: number } | null {
+  if (handle.grip !== "turn") {
+    const at = arrowFit(screen, handle);
+
+    return at && { at, scale: 1 };
+  }
+
+  const scale = ringFit(screen, handle);
+
+  return scale === null ? null : { at: handle.at, scale };
+}
+
+/** Fits `group`, which draws `handle`, to the view `screen` projects through; whether it moved. */
+function fitOne(group: Object3D, handle: Handle, screen: ToScreen): boolean {
+  const found = fitted(handle, screen);
+  const [x, y, z] = found?.at ?? handle.at;
+  const scale = found?.scale ?? 1;
+  const { position } = group;
+  const before = [group.visible, FITTED.get(group) ?? 1, position.x, position.y, position.z];
+
+  group.visible = found !== null;
+  group.position.set(x, y, z);
+  FITTED.set(group, scale);
+  scaled(group);
+
+  const after = [group.visible, scale, x, y, z];
+
+  return after.some((value, at) => Math.abs(Number(value) - Number(before[at])) > 1e-3);
+}
+
 /** Fits each handle of `handles` to the view `screen` projects through; whether any moved. */
 export function fit(handles: Group, screen: ToScreen): boolean {
   let moved = false;
@@ -95,22 +127,8 @@ export function fit(handles: Group, screen: ToScreen): boolean {
   for (const group of handles.children) {
     const handle = handleIn(group);
 
-    if (handle === undefined || handle.grip === "move") continue;
-
-    const ring = handle.grip === "turn" ? ringFit(screen, handle) : undefined;
-    const place = handle.grip === "turn" ? handle.at : arrowFit(screen, handle);
-    const shown = ring !== null && place !== null;
-    const [x, y, z] = place ?? handle.at;
-
-    const { position } = group;
-
-    moved ||=
-      shown !== group.visible || Math.hypot(position.x - x, position.y - y, position.z - z) > 1e-3;
-    moved ||= Math.abs((FITTED.get(group) ?? 1) - (ring ?? 1)) > 1e-3;
-    group.visible = shown;
-    group.position.set(x, y, z);
-    FITTED.set(group, ring ?? 1);
-    scaled(group);
+    if (handle !== undefined && handle.grip !== "move")
+      moved = fitOne(group, handle, screen) || moved;
   }
 
   return moved;

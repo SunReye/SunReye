@@ -187,9 +187,10 @@ test("a roof window's arrow stops at the chimney beside it", () => {
     [9, 2],
   ]);
 
-  const window = moved?.scene.roofWindows?.[0];
+  const { across = 0, width = 0 } = moved?.scene.roofWindows?.[0] ?? {};
+  const right = across + width / 2;
 
-  expect((window?.across ?? 0) + (window?.width ?? 0) / 2).toBeLessThanOrEqual(7.2);
-  expect((window?.across ?? 0) + (window?.width ?? 0) / 2).toBeGreaterThan(7.18);
+  expect(right).toBeLessThanOrEqual(7.2);
+  expect(right).toBeGreaterThan(7.18);
   expect(moved?.edge).toBe(true);
 });
