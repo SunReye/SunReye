@@ -14,11 +14,11 @@ ADR 20 fetched no map data in Home: a tile service would learn the home's addres
 
 **Aerial image and terrain first.** Home's site starts with the aerial image and the terrain. Neighbours from the state's building model come later.
 
-**Aerial image.** Home may fetch aerial tiles from a state's WMS. The core fetches them, never the browser, and stores them locally. The image is for tracing (ADR 30, *Tracing*). A toggle shows or hides it; it is hidden by default once a building exists.
+**Aerial image.** Home may fetch aerial tiles from a state's WMS, north up. The core fetches them, never the browser, and stores them locally. The image is for tracing (ADR 30, *Tracing*). A toggle shows or hides it; it is hidden by default once a building exists.
 
 **Sources.** One list of regions and their public services (aerial image, terrain, building models). Hessen first.
 
-**Terrain.** The 1 m terrain model (DGM1) as a mesh to about 250 m around the plant, the aerial image draped on it. A building stands at the lowest ground point of its footprint, and its walls reach the ground. The horizon beyond 250 m comes from elevation data.
+**Terrain.** The 1 m terrain model (DGM1) as a mesh to about 250 m around the plant, the aerial image draped on it. A building stands at the lowest ground point of its wall line, and its walls reach the ground. The horizon beyond 250 m comes from elevation data.
 
 **Neighbours.** The buildings around the plant, from the state's LoD2 building model, with their real roofs, each on its own ground.
 - Read-only, and reloaded from the source rather than saved.
