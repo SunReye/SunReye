@@ -7,7 +7,7 @@ import { type Group, type OrthographicCamera, type PerspectiveCamera, Vector3 } 
 import { haptics } from "@sunreye/ui/haptics";
 import { spaceHeld } from "../space.ts";
 import { bodyAt, same } from "./body-at.ts";
-import type { Pv, Scene } from "../pv.ts";
+import type { Scene } from "../pv.ts";
 import { strike, toThree, type Panel } from "../scene.ts";
 import { PER_PIXEL, sense, turnOf } from "./dial.ts";
 import { handleOf, rayAt } from "./gizmo.ts";
@@ -17,6 +17,7 @@ import {
   handles,
   turned,
   type Dragged,
+  type Engine,
   type Grab,
   type Handle,
   type Laid,
@@ -32,10 +33,7 @@ export interface Editing {
   readonly target: Target;
   /** The crate, which keeps a chimney on its face and an opening on its wall and finds the
    * chimney a press strikes; and what it laid out for `scene`, which their handles stand on. */
-  readonly pv: Pick<
-    Pv,
-    "refit" | "glide" | "glideWindow" | "chimneyAt" | "roofWindowAt" | "gridAt"
-  >;
+  readonly pv: Engine;
   readonly laid: Laid;
   /** The turn mode: a drag anywhere turns the object, and nothing else of it drags. */
   readonly turning: boolean;
@@ -51,11 +49,7 @@ export interface Editing {
 }
 
 /** A dragging handle's live value, and where it stands now. */
-export interface Reading {
-  readonly value: Dragged["value"];
-  readonly unit: Dragged["unit"];
-  readonly at: Triple;
-}
+export type Reading = Pick<Dragged, "value" | "unit" | "edge"> & { readonly at: Triple };
 
 export interface Sources {
   readonly editing: () => Editing | undefined;
@@ -264,7 +258,7 @@ export class Grabbing {
       (item) => item.grip === grab.grip && item.point === grab.point,
     )?.at;
 
-    if (at !== undefined) this.#sources.onreading({ value: dragged.value, unit: dragged.unit, at });
+    if (at !== undefined) this.#sources.onreading({ ...dragged, at });
   }
 
   /** Puts the dragged object back, unrecorded, and presses the first finger again where it is now,

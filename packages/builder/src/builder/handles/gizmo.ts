@@ -44,6 +44,9 @@ const UP = new Vector3(0, 1, 0);
 /** Each handle's group, by its handle. */
 const HANDLES = new WeakMap<Object3D, Handle>();
 
+/** The handle `group` draws; none for anything else. */
+export const handleIn = (group: Object3D): Handle | undefined => HANDLES.get(group);
+
 function seen(colour: Color): MeshBasicMaterial {
   return new MeshBasicMaterial({
     color: colour,
@@ -236,7 +239,11 @@ export function handleOf(
 
   ray.setFromCamera(new Vector2(...at), camera);
 
-  const meshes = handles.children.filter((group) => HANDLES.get(group)?.grip !== "move");
+  // A handle hidden on an object too small to see is not grabbed either.
+  const meshes = handles.children.filter(
+    (group) => group.visible && HANDLES.get(group)?.grip !== "move",
+  );
+
   // Under the pointer, and not behind what the scene shows there.
   const far = reachOf(ray, scene) + CLEAR;
   const first = ray.intersectObjects(meshes, true).find(({ distance }) => distance <= far);
@@ -253,22 +260,6 @@ export function handleOf(
     .toSorted((a, b) => a.pixels - b.pixels)[0];
 
   return (near && HANDLES.get(near.group)) ?? null;
-}
-
-/** Shows the handles `shown` of the way in, 0 to 1: they grow and fade in from the entrance. */
-export function appear(handles: Group, shown: number): void {
-  for (const group of handles.children) {
-    group.scale.setScalar(HANDLES.get(group)?.grip === "move" ? 1 : 0.6 + 0.4 * shown);
-    group.traverse((part) => {
-      const material: unknown =
-        part instanceof Mesh || part instanceof LineLoop ? part.material : undefined;
-
-      const drawn = material instanceof MeshBasicMaterial || material instanceof LineBasicMaterial;
-
-      // The hit bodies stay unseen.
-      if (drawn && material.colorWrite) material.opacity = shown;
-    });
-  }
 }
 
 /** Frees the handles' meshes. */

@@ -277,6 +277,9 @@ export interface Pv {
   ) => RoofWindow | null;
   /** The index of the roof window a strike at `point` lands on; null for none. */
   readonly roofWindowAt: (scene: Scene, point: Point) => number | null;
+  /** Whether every roof chimney and roof window stands where it may: wholly on its face, a roof
+   * window off every chimney and other roof window. */
+  readonly roofObjectsStand: (scene: Scene) => boolean;
   /** A new roof window, `size` across and up, in the free place nearest the middle of the first
    * roof face with room, off its modules; null where none has. */
   readonly placeWindow: (

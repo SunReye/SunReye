@@ -12,6 +12,7 @@ import {
   isGhost,
   isGhosts,
   isIndex,
+  isTruth,
   isLocation,
   isModules,
   isNumber,
@@ -65,6 +66,7 @@ import {
  * @property {Answer} glide_window
  * @property {Answer} roof_window_at
  * @property {Answer} place_window
+ * @property {Answer} roof_objects_stand
  */
 
 /**
@@ -108,6 +110,7 @@ const functions = [
   "glide_window",
   "roof_window_at",
   "place_window",
+  "roof_objects_stand",
 ];
 
 /**
@@ -134,7 +137,7 @@ function isExports(exports) {
 /**
  * What the crate answers while the builder edits the roof faces, through `call`.
  * @param {Call} call
- * @returns {Pick<Pv, "gridAt" | "lay" | "slide" | "fillFace" | "covered" | "glideWindow" | "roofWindowAt" | "placeWindow">}
+ * @returns {Pick<Pv, "gridAt" | "lay" | "slide" | "fillFace" | "covered" | "glideWindow" | "roofWindowAt" | "placeWindow" | "roofObjectsStand">}
  */
 const roofCalls = (call) => ({
   gridAt: (scene, point) => unwrap(call("grid_at", JSON.stringify({ scene, point })), isIndex),
@@ -148,6 +151,8 @@ const roofCalls = (call) => ({
     unwrap(call("glide_window", JSON.stringify({ scene, index, shift })), isRoofWindow),
   roofWindowAt: (scene, point) =>
     unwrap(call("roof_window_at", JSON.stringify({ scene, point })), isIndex),
+  roofObjectsStand: (scene) =>
+    unwrap(call("roof_objects_stand", JSON.stringify({ scene })), isTruth),
   placeWindow: (scene, sizes, [width, length]) =>
     unwrap(call("place_window", JSON.stringify({ scene, sizes, width, length })), isRoofWindow),
 });

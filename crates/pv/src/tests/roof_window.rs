@@ -307,3 +307,19 @@ fn a_turned_chimney_keeps_modules_off_all_it_covers() {
 
     assert!(scene.modules(sized).is_err());
 }
+
+#[test]
+fn every_chimney_and_roof_window_stands_where_it_may_or_the_scene_does_not() {
+    let placed = house(&json!({ "chimneys": [chimney()], "roofWindows": [window(3.0, 2.0)] }));
+    assert!(placed.roof_objects_stand());
+
+    let off = house(&json!({ "chimneys": [chimney()], "roofWindows": [window(9.8, 2.0)] }));
+    assert!(!off.roof_objects_stand());
+
+    let mut wide = chimney();
+    wide["width"] = json!(12.0);
+    assert!(!house(&json!({ "chimneys": [wide] })).roof_objects_stand());
+
+    let over = house(&json!({ "chimneys": [chimney()], "roofWindows": [window(5.5, 1.5)] }));
+    assert!(!over.roof_objects_stand());
+}

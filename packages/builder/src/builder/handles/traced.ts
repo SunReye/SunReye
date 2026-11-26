@@ -36,18 +36,25 @@ export function tracedArrows(scene: Scene, target: Target) {
     lengths: [u, v],
   } = rect;
 
-  const arrow = (
-    grip: "width" | "depth",
-    along: number,
-    across: number,
-    [ax, az]: readonly number[],
-  ) => ({
-    grip,
-    at: world(scene.north, [cx + ux * along + vx * across, LOW, cz + uz * along + vz * across]),
-    axis: world(scene.north, [ax ?? 0, 0, az ?? 0]),
-  });
+  const point = (along: number, across: number) =>
+    world(scene.north, [cx + ux * along + vx * across, LOW, cz + uz * along + vz * across]);
 
-  return [arrow("width", u + OFF, v / 2, [ux, uz]), arrow("depth", u / 2, v + OFF, [vx, vz])];
+  return [
+    {
+      grip: "width" as const,
+      at: point(u + OFF, v / 2),
+      axis: world(scene.north, [ux, 0, uz]),
+      edge: point(u, v / 2),
+      span: u,
+    },
+    {
+      grip: "depth" as const,
+      at: point(u / 2, v + OFF),
+      axis: world(scene.north, [vx, 0, vz]),
+      edge: point(u / 2, v),
+      span: v,
+    },
+  ];
 }
 
 /** A traced block's level drag: a move shifts the whole of it, an arrow stretches it; both snapped. */

@@ -13,7 +13,7 @@ export type { Target } from "./body.ts";
 
 export type { Ray, Triple } from "./frame.ts";
 
-export { drag, turned, type Dragged, type Grab } from "./dragging.ts";
+export { drag, turned, type Dragged, type Engine, type Grab } from "./dragging.ts";
 
 export { settled } from "./turning.ts";
 
@@ -41,6 +41,12 @@ export interface Handle {
   readonly outline?: readonly Triple[];
   /** Which of a fence's points it drags. */
   readonly point?: number;
+  /** A ring's object's reach from its middle, in metres: the ring stands clear of it. */
+  readonly inner?: number;
+  /** Where an arrow's side of its object is, and how far the object reaches along the arrow:
+   * the arrow stands clear of that side, and hides with an object too small to see. */
+  readonly edge?: Triple;
+  readonly span?: number;
 }
 
 /** Metres between a wall and its arrow; between the footprint's corners and the ring. */
@@ -52,6 +58,32 @@ const RING = 1;
 const OFF = 0.8;
 const LOW = 0.3;
 
+/** A rectangle's width and depth arrows, off its walls by their feet. */
+function rectArrows(
+  at: (u: number, y: number, w: number) => Triple,
+  outward: (u: number, w: number) => Triple,
+  { width, depth, height }: Rect,
+): Handle[] {
+  const low = Math.min(height / 2, LOW);
+
+  return [
+    {
+      grip: "width",
+      at: at(width + OFF, low, depth / 2),
+      axis: outward(1, 0),
+      edge: at(width, low, depth / 2),
+      span: width,
+    },
+    {
+      grip: "depth",
+      at: at(width / 2, low, depth + OFF),
+      axis: outward(0, 1),
+      edge: at(width / 2, low, depth),
+      span: depth,
+    },
+  ];
+}
+
 function rectHandles(north: number, rect: Rect, roof: ReturnType<typeof ridge>): Handle[] {
   const { width, depth, height } = rect;
   const at = (u: number, y: number, w: number): Triple => onWorld(north, rect, u, y, w);
@@ -62,12 +94,7 @@ function rectHandles(north: number, rect: Rect, roof: ReturnType<typeof ridge>):
     return world(north, [x, 0, z]);
   };
 
-  const low = Math.min(height / 2, LOW);
-
-  const sides: Handle[] = [
-    { grip: "width", at: at(width + OFF, low, depth / 2), axis: outward(1, 0) },
-    { grip: "depth", at: at(width / 2, low, depth + OFF), axis: outward(0, 1) },
-  ];
+  const sides = rectArrows(at, outward, rect);
 
   const pitch: Handle[] =
     roof === null ? [] : [{ grip: "pitch", at: at(roof.u, roof.top, roof.w) }];
@@ -86,6 +113,7 @@ function rectHandles(north: number, rect: Rect, roof: ReturnType<typeof ridge>):
       grip: "turn",
       at: at(width / 2, 0, depth / 2),
       radius: Math.hypot(width, depth) / 2 + RING,
+      inner: Math.hypot(width, depth) / 2,
     },
     {
       grip: "move",

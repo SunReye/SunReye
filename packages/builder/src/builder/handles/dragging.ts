@@ -42,6 +42,8 @@ export interface Dragged {
   /** `roof`: a roof object's metres from its face's eave and its nearer verge; `size`: its size,
    * in metres to the centimetre. */
   readonly unit: "m" | "°" | "roof" | "size";
+  /** The drag stopped short of the pointer: further, its object would leave its face. */
+  readonly edge?: true;
 }
 
 const LENGTH = 0.1;
@@ -204,9 +206,12 @@ function slid(grip: Grip, slide: Slide, body: Body): Dragged | null {
 /** What a chimney's or an opening's drag asks the crate: where it may be, and the walls it laid
  * out. */
 export interface Crate extends Fitter {
-  readonly pv: Pick<Pv, "refit" | "glide" | "glideWindow">;
+  readonly pv: Pick<Pv, "refit" | "glide" | "glideWindow" | "roofObjectsStand">;
   readonly laid: Pick<Modules, "walls" | "roofs"> & Partial<Pick<Modules, "footings" | "panes">>;
 }
+
+/** What the handles ask the crate: where an object may go, and what a press strikes. */
+export type Engine = Crate["pv"] & Pick<Pv, "chimneyAt" | "roofWindowAt" | "gridAt">;
 
 /** The ring: Home's turn in 5° steps, or an editor's, which settles lightly and turns a traced
  * block too. */

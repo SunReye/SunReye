@@ -159,3 +159,38 @@ test("a roof window's length grows up the slope; nothing shrinks below 10 cm", (
   expect(narrow?.scene.chimneys?.[0]?.width).toBe(0.1);
   expect(narrow?.scene.chimneys?.[0]?.across).toBeCloseTo(2.75, 6);
 });
+
+test("an arrow stops where its object would leave its face, and says it is at the edge", () => {
+  // The chimney's right side, 3.3 m across, dragged 8 m east: the face ends at 10 m.
+  const bare: Scene = { ...house(), roofWindows: [] };
+
+  const moved = dragged(bare, CHIMNEY_AT, "width", [
+    [3.3, 1.5],
+    [11.3, 1.5],
+  ]);
+
+  const chimney = moved?.scene.chimneys?.[0];
+
+  expect(chimney?.width).toBe(7.3);
+  expect(chimney?.across).toBeCloseTo(6.35, 6);
+  expect(moved?.value).toEqual([7.3]);
+  expect(moved?.edge).toBe(true);
+  expect(pv.roofObjectsStand(moved?.scene ?? bare)).toBe(true);
+});
+
+test("a roof window's arrow stops at the chimney beside it", () => {
+  // The window 0.78 m wide at 6 m across; a chimney at 7.5 m, 7.2 m to 7.8 m.
+  const scene: Scene = { ...house(), chimneys: [{ ...CHIMNEY, across: 7.5, up: 2 }] };
+
+  const moved = dragged(scene, WINDOW_AT, "width", [
+    [6.39, 2],
+    [9, 2],
+  ]);
+
+  const { across = 0, width = 0 } = moved?.scene.roofWindows?.[0] ?? {};
+  const right = across + width / 2;
+
+  expect(right).toBeLessThanOrEqual(7.2);
+  expect(right).toBeGreaterThan(7.18);
+  expect(moved?.edge).toBe(true);
+});
