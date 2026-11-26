@@ -40,7 +40,7 @@ While dragging, a value box shows the live value. Typing sets an exact value; Ta
 
 **Drawing.** Drawing tools are modes and end with Esc. They work in 2D and 3D, on the ground or at the level of a picked part.
 
-**Operations.** Every edit is one named operation of the geometry engine (ADR 30), reached through `@sunreye/scene`; the editor, its tools and the host use the same ones.
+**Operations.** Every edit is one named operation of the geometry engine (ADR 30), reached through `@sunreye/scene`; the editor, its tools and the host use the same ones. The modes' operations:
 
 | Operation | Takes |
 | --- | --- |
@@ -89,6 +89,8 @@ Everything else stays visible and is not pickable.
 
 ## Open
 
+- **Other operations.** The names and arguments of ADR 35's other edits: pulling up, setting a point's height, duplicating, clearing a face, keeping an auto-string proposal.
+- **Home's filters.** How Home's builder levels (ADR 35, *Layout*) choose a filter, and which filter picks neighbours.
 - **Multi-select.** Whether and how more than one object is selected outside Wire, as by Shift and click.
 - **Compass.** Whether a rotation's 0° is true north or the scene's x axis.
 - **Benchmark house.** The large house and the reference laptop the benchmark runs on.
@@ -101,7 +103,6 @@ Everything else stays visible and is not pickable.
 - **A turn mode, other transforms by direct drag** (ADR 20, 2026-11-20). Replaced by modes for every verb.
 - **Lengths snapped to 10 cm, angles to 5°** (ADR 20). Replaced by magnetic snapping.
 - **A request per edit or drag.** Rejected: drags sent a stream of requests and slowed the editor.
-- **Undo by replaying operations.** Replaced by a snapshot per step.
 - **Several editors of one plant, with reservations.** Not for now.
 
 ## Consequences
