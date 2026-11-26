@@ -32,10 +32,9 @@ Module ─┬─ (optimizer) ── String ─────── MPPT input ─�
 
 - **New types.** The datasheet fields of optimizer, micro-inverter and AC circuit types, and whether they join ADR 27's catalogue.
 - **Ports.** The port kinds and what makes two match.
-- **Migration.** How a module's optimizer flag (ADR 17) and the equipment markers become instances and scene objects.
 - **The `pv` crate.** How its string model and `estimate` become implementations of the seam, and which of ADR 20's warnings (MPPT window, cold voltage) move into each kind's checks.
 - **Wallbox and car place.** How a wallbox object relates to a car place's EVCC device (ADR 35, *Car places*).
-- **Schema.** How the layout and the plant document (ADR 26) carry primitives and connections, and how that is versioned with the scene's conversion (ADR 30).
+- **Schema.** How the layout and the plant document (ADR 26) carry primitives and connections.
 - **Module field.** What a field holds beyond its modules (module type, orientation, gap), and when a module leaves its field.
 
 ## Considered options
