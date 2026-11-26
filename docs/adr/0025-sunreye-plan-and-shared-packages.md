@@ -16,7 +16,7 @@ Installers plan a PV plant before it exists, and the homeowner monitors it after
 
 | Package | Holds |
 |---|---|
-| `@sunreye/pv-wasm` | the browser build of the `scene` and `pv` crates, one WASM artifact (ADRs 17, 30), and a loader that instantiates it from bytes and types its answers, which read and return the types of `@sunreye/scene` (2026-11-23) |
+| `@sunreye/pv-wasm` | the browser build of the `scene` and `pv` crates, one WASM artifact from one glue crate, `pv-wasm` (ADRs 2, 17, 30), and a loader that instantiates it from bytes and types its answers, which read and return the types of `@sunreye/scene` (2026-11-23) |
 | `@sunreye/scene` | the scene, layout, module type and plant document types, generated from the crates; a roof face's key, its part's and face's permanent ids, so every view selects a face by the same key (ADR 30, 2026-11-26); a thin typed wrapper over the stateful geometry engine, its operations, drags and undo (ADRs 30, 31, 2026-11-26); the scene's JSON Schema and the version it was made at (2026-11-23) |
 | `@sunreye/builder` | the 3D house builder's components (ADRs 31, 32, 35) |
 | `@sunreye/catalogue` | the module and datasheet catalogues (ADRs 17, 27) |
