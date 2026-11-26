@@ -35,13 +35,13 @@ Module ─┬─ (optimizer) ── String ─────── MPPT input ─�
 
 ## Open
 
-- **New types.** The datasheet fields of optimizer and micro-inverter types, and whether they join ADR 27's catalogue.
-- **Ports.** What besides the signal makes two ports match.
-- **DC-coupled battery.** Where a battery on an inverter's DC side joins the graph.
-- **The `pv` crate.** How its string model and `estimate` become implementations of the seam, and which of ADR 35's warnings (MPPT window, cold voltage) move into each kind's checks.
-- **Wallbox and car place.** How a wallbox object relates to a car place's EVCC device (ADR 35, *Car places*).
-- **Schema.** How the layout and the plant document (ADR 26) carry primitives and connections.
-- **Module field.** What a field holds beyond its modules (module type, orientation, gap), and when a module leaves its field.
+- **New types.** (step 3) The datasheet fields of optimizer and micro-inverter types, and whether they join ADR 27's catalogue.
+- **Ports.** (step 3) What besides the signal makes two ports match.
+- **DC-coupled battery.** (step 3) Where a battery on an inverter's DC side joins the graph.
+- **The `pv` crate.** (step 3) How its string model and `estimate` become implementations of the seam, and which of ADR 35's warnings (MPPT window, cold voltage) move into each kind's checks.
+- **Wallbox and car place.** (step 3) How a wallbox object relates to a car place's EVCC device (ADR 35, *Car places*).
+- **Schema.** (step 3) How the layout and the plant document (ADR 26) carry primitives and connections.
+- **Module field.** (step 3) What a field holds beyond its modules (module type, orientation, gap), and when a module leaves its field.
 
 ## Considered options
 
