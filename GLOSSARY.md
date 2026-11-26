@@ -248,6 +248,10 @@ _Avoid_: Own consumption, imbalance
 All consumption in the plant except the battery's charging.
 _Avoid_: Consumption (alone), home power
 
+**Day type**:
+Which kind of day a plant-local date is for its loads: working day, Saturday, or Sunday and public holiday.
+_Avoid_: Weekday class, calendar type
+
 **MPPT input**:
 One maximum-power-point tracker input of an inverter: the finest level at which PV is measured.
 _Avoid_: PV1 (a vendor label), string
@@ -551,6 +555,18 @@ _Avoid_: Virtual device, coded device
 **Forecast**:
 A value issued at one time about a later target time.
 _Avoid_: Prediction, projection
+
+**Solar forecast**:
+The forecasts of the plant's PV power per string, MPPT input and inverter, made from weather forecasts and corrected.
+_Avoid_: PV prediction, yield forecast (a year's run gives a yield)
+
+**Load forecast**:
+The forecasts of one consuming measurement point's own consumption; summed, they forecast the house load.
+_Avoid_: Consumption forecast, demand forecast
+
+**Forecast accuracy**:
+How far a series' day-ahead forecasts missed what was measured, over the last 30 days: per quarter hour, and in daily energy.
+_Avoid_: Skill, forecast quality
 
 **Clear-sky index**:
 The plant's measured PV energy over a quarter hour divided by what it would make under a clear sky: how clear the sky really was.

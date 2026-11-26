@@ -1,6 +1,6 @@
 # 15. Computed devices and forecasts
 
-Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-18, 2026-11-19, 2026-11-20)
+Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-18, 2026-11-19, 2026-11-20, 2026-11-26)
 
 ## Context
 
@@ -10,6 +10,9 @@ Prices, tariffs, weather, PV forecasts, plant aggregates and a later EMS all pro
 
 - **Computed devices.** A tariff, a spot-price feed, the weather device and the PV forecast (ADR 17), the `plant` aggregate device (ADR 14) and a later EMS optimiser are devices. They publish readings on the bus, are stored through the same storage, and report capabilities from their declared roles. Each is a core module with a fixed role set; any network fetch runs in its own owned task and serves the last good value. A computed device has a fixed id counted down from 4294967295 (`u32::MAX`), and registered devices count up from 1, so the two never meet: the weather device is 4294967295, the `plant` device 4294967294, the tariff 4294967293 and the spot-price device 4294967292.
 - **Forecast store.** Values about the future are stored apart from history, keyed by device, series, target time and issue time, as fixed-point integers. Each target keeps one issue, its latest: a new issue replaces the earlier one of each target it covers, as no one asks how a forecast changed. A target whose value the new issue leaves unchanged keeps its row and earlier issue time, so a forecast that holds writes nothing. An issue keeps its targets from the start of its own hour; earlier targets are already past. A PV forecast or a price leaves a target of its issue's own hour as it was wherever an earlier issue forecast it, so the hour under way and every passed hour keep the forecast made before them, and forecast accuracy can be compared; a first issue still covers its hour. The weather device replaces it, so the hour under way reads the latest weather.
+- **Forecasting** (2026-11-26, ADR 38). Load forecasts join the PV forecast: each consuming measurement point's own consumption as `point.power` and the house load as `load.power`, under the `plant` device, kept as a PV forecast is.
+  - *Day-ahead issue.* For each target of a PV or load forecast, the store also keeps the last issue made before the target's plant-local day began, marked day-ahead, beside the latest; forecast accuracy reads it. Charts read the latest.
+  - *Quantile.* A row has an optional quantile, empty for the one value forecasts carry today, so a band needs no migration.
 - **When the future arrives.** A day-ahead price becomes a history change point when its slot begins. A forecast stays a forecast; the measured value is history.
 - **Plans.** A future EMS writes its plan as forecasts of `plan.*` roles, so the SPA shows plans with the same charts as forecasts.
 
