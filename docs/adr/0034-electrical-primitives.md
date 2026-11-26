@@ -35,14 +35,11 @@ Module ─┬─ (optimizer) ── String ─────── MPPT input ─�
 - **Migration.** How a module's optimizer flag (ADR 17) and the equipment markers become instances and scene objects.
 - **The `pv` crate.** How its string model and `estimate` become implementations of the seam, and which of ADR 20's warnings (MPPT window, cold voltage) move into each kind's checks.
 - **Wallbox and car place.** How a wallbox object relates to a car place's EVCC device (ADR 35, *Car places*).
+- **Schema.** How the layout and the plant document (ADR 26) carry primitives and connections, and how that is versioned with the scene's conversion (ADR 30).
 - **Module field.** What a field holds beyond its modules (module type, orientation, gap), and when a module leaves its field.
 
 ## Considered options
 
-- **Optimizer as a flag on a module** (ADR 17). Rejected: a shared optimizer and its limits cannot be expressed.
-- **A model per topology** (string inverter, optimizers, micro-inverters). Rejected: mixed plants are common, and every new kind would be another model.
-- **Equipment as markers for inverters and batteries only** (ADR 20). Rejected: a meter and a wallbox are planned and drawn too.
-
-## Consequences
-
-The layout's schema and the plant document (ADR 26) gain primitives and connections; both are breaking changes, versioned with the scene's conversion (ADR 30). The solver replaces the string-by-string walk in the `pv` crate.
+- **An optimizer as a flag on a module** (ADR 17). Replaced by optimizers as primitives.
+- **Equipment markers for inverters and batteries only** (ADR 20). Replaced by equipment objects.
+- **A module grid per face** (ADR 20). Replaced by modules and module fields.

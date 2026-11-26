@@ -25,14 +25,15 @@ It replaces ADR 20's flight in front of a face on a phone.
 
 - **Roof view on a steep or small face.** The margin, and what shows of the neighbouring faces.
 - **2D's rotation.** Whether the 2D camera turns to an eave by a command, by picking an edge, or freely.
+- **Two views at once.** Whether a host may show the 2D and the 3D camera side by side, each a canvas of the one editor.
 - **Touch navigation.** Two-finger pan and pinch are ADR 20's; whether one finger in 2D pans as a mouse drag does.
 
 ## Considered options
 
-- **A plan canvas beside a 3D canvas** (ADR 20, ADR 25 *Two views on one scene*). Rejected: two selections and two tool sets to keep in step.
-- **A plan held north up.** Rejected: an eave at an angle makes every edit along it harder.
-- **Flying a perspective camera in front of the face** (ADR 20). Rejected: perspective foreshortens a pitched face, and an orbit while placing moves the target.
+- **Separate navigations per canvas** (ADR 20, `orbit`, `plan`, `model`). Replaced by one editor with two cameras.
+- **A plan held north up** (ADR 20). Replaced by a 2D camera that turns to an eave.
+- **Flying in front of a face on a phone** (ADR 20). Replaced by the roof view.
 
 ## Consequences
 
-The builder's consumer no longer picks a navigation; ADR 20's `orbit`, `plan` and `model` go. Showing one scene twice stays possible, each canvas with its own camera.
+The builder's consumer no longer picks a navigation.

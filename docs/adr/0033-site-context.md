@@ -31,15 +31,15 @@ They replace ADR 20's prisms supplied by the consumer.
 - **Horizon.** The elevation source and range Home reads beyond 250 m, and whether it replaces the caller-supplied horizon profile (ADR 17).
 - **Stored where.** Where the tiles, terrain and the plant's own neighbour edits are kept, whether a backup carries them, and whether the plant document (ADR 26) carries the neighbour edits.
 - **Credits.** The About page's credits for site data a homeowner loaded (ADR 26 *Credits*).
+- **What shades.** ADR 20 let only the builder shade with neighbours; the core's forecast knew the saved scene alone. Whether it now shades with the loaded neighbours.
 - **Refresh.** When loaded site data is fetched again.
 
 ## Considered options
 
-- **No map data in Home** (ADR 20, ADR 25 *Imagery stays out of Home*). Reversed: tracing needs the picture, and an opt-in fetch from a state's service, never a commercial tile service, keeps privacy the admin's choice.
-- **Surroundings from OpenStreetMap and Terrain Tiles** (ADR 20, removed 2026-11-16). Stays rejected: neither looked good nor helped.
-- **Neighbours as prisms** (ADR 20). Rejected: a flat top misses the shade of a real pitched roof.
-- **The browser fetches the tiles.** Rejected: the core keeps them, so a viewer's browser sends nothing.
+- **No map data in Home** (ADR 20, ADR 25 *Imagery stays out of Home*). Reversed: the aerial image is for tracing, and fetching is the admin's opt-in.
+- **Surroundings from OpenStreetMap and Terrain Tiles** (ADR 20, removed 2026-11-16). Stays removed: neither looked good nor helped.
+- **Neighbours as prisms** (ADR 20). Replaced by LoD2 buildings with real roofs.
 
 ## Consequences
 
-Home makes outbound requests to state services, on the admin's action only. The scene's ground is no longer level once a site is loaded, so shading, the camera and placing on the ground read the terrain.
+Home makes outbound requests to state services, on the admin's action only. Once a site is loaded, the ground is no longer level.

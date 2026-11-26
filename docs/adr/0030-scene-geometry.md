@@ -24,12 +24,13 @@ ADR 20 grew one amendment at a time into two geometries: parametric blocks (a re
 - A wall item (an opening, an equipment object, ADR 34) names its part, a footprint edge by id and a fraction along it. A roof item (a module field, a roof chimney, a roof window, existing PV) names its part and roof face by id.
 - Splitting an edge keeps each item on the piece it stands on. Deleting an edge flags its items "needs a new place"; they are kept, not dropped.
 
-**Conversion.** Scenes stored with blocks are converted on load, one way: each block becomes a building of one part, its parametric roof kept as the recipe. The scene's schema version is bumped. The old format is read, never written.
+**Conversion.** Scenes stored with blocks are converted on load, one way, their parametric roofs kept as recipes. The scene's schema version is bumped. The old format is read, never written.
 
 **One engine.** One geometry engine, in Rust, runs every operation: in the browser as WASM, in the embedding app's server, and in Home's core. `@sunreye/scene` is a thin typed wrapper over it, replacing its TypeScript operations (ADR 25). The `pv` crate reads the faces and solids the engine produces for shading, as before.
 
 ## Open
 
+- **Blocks to buildings.** Whether each block becomes a building of one part, or touching blocks (a template's L-house, a garage against the house) become parts of one building.
 - **Version.** ADR 25 says the scene carries no version and changes only additively; the conversion is not additive. Whether the stored scene gains a version field, or the plant document's version (ADR 26) and `@sunreye/scene`'s major are the gate.
 - **Crate.** Whether the engine is a new crate or part of `pv`.
 - **Gables.** How a wall reaches above the eave under a gable or a stepped part.
@@ -39,10 +40,10 @@ ADR 20 grew one amendment at a time into two geometries: parametric blocks (a re
 
 ## Considered options
 
-- **Keep blocks for houses entered by numbers, free-form for the rest.** Rejected: two geometries meant two sets of handles, refusals and naming in every editor and every consumer.
-- **Name items by list position.** Rejected: an index shifts on every insert and delete, which renumbered items and forced whole-list undo in the embedding app.
-- **Store a bent face and refuse its modules** (ADR 20, 2026-11-23). Rejected: a stored invalid state every reader must handle.
-- **Geometry in TypeScript in `@sunreye/scene`.** Rejected: a second implementation beside the core's and the embedding app's server.
+- **Blocks beside free-form roofs** (ADR 20). Replaced by one geometry.
+- **Items named by list position** (ADR 20). Replaced by permanent ids: an index shifts on every insert and delete.
+- **A stored bent face** (ADR 20, 2026-11-23). Replaced by always-planar faces.
+- **Operations in TypeScript in `@sunreye/scene`** (ADR 20, 2026-11-23). Replaced by one engine in Rust.
 
 ## Consequences
 

@@ -57,18 +57,17 @@ Everything else stays visible and is not pickable.
 
 ## Open
 
-- **Touch.** What on a phone or tablet stands for the right click, the mode keys and Alt. ADR 20 required editing at every width.
-- **Wiring mode.** ADR 20's wiring mode selects modules by a drag across them (ADR 35); whether that drag survives "any drag orbits" in the wiring filter.
+- **Touch.** What on a phone or tablet stands for the right click (the wall spot's menu, ADR 35, included), the mode keys and Alt. ADR 20 required editing at every width.
+- **Drags on modules.** ADR 35's wiring mode selects modules by a drag across them, and laying modules lays a row by a drag across free roof; whether those drags survive "any drag orbits".
 - **Home's filters.** Which of Home's builder levels (ADR 35, *Layout*) take which filter.
 - **Shortcuts.** Keys for Rectangle and Roof from lines.
 - **Shallow views.** Whether ADR 20's rule for drags seen from under 15° carries over to Move's arrows.
 
 ## Considered options
 
-- **Handles shown on selection** (the first round of this decision). Rejected by the owner: a handle under the pointer invites the mistaken drag the modes remove.
-- **A turn mode only, other transforms by direct drag** (ADR 20, 2026-11-20). Rejected: one deliberate step for one verb left the others accidental.
-- **A length grid.** Rejected: real houses are not on a 10 cm grid; magnetic snaps to existing geometry and exact typed values cover it.
-- **Saving every edit as it happens.** Rejected: a round trip per drag makes editing wait on the network.
+- **Handles shown on selection** (the session's first round). Replaced by the owner: handles show only in the chosen mode.
+- **A turn mode, other transforms by direct drag** (ADR 20, 2026-11-20). Replaced by modes for every verb.
+- **Lengths snapped to 10 cm, angles to 5°** (ADR 20). Replaced by magnetic snapping.
 
 ## Consequences
 
