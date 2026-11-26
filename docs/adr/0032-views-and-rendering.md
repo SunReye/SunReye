@@ -14,7 +14,7 @@ ADR 20 drew the plan and the 3D view as separate canvases with separate navigati
 
 **Editor look.** The model is white. Ambient occlusion and sun shadows fall on the model only. Handles, rings, labels, outlines and every helper are drawn after the model, never in its occlusion or its shadows. Tilt-shift and depth of field are off in the editor; they belong to Home's dashboard alone (ADR 35, *Camera effects*).
 
-**Roof view.** Clicking a roof face in the Module filter (ADR 31, *Filters*) switches to the roof view; the Equipment filter has none:
+**Roof view.** The Equipment filter has none. Clicking a roof face in the Module filter (ADR 31, *Filters*) switches to the roof view:
 - an orthographic camera facing the face square on, its eave level at the bottom, the face filling the view with a margin;
 - orbiting is locked, and placing happens in the face's plane;
 - Back or Esc restores the camera as it was; clicking another face jumps to it.
