@@ -196,13 +196,15 @@ export interface components {
             /** @description Behind the wall, in the building. */
             readonly inside: boolean;
             readonly kind: components["schemas"]["EquipmentKind"];
-            readonly wall: components["schemas"]["Wall"];
+            readonly wall: components["schemas"]["EquipmentWall"];
         };
         /**
          * @description What a marker stands for; a hybrid inverter may carry one of each.
          * @enum {string}
          */
         readonly EquipmentKind: "inverter" | "battery";
+        /** @description The wall a marker hangs on: one of a block's four, or a side of a free-form block's footprint. */
+        readonly EquipmentWall: components["schemas"]["Wall"] | components["schemas"]["FootprintSide"];
         /**
          * @description Modules already on a block's roof face, placed in the face's outline like a roof window:
          *     metres across the slope and up it from the face's lowest corner on the left.
@@ -252,6 +254,10 @@ export interface components {
             readonly x: number;
             /** Format: double */
             readonly z: number;
+        };
+        /** @description A side of a free-form block's footprint: from its corner `side` to the next. */
+        readonly FootprintSide: {
+            readonly side: number;
         };
         /** @description A footprint and the faces over it, in the scene's frame before the compass turns it. */
         readonly FreeForm: {
@@ -710,11 +716,13 @@ export type Crown = components['schemas']['Crown'];
 export type Datasheet = components['schemas']['Datasheet'];
 export type Equipment = components['schemas']['Equipment'];
 export type EquipmentKind = components['schemas']['EquipmentKind'];
+export type EquipmentWall = components['schemas']['EquipmentWall'];
 export type ExistingPv = components['schemas']['ExistingPv'];
 export type FaceDetail = components['schemas']['FaceDetail'];
 export type Fence = components['schemas']['Fence'];
 export type FenceFinish = components['schemas']['FenceFinish'];
 export type FencePoint = components['schemas']['FencePoint'];
+export type FootprintSide = components['schemas']['FootprintSide'];
 export type FreeForm = components['schemas']['FreeForm'];
 export type GridModule = components['schemas']['GridModule'];
 export type GroundFinish = components['schemas']['GroundFinish'];

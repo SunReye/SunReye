@@ -72,8 +72,8 @@ struct Gridded {
 }
 
 /// The roof faces, each grid laid out on its face, the first misplaced module, and what the
-/// builder's handles stand on: every block's walls, every chimney's footing and every roof
-/// window's pane, `null` for one that names no roof face.
+/// builder's handles stand on: every block's walls, every free-form block's footprint sides, every
+/// chimney's footing and every roof window's pane, `null` for one that names no roof face.
 fn modules(input: &[u8]) -> String {
     let Gridded { scene, sizes } = match serde_json::from_slice(input) {
         Ok(gridded) => gridded,
@@ -102,6 +102,7 @@ fn modules(input: &[u8]) -> String {
         "grids": grids,
         "misplaced": misplaced,
         "walls": scene.walls().iter().map(walls).collect::<Vec<_>>(),
+        "sides": scene.sides().iter().map(|sides| sides.iter().map(|s| s.as_ref().map(wall)).collect::<Vec<_>>()).collect::<Vec<_>>(),
         "footings": scene.footings().iter().map(|f| f.as_ref().map(footing)).collect::<Vec<_>>(),
         "panes": scene.outlines(),
     }})
@@ -248,8 +249,11 @@ fn roof(face: &RoofFace) -> Value {
     })
 }
 
+fn wall(w: &WallFrame) -> Value {
+    json!({ "left": w.left, "right": w.right, "out": w.out })
+}
+
 fn walls([front, right, back, left]: &[WallFrame; 4]) -> Value {
-    let wall = |w: &WallFrame| json!({ "left": w.left, "right": w.right, "out": w.out });
     json!({ "front": wall(front), "right": wall(right), "back": wall(back), "left": wall(left) })
 }
 

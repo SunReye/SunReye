@@ -1644,13 +1644,15 @@ export interface components {
             /** @description Behind the wall, in the building. */
             inside: boolean;
             kind: components["schemas"]["EquipmentKind"];
-            wall: components["schemas"]["Wall"];
+            wall: components["schemas"]["EquipmentWall"];
         };
         /**
          * @description What a marker stands for; a hybrid inverter may carry one of each.
          * @enum {string}
          */
         EquipmentKind: "inverter" | "battery";
+        /** @description The wall a marker hangs on: one of a block's four, or a side of a free-form block's footprint. */
+        EquipmentWall: components["schemas"]["Wall"] | components["schemas"]["FootprintSide"];
         /**
          * @description Modules already on a block's roof face, placed in the face's outline like a roof window:
          *     metres across the slope and up it from the face's lowest corner on the left.
@@ -1747,6 +1749,10 @@ export interface components {
             saved?: number | null;
             /** Format: double */
             selfSupply: number;
+        };
+        /** @description A side of a free-form block's footprint: from its corner `side` to the next. */
+        FootprintSide: {
+            side: number;
         };
         ForecastPoint: {
             /** @description When the value was issued, RFC 3339, UTC. */

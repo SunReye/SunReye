@@ -3,7 +3,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Point, Scene};
+use crate::grid::TOLERANCE;
+use crate::polygon::{self, Plan};
+use crate::scene::Frame;
+use crate::{Block, FreeForm, Point, Scene};
 
 /// Metres above the ground a marker hangs, at most half its wall's height.
 const HEAD: f64 = 1.5;
@@ -22,7 +25,7 @@ pub struct Equipment {
     pub kind: EquipmentKind,
     /// The block's index in the scene.
     pub block: usize,
-    pub wall: Wall,
+    pub wall: EquipmentWall,
     /// Metres from the wall's left end, seen from outside.
     pub along: f64,
     /// Behind the wall, in the building.
@@ -47,6 +50,29 @@ pub enum Wall {
     Right,
     Back,
     Left,
+}
+
+/// The wall a marker hangs on: one of a block's four, or a side of a free-form block's footprint.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(untagged)]
+pub enum EquipmentWall {
+    Named(Wall),
+    Side(FootprintSide),
+}
+
+/// A side of a free-form block's footprint: from its corner `side` to the next.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(deny_unknown_fields)]
+pub struct FootprintSide {
+    pub side: usize,
+}
+
+impl From<Wall> for EquipmentWall {
+    fn from(wall: Wall) -> Self {
+        Self::Named(wall)
+    }
 }
 
 /// A wall in its block's own frame, x across the width and z along the depth.
@@ -109,8 +135,8 @@ impl Scene {
     /// Each marker's mount, in the order of `equipment`.
     ///
     /// # Errors
-    /// The index of the first marker that names no block with its four walls, or lies past its
-    /// wall's ends.
+    /// The index of the first marker that names no wall of its block (one of four walls, or a
+    /// free-form block's footprint side carrying a wall), or lies past its wall's ends.
     pub fn mounts(&self) -> Result<Vec<Mount>, usize> {
         self.equipment
             .iter()
@@ -144,32 +170,105 @@ impl Scene {
             .collect()
     }
 
+    /// Each free-form block's footprint sides, in their order, `None` for one without length;
+    /// none for a block of four walls.
+    #[must_use]
+    pub fn sides(&self) -> Vec<Vec<Option<WallFrame>>> {
+        self.blocks
+            .iter()
+            .map(|block| {
+                let Some(free) = &block.free_form else {
+                    return Vec::new();
+                };
+                let frame = self.prism(0.0, 0.0, 0.0);
+                let [east0, north0, _] = frame.place([0.0; 3]);
+                let level = |[across, deep]: [f64; 2]| {
+                    let [east, north, _] = frame.place([across, 0.0, deep]);
+                    [east - east0 + 0.0, north - north0 + 0.0, 0.0]
+                };
+                (0..free.footprint.len())
+                    .map(|side| {
+                        side_run(free, side).map(|run| WallFrame {
+                            left: frame.place([run.left[0], 0.0, run.left[1]]),
+                            right: level([run.across, run.deep]),
+                            out: level(run.out),
+                        })
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
     fn mount(&self, marker: &Equipment) -> Option<Mount> {
         let block = self.blocks.get(marker.block)?;
-        if block.free_form.is_some() {
+        let (run, frame, height) = match (marker.wall, &block.free_form) {
+            (EquipmentWall::Named(wall), None) => (
+                wall.run(block.width, block.depth),
+                self.prism(block.x, block.z, block.rotation),
+                block.eave,
+            ),
+            (EquipmentWall::Side(FootprintSide { side }), Some(free)) => {
+                let run = side_run(free, side)?;
+                let foot = along(&run, marker.along, 0.0);
+                (run, self.prism(0.0, 0.0, 0.0), free.height(foot))
+            }
+            _ => return None,
+        };
+        if !(0.0..=run.length).contains(&marker.along) || height <= TOLERANCE {
             return None;
         }
-        let run = marker.wall.run(block.width, block.depth);
-        if !(0.0..=run.length).contains(&marker.along) {
-            return None;
-        }
-        let off = if marker.inside { -OFF } else { OFF };
-        let across = run
-            .across
-            .mul_add(marker.along, run.out[0].mul_add(off, run.left[0]));
-        let deep = run
-            .deep
-            .mul_add(marker.along, run.out[1].mul_add(off, run.left[1]));
-        let frame = self.prism(block.x, block.z, block.rotation);
-        let at = frame.place([across, HEAD.min(block.eave / 2.0), deep]);
-        let [east, north, _] = at;
-        let [east0, north0, _] = frame.place([0.0; 3]);
-        let [out_east, out_north, _] = frame.place([run.out[0], 0.0, run.out[1]]);
-        Some(Mount {
-            at,
-            above: [east, north, block.top() + CLEAR],
-            // Never −0, which JSON keeps.
-            out: [out_east - east0 + 0.0, out_north - north0 + 0.0, 0.0],
-        })
+        Some(hang(block, marker, &run, &frame, height))
     }
+}
+
+/// Where `marker` hangs on `run` of `block`, its wall `height` tall there.
+fn hang(block: &Block, marker: &Equipment, run: &Run, frame: &Frame, height: f64) -> Mount {
+    let off = if marker.inside { -OFF } else { OFF };
+    let [across, deep] = along(run, marker.along, off);
+    let at = frame.place([across, HEAD.min(height / 2.0), deep]);
+    let [east, north, _] = at;
+    let [east0, north0, _] = frame.place([0.0; 3]);
+    let [out_east, out_north, _] = frame.place([run.out[0], 0.0, run.out[1]]);
+    Mount {
+        at,
+        above: [east, north, block.top() + CLEAR],
+        // Never −0, which JSON keeps.
+        out: [out_east - east0 + 0.0, out_north - north0 + 0.0, 0.0],
+    }
+}
+
+/// The point `along` metres from a run's left end and `off` metres out of it.
+const fn along(run: &Run, along: f64, off: f64) -> Plan {
+    [
+        run.across
+            .mul_add(along, run.out[0].mul_add(off, run.left[0])),
+        run.deep
+            .mul_add(along, run.out[1].mul_add(off, run.left[1])),
+    ]
+}
+
+/// Side `side` of a free-form block's footprint as a run from its left end seen from outside,
+/// whichever way the footprint winds; none past its sides or for one without length.
+fn side_run(free: &FreeForm, side: usize) -> Option<Run> {
+    let footprint = &free.footprint;
+    let a = *footprint.get(side)?;
+    let b = *footprint.get((side + 1) % footprint.len())?;
+    // Positive area winds so that (−dz, dx) of a side's own direction points in.
+    let (left, right) = if polygon::area(footprint) > 0.0 {
+        (b, a)
+    } else {
+        (a, b)
+    };
+    let length = (right[0] - left[0]).hypot(right[1] - left[1]);
+    if length <= TOLERANCE {
+        return None;
+    }
+    let (across, deep) = ((right[0] - left[0]) / length, (right[1] - left[1]) / length);
+    Some(Run {
+        left,
+        across,
+        deep,
+        out: [-deep, across],
+        length,
+    })
 }

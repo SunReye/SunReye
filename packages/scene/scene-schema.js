@@ -226,7 +226,7 @@ export const SCENE_SCHEMA = {
           "$ref": "#/$defs/EquipmentKind"
         },
         "wall": {
-          "$ref": "#/$defs/Wall"
+          "$ref": "#/$defs/EquipmentWall"
         }
       },
       "required": [
@@ -246,6 +246,17 @@ export const SCENE_SCHEMA = {
         "battery"
       ],
       "type": "string"
+    },
+    "EquipmentWall": {
+      "description": "The wall a marker hangs on: one of a block's four, or a side of a free-form block's footprint.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/Wall"
+        },
+        {
+          "$ref": "#/$defs/FootprintSide"
+        }
+      ]
     },
     "ExistingPv": {
       "additionalProperties": false,
@@ -368,6 +379,20 @@ export const SCENE_SCHEMA = {
       "required": [
         "x",
         "z"
+      ],
+      "type": "object"
+    },
+    "FootprintSide": {
+      "additionalProperties": false,
+      "description": "A side of a free-form block's footprint: from its corner `side` to the next.",
+      "properties": {
+        "side": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "side"
       ],
       "type": "object"
     },

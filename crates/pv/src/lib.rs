@@ -45,7 +45,9 @@ pub use chain::{Chain, Loss, Step};
 pub use chimney::{Chimney, Footing};
 pub use clear_sky::{Irradiance, clear_sky, clear_weather};
 pub use device_types::{BatteryType, InverterType, MpptInput};
-pub use equipment::{Equipment, EquipmentKind, Mount, Wall, WallFrame};
+pub use equipment::{
+    Equipment, EquipmentKind, EquipmentWall, FootprintSide, Mount, Wall, WallFrame,
+};
 pub use estimate::{estimate, estimate_with};
 pub use existing_pv::ExistingPv;
 pub use face_detail::{Covering, FaceDetail};
