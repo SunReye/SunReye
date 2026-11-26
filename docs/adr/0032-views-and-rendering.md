@@ -14,7 +14,7 @@ ADR 20 drew the plan and the 3D view as separate canvases with separate navigati
 
 **Editor look.** The model is white. Ambient occlusion and sun shadows fall on the model only. Handles, rings, labels, outlines and every helper are drawn after the model, never in its occlusion or its shadows. Tilt-shift and depth of field are off in the editor; they belong to Home's dashboard alone (ADR 35, *Camera effects*).
 
-**Roof view.** Clicking a roof face while modules or equipment are being placed (ADR 31, *Filters*) switches to the roof view:
+**Roof view.** Clicking a roof face in the Module filter (ADR 31, *Filters*) switches to the roof view; the Equipment filter has none:
 - an orthographic camera facing the face square on, its eave level at the bottom, the face filling the view with a margin;
 - orbiting is locked, and placing happens in the face's plane;
 - Back or Esc restores the camera as it was; clicking another face jumps to it.
@@ -25,6 +25,7 @@ It replaces ADR 20's flight in front of a face on a phone.
 
 - **Roof view on a steep or small face.** The margin, and what shows of the neighbouring faces.
 - **2D's rotation.** Whether the 2D camera turns to an eave by a command, by picking an edge, or freely.
+- **Roof view while wiring.** Whether the Verdrahtung filter opens the roof view, as ADR 20's phone flew onto a face to wire it.
 - **Touch navigation.** Two-finger pan and pinch are ADR 20's; whether one finger in 2D pans as a mouse drag does.
 
 ## Considered options
