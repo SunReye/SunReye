@@ -1,5 +1,5 @@
 // A press on the picked object itself moves it (ADR 20): zoomed out, a small chimney's ring and
-// arrows reach over it on screen, and still the chimney moves.
+// arrows reach over it on screen, and still the chimney moves. In Resize it stays put.
 import "../../../app.css";
 import { expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
@@ -26,7 +26,8 @@ function back({ position, target }: View, times: number): View {
   return { position: [out(0), out(1), out(2)], target };
 }
 
-test("zoomed out, a press on a small chimney moves it, not its ring", async () => {
+/** Drags westward from a small chimney's top on a canvas zoomed out, in an editor's `mode`. */
+async function dragChimney(mode?: "resize") {
   const steps: Scene[] = [];
   const dropped = vi.fn();
   const ready = vi.fn();
@@ -47,6 +48,7 @@ test("zoomed out, a press on a small chimney moves it, not its ring", async () =
       turning: false,
       wholeBlock: true,
       ring: true,
+      mode,
       ondrag: (next: Scene) => {
         steps.push(next);
       },
@@ -63,10 +65,23 @@ test("zoomed out, a press on a small chimney moves it, not its ring", async () =
 
   await press("mouse", path);
 
+  return { steps, dropped };
+}
+
+test("zoomed out, a press on a small chimney moves it, not its ring", async () => {
+  const { steps, dropped } = await dragChimney();
+
   await expect.poll(() => dropped.mock.calls.length).toBe(1);
 
   const chimney = steps.at(-1)?.chimneys?.[0];
 
   expect(chimney?.turn ?? 0).toBe(0);
   expect(chimney?.across).toBeLessThan(CHIMNEY.across);
+});
+
+test("in Resize a press on the chimney itself moves nothing: its arrows size it", async () => {
+  const { steps, dropped } = await dragChimney("resize");
+
+  expect(steps).toEqual([]);
+  expect(dropped).not.toHaveBeenCalled();
 });
