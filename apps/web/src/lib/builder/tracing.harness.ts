@@ -27,9 +27,13 @@ export const EMPTY: Scene = { north: 0, blocks: [], obstacles: [] };
 
 /** Where the scene lands on the page, and each edit's scene and edit. */
 export interface Traced {
+  /** Scene x and z to page pixels: north 0, so east is x and north is −z. */
   readonly at: (x: number, z: number, height?: number) => [number, number];
   readonly scenes: Scene[];
   readonly edits: TraceEdit[];
+  /** Tracing turned off, as another tool does, or on again on the last scene, drawing or only
+   * editing what is traced. */
+  readonly retool: (to: "off" | "draw" | "edit") => Promise<void>;
 }
 
 /** A canvas in the tracing mode, kept on the scene each edit hands back; `placing` held until a
@@ -38,9 +42,21 @@ export async function tracing(
   start: Scene = EMPTY,
   held?: Placing,
   into?: number | "new",
+  drawing?: false,
 ): Promise<Traced> {
   const [scenes, edits]: [Scene[], TraceEdit[]] = [[], []];
   let project: Projector | undefined;
+
+  /** The tracing on `scene`, which each edit hands on. */
+  let draws = drawing;
+
+  const on = (scene: Scene) => ({ scene, into, drawing: draws, ontrace: traced });
+
+  function traced(scene: Scene, edit: TraceEdit): void {
+    scenes.push(scene);
+    edits.push(edit);
+    void screen.rerender({ tracing: on(scene) });
+  }
 
   const screen = await render(SceneCanvas, {
     geometry: ground,
@@ -49,28 +65,14 @@ export async function tracing(
     onrender: (next: Projector) => {
       project = next;
     },
-    tracing: {
-      scene: start,
-      placing: held,
-      into,
-      ontrace: (scene: Scene, edit: TraceEdit) => {
-        traced(scene, edit);
-      },
-    },
+    tracing: { ...on(start), placing: held },
   });
-
-  const traced = (scene: Scene, edit: TraceEdit): void => {
-    scenes.push(scene);
-    edits.push(edit);
-    void screen.rerender({ tracing: { scene, into, ontrace: traced } });
-  };
 
   await settle(() => project !== undefined);
 
   const canvas = screen.getByLabelText("3D-Szene des Hauses").element();
 
   return {
-    // Scene x and z to page pixels: north 0, so east is x and north is −z.
     at: (x, z, height = 0) => {
       const { left, top } = canvas.getBoundingClientRect();
       const [px = 0, py = 0] = project?.([x, -z, height]) ?? [];
@@ -79,5 +81,10 @@ export async function tracing(
     },
     scenes,
     edits,
+    retool: (to) => {
+      draws = to === "edit" ? false : drawing;
+
+      return screen.rerender({ tracing: to === "off" ? undefined : on(scenes.at(-1) ?? start) });
+    },
   };
 }
