@@ -7,15 +7,15 @@ node_modules
 #
 # ANCHORED ON PURPOSE. A bare `build` or `dist` matches at EVERY depth, so it
 # also swallows a source directory that happens to carry the name — silently,
-# with no error anywhere. `apps/web/src/lib/build/` was written, imported,
+# with no error anywhere. `apps/home/web/src/lib/build/` was written, imported,
 # unit-tested and pushed while git had never been told it existed, and CI went
 # red on an unresolved import for a file nobody could see was missing. Same
 # trap as the bare `core` entry below. Name the real output directory here
 # rather than widening these back to a bare name.
 /dist
 /build
-apps/*/dist
-apps/*/build
+apps/*/*/dist
+apps/*/*/build
 /fixtures/consumer/build
 /fixtures/consumer/.svelte-kit
 packages/*/dist
@@ -23,7 +23,7 @@ packages/*/build
 *.tsbuildinfo
 
 # Generated files
-apps/web/src/routeTree.gen.ts
+apps/home/web/src/routeTree.gen.ts
 
 # Environment variables
 .env
@@ -61,7 +61,7 @@ lerna-debug.log*
 coverage
 .nyc_output
 
-# Playwright (browser layer, apps/web/e2e)
+# Playwright (browser layer, apps/home/web/e2e)
 test-results
 playwright-report
 blob-report
@@ -81,7 +81,7 @@ result-*
 .cache
 tmp
 temp
-# Core dumps, anchored to the root: a bare `core` also ignores `crates/core`.
+# Core dumps, anchored to the root: a bare `core` also ignores `apps/home/core`.
 /core
 /core.[0-9]*
 

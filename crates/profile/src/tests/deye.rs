@@ -3,7 +3,7 @@
 //!
 //! v4's cases are register patterns (zeros, a ramp, all ones, the sign bit, an absent block, a
 //! split double word) replayed through each profile's register map, not captures of a device. Only
-//! the owner's SG05LP3 has a capture (`crates/core/fixtures/capture`), replayed by the core; no
+//! the owner's SG05LP3 has a capture (`apps/home/core/fixtures/capture`), replayed by the core; no
 //! SG01HP3 has one.
 
 use std::collections::BTreeMap;

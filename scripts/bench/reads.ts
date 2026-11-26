@@ -1,6 +1,6 @@
 // fallow-ignore-file coverage-gaps -- replays reads against a live core; run by hand with `bun run bench`.
 // What the screens' reads are made of (ADR 24): their routes, plant-local times, and the reads
-// several screens share, as apps/web issues them (traced 2026-11-20).
+// several screens share, as apps/home/web issues them (traced 2026-11-20).
 
 /** Issues one GET, timed and recorded; resolves to its body, `null` when refused. */
 export type Read = (path: string) => Promise<string | null>;

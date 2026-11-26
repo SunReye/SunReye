@@ -10,7 +10,7 @@ import { HOUR, WEATHER } from "./reads.ts";
 
 export const ROOT = new URL("../..", import.meta.url).pathname;
 
-/** `RETENTION` in `crates/core/src/storage.rs`, until the admin sets it. */
+/** `RETENTION` in `apps/home/core/src/storage.rs`, until the admin sets it. */
 const RETENTION_S = 1827 * 86_400;
 
 /** A progress line, stamped with the seconds since the run began. */
@@ -61,7 +61,7 @@ export async function buildImage(): Promise<Image> {
   const build = ["docker", "build", "--network", "host", "-q", "-f", "packaging/Dockerfile"];
 
   // The core embeds the SPA's build (ADR 11).
-  await run(["bun", "run", "--cwd", "apps/web", "build"], ROOT);
+  await run(["bun", "run", "--cwd", "apps/home/web", "build"], ROOT);
   await run([...build, "--target", "core", "-t", image.tag, "."], ROOT);
 
   return image;
@@ -129,7 +129,7 @@ export function inspect(file: string): Store {
   }
 }
 
-/** Expired blocks deleted per tick: `PRUNE` in `crates/core/src/storage/thread.rs`. */
+/** Expired blocks deleted per tick: `PRUNE` in `apps/home/core/src/storage/thread.rs`. */
 const PRUNE = 16 * 256;
 
 /**
@@ -212,7 +212,7 @@ export async function sizeOf(data: string): Promise<number> {
 
 /** The migrations the core applies: the schema version a current file is at. */
 export async function currentSchema(): Promise<number> {
-  const dir = join(ROOT, "crates/core/src/storage/migrations");
+  const dir = join(ROOT, "apps/home/core/src/storage/migrations");
 
   return (await Array.fromAsync(new Bun.Glob("*.sql").scan(dir))).length;
 }

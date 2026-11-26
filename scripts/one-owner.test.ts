@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { copies, RULES } from "./one-owner.ts";
 
-const LIB = "apps/web/src/lib/";
+const LIB = "apps/home/web/src/lib/";
 
 const rules = (path: string, source: string) => copies(`${LIB}${path}`, source).map((f) => f.rule);
 
@@ -112,7 +112,7 @@ test("a chart that only names the entrance in a comment is still a copy", () => 
 });
 
 test("routes are held to it too", () => {
-  expect(copies("apps/web/src/routes/x/+page.svelte", `<Tabs.List variant="line">`)).toEqual([
+  expect(copies("apps/home/web/src/routes/x/+page.svelte", `<Tabs.List variant="line">`)).toEqual([
     { rule: "tabs list not segmented", line: 1 },
   ]);
 });

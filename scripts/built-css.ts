@@ -4,7 +4,7 @@
 
 import { Glob } from "bun";
 
-const BUILT = "apps/web/build/";
+const BUILT = "apps/home/web/build/";
 
 /** The selector of each rule in minified `css` that has `-webkit-backdrop-filter` alone. */
 export function unblurred(css: string): string[] {

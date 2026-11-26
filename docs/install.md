@@ -29,7 +29,7 @@ Needs Bun, Docker with Buildx and the Rust toolchain `rust-toolchain.toml` pins 
 
 ```sh
 bun install
-bun run --cwd apps/web build
+bun run --cwd apps/home/web build
 ```
 
 The core embeds that SPA build, so run it before every image or binary build below.

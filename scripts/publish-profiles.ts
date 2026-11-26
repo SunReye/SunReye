@@ -42,7 +42,7 @@ function keyBytes(literal: string | undefined): Uint8Array | undefined {
 const some =
   /^Some\(Keys \{\s*active: \[(?<active>[^\]]*)\],\s*backup: \[(?<backup>[^\]]*)\],?\s*\}\)$/u;
 
-/** The profile keys `crates/core/src/profiles/trust.rs` compiles in, or `undefined` while `None`. */
+/** The profile keys `apps/home/core/src/profiles/trust.rs` compiles in, or `undefined` while `None`. */
 export function compiledKeys(trust: string): Keys | undefined {
   const keys = /pub const KEYS: Option<Keys> = (?<value>[^;]+);/u.exec(trust)?.groups?.["value"];
 
@@ -202,7 +202,7 @@ if (import.meta.main) {
 
   if (keyPath === undefined) throw new Error("SUNREYE_PROFILE_KEY names no private key file");
 
-  const trust = await readFile(join(repo, "crates/core/src/profiles/trust.rs"), "utf8");
+  const trust = await readFile(join(repo, "apps/home/core/src/profiles/trust.rs"), "utf8");
 
   const commit = await publishProfiles({
     repo,

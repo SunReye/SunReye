@@ -5,9 +5,9 @@
 import { Glob } from "bun";
 
 /** Where Svelte files are held to it: the SPA and the builder, which is drawn with the kit. */
-const ROOTS = ["apps/web/src/", "packages/builder/src/"];
+const ROOTS = ["apps/home/web/src/", "packages/builder/src/"];
 
-const KIT = "apps/web/src/lib/components/ui/";
+const KIT = "apps/home/web/src/lib/components/ui/";
 
 const BANNED_INPUTS = new Set(["date", "time", "datetime-local", "range", "color", "file"]);
 
