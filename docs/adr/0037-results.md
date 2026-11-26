@@ -25,6 +25,17 @@ The `pv` crate already runs a year with Perez transposition, beam and diffuse sh
 
 ## Open
 
-- **Grid.** The irradiance map's resolution.
-- **Colour scale.** The map's scale and legend.
-- **Where.** Where maps are computed: the browser, the core or both.
+- **Grid** (step 3). The irradiance map's resolution.
+- **Colour scale** (step 3). The map's scale and legend.
+- **Where** (step 3). Where maps are computed: the browser, the core or both.
+- **String losses per module** (step 3). How a loss that arises per string or inverter, as mismatch or clipping, is shared out over its modules.
+- **Without a location** (step 3). What the map shows before the plant has a location and a typical year.
+- **Shadow dates** (step 3). Which days and times the shadow animation samples over the year.
+
+## Considered options
+
+- **A second, faster model for the views.** Rejected: its numbers would differ from the yield's.
+
+## Consequences
+
+A year's run keeps numbers per module and per face, so what it stores grows with the plant.
