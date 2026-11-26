@@ -19,7 +19,7 @@ import { faceUnder } from "./trace-place.ts";
 import type { Dragged, LineRef, Placing } from "./trace-types.ts";
 
 /** A dashed line drawn beside the scene. */
-export type Dashed = { readonly from: Spot; readonly to: Spot };
+type Dashed = { readonly from: Spot; readonly to: Spot };
 
 /** The lines meeting point `ref`, drawn from their other ends to `to`, where it would go. */
 function pointLines(scene: Scene, ref: PointRef, to: Spot): Dashed[] {

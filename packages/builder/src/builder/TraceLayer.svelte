@@ -12,6 +12,8 @@
   import { pvPoint } from "./trace-aim.ts";
   import type { Seen } from "./trace-sight.ts";
   import type { Shown, Tracing } from "./tracing.svelte.ts";
+  import TraceCorners from "./TraceCorners.svelte";
+  import TraceValues from "./TraceValues.svelte";
 
   let {
     tracing,
@@ -218,43 +220,6 @@
       stroke-linecap="round"
     />
   {/each}
-  {#each corners as { on: [x, y], hidden }, i (i)}
-    <circle
-      cx={x}
-      cy={y}
-      r="3.5"
-      fill="var(--background)"
-      stroke={hidden ? "var(--muted-foreground)" : "var(--brand)"}
-      stroke-width="2"
-      opacity={hidden ? 0.5 : 1}
-      data-hidden={hidden || undefined}
-    />
-  {/each}
-  {#each ring ? [ring] : [] as [x, y] (`${x},${y}`)}
-    <circle cx={x} cy={y} r="8" fill="none" stroke="var(--brand)" stroke-width="2" />
-  {/each}
+  <TraceCorners {corners} {ring} />
 </svg>
-{#each lengths as { key, x, y, length } (key)}
-  <output
-    data-dragged-length
-    class="canvas-chip pointer-events-none absolute flex h-6 -translate-x-1/2 -translate-y-1/2 items-center rounded-md px-1.5 text-[11px] whitespace-nowrap tabular-nums ring-1 ring-border/60 elevation-1"
-    style:left="{x}px"
-    style:top="{y}px">{metres.format(length)} m</output
-  >
-{/each}
-{#each pitches as { key, x, y, pitch } (key)}
-  <output
-    data-dragged-pitch
-    class="canvas-chip pointer-events-none absolute flex h-6 -translate-x-1/2 -translate-y-1/2 items-center rounded-md px-1.5 text-[11px] font-medium whitespace-nowrap tabular-nums ring-1 ring-border/60 elevation-1"
-    style:left="{x}px"
-    style:top="{y}px">{degrees.format(pitch)}°</output
-  >
-{/each}
-{#if chip}
-  <!-- The same canvas chip as a handle's live value; it never takes the pointer. -->
-  <output
-    class="canvas-chip pointer-events-none absolute flex h-7 translate-x-3.5 -translate-y-full items-center rounded-md px-2 text-xs whitespace-nowrap tabular-nums ring-1 ring-border/60 elevation-1"
-    style:left="{chip.at[0]}px"
-    style:top="{chip.at[1] - 8}px">{chip.text}</output
-  >
-{/if}
+<TraceValues {lengths} {pitches} {chip} format={{ metres, degrees }} />

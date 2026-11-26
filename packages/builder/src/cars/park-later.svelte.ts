@@ -8,7 +8,7 @@ import { openGarage, parkedKey, type Garage, type ModelLoader, type Parked } fro
 export type { ModelLoader, Parked } from "./garage.ts";
 
 /** Where the garage opens: the studio's scene, how it casts shadows again, the cars' model. */
-interface Opened {
+export interface Opened {
   readonly scene: Object3D;
   readonly recast: () => void;
   readonly model: () => ModelLoader | undefined;
