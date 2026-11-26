@@ -30,11 +30,11 @@ They replace ADR 20's prisms supplied by the consumer.
 
 ## Open
 
-- **Building models.** Hessen serves LoD2 only as zips per town, too heavy for a home's core; how it gets the buildings near one house.
-- **Horizon.** The elevation source and range Home reads beyond 250 m, and whether it replaces the caller-supplied horizon profile (ADR 17).
-- **Stored where.** Where the tiles, terrain and the plant's neighbour edits are kept, whether a backup carries them, and whether the plant document (ADR 26) carries the neighbour edits.
-- **Credits.** The About page's credits for site data a homeowner loaded (ADR 26 *Credits*).
-- **Refresh.** When loaded site data is fetched again.
+- **Building models.** (step 4) Hessen serves LoD2 only as zips per town, too heavy for a home's core; how it gets the buildings near one house.
+- **Horizon.** (step 4) The elevation source and range Home reads beyond 250 m, and whether it replaces the caller-supplied horizon profile (ADR 17).
+- **Stored where.** (step 4) Where the tiles, terrain and the plant's neighbour edits are kept, whether a backup carries them, and whether the plant document (ADR 26) carries the neighbour edits.
+- **Credits.** (step 4) The About page's credits for site data a homeowner loaded (ADR 26 *Credits*).
+- **Refresh.** (step 4) When loaded site data is fetched again.
 
 ## Considered options
 
