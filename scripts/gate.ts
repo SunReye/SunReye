@@ -1,6 +1,7 @@
 // The one check (ADR 13): dependency-aware parallel DAG, stops and cancels active siblings on the
 // first failure. `--fast` runs the steps marked fast, which need neither the SPA build nor the
-// core compiled; `--pr` scopes test suites to what the diff since the base branch can reach; the
+// core compiled; `--pr` scopes cargo and component tests to what the diff since the base branch
+// can reach; the
 // pre-commit hook is `scripts/hook.ts`.
 // A check whose inputs hash as they did on its last green run is skipped; a step that builds what
 // a later one reads always runs; a tool installed outside the lock keys its steps with its version.
@@ -91,35 +92,43 @@ const CHECK_STEPS: readonly Step[] = [
   { id: "api-check", run: [...web, "api:check"], reads: BOTH, fast: true },
 ];
 
-function bunTestStep(timingsDir: string, pr?: Readonly<PrPlan>, base?: string): Step[] {
-  const timingFlags = [
-    `--timings=${join(timingsDir, "bun-test-timings.json")}`,
-    "--timings=scripts/bun-test-timings.json",
-    "--update-timings",
-  ];
-
-  const baseCmd = ["bun", "test", "--parallel", "--no-isolate", "--timeout", "120000"];
-  const after = ["web-sync", "web-build", "sdk-wasm", "pv-wasm"];
-
-  if (pr === undefined || pr.bunAll)
-    return [{ id: "bun-test", after, run: [...baseCmd, ...timingFlags], reads: ALL, fast: true }];
+/**
+ * Every bun test, whatever the scope: they take seconds, and `--changed` cannot follow a file read
+ * from disk (WASM, profiles, ADRs, the build).
+ */
+function bunTestStep(timingsDir: string): Step[] {
+  const timings = join(timingsDir, "bun-test-timings.json");
 
   return [
     {
-      id: "bun-test-changed",
-      after,
-      run: [...baseCmd, `--changed=${base ?? "HEAD"}`, "--pass-with-no-tests"],
+      id: "bun-test",
+      after: ["web-sync", "web-build", "sdk-wasm", "pv-wasm"],
+      run: [
+        ..."bun test --parallel --no-isolate --timeout 120000".split(" "),
+        `--timings=${timings}`,
+        "--timings=scripts/bun-test-timings.json",
+        "--update-timings",
+      ],
+      reads: ALL,
       fast: true,
     },
   ];
 }
 
-/** The docs' commands, read against the core binary `cargo test` builds (`help.rs`). */
-function docsStep(): Step[] {
+/**
+ * The docs' commands, read against the core binary (`docs.test.ts`): built here, as a skipped
+ * `cargo test` builds none, and cargo answers at once when it is current.
+ */
+function docsSteps(): Step[] {
   return [
     {
+      id: "core-bin",
+      after: ["web-build"],
+      run: "cargo build --locked -p sunreye-core --bin sunreye".split(" "),
+    },
+    {
       id: "docs",
-      after: ["cargo-test"],
+      after: ["core-bin"],
       run: ["bun", "test", "--config=scripts/docs.bunfig.toml", "scripts/docs.test.ts"],
       reads: { ...ALL, built: ["target/debug/sunreye"] },
     },
@@ -200,17 +209,13 @@ function consumerStep(pr?: Readonly<PrPlan>): Step[] {
   ];
 }
 
-export function gateSteps(
-  timingsDir: string,
-  pr?: Readonly<PrPlan>,
-  base?: string,
-): readonly Step[] {
+export function gateSteps(timingsDir: string, pr?: Readonly<PrPlan>): readonly Step[] {
   return [
     ...PREPARE_STEPS,
     ...CHECK_STEPS,
     ...cargoTestStep(pr),
-    ...bunTestStep(timingsDir, pr, base),
-    ...docsStep(),
+    ...bunTestStep(timingsDir),
+    ...docsSteps(),
     ...consumerStep(pr),
     ...componentTestStep(pr),
   ];
@@ -255,7 +260,7 @@ if (import.meta.main) {
 
   await mkdir(cacheDir, { recursive: true });
 
-  const steps = chosen(gateSteps(cacheDir, pr, base), fast);
+  const steps = chosen(gateSteps(cacheDir, pr), fast);
 
   const key = (step: Readonly<Step>) =>
     step.reads === undefined ? null : hash(stepKey(step, steps), step.reads);

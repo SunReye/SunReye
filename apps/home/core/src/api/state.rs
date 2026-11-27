@@ -1,6 +1,6 @@
 //! Extracts each feature module's handler state from the shared [`Api`] (ADR 9).
 //!
-//! Because every route takes `State<T>` via `FromRef<Arc<Api>>`, the OpenAPI router and its
+//! Because every route takes `State<T>` via `FromRef<App>`, the OpenAPI router and its
 //! serialised document are assembled once per process and cloned per instance.
 
 use axum::extract::FromRef;

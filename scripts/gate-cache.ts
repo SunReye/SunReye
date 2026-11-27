@@ -55,7 +55,8 @@ async function walked(root: string, dir: string): Promise<string[]> {
 const READ_ENV =
   /^(?:CARGO|RUST|SOURCE_DATE_EPOCH$|NODE|BUN|VITE|DB_|DATABASE|SKIP_ENV|INVERTER|SUNREYE|TZ$|LANG$|LC_)/u;
 
-function readEnv(env: Readonly<Record<string, string | undefined>>): string[] {
+/** The environment a check reads, as sorted `NAME=value` lines. */
+export function readEnv(env: Readonly<Record<string, string | undefined>>): string[] {
   return Object.entries(env)
     .filter((entry: readonly [string, string | undefined]) => READ_ENV.test(entry[0]))
     .map((entry: readonly [string, string | undefined]) => `${entry[0]}=${entry[1] ?? ""}`)

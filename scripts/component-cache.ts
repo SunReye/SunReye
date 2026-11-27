@@ -1,5 +1,6 @@
 // Per-file greens for the component tests (ADR 13): a file whose own inputs (it, everything it
-// imports however deep, and what every file shares) hash as on its last green run is not run again.
+// imports however deep, what every file shares, and the run's environment and options) hash as on
+// its last green run is not run again.
 // A file that reaches a module the import graph cannot follow has no key and always runs. The
 // greens live in the git common dir, so every worktree shares them.
 
@@ -9,7 +10,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Glob } from "bun";
 import { commonDir } from "./gate-cache.ts";
-import type { ImportGraph } from "./reachable.ts";
+import { SHARED_WEB_INPUTS, type ImportGraph } from "./reachable.ts";
 import { buildImportGraph } from "./reachable-fs.ts";
 
 /** `start` and every file it imports, however deep. */
@@ -62,20 +63,21 @@ export function stale(
   });
 }
 
-/** What every component test reads besides its own imports: config, setup, messages, assets. */
-const SHARED = [
-  "package.json",
-  "bun.lock",
-  "tsconfig.json",
-  "apps/home/web/{package.json,tsconfig.json,components.json,vite.config.ts}",
-  "apps/home/web/{browser-commands.ts,scene-tests.ts,touch-tests.ts}",
-  "apps/home/web/src/{app.html,app.css,page.setup.ts}",
-  "apps/home/web/{messages,static,project.inlang}/**",
-  "packages/builder/messages/**",
-  "packages/tokens/*.css",
-  "packages/*/package.json",
-  "scripts/{components,component-cache,reachable,reachable-fs}.ts",
-];
+/**
+ * What every test shares hashes to: the page setup's key, the run's environment and options, and the
+ * shared files with their hashes; null when the page setup has none, so no test can be skipped.
+ */
+export function sharedKey(
+  setup: string | null,
+  context: readonly string[],
+  files: readonly (readonly [string, string])[],
+): string | null {
+  if (setup === null) return null;
+
+  const hashed = files.map(([file, hash]) => `${file}\0${hash}`).toSorted();
+
+  return sha([Bun.version, setup, ...context, "\0", ...hashed].join("\0"));
+}
 
 /** Each file's content hash under `root`, read once. */
 function contents(root: string): (path: string) => string {
@@ -91,50 +93,84 @@ function contents(root: string): (path: string) => string {
   };
 }
 
-/** The component tests' greens under `root`, for a run with `options`. */
-export function componentCache(root: string, options: readonly string[]) {
-  const graph = buildImportGraph(root);
-  const hashOf = contents(root);
-  const files = SHARED.flatMap((pattern) => Array.from(new Glob(pattern).scanSync(root)));
-  const setup = fileKey("apps/home/web/src/page.setup.ts", graph, hashOf, "") ?? "open";
-
-  const shared = sha(
-    [
-      Bun.version,
-      setup,
-      ...options,
-      ...files.toSorted().map((file) => `${file}\0${hashOf(file)}`),
-    ].join("\0"),
-  );
-
+/** Where a test file's last green key is kept: the git common dir, which every worktree shares. */
+function store(root: string) {
   const dir = join(commonDir(root), "gate-cache", "components");
-  const keyOf = (file: string) => fileKey(file, graph, hashOf, shared);
   const recordOf = (file: string) => join(dir, sha(file));
 
   return {
-    /** The files of `picks` (repo-relative) to run. */
-    async stale(picks: readonly string[]): Promise<string[]> {
-      const green = new Map(
-        await Promise.all(
-          picks.map(
-            async (file) =>
-              [file, await readFile(recordOf(file), "utf8").catch(() => null)] as const,
-          ),
-        ),
-      );
-
-      return stale(picks, keyOf, (file) => green.get(file) ?? null);
-    },
-    /** Keeps `ran` (repo-relative) as green with their inputs as they are now. */
-    async save(ran: readonly string[]): Promise<void> {
+    read: (file: string) => readFile(recordOf(file), "utf8").catch(() => null),
+    async write(keys: readonly (readonly [string, string])[]): Promise<void> {
       await mkdir(dir, { recursive: true });
-      await Promise.all(
-        ran.flatMap((file) => {
-          const key = keyOf(file);
-
-          return key === null ? [] : [writeFile(recordOf(file), key)];
-        }),
-      );
+      await Promise.all(keys.map(([file, key]) => writeFile(recordOf(file), key)));
     },
+  };
+}
+
+/** Each of `picks`' key now: null when it, or the page setup, reaches a file the graph cannot follow. */
+function testKeys(
+  root: string,
+  picks: readonly string[],
+  context: readonly string[],
+): Map<string, string | null> {
+  const graph = buildImportGraph(root);
+  const hashOf = contents(root);
+
+  const files = SHARED_WEB_INPUTS.flatMap((pattern) =>
+    Array.from(new Glob(pattern).scanSync(root)),
+  );
+
+  const setup = fileKey("apps/home/web/src/page.setup.ts", graph, hashOf, "");
+
+  const shared = sharedKey(
+    setup,
+    context,
+    files.map((file) => [file, hashOf(file)] as const),
+  );
+
+  const keys = new Map(
+    picks.map((file) => [file, shared === null ? null : fileKey(file, graph, hashOf, shared)]),
+  );
+
+  return keys;
+}
+
+/**
+ * Which of `picks` (repo-relative) to run, and a way to keep them green afterwards. Keys are taken
+ * before the run, so a file edited while it runs is not kept as green. `context` is the
+ * environment and options the run reads; `all` runs every pick and still keeps their greens.
+ */
+export async function planComponents(
+  root: string,
+  picks: readonly string[],
+  context: readonly string[],
+  all: boolean,
+): Promise<{ run: string[]; keep: () => Promise<void> }> {
+  const keys = testKeys(root, picks, context);
+
+  const greens = store(root);
+
+  const last = new Map(
+    await Promise.all(picks.map(async (file) => [file, await greens.read(file)] as const)),
+  );
+
+  const run = all
+    ? [...picks]
+    : stale(
+        picks,
+        (file) => keys.get(file) ?? null,
+        (file) => last.get(file) ?? null,
+      );
+
+  return {
+    run,
+    keep: () =>
+      greens.write(
+        run.flatMap((file) => {
+          const key = keys.get(file);
+
+          return key === undefined || key === null ? [] : [[file, key] as const];
+        }),
+      ),
   };
 }

@@ -145,7 +145,6 @@ test("planPrTests combines crate, component, bun, and consumer scoping", () => {
     "sunreye-synth",
   ]);
   expect(plan.components).toEqual(["src/lib/builder/pv.svelte.test.ts"]);
-  expect(plan.bunAll).toBe(true);
   expect(plan.consumer).toBe(true);
 });
 
@@ -158,21 +157,19 @@ test("planPrTests skips consumer and cargo on web-only diff", () => {
 
   expect(plan.crates).toEqual([]);
   expect(plan.components).toEqual(["src/lib/x.svelte.test.ts"]);
-  expect(plan.bunAll).toBe(false);
   expect(plan.consumer).toBe(false);
 });
 
-test("a change to what bun tests read from disk runs every bun test", () => {
+test("a change to what every component test shares reaches them all", () => {
   for (const file of [
-    "crates/pv/src/shade.rs",
-    "crates/profile/src/setting.rs",
-    "profiles/deye-sg05lp3.json",
-    "docs/adr/0004-roles-and-conventions.md",
-    "apps/home/web/messages/de.json",
+    "apps/home/web/static/favicon.svg",
+    "apps/home/web/project.inlang/settings.json",
+    "apps/home/web/svelte.config.js",
     "packages/builder/messages/en.json",
-    "GLOSSARY.md",
+    "packages/tokens/glass.css",
+    "scripts/component-cache.ts",
   ])
-    expect([file, planPrTests([file], CRATES, {}).bunAll]).toEqual([file, true]);
+    expect([file, reachableComponents([file], {})]).toEqual([file, "all"]);
 });
 
 test("without a base to diff against there is no PR scope", async () => {

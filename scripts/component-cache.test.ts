@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { statSync } from "node:fs";
 import { join } from "node:path";
-import { fileKey, stale } from "./component-cache.ts";
+import { fileKey, sharedKey, stale } from "./component-cache.ts";
 import { opaqueSource, urlImports, type ImportGraph } from "./reachable.ts";
 import { buildImportGraph } from "./reachable-fs.ts";
 
@@ -46,6 +46,20 @@ test("the inputs every test shares change every test's key", () => {
   expect(fileKey("b.svelte.test.ts", GRAPH, hashes(), "other")).not.toBe(
     fileKey("b.svelte.test.ts", GRAPH, hashes(), "shared"),
   );
+});
+
+test("what every test shares is keyed with the environment and options the run reads", () => {
+  const files = [["bun.lock", "h1"]] as const;
+  const key = sharedKey("setup", ["TZ=UTC", "--bail"], files);
+
+  expect(sharedKey("setup", ["TZ=Europe/Berlin", "--bail"], files)).not.toBe(key);
+  expect(sharedKey("setup", ["TZ=UTC"], files)).not.toBe(key);
+  expect(sharedKey("setup", ["TZ=UTC", "--bail"], [["bun.lock", "h2"]])).not.toBe(key);
+  expect(sharedKey("setup", ["TZ=UTC", "--bail"], files)).toBe(key);
+});
+
+test("when the page setup reaches a file the graph cannot follow, no test has a key", () => {
+  expect(sharedKey(null, [], [])).toBeNull();
 });
 
 test("a test that reaches a file the graph cannot follow has no key, so it always runs", () => {

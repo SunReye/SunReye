@@ -105,11 +105,20 @@ test("the fast run's bun tests, which skip the SPA build, never stand in for the
   expect(tests && stepKey(tests, fast)).not.toBe(tests && stepKey(tests, all));
 });
 
-test("the docs are checked after the core's tests build the binary they read", () => {
-  const docs = gateSteps("cache").find((step) => step.id === "docs");
+test("the docs are read against a core binary built in the same run, even when its tests are skipped", () => {
+  const steps = gateSteps("cache", { crates: [], components: [], consumer: false });
+  const docs = steps.find((step) => step.id === "docs");
+  const bin = steps.find((step) => step.id === "core-bin");
 
-  expect(docs?.after).toContain("cargo-test");
-  expect(docs?.run.join(" ")).toContain("scripts/docs.test.ts");
+  expect(docs?.after).toEqual(["core-bin"]);
+  expect(bin?.run.join(" ")).toContain("cargo build");
+  expect(bin?.reads).toBeUndefined();
+});
+
+test("a PR-scoped run still runs every bun test, as some read files no import names", () => {
+  const steps = gateSteps("cache", { crates: [], components: [], consumer: false });
+
+  expect(steps.find((step) => step.id === "bun-test")?.run.join(" ")).not.toContain("--changed");
 });
 
 test("the gate's component tests skip the files whose own inputs are as on their last green run", () => {
@@ -159,8 +168,9 @@ test("DAG stops active siblings and skips dependents on first failure", async ()
   const steps: Step[] = [
     { id: "fail", run: ["sh", "-c", "exit 7"] },
     {
+      // Ends only when cancelled: the gate returns only if it stops its siblings.
       id: "slow",
-      run: ["sh", "-c", `sleep 2; echo slow >> ${join(dir, "log")}`],
+      run: ["sh", "-c", `${waitForFile(join(dir, "never"))}; echo slow >> ${join(dir, "log")}`],
     },
     {
       id: "after",
@@ -169,11 +179,8 @@ test("DAG stops active siblings and skips dependents on first failure", async ()
     },
   ];
 
-  const t0 = performance.now();
   const code = await runGate(steps);
-  const elapsed = performance.now() - t0;
 
   expect(code).toBe(7);
-  expect(elapsed).toBeLessThan(1000);
   expect(await readFile(join(dir, "log"), "utf8").catch(() => "")).toBe("");
 });

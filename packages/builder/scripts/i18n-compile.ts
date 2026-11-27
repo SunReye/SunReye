@@ -1,5 +1,6 @@
 // Incremental, cross-process-safe Paraglide compilation (ADR 11): skips compiling when the
-// message sources and project settings match the last green output, and serialises concurrent
+// message sources, project settings and extra inputs (the lockfile, so a compiler upgrade counts)
+// match the last compile and its outputs are as it wrote them; serialises concurrent
 // callers (such as `bun test --parallel` workers) behind an atomic lock directory.
 
 import { createHash } from "node:crypto";
@@ -69,12 +70,21 @@ function digest(bundle: Readonly<Bundle>): string {
   return hash.digest("hex");
 }
 
+/** SHA-256 over every file the compile wrote. */
+function written(bundle: Readonly<Bundle>): string {
+  const hash = createHash("sha256");
+
+  for (const file of walk(bundle.outdir)) hash.update(file).update("\0").update(readFileSync(file));
+
+  return hash.digest("hex");
+}
+
 function isFresh(bundle: Readonly<Bundle>, stampPath: string, expected: string): boolean {
   if (!existsSync(stampPath)) return false;
 
-  if (readFileSync(stampPath, "utf8") !== expected) return false;
+  if (!bundle.outputs.every((file) => existsSync(join(bundle.outdir, file)))) return false;
 
-  return bundle.outputs.every((file) => existsSync(join(bundle.outdir, file)));
+  return readFileSync(stampPath, "utf8") === `${expected}\n${written(bundle)}`;
 }
 
 function tryLock(lockDir: string): boolean {
@@ -135,7 +145,7 @@ export async function compileIfStale(bundle: Readonly<Bundle>): Promise<boolean>
 
     const temp = `${stampPath}.${String(process.pid)}.${String(Date.now())}`;
 
-    writeFileSync(temp, expected);
+    writeFileSync(temp, `${expected}\n${written(bundle)}`);
     await rename(temp, stampPath);
 
     return true;

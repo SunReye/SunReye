@@ -232,16 +232,11 @@ function gitLines(root: string, args: readonly string[]): string[] {
 }
 
 /**
- * The merge-base for a PR diff (explicit `--base`, `GITHUB_BASE_REF`, or `staging`); undefined when
+ * The merge-base for a PR diff (explicit `--base`, else `staging`); undefined when
  * none resolves, as a diff against HEAD alone would scope the run to almost nothing.
  */
 export function resolveBaseRef(root: string, explicit?: string): string | undefined {
-  const ghBase = process.env["GITHUB_BASE_REF"];
-  const ghRef = ghBase !== undefined && ghBase.length > 0 ? `origin/${ghBase}` : undefined;
-
-  const candidates = (
-    explicit === undefined ? [ghRef, "origin/staging", "staging"] : [explicit]
-  ).filter((ref): ref is string => ref !== undefined && ref.length > 0);
+  const candidates = explicit === undefined ? ["origin/staging", "staging"] : [explicit];
 
   for (const ref of candidates) {
     const run = Bun.spawnSync(["git", "merge-base", ref, "HEAD"], { cwd: root });

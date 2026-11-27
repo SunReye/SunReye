@@ -10,7 +10,11 @@ await compileIfStale({
   root: builder,
   outdir: `${builder}src/paraglide`,
   outputs: ["messages.js", "messages.d.ts", "runtime.js", "runtime.d.ts"],
-  extra: [new URL(import.meta.url).pathname],
+  // The lockfile: a Paraglide upgrade compiles again.
+  extra: [
+    new URL(import.meta.url).pathname,
+    new URL("../../../bun.lock", import.meta.url).pathname,
+  ],
   compile: async () => {
     await compile({
       project: `${builder}project.inlang`,

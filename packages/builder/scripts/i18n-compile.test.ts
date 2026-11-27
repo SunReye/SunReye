@@ -46,6 +46,36 @@ test("compiles once, skips when inputs and outputs are unchanged, and recompiles
   expect(runs).toBe(3);
 });
 
+test("an output changed since its compile, or a changed compiler, compiles again", async () => {
+  const outdir = join(root, "out");
+  const lock = join(root, "bun.lock");
+  let runs = 0;
+
+  await writeFile(lock, "paraglide 2.0.0");
+
+  const bundle = {
+    root,
+    outdir,
+    outputs: ["messages.js"],
+    extra: [lock],
+    compile: async () => {
+      runs += 1;
+      await mkdir(outdir, { recursive: true });
+      await writeFile(join(outdir, "messages.js"), "export const n = 1;\n");
+    },
+  };
+
+  expect(await compileIfStale(bundle)).toBe(true);
+
+  await writeFile(join(outdir, "messages.js"), "damaged");
+  expect(await compileIfStale(bundle)).toBe(true);
+
+  await writeFile(lock, "paraglide 2.1.0");
+  expect(await compileIfStale(bundle)).toBe(true);
+  expect(await compileIfStale(bundle)).toBe(false);
+  expect(runs).toBe(3);
+});
+
 test("concurrent callers share one compile without racing", async () => {
   const outdir = join(root, "concurrent");
   let runs = 0;

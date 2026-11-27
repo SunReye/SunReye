@@ -12,7 +12,8 @@
 import { availableParallelism } from "node:os";
 import { join } from "node:path";
 import { Glob } from "bun";
-import { componentCache } from "./component-cache.ts";
+import { planComponents } from "./component-cache.ts";
+import { readEnv } from "./gate-cache.ts";
 import { SCENE } from "../apps/home/web/scene-tests.ts";
 
 export interface Timed {
@@ -192,14 +193,19 @@ if (import.meta.main) {
     cache,
   } = picked([...new Glob("src/**/*.svelte.test.ts").scanSync(web)], process.argv.slice(2));
 
-  const greens = cache ? componentCache(root, options) : null;
-  const all = greens === null || process.env["GATE_FRESH"] === "1";
+  const plan = cache
+    ? await planComponents(
+        root,
+        picks.map((file) => inRepo(file)),
+        [...readEnv(process.env), ...options],
+        process.env["GATE_FRESH"] === "1",
+      )
+    : null;
 
-  const fresh = new Set(all ? [] : await greens.stale(picks.map((file) => inRepo(file))));
+  const rerun = new Set(plan?.run);
+  const chosen = plan === null ? picks : picks.filter((file) => rerun.has(inRepo(file)));
 
-  const chosen = all ? picks : picks.filter((file) => fresh.has(inRepo(file)));
-
-  if (greens !== null)
+  if (plan !== null)
     process.stderr.write(
       `components: ${picks.length - chosen.length} of ${picks.length} unchanged\n`,
     );
@@ -233,7 +239,7 @@ if (import.meta.main) {
   if (code === 0 && record)
     await writeRecordedTimes(web, mergeTimes(recorded, await lastTimes(web)));
 
-  if (code === 0) await greens?.save(chosen.map((file) => inRepo(file)));
+  if (code === 0) await plan?.keep();
 
   process.exitCode = code;
 }

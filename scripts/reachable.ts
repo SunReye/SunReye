@@ -1,5 +1,7 @@
 // Pure reachability analysis for PR-scoped gate runs: maps changed repo-relative paths to the
-// Cargo crates, browser component tests, bun unit suites, and consumer checks the diff can reach.
+// Cargo crates, browser component tests and consumer checks the diff can reach.
+
+import { Glob } from "bun";
 
 export interface CrateNode {
   readonly name: string;
@@ -12,7 +14,6 @@ export type ReverseGraph = Readonly<Record<string, readonly string[]>>;
 export interface PrPlan {
   readonly crates: "all" | readonly string[];
   readonly components: "all" | readonly string[];
-  readonly bunAll: boolean;
   readonly consumer: boolean;
 }
 
@@ -79,29 +80,25 @@ const GLOBAL_RUST = new Set([
   "deny.pure.toml",
 ]);
 
-const GLOBAL_JS_CONFIG = new Set(["package.json", "bun.lock", "bunfig.toml", "tsconfig.json"]);
-
-const GLOBAL_WEB_FILES = new Set([
+/**
+ * What every component test reads besides its own imports (ADR 13): config, the page setup, the
+ * messages, static assets, tokens, the lockfile and the runner. A change here reaches them all.
+ */
+export const SHARED_WEB_INPUTS: readonly string[] = [
   "package.json",
   "bun.lock",
-  "apps/home/web/package.json",
-  "apps/home/web/vite.config.ts",
-  "apps/home/web/svelte.config.js",
-  "apps/home/web/tsconfig.json",
-  "apps/home/web/src/page.setup.ts",
-  "apps/home/web/src/app.css",
-  "apps/home/web/src/app.html",
-  "apps/home/web/scene-tests.ts",
-  "apps/home/web/touch-tests.ts",
-  "apps/home/web/browser-commands.ts",
-  "scripts/components.ts",
-]);
-
-const GLOBAL_WEB_PREFIXES = [
-  "apps/home/web/messages/",
-  "packages/builder/messages/",
-  "packages/tokens/",
+  "tsconfig.json",
+  "apps/home/web/{package.json,tsconfig.json,components.json,vite.config.ts,svelte.config.js}",
+  "apps/home/web/{browser-commands.ts,scene-tests.ts,touch-tests.ts}",
+  "apps/home/web/src/{app.html,app.css,page.setup.ts}",
+  "apps/home/web/{messages,static,project.inlang}/**",
+  "packages/builder/{messages,project.inlang}/**",
+  "packages/tokens/**",
+  "packages/*/package.json",
+  "scripts/{components,component-cache,reachable,reachable-fs}.ts",
 ];
+
+const SHARED_GLOBS = SHARED_WEB_INPUTS.map((pattern) => new Glob(pattern));
 
 function bfsReverse(seeds: readonly string[], reverse: ReverseGraph): Set<string> {
   const visited = new Set(seeds);
@@ -167,8 +164,8 @@ export function reachableCrates(
   return [...bfsReverse(seedCrates(changed, crates), reverse)].toSorted();
 }
 
-const isGlobalWeb = (file: string): boolean =>
-  GLOBAL_WEB_FILES.has(file) || GLOBAL_WEB_PREFIXES.some((prefix) => file.startsWith(prefix));
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- a glob, only matched.
+const isGlobalWeb = (file: string): boolean => SHARED_GLOBS.some((glob) => glob.match(file));
 
 function seedWebFiles(changed: readonly string[]): string[] {
   const seeds = new Set(changed);
@@ -209,23 +206,6 @@ export function reachableComponents(
   return tests.toSorted();
 }
 
-/**
- * What bun tests read from disk rather than import (WASM, profiles, ADRs, messages through the
- * compiled paraglide output), which `bun test --changed` cannot follow: a change here runs them all.
- */
-const BUN_READS = [
-  "crates/",
-  "profiles/",
-  "docs/",
-  "apps/home/web/messages/",
-  "packages/builder/messages/",
-];
-
-const BUN_READ_FILES = new Set(["GLOSSARY.md", "AGENTS.md", ...GLOBAL_JS_CONFIG]);
-
-const runsEveryBunTest = (file: string): boolean =>
-  BUN_READ_FILES.has(file) || BUN_READS.some((prefix) => file.startsWith(prefix));
-
 const touchesConsumer = (file: string): boolean =>
   file.startsWith("packages/") ||
   file.startsWith("crates/pv/") ||
@@ -243,7 +223,6 @@ export function planPrTests(
   return {
     crates: reachableCrates(changed, crates),
     components: reachableComponents(changed, reverse),
-    bunAll: changed.some((file) => runsEveryBunTest(file)),
     consumer: changed.some((file) => touchesConsumer(file)),
   };
 }
