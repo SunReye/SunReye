@@ -35,8 +35,10 @@
         size="icon-sm"
         class="text-muted-foreground"
         aria-label={m.tariff_band_remove()}
-        onclick={onremove}><Trash /></Button
+        onclick={onremove}
       >
+        <Trash />
+      </Button>
     </div>
     <div class="flex flex-wrap gap-x-3 gap-y-2">
       {#each DAYS as [day, name] (day)}

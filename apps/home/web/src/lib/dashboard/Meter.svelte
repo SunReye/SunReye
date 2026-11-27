@@ -9,9 +9,9 @@
 <div class="flex min-w-0 flex-col gap-1.5" style:--meter={colour} style:--glide="{tickGlideMs()}ms">
   <div class="flex items-baseline justify-between gap-2 text-xs">
     <span class="truncate font-medium text-muted-foreground">{label}</span>
-    <span class="text-sm font-semibold whitespace-nowrap"
-      ><AnimatedNumber {value} digits={0} /> %</span
-    >
+    <span class="text-sm font-semibold whitespace-nowrap">
+      <AnimatedNumber {value} digits={0} /> %
+    </span>
   </div>
   <Progress value={value ?? 0} size="square" class="meter" aria-label={label} />
 </div>

@@ -113,9 +113,9 @@
   <div class="flex min-h-0 flex-1 gap-2">
     <div class="relative w-9 shrink-0 text-right text-[11px] text-muted-foreground tabular-nums">
       {#each ticks as tick (tick.key)}
-        <span class="absolute right-0 -translate-y-1/2" style:top="{tick.y}%"
-          >{tick.v < 0 ? "−" : ""}{tick.text}</span
-        >
+        <span class="absolute right-0 -translate-y-1/2" style:top="{tick.y}%">
+          {tick.v < 0 ? "−" : ""}{tick.text}
+        </span>
       {/each}
     </div>
 
@@ -140,9 +140,9 @@
     bind:clientWidth={width}
   >
     {#each names as name (name.key)}
-      <span class="absolute -translate-x-1/2 whitespace-nowrap" style:left="{name.at}%"
-        >{name.text}</span
-      >
+      <span class="absolute -translate-x-1/2 whitespace-nowrap" style:left="{name.at}%">
+        {name.text}
+      </span>
     {/each}
   </div>
 </figure>

@@ -46,8 +46,9 @@
     <span
       class="text-xs whitespace-nowrap"
       style:color={active ? accentOf(role) : "var(--muted-foreground)"}
-      >{state === undefined ? " " : STATES[state]()}</span
     >
+      {state === undefined ? " " : STATES[state]()}
+    </span>
   </span>
 {/snippet}
 

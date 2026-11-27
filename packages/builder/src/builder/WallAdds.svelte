@@ -40,8 +40,10 @@
         class="min-h-11"
         onSelect={() => {
           add({ opening });
-        }}>{name()}</DropdownMenu.Item
+        }}
       >
+        {name()}
+      </DropdownMenu.Item>
     {/each}
     {#if devices.length > 0}
       <DropdownMenu.Separator />

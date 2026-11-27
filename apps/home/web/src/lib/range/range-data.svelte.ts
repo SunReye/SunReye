@@ -73,6 +73,7 @@ export class RangeData<T> {
       const r: RangeRoute = route();
       const [range, via, { zone, cal }] = [r.range, r.via, r.place];
 
+      // oxlint-disable-next-line typescript/no-meaningless-void-operator -- track retry state in effect.
       void this.#attempt;
       const list = edges(cal, range, finest);
       const now = Date.now();

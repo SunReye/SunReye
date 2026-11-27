@@ -39,8 +39,10 @@
           class="min-h-11"
           onSelect={() => {
             mode.hold({ kind: "roof", id: roof.id, size: ROOF });
-          }}>{name(roof)}</DropdownMenu.Item
+          }}
         >
+          {name(roof)}
+        </DropdownMenu.Item>
       {/each}
     </DropdownMenu.Group>
     {#if faces}
@@ -52,8 +54,10 @@
             class="min-h-11"
             onSelect={() => {
               mode.hold({ kind: "dormer", id: dormer.id, size: DORMER });
-            }}>{name(dormer)}</DropdownMenu.Item
+            }}
           >
+            {name(dormer)}
+          </DropdownMenu.Item>
         {/each}
       </DropdownMenu.Group>
     {/if}

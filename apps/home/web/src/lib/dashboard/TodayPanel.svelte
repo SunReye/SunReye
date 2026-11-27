@@ -117,9 +117,9 @@
       onclick={() => onopen("saved")}
     >
       <span class="text-xs text-muted-foreground">{m.dash_saved()}</span>
-      <span class="text-base font-semibold tabular-nums"
-        >{day?.money ? eur.format(day.money.saved) : "–,–– €"}</span
-      >
+      <span class="text-base font-semibold tabular-nums">
+        {day?.money ? eur.format(day.money.saved) : "–,–– €"}
+      </span>
     </Pressable>
   </div>
 
@@ -133,15 +133,17 @@
         feedback
         onclick={() => onopen(f.id)}
       >
-        <span class="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"
-          ><span class="size-2 rounded-[1px]" style:background={f.colour}></span>{f.label}</span
-        >
+        <span class="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+          <span class="size-2 rounded-[1px]" style:background={f.colour}></span>{f.label}
+        </span>
         <span
           class="text-2xl leading-none font-semibold tracking-tight whitespace-nowrap @[560px]:text-3xl"
         >
           <AnimatedNumber value={f.value} /><span
-            class="ml-1 text-sm font-medium text-muted-foreground">kWh</span
+            class="ml-1 text-sm font-medium text-muted-foreground"
           >
+            kWh
+          </span>
         </span>
         <span class="max-w-full truncate text-xs text-muted-foreground tabular-nums">{f.sub}</span>
       </Pressable>

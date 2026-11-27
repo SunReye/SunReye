@@ -26,12 +26,12 @@
 >
   <span class="flex shrink-0 items-center gap-3 text-xs">
     <span class="font-medium text-muted-foreground">{m.dash_day()}</span>
-    <span class="flex items-center gap-1.5 text-muted-foreground"
-      ><span class="h-0.5 w-3 bg-solar"></span>{m.dash_actual()}</span
-    >
-    <span class="flex items-center gap-1.5 text-muted-foreground"
-      ><span class="h-0 w-3 border-t border-dashed border-solar"></span>{m.dash_forecast()}</span
-    >
+    <span class="flex items-center gap-1.5 text-muted-foreground">
+      <span class="h-0.5 w-3 bg-solar"></span>{m.dash_actual()}
+    </span>
+    <span class="flex items-center gap-1.5 text-muted-foreground">
+      <span class="h-0 w-3 border-t border-dashed border-solar"></span>{m.dash_forecast()}
+    </span>
     <span class="ml-auto text-muted-foreground">kW</span>
   </span>
   <span class="relative block min-h-0 w-full flex-1">

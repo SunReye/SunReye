@@ -39,16 +39,16 @@
 
 <div class="flex items-end justify-between gap-4">
   <p class="flex flex-col" data-energy>
-    <span class="text-4xl leading-none font-semibold tracking-tight"
-      ><Quantity
+    <span class="text-4xl leading-none font-semibold tracking-tight">
+      <Quantity
         value={day.remaining ?? day.total}
         unit="kWh"
         unitClass="text-lg font-medium text-muted-foreground"
-      /></span
-    >
-    <span class="mt-1 text-xs text-muted-foreground"
-      >{today ? m.ahead_left() : m.ahead_expected()}</span
-    >
+      />
+    </span>
+    <span class="mt-1 text-xs text-muted-foreground">
+      {today ? m.ahead_left() : m.ahead_expected()}
+    </span>
   </p>
   <dl class="flex gap-5 text-right" data-headline>
     {#each beside as fact (fact.label)}

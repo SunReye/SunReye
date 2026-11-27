@@ -17,9 +17,10 @@
     <PageTitle title={m.controls_title()} />
     {#if writes}
       <!-- The normal state stays quiet; the exception below gets the weight. -->
-      <span class="flex items-center gap-1.5 pb-1 text-xs text-muted-foreground"
-        ><ShieldCheck class="size-3.5 text-success" /> {m.controls_writes_on()}</span
-      >
+      <span class="flex items-center gap-1.5 pb-1 text-xs text-muted-foreground">
+        <ShieldCheck class="size-3.5 text-success" />
+        {m.controls_writes_on()}
+      </span>
     {/if}
   </header>
 {/if}
@@ -34,8 +35,8 @@
       <span class="font-medium">{m.controls_read_only()}</span>
       <span class="text-muted-foreground">{m.controls_writes_off()}</span>
     </p>
-    <Button variant="outline" size="sm" class="ml-7 shrink-0" href="#/settings?group=writes"
-      >{m.controls_to_writes()}</Button
-    >
+    <Button variant="outline" size="sm" class="ml-7 shrink-0" href="#/settings?group=writes">
+      {m.controls_to_writes()}
+    </Button>
   </div>
 {/if}

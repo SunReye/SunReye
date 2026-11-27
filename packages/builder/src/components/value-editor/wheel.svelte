@@ -300,8 +300,10 @@
   {#if unit}
     <span
       class="pointer-events-none absolute left-[calc(50%+2.4rem)] text-sm text-muted-foreground"
-      style:top="calc(50% - 0.6em)">{unit}</span
+      style:top="calc(50% - 0.6em)"
     >
+      {unit}
+    </span>
   {/if}
   <!-- Fade top and bottom. -->
   <div

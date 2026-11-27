@@ -31,8 +31,10 @@
   {#each lanes as lane (lane.lane.key)}
     <span
       class="absolute right-0 max-w-full truncate opacity-70"
-      style:top="{lane.box.top + (lane.lane.states ? 7 : -3)}px">{lane.caption}</span
+      style:top="{lane.box.top + (lane.lane.states ? 7 : -3)}px"
     >
+      {lane.caption}
+    </span>
   {/each}
   {#each figures as figure (figure.key)}
     <span class="absolute right-0 -translate-y-1/2" style:top="{figure.y}px">{figure.text}</span>

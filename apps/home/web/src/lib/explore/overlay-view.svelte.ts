@@ -162,6 +162,7 @@ export class OverlayView extends ModeView<Overlaid | null> {
   protected async load(): Promise<Overlaid | null> {
     const { core, route, periods: picked } = this.input();
 
+    // oxlint-disable-next-line typescript/no-meaningless-void-operator -- track reactive state in loader.
     void this.#wanted;
 
     if (this.state !== "read") return null;

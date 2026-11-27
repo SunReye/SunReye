@@ -49,14 +49,14 @@
         }
       }
     >
-      <DropdownMenu.RadioItem closeOnSelect class="min-h-10" value={STORED}
-        >{m.builder_weather_stored()}</DropdownMenu.RadioItem
-      >
+      <DropdownMenu.RadioItem closeOnSelect class="min-h-10" value={STORED}>
+        {m.builder_weather_stored()}
+      </DropdownMenu.RadioItem>
       <DropdownMenu.Separator />
       {#each TRIALS as each (each)}
-        <DropdownMenu.RadioItem closeOnSelect class="min-h-10" value={each}
-          >{labels[each]()}</DropdownMenu.RadioItem
-        >
+        <DropdownMenu.RadioItem closeOnSelect class="min-h-10" value={each}>
+          {labels[each]()}
+        </DropdownMenu.RadioItem>
       {/each}
     </DropdownMenu.RadioGroup>
   </DropdownMenu.Content>

@@ -65,8 +65,10 @@
         class="min-h-11"
         onSelect={() => {
           wiring.intoNew();
-        }}>{m.builder_module_new_string()}</DropdownMenu.Item
+        }}
       >
+        {m.builder_module_new_string()}
+      </DropdownMenu.Item>
     </DropdownMenu.Content>
   </DropdownMenu.Root>
 {/if}

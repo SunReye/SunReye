@@ -14,9 +14,9 @@
 >
   <CircleAlert class="mt-0.5 size-4 shrink-0 text-destructive" />
   <p class="flex-1">
-    <span class="font-medium"
-      >{problem.kind === "refused" ? m.editor_refused() : m.editor_mismatch()}</span
-    >
+    <span class="font-medium">
+      {problem.kind === "refused" ? m.editor_refused() : m.editor_mismatch()}
+    </span>
     {problem.reason}
     <TextLink href="#/settings?group=logs" class="whitespace-nowrap">{m.writes_log()}</TextLink>
   </p>

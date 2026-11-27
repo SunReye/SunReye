@@ -13,14 +13,14 @@
   {#if view.state === "loading"}
     <Skeleton class="h-5 w-20" role="status" aria-label={m.loading()} />
   {:else}
-    <span class="text-xl leading-none font-semibold tracking-tight"
-      ><Quantity
+    <span class="text-xl leading-none font-semibold tracking-tight">
+      <Quantity
         value={view.value}
         unit={view.unit}
         digits={view.digits}
         unitClass="text-sm font-medium text-muted-foreground"
-      /></span
-    >
+      />
+    </span>
   {/if}
   <span class="mt-1 text-xs text-muted-foreground">{view.name}</span>
 </p>

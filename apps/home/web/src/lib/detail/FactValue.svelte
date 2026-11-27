@@ -9,12 +9,14 @@
 {#if "text" in fact}
   <span class="text-sm font-semibold">{fact.text}</span>
 {:else}
-  <span class={big ? "text-4xl leading-none font-semibold tracking-tight" : "text-sm font-semibold"}
-    ><Quantity
+  <span
+    class={big ? "text-4xl leading-none font-semibold tracking-tight" : "text-sm font-semibold"}
+  >
+    <Quantity
       value={fact.value}
       unit={fact.unit}
       digits={fact.digits}
       unitClass={[big ? "text-lg" : "", "font-medium text-muted-foreground"]}
-    /></span
-  >
+    />
+  </span>
 {/if}

@@ -68,8 +68,10 @@
         onclick={() => {
           open = false;
           refused = undefined;
-        }}>{m.access_cancel()}</Button
+        }}
       >
+        {m.access_cancel()}
+      </Button>
       <Button variant="destructive" disabled={busy} onclick={confirm}>{action}</Button>
     </div>
   </div>

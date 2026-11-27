@@ -44,15 +44,15 @@
         {#if f.done}<Check class="mt-0.5 size-4 shrink-0 text-success" />{:else}<Circle
             class="mt-0.5 size-4 shrink-0 text-muted-foreground/60"
           />{/if}
-        <span class={["flex-1", !f.done && "text-muted-foreground"]}
-          >{f.text}<span class="block text-xs text-muted-foreground">{f.when}</span></span
-        >
+        <span class={["flex-1", !f.done && "text-muted-foreground"]}>
+          {f.text}<span class="block text-xs text-muted-foreground">{f.when}</span>
+        </span>
       </li>
     {/each}
   </ul>
   <div class="border-t border-border/60 p-3">
-    <Button variant="outline" size="sm" class="w-full" href="#/settings?group=danger"
-      >{m.stats_import()}</Button
-    >
+    <Button variant="outline" size="sm" class="w-full" href="#/settings?group=danger">
+      {m.stats_import()}
+    </Button>
   </div>
 </Card.Root>

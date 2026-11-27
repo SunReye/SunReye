@@ -17,18 +17,19 @@
         <Kit.Head
           scope="col"
           class="h-auto py-1.5 pr-0 pl-3 text-right font-normal text-muted-foreground"
-          >{col.label}
-          {#if !isPower(col.unit)}<span class="opacity-70">{col.unit}</span>{/if}</Kit.Head
         >
+          {col.label}
+          {#if !isPower(col.unit)}<span class="opacity-70">{col.unit}</span>{/if}
+        </Kit.Head>
       {/each}
     </Kit.Row>
   </Kit.Header>
   <Kit.Body>
     {#each table.rows as line (line.key)}
       <Kit.Row class="border-border/50 hover:bg-transparent">
-        <Kit.Head scope="row" class="h-auto px-0 py-2 font-normal text-muted-foreground"
-          >{line.label}</Kit.Head
-        >
+        <Kit.Head scope="row" class="h-auto px-0 py-2 font-normal text-muted-foreground">
+          {line.label}
+        </Kit.Head>
         {#each line.cells as cell, i (i)}
           <ReadingCell {cell} line={line.label} {loading} {silent} />
         {/each}

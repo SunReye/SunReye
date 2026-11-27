@@ -49,8 +49,9 @@
       href={cell.href}
       aria-label={m.detail_explore({ label: `${line} · ${cell.label}` })}
       class="rounded-sm underline decoration-border underline-offset-4 outline-none hover:decoration-foreground focus-visible:ring-2 focus-visible:ring-ring"
-      >{@render quantity(cell)}</a
     >
+      {@render quantity(cell)}
+    </a>
   {:else if cell}
     {@render quantity(cell)}
   {:else}

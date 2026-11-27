@@ -54,8 +54,10 @@
     class="pointer-coarse:size-10"
     aria-label={m.range_earlier()}
     disabled={!canPrev}
-    onclick={() => stepBy(-1)}><ChevronLeft /></Button
+    onclick={() => stepBy(-1)}
   >
+    <ChevronLeft />
+  </Button>
   <div
     class="min-w-[92px] text-center text-xs font-medium whitespace-nowrap tabular-nums"
     aria-live="polite"
@@ -70,6 +72,8 @@
     class="pointer-coarse:size-10"
     aria-label={m.range_later()}
     disabled={!canNext}
-    onclick={() => stepBy(1)}><ChevronRight /></Button
+    onclick={() => stepBy(1)}
   >
+    <ChevronRight />
+  </Button>
 </div>

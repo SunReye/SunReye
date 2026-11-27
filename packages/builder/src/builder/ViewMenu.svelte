@@ -37,8 +37,10 @@
         class="min-h-10"
         onSelect={() => {
           onpick(preset);
-        }}>{labels[preset]()}</DropdownMenu.Item
+        }}
       >
+        {labels[preset]()}
+      </DropdownMenu.Item>
     {/each}
   </DropdownMenu.Content>
 </DropdownMenu.Root>

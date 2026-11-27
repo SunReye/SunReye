@@ -26,8 +26,10 @@
     class="min-h-11"
     onSelect={() => {
       onadd({ marker, device: only.id });
-    }}>{name}</DropdownMenu.Item
+    }}
   >
+    {name}
+  </DropdownMenu.Item>
 {:else}
   <DropdownMenu.Sub>
     <DropdownMenu.SubTrigger class="min-h-11">{name}</DropdownMenu.SubTrigger>
@@ -37,8 +39,10 @@
           class="min-h-11"
           onSelect={() => {
             onadd({ marker, device: device.id });
-          }}>{device.name}</DropdownMenu.Item
+          }}
         >
+          {device.name}
+        </DropdownMenu.Item>
       {/each}
     </DropdownMenu.SubContent>
   </DropdownMenu.Sub>

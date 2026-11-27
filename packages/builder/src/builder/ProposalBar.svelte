@@ -22,13 +22,17 @@
       class="min-h-11"
       onclick={() => {
         wiring.discard();
-      }}>{m.builder_discard()}</Button
+      }}
     >
+      {m.builder_discard()}
+    </Button>
     <Button
       class="min-h-11"
       onclick={() => {
         wiring.keep();
-      }}>{m.builder_keep()}</Button
+      }}
     >
+      {m.builder_keep()}
+    </Button>
   </div>
 </div>

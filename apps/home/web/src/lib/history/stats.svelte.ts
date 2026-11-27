@@ -84,6 +84,7 @@ export class StatsData {
       const r: RangeRoute = route;
       const [range, via, { zone, cal }] = [r.range, r.via, r.place];
 
+      // oxlint-disable-next-line typescript/no-meaningless-void-operator -- track retry state in effect.
       void this.#attempt;
 
       let live = true;

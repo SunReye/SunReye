@@ -49,8 +49,10 @@
       </dt>
       <dd class="truncate tabular-nums">
         <FactValue fact={s} big={false} />{#if "note" in s && s.note}{" "}<span
-            class="block text-xs text-pretty whitespace-normal text-muted-foreground">{s.note}</span
-          >{/if}
+            class="block text-xs text-pretty whitespace-normal text-muted-foreground"
+          >
+            {s.note}
+          </span>{/if}
       </dd>
     </div>
   {/each}

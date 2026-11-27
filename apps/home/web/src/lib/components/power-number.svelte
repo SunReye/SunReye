@@ -11,7 +11,6 @@
   }: { watts: number | null; unitClass?: ClassValue | undefined; suffix?: string } = $props();
 </script>
 
-<AnimatedNumber value={watts} format={powerNumber} placeholder="–"
-  >{#snippet unit(v: number)}{" "}<span class={unitClass}>{powerUnit(v)}{suffix}</span
-    >{/snippet}</AnimatedNumber
->
+<AnimatedNumber value={watts} format={powerNumber} placeholder="–">
+  {#snippet unit(v: number)}{" "}<span class={unitClass}>{powerUnit(v)}{suffix}</span>{/snippet}
+</AnimatedNumber>

@@ -78,8 +78,10 @@
         variant="ghost"
         onclick={() => {
           open = false;
-        }}>{m.access_cancel()}</Button
+        }}
       >
+        {m.access_cancel()}
+      </Button>
     </div>
   </div>
 {:else}

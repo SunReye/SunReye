@@ -19,18 +19,20 @@
   {#if view.state === "loading"}
     <Skeleton class="h-9 w-32" role="status" aria-label={m.loading()} />
   {:else}
-    <span class="text-4xl leading-none font-semibold tracking-tight"
-      >{#if estimated}<span
+    <span class="text-4xl leading-none font-semibold tracking-tight">
+      {#if estimated}<span
           class="me-1 font-normal text-muted-foreground"
           title={m.detail_estimated()}
-          aria-label={m.detail_estimated()}>≈</span
-        >{/if}<Quantity
+          aria-label={m.detail_estimated()}
+        >
+          ≈
+        </span>{/if}<Quantity
         value={view.value}
         unit={view.unit}
         digits={view.digits}
         unitClass="text-lg font-medium text-muted-foreground"
-      /></span
-    >
+      />
+    </span>
   {/if}
   <span class="mt-1 flex flex-wrap gap-x-1.5 text-xs text-muted-foreground">
     {#if view.name}

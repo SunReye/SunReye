@@ -45,8 +45,9 @@
       <p class="flex flex-wrap items-baseline gap-x-2 text-sm text-muted-foreground">
         <span
           class="text-3xl leading-none font-semibold tracking-tight text-foreground tabular-nums"
-          >{shown.saved}</span
         >
+          {shown.saved}
+        </span>
         {shown.of}
         <span class="ml-auto font-semibold text-foreground tabular-nums">{shown.share}</span>
       </p>
@@ -57,9 +58,9 @@
         aria-label={m.stats_payback()}
       />
       <p class="text-sm text-pretty">
-        {shown.forecast.before}{#if shown.forecast.month}<span class="font-semibold"
-            >{shown.forecast.month}</span
-          >{shown.forecast.after}{/if}
+        {shown.forecast.before}{#if shown.forecast.month}<span class="font-semibold">
+            {shown.forecast.month}
+          </span>{shown.forecast.after}{/if}
       </p>
     </div>
     {#if rows.length > 2}

@@ -16,14 +16,16 @@
     {#if row.est}<span
         class="me-1 font-normal text-muted-foreground"
         title={m.detail_estimated()}
-        aria-label={m.detail_estimated()}>≈</span
-      >{/if}<span class="font-semibold"
-      ><Quantity
+        aria-label={m.detail_estimated()}
+      >
+        ≈
+      </span>{/if}<span class="font-semibold">
+      <Quantity
         {value}
         unit={row.unit}
         digits={row.digits}
         unitClass="font-normal text-muted-foreground"
-      /></span
-    >
+      />
+    </span>
   {/if}
 </span>

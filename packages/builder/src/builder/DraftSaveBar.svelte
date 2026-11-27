@@ -37,8 +37,10 @@
     disabled={!session.undoable}
     onclick={() => {
       session.undo();
-    }}><Undo2 /></Button
+    }}
   >
+    <Undo2 />
+  </Button>
   <Button
     variant="ghost"
     size="icon-sm"
@@ -46,8 +48,10 @@
     disabled={!session.redoable}
     onclick={() => {
       session.redo();
-    }}><Redo2 /></Button
+    }}
   >
+    <Redo2 />
+  </Button>
   <span class="ml-auto text-xs whitespace-nowrap text-muted-foreground" aria-hidden="true">
     {m.builder_applies_from()}
   </span>
@@ -64,6 +68,8 @@
     size="sm"
     onclick={() => {
       void save();
-    }}>{m.builder_save()}</Button
+    }}
   >
+    {m.builder_save()}
+  </Button>
 </div>

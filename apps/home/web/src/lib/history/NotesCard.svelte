@@ -25,10 +25,9 @@
           {#if n.tone === "warn"}<TriangleAlert
               class="mt-0.5 size-4 shrink-0 text-warning"
             />{:else}<Info class="mt-0.5 size-4 shrink-0 text-muted-foreground" />{/if}
-          <span class="min-w-0 flex-1 text-sm text-pretty"
-            >{n.text}<span class="mt-0.5 block text-xs font-medium text-brand">{n.action}</span
-            ></span
-          >
+          <span class="min-w-0 flex-1 text-sm text-pretty">
+            {n.text}<span class="mt-0.5 block text-xs font-medium text-brand">{n.action}</span>
+          </span>
         </OpenRow>
       </li>
     {/each}

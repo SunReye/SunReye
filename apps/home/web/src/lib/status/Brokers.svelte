@@ -56,8 +56,9 @@
             </Item.Media>
             <Item.Content>
               <Item.Title class="text-[15px] font-normal">{broker.name}</Item.Title>
-              <Item.Description class={{ "text-destructive": !up }}>{told(broker)}</Item.Description
-              >
+              <Item.Description class={{ "text-destructive": !up }}>
+                {told(broker)}
+              </Item.Description>
             </Item.Content>
           </Item.Root>
         {/each}

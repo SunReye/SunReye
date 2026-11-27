@@ -38,8 +38,10 @@
   >
     <span
       class="grid size-9 shrink-0 place-items-center rounded-md border-2 border-dashed border-border"
-      aria-hidden="true"><Plus class="size-5" /></span
+      aria-hidden="true"
     >
+      <Plus class="size-5" />
+    </span>
     {m.topology_add()}
   </Pressable>
 {/if}

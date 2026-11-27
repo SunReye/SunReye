@@ -59,8 +59,10 @@
         class={[
           "text-[11px] tabular-nums",
           marks ? "font-medium text-foreground" : "text-muted-foreground",
-        ]}>{clock.format(hour.at)}</span
+        ]}
       >
+        {clock.format(hour.at)}
+      </span>
     {/snippet}
   </HourMarks>
 

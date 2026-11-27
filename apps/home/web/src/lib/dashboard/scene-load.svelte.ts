@@ -28,6 +28,7 @@ export class SceneLoad {
    */
   follow(wanted: () => boolean): void {
     $effect(() => {
+      // oxlint-disable-next-line typescript/no-meaningless-void-operator -- track retry state in effect.
       void this.#attempt;
 
       return wanted() ? untrack(() => this.#begin()) : this.#leave();

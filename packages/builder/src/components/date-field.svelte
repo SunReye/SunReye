@@ -222,8 +222,10 @@
         disabled={rests}
         onclick={() => {
           pick(to);
-        }}>{shortcut.text}</Button
+        }}
       >
+        {shortcut.text}
+      </Button>
     </div>
   {/if}
 {/snippet}
