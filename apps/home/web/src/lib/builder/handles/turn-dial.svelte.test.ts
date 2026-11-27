@@ -1,5 +1,4 @@
 import "../../../app.css";
-import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
@@ -21,6 +20,7 @@ import {
   starts,
   testCore,
   undesk,
+  undrawn,
 } from "../builder.harness.ts";
 import { offered } from "../../../../../../../packages/builder/src/builder/handles/offered.ts";
 
@@ -47,7 +47,7 @@ const tool = (name: string) =>
 
 /** The builder with the template house picked, turned by `turn`, seen from `view`. */
 async function picked(turn = 0, view?: View) {
-  const draws = vi.spyOn(EffectComposer.prototype, "render");
+  const draws = undrawn();
   const { scene, strings } = house();
   const [block] = scene.blocks;
 

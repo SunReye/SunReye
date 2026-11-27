@@ -1,5 +1,4 @@
 import "../../../app.css";
-import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
@@ -19,6 +18,7 @@ import {
   settle,
   testCore,
   undesk,
+  undrawn,
 } from "../builder.harness.ts";
 import { offered } from "../../../../../../../packages/builder/src/builder/handles/offered.ts";
 
@@ -39,7 +39,7 @@ afterEach(async () => {
 
 /** The builder with the bare-walled template house picked, seen from `view` or the first view. */
 async function picked(view?: View) {
-  const draws = vi.spyOn(EffectComposer.prototype, "render");
+  const draws = undrawn();
   const { scene, strings } = house();
   const start = { strings, scene: { ...scene, openings: [] } };
 

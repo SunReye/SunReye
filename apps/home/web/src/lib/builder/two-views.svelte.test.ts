@@ -2,14 +2,18 @@
 // a roof answers its block and face, and each canvas marks the face whose key its consumer hands it.
 import "../../app.css";
 import { Scene } from "three";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import type { Geometry, RoofFace } from "@sunreye/pv-wasm";
 import { roofFaceKey, type RoofFaceId } from "@sunreye/scene";
 import { presetView, SceneCanvas, type Panel } from "@sunreye/builder";
 import { settle } from "../motion/clock.harness.ts";
-import { house as gable, onCanvas, press, pv } from "./builder.harness.ts";
+import { house as gable, onCanvas, press, pv, undrawn } from "./builder.harness.ts";
+
+beforeEach(() => {
+  undrawn();
+});
 
 /** A flat roof 10 m by 8 m, 3 m up. */
 const house: Geometry = {

@@ -6,6 +6,7 @@ import type { Geometry, Scene } from "../../../../../../packages/builder/src/bui
 import type { Placing, Projector, TraceEdit } from "@sunreye/builder";
 import { SceneCanvas } from "@sunreye/builder";
 import { settle } from "../motion/clock.harness.ts";
+import { undrawn } from "./undrawn.harness.ts";
 
 /** The plain ground under the tracing, 12 m square, seen from above. */
 const ground: Geometry = {
@@ -49,7 +50,8 @@ function onPage(
 }
 
 /** A canvas in the tracing mode, kept on the scene each edit hands back; `placing` held until a
- * ready shape is placed; seen from `preset`, from above unless named. */
+ * ready shape is placed; seen from `preset`, from above unless named. Its frames are counted, not
+ * drawn (`undrawn`): restore them after each test. */
 export async function tracing(
   start: Scene = EMPTY,
   held?: Placing,
@@ -58,6 +60,9 @@ export async function tracing(
   preset: Preset = "top",
 ): Promise<Traced> {
   const [scenes, edits]: [Scene[], TraceEdit[]] = [[], []];
+
+  undrawn();
+
   let project: Projector | undefined;
 
   /** The tracing on `scene`, which each edit hands on. */

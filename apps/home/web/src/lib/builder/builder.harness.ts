@@ -15,6 +15,8 @@ export { press, tap, type Pointer } from "./pointer.harness.ts";
 
 export { settle, stepUntil } from "../motion/clock.harness.ts";
 
+export { undrawn } from "./undrawn.harness.ts";
+
 export const pv = await fetchPv();
 
 /** The builder's core, records and host as Home's builder route makes them of its core, here over

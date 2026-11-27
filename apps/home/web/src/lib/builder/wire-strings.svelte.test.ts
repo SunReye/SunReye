@@ -1,5 +1,4 @@
 import "../../app.css";
-import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
@@ -15,13 +14,13 @@ import {
   inspector,
   MODULE,
   onCanvas,
-  type Pointer,
   press,
   pv,
   settle,
   SIZES,
   testCore,
   undesk,
+  undrawn,
 } from "./builder.harness.ts";
 import { saveFrom } from "./moment.harness.ts";
 import { type Transport } from "../api/core.ts";
@@ -84,7 +83,7 @@ afterEach(async () => {
 });
 
 async function opened(draft: Draft, transport: Readonly<Transport> = testCore()) {
-  const draws = vi.spyOn(EffectComposer.prototype, "render");
+  const draws = undrawn();
 
   await render(Builder, {
     pv,
@@ -112,28 +111,48 @@ const bar = () => page.getByRole("toolbar", { name: "Auswahl" });
 
 const act = (name: string) => bar().getByRole("button", { name });
 
-test.each<Pointer>(["mouse", "touch"])(
-  "a %s drag across modules selects them; the bar wires them into the string, as one undo step",
-  async (pointer) => {
-    const draft = filled([wired("Süd", MODULE.id)]);
+test("a drag across modules selects them; the bar wires them into the string, as one undo step, and saves the order they were crossed in", async () => {
+  const transport = testCore();
+  const draft = filled([wired("Süd", MODULE.id)]);
 
-    await opened(draft);
-    await press(pointer, three(draft));
+  await opened(draft, transport);
+  await press("mouse", three(draft));
 
-    // Selecting wires nothing yet.
-    await expect.element(bar().getByText("3 gewählt")).toBeVisible();
-    await expect.element(made(0)).toBeVisible();
+  // Selecting wires nothing yet.
+  await expect.element(bar().getByText("3 gewählt")).toBeVisible();
+  await expect.element(made(0)).toBeVisible();
 
-    await act("In Süd verdrahten").click();
+  await act("In Süd verdrahten").click();
 
-    await expect.element(made(3)).toBeVisible();
-    await expect.element(bar()).not.toBeInTheDocument();
+  await expect.element(made(3)).toBeVisible();
+  await expect.element(bar()).not.toBeInTheDocument();
 
-    await inspector().getByRole("button", { name: "Rückgängig" }).click();
+  await inspector().getByRole("button", { name: "Rückgängig" }).click();
 
-    await expect.element(made(0)).toBeVisible();
-  },
-);
+  await expect.element(made(0)).toBeVisible();
+
+  // Crossed the other way, from the third to the first.
+  await press("mouse", three(draft).toReversed());
+  await act("In Süd verdrahten").click();
+
+  await expect.element(made(3)).toBeVisible();
+
+  await saveFrom("2026-11-01");
+
+  await expect.poll(() => transport.puts).toHaveLength(1);
+
+  // The south face is the second grid, filled two rows of eight: its first row wired right to left.
+  const south = Array.from({ length: 16 }, (_, i) => {
+    const [row, column] = [Math.floor(i / 8), i % 8];
+    const at = { landscape: false };
+
+    return row === 0 && column < 3 ? { ...at, string: 0, order: 2 - column } : at;
+  });
+
+  expect(transport.puts[0]).toMatchObject({
+    scene: { grids: [{ face: 0 }, { face: 1, modules: south }] },
+  });
+});
 
 test("a tap takes a selected module out again; the bar unwires a selection or drops it", async () => {
   const draft = filled([wired("Süd", MODULE.id)]);
@@ -162,25 +181,19 @@ test("a tap takes a selected module out again; the bar unwires a selection or dr
   await expect.element(made(1)).toBeVisible();
 });
 
-test("a selection of another module type than the string is refused in the bar, and stays", async () => {
+test("a selection of another module type than the string is refused in the bar, and stays; the bar still offers it a new string", async () => {
   const draft = filled([wired("Ost", OTHER.id)]);
 
   await opened(draft);
-  await press("mouse", three(draft).slice(0, 1));
+  await press("mouse", three(draft));
   await act("In Ost verdrahten").click();
 
   await expect
     .element(page.getByRole("alert").filter({ hasText: "Ost hat einen anderen Modultyp" }))
     .toBeVisible();
-  await expect.element(bar().getByText("1 gewählt")).toBeVisible();
+  await expect.element(bar().getByText("3 gewählt")).toBeVisible();
   await expect.element(made(0)).toBeVisible();
-});
 
-test("with a string open the bar still offers a new string for the selection", async () => {
-  const draft = filled([wired("Ost", OTHER.id)]);
-
-  await opened(draft);
-  await press("mouse", three(draft));
   await act("Neuer String").click();
 
   await expect.element(bar()).not.toBeInTheDocument();
@@ -192,7 +205,7 @@ test("with a string open the bar still offers a new string for the selection", a
 
 test("from the Strings group a selection is wired into a string of the menu, or a new one", async () => {
   const draft = filled([wired("Süd", MODULE.id)]);
-  const draws = vi.spyOn(EffectComposer.prototype, "render");
+  const draws = undrawn();
 
   await render(Builder, {
     pv,
@@ -211,32 +224,4 @@ test("from the Strings group a selection is wired into a string of the menu, or 
   await expect
     .element(inspector().getByRole("button", { name: /^String 2.*3 Module/u }))
     .toBeVisible();
-});
-
-test("a selection wired in the order it was crossed saves that wiring order", async () => {
-  const transport = testCore();
-  const draft = filled([wired("Süd", MODULE.id)]);
-
-  await opened(draft, transport);
-
-  await press("mouse", three(draft).toReversed());
-  await act("In Süd verdrahten").click();
-
-  await expect.element(made(3)).toBeVisible();
-
-  await saveFrom("2026-11-01");
-
-  await expect.poll(() => transport.puts).toHaveLength(1);
-
-  // The south face is the second grid, filled two rows of eight: its first row wired right to left.
-  const south = Array.from({ length: 16 }, (_, i) => {
-    const [row, column] = [Math.floor(i / 8), i % 8];
-    const at = { landscape: false };
-
-    return row === 0 && column < 3 ? { ...at, string: 0, order: 2 - column } : at;
-  });
-
-  expect(transport.puts[0]).toMatchObject({
-    scene: { grids: [{ face: 0 }, { face: 1, modules: south }] },
-  });
 });

@@ -1,5 +1,4 @@
 import "../../../app.css";
-import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { cdp, page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
@@ -21,6 +20,7 @@ import {
   starts,
   testCore,
   undesk,
+  undrawn,
 } from "../builder.harness.ts";
 import {
   handles,
@@ -64,7 +64,7 @@ async function widen(start: Scene): Promise<void> {
 }
 
 test("dragging a block's width arrow is one undo step; the inspector shows the new width", async () => {
-  const draws = vi.spyOn(EffectComposer.prototype, "render");
+  const draws = undrawn();
   const start = house();
 
   await render(Builder, {
@@ -134,7 +134,7 @@ async function mouseDrag(start: Scene, from: Triple, to: Triple): Promise<void> 
 
 /** The builder seen from above with the car place picked; the inspector's undo button. */
 async function placePicked() {
-  const draws = vi.spyOn(EffectComposer.prototype, "render");
+  const draws = undrawn();
   const start = parked();
 
   localStorage.setItem("sunreye.builder.view", JSON.stringify(ABOVE));
@@ -157,8 +157,8 @@ async function placePicked() {
   };
 }
 
-test("dragging a car place moves it in one undo step", async () => {
-  const { scene, undo } = await placePicked();
+test("dragging a car place moves it in one undo step; its ring shows after Drehen and turns it", async () => {
+  const { scene, undo, draws } = await placePicked();
 
   await mouseDrag(scene, [-3.75, 0, 3.5], [-3.75, 0, 5.5]);
 
@@ -170,10 +170,7 @@ test("dragging a car place moves it in one undo step", async () => {
 
   await expect.element(z.getByText(/^1$/u)).toBeVisible();
   await expect.element(undo).toBeDisabled();
-});
 
-test("a car place's ring shows after Drehen and turns it", async () => {
-  const { scene, undo, draws } = await placePicked();
   const place: Target = { kind: "place", index: 0 };
   const ring = handles(scene, place).find(({ grip }) => grip === "turn");
 
@@ -214,7 +211,7 @@ function chimneyed() {
 }
 
 test("a tap picks a chimney in 3D; a drag slides it along its face, never off it", async () => {
-  const draws = vi.spyOn(EffectComposer.prototype, "render");
+  const draws = undrawn();
   const start = chimneyed();
   const laid = pv.modules(start.scene, {});
   const [top] = handles(start.scene, { kind: "chimney", index: 0 }, laid);
@@ -258,7 +255,7 @@ test("a tap picks a chimney in 3D; a drag slides it along its face, never off it
 });
 
 test("a press on a picked box drags it by its own surface, one undo step", async () => {
-  const draws = vi.spyOn(EffectComposer.prototype, "render");
+  const draws = undrawn();
   const start = house();
 
   const scene: Scene = {

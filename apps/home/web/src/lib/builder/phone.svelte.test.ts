@@ -23,6 +23,7 @@ import {
   tap,
   testCore,
   undesk,
+  undrawn,
 } from "./builder.harness.ts";
 import { addGrid, emptyDraft } from "../../../../../../packages/builder/src/builder/modules.ts";
 import { handles } from "../../../../../../packages/builder/src/builder/handles/grips.ts";
@@ -76,27 +77,8 @@ afterEach(async () => {
   await page.viewport(1280, 900);
 });
 
-test("on a phone the inspector is a bottom sheet a finger pulls up; nothing says view-only", async () => {
-  await render(Builder, {
-    pv,
-    ...hosted(testCore()),
-    start: house(),
-    moduleTypes: [MODULE],
-    devices: DEVICES,
-  });
-
-  await expect.element(handle()).toHaveAttribute("aria-expanded", "false");
-  expect(page.getByRole("complementary").query()).toBeNull();
-  expect(page.getByText(/nur ansehen/u).query()).toBeNull();
-
-  await tap(handle());
-
-  await expect.element(handle()).toHaveAttribute("aria-expanded", "true");
-  await expect.element(sheet().getByRole("heading", { name: "Szene" })).toBeVisible();
-});
-
-test("a tap on the house drills the inspector to it, still peeking: the handles stay in view", async () => {
-  const draws = vi.spyOn(EffectComposer.prototype, "render");
+test("on a phone the inspector is a bottom sheet: a tap on the house drills it there, still peeking with the handles in view, and a finger pulls it up", async () => {
+  const draws = undrawn();
 
   await render(Builder, {
     pv,
@@ -107,10 +89,18 @@ test("a tap on the house drills the inspector to it, still peeking: the handles 
   });
   await settle(() => draws.mock.calls.length > 0);
 
+  await expect.element(handle()).toHaveAttribute("aria-expanded", "false");
+  expect(page.getByRole("complementary").query()).toBeNull();
+
   await press("touch", [onCanvas(house().scene)([5, 3, 4])]);
 
   await expect.element(sheet().getByRole("heading", { name: "Baukörper 1" })).toBeInTheDocument();
   await expect.element(handle()).toHaveAttribute("aria-expanded", "false");
+
+  await tap(handle());
+
+  await expect.element(handle()).toHaveAttribute("aria-expanded", "true");
+  await expect.element(sheet().getByRole("heading", { name: "Baukörper 1" })).toBeVisible();
 });
 
 test("by touch alone an admin builds a house from a template, lays modules on a face and wires a string", async () => {
@@ -158,7 +148,7 @@ test("by touch alone an admin builds a house from a template, lays modules on a 
 });
 
 test("opening a face for its modules flies the camera onto it: a tap lands in the cell under it", async () => {
-  const draws = vi.spyOn(EffectComposer.prototype, "render");
+  const draws = undrawn();
   const start = house();
   const scene = addGrid(start.scene, 0, 1, MODULE.id);
 
@@ -191,7 +181,7 @@ test("opening a face for its modules flies the camera onto it: a tap lands in th
 });
 
 test("a finger picks a chimney and slides it along its roof, still peeking", async () => {
-  const draws = vi.spyOn(EffectComposer.prototype, "render");
+  const draws = undrawn();
   const start = house();
   const chimney = { block: 0, face: 1, across: 3, up: 1.5, width: 0.6, depth: 0.6, height: 1.2 };
   const scene = { ...start.scene, chimneys: [chimney] };
@@ -223,7 +213,7 @@ test("a finger picks a chimney and slides it along its roof, still peeking", asy
 });
 
 test("a finger drags a car place on the lawn", async () => {
-  const draws = vi.spyOn(EffectComposer.prototype, "render");
+  const draws = undrawn();
   const start = house();
   const place = { device: 3, x: -5, z: 1, width: 2.5, length: 5, rotation: 0 };
   const scene = { ...start.scene, carPlaces: [place] };

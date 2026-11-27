@@ -1,8 +1,7 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
-import { MODULE, pv } from "../builder/builder.harness.ts";
+import { MODULE, pv, undrawn } from "../builder/builder.harness.ts";
 import type { Scene } from "../../../../../../packages/builder/src/builder/pv.ts";
 import { chip, finish, frame, layout, scene, show } from "./live-scene.harness.ts";
 import { frames, framesUntil, realTimers, settle, stepUntil } from "../motion/clock.harness.ts";
@@ -41,6 +40,7 @@ async function shown(name: string, value: string) {
 }
 
 beforeEach(async () => {
+  undrawn();
   localStorage.removeItem("sunreye.dashboard.view");
   await page.viewport(1280, 900);
 });
@@ -69,11 +69,8 @@ async function settled(draws: () => number): Promise<number> {
 }
 
 test("a live tick and a camera move draw a short tween, then drawing stops (ADR 20)", async () => {
-  // Each frame of the tween is drawn in software: a small canvas keeps them few milliseconds.
-  await page.viewport(480, 360);
-
-  // Each draw runs the studio's passes once.
-  const draws = vi.spyOn(EffectComposer.prototype, "render");
+  // Each frame the studio would draw, counted.
+  const draws = undrawn();
   const send = feed();
 
   const screen = await drawn();

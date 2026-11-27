@@ -1,5 +1,4 @@
 import "../../app.css";
-import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
@@ -23,6 +22,7 @@ import {
   SOUTH,
   testCore,
   undesk,
+  undrawn,
 } from "./builder.harness.ts";
 import { saveFrom } from "./moment.harness.ts";
 import { addGrid, type Draft } from "../../../../../../packages/builder/src/builder/modules.ts";
@@ -60,7 +60,7 @@ afterEach(async () => {
 });
 
 async function opened(draft: Draft, transport: Readonly<Transport> = testCore()): Promise<void> {
-  const draws = vi.spyOn(EffectComposer.prototype, "render");
+  const draws = undrawn();
 
   await render(Builder, {
     pv,

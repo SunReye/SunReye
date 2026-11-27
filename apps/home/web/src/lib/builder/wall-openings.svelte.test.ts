@@ -1,5 +1,4 @@
 import "../../app.css";
-import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
@@ -20,6 +19,7 @@ import {
   stepUntil,
   testCore,
   undesk,
+  undrawn,
 } from "./builder.harness.ts";
 import { handles } from "../../../../../../packages/builder/src/builder/handles/grips.ts";
 import type { Scene } from "../../../../../../packages/builder/src/builder/pv.ts";
@@ -62,7 +62,7 @@ async function widen(scene: Scene, index: number): Promise<void> {
 }
 
 test("a window is added on a wall and its width arrow drags it wider, in one undo step", async () => {
-  const draws = vi.spyOn(EffectComposer.prototype, "render");
+  const draws = undrawn();
   const start = house();
   const before = start.scene.openings ?? [];
 

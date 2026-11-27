@@ -3,8 +3,10 @@ import { page } from "vitest/browser";
 import { chip, frame, show } from "./live-scene.harness.ts";
 import { feed } from "./stream.harness.ts";
 import { PLANT } from "../api/core.ts";
+import { undrawn } from "../builder/builder.harness.ts";
 
 beforeEach(async () => {
+  undrawn();
   localStorage.removeItem("sunreye.dashboard.view");
   await page.viewport(1280, 900);
 });

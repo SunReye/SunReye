@@ -23,7 +23,6 @@ import { buildScene } from "../../../../../../packages/builder/src/builder/scene
 // draws them.
 
 const wasm = new URL(import.meta.resolve("@sunreye/pv-wasm/pv.wasm"));
-
 const pv = await loadPv(await Bun.file(wasm).bytes());
 
 /** A block that is only its free-form part. */
@@ -263,10 +262,11 @@ test("modules laid on a non-convex free-form face are lit, and shaded as on any 
 
   // A wall 20 m high just south of the house.
   const wall = { kind: "box", x: -5, z: 10, width: 20, depth: 1, height: 20, rotation: 0 } as const;
+  const open = lit(sloped());
 
   expect(modules).toBeGreaterThan(10);
-  expect(lit(sloped())).toBeGreaterThan(modules * 200);
-  expect(lit(sloped(wall))).toBeLessThan(lit(sloped()) / 2);
+  expect(open).toBeGreaterThan(modules * 200);
+  expect(lit(sloped(wall))).toBeLessThan(open / 2);
 });
 
 /** The blocks the equipment group's markers would hang on, the first device's. */

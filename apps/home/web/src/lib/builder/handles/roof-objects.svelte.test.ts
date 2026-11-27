@@ -1,5 +1,4 @@
 import "../../../app.css";
-import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import Builder from "../../../../../../../packages/builder/src/builder/Builder.svelte";
@@ -20,6 +19,7 @@ import {
   SOUTH,
   testCore,
   undesk,
+  undrawn,
 } from "../builder.harness.ts";
 import { addGrid } from "../../../../../../../packages/builder/src/builder/modules.ts";
 import { place } from "../../../../../../../packages/builder/src/builder/placing.ts";
@@ -54,7 +54,7 @@ const modules = (count: number) =>
   inspector().getByText(`Module: ${count} · ohne String: ${count}`, { exact: true });
 
 test("a chimney dragged onto a module removes it, in the drag's undo step", async () => {
-  const draws = vi.spyOn(EffectComposer.prototype, "render");
+  const draws = undrawn();
   const draft = start();
   const [top] = handles(draft.scene, { kind: "chimney", index: 0 }, pv.modules(draft.scene, {}));
 
@@ -86,7 +86,7 @@ test("a chimney dragged onto a module removes it, in the drag's undo step", asyn
 });
 
 test("a roof window is added clear of the modules; moved onto one it removes it", async () => {
-  const draws = vi.spyOn(EffectComposer.prototype, "render");
+  const draws = undrawn();
   const { chimneys: _, ...scene } = start().scene;
   const draft = { ...start(), scene };
 

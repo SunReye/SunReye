@@ -1,5 +1,4 @@
 import "../../app.css";
-import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { cdp, page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
@@ -32,7 +31,7 @@ afterEach(async () => {
 
 /** The builder on a phone, its scene drawn. */
 async function built(start: Draft = builder.house()): Promise<void> {
-  const draws = vi.spyOn(EffectComposer.prototype, "render");
+  const draws = builder.undrawn();
 
   await render(Builder, {
     pv: builder.pv,
@@ -70,21 +69,34 @@ test("the templates over an empty scene have no backdrop blur over the canvas", 
 
   await expect.element(page.getByRole("region", { name: "Vorlage wählen" })).toBeVisible();
   expect(blurred()).toEqual([]);
+
+  // What it looks for, it finds: a chip over the canvas that blurs what is behind it.
+  const chip = document.createElement("div");
+
+  chip.className = "chip";
+  chip.style.cssText = "position: fixed; inset: 30%; backdrop-filter: blur(4px)";
+  document.body.append(chip);
+  expect(blurred()).toEqual(["div.chip"]);
+  chip.remove();
 });
 
 test("what the canvas's surfaces say holds AA over the darkest and the brightest a scene shows, in both themes", async () => {
   await built();
-  await builder.press("touch", [builder.onCanvas(builder.house().scene)([5, 3, 4])]);
-  await expect.element(bar()).toBeVisible();
+
+  // A garage door where the front wall's window and door leave no room: the toolbar refuses it.
+  await builder.press("touch", [builder.onCanvas(builder.house().scene)([3, 1.6, 8])]);
+  await bar().getByRole("button", { name: "Hinzufügen" }).click();
+  await page.getByRole("menuitem", { name: "Garagentor" }).click();
+
+  const refused = bar().getByRole("alert");
+
+  await expect.element(refused).toHaveTextContent("Dort liegt schon eine andere Öffnung.");
 
   const status = page.getByRole("group", { name: "Jetzt in der Szene" }).element();
   const moment = page.getByRole("group", { name: "Zeitpunkt" }).element();
   const toolbar = bar().element();
-  // A refusal's words, as the toolbar and the inspector say them.
-  const refusal = document.createElement("p");
+  const refusal = refused.element();
 
-  refusal.className = "text-destructive";
-  toolbar.append(refusal);
   document.head.append(still);
 
   for (const theme of ["light", "dark"]) {

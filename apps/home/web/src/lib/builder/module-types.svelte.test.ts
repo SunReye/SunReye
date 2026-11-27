@@ -1,5 +1,4 @@
 import "../../app.css";
-import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
@@ -20,6 +19,7 @@ import {
   settle,
   SOUTH,
   undesk,
+  undrawn,
 } from "./builder.harness.ts";
 import { addGrid, emptyDraft } from "../../../../../../packages/builder/src/builder/modules.ts";
 
@@ -134,7 +134,7 @@ test("from an empty core an admin creates a module type and fills a roof face wi
 });
 
 test("a face filled with a module type the core just added wires into a string", async () => {
-  const draws = vi.spyOn(EffectComposer.prototype, "render");
+  const draws = undrawn();
   const added = { ...MODULE, id: 9 };
 
   await render(Builder, {

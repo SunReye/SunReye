@@ -1,11 +1,19 @@
 // A press on the picked object itself moves it (ADR 20): zoomed out, a small chimney's ring and
 // arrows reach over it on screen, and still the chimney moves. In Resize it stays put.
 import "../../../app.css";
-import { expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import { presetView, SceneCanvas, type View } from "@sunreye/builder";
 import type { Scene } from "@sunreye/scene";
-import { onCanvas, press, pv, settle } from "../builder.harness.ts";
+import { onCanvas, press, pv, settle, undrawn } from "../builder.harness.ts";
+
+beforeEach(() => {
+  undrawn();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 const CHIMNEY = { block: 0, face: 1, across: 5, up: 2, width: 0.3, depth: 0.3, height: 0.8 };
 
