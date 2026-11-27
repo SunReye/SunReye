@@ -1,5 +1,7 @@
 // A core that keeps its connections and devices as the admin changes them, for Settings' device pages.
 import type { Connection, ConnectionDraft, Device, Transport } from "../api/core.ts";
+import type { ScanReport } from "../api/setup.ts";
+import { json } from "../api/core.harness.ts";
 
 /** The profiles it serves: an inverter and EVCC's loadpoint. */
 const PROFILES = [
@@ -34,7 +36,7 @@ const REPORT = {
       devices: [{ profile: "deye-sg05lp3", variant: "5k", name: "SUN-5K-SG05LP3-EU-SM2", unit: 1 }],
     },
   ],
-};
+} satisfies ScanReport;
 
 const problem = (status: number, code: string) =>
   Response.json(
@@ -124,18 +126,20 @@ export class FakeCore implements Transport {
     if (path === "/api/v1/live") return held();
 
     const reads = new Map([
-      ["/api/v1/profiles", () => Response.json({ profiles: PROFILES })],
-      ["/api/v1/profile-updates", () => Response.json({ updates: [] })],
-      ["/api/v1/scan", () => Response.json(REPORT)],
+      ["/api/v1/profiles", () => json("Catalogue", { profiles: PROFILES })],
+      ["/api/v1/profile-updates", () => json("Updates", { updates: [] })],
+      ["/api/v1/scan", () => json("ScanReport", REPORT)],
     ]);
 
     return Promise.resolve(reads.get(path)?.() ?? problem(404, "http.404"));
   }
 
   #device(method: string, id: number, text: string): Response {
-    if (method === "GET") return Response.json({ devices: this.devices });
+    if (method === "GET") return json("DeviceList", { devices: this.devices });
 
     const index = this.devices.findIndex(({ id: at }) => at === id);
+
+    if (method !== "POST" && index === -1) return problem(404, "device.none");
 
     if (method === "DELETE") {
       this.devices.splice(index, 1);
@@ -149,23 +153,31 @@ export class FakeCore implements Transport {
 
     this.devices.splice(method === "PUT" ? index : this.devices.length, 1, device);
 
-    return Response.json(device, { status: method === "PUT" ? 200 : 201 });
+    return json("Device", device, { status: method === "PUT" ? 200 : 201 });
   }
 
   #connection(method: string, id: number, text: string): Response {
-    if (method === "GET") return Response.json({ connections: this.connections });
+    if (method === "GET") return json("Connections", { connections: this.connections });
 
     const index = this.#connectionAt(id);
 
-    if (method === "DELETE") {
-      if (this.devices.some(({ connection }) => connection === id))
-        return problem(409, "connection.in-use");
+    if (method !== "POST" && index === -1) return problem(404, "connection.none");
 
-      this.connections.splice(index, 1);
+    return method === "DELETE"
+      ? this.#removeConnection(id, index)
+      : this.#keepConnection(method, id, index, text);
+  }
 
-      return new Response(null, { status: 204 });
-    }
+  #removeConnection(id: number, index: number): Response {
+    if (this.devices.some(({ connection }) => connection === id))
+      return problem(409, "connection.in-use");
 
+    this.connections.splice(index, 1);
+
+    return new Response(null, { status: 204 });
+  }
+
+  #keepConnection(method: string, id: number, index: number, text: string): Response {
     const { secrets: change, ...reach } = parsed(text, isConnection);
     const before = this.connections[index]?.secrets ?? [];
 
@@ -177,7 +189,7 @@ export class FakeCore implements Transport {
 
     this.connections.splice(method === "PUT" ? index : this.connections.length, 1, kept);
 
-    return Response.json(kept, { status: method === "PUT" ? 200 : 201 });
+    return json("Connection", kept, { status: method === "PUT" ? 200 : 201 });
   }
 
   #connectionAt(id: number): number {

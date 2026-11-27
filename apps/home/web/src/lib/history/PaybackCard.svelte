@@ -23,14 +23,14 @@
   <Card.Root interactive class="w-full gap-2 px-4 py-3" onclick={onopen}>
     <span class="flex w-full items-baseline justify-between gap-2">
       <span class="text-sm font-semibold">{m.stats_payback()}</span>
-      <span class="text-sm font-semibold tabular-nums"
-        ><FigureNumber
+      <span class="text-sm font-semibold tabular-nums">
+        <FigureNumber
           value={loading ? null : share}
           format={(v) => `${num(v * 100)} %`}
           placeholder="–"
           appear={false}
-        /></span
-      >
+        />
+      </span>
     </span>
     <Progress
       value={loading || share === null ? 0 : share * 100}

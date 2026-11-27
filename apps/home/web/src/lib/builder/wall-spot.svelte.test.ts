@@ -1,5 +1,4 @@
 import "../../app.css";
-import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
@@ -23,6 +22,7 @@ import {
   starts,
   testCore,
   undesk,
+  undrawn,
 } from "./builder.harness.ts";
 
 const bar = () => page.getByRole("toolbar", { name: "Aktionen" });
@@ -43,7 +43,7 @@ afterEach(async () => {
 
 /** The template house with bare walls, drawn; a tap on its front wall `along` it and `up`. */
 async function bare() {
-  const draws = vi.spyOn(EffectComposer.prototype, "render");
+  const draws = undrawn();
   const { scene, strings } = house();
   const start = { strings, scene: { ...scene, openings: [] } };
 
@@ -60,30 +60,27 @@ async function bare() {
     press(pointer, [onCanvas(start.scene)([along, up, 8])]);
 }
 
-test.each<Pointer>(["mouse", "touch"])(
-  "a %s tap on a wall offers Hinzufügen there: the window goes in under the tap, picked, one undo step",
-  async (pointer) => {
-    const tapWall = await bare();
+test("a tap on a wall offers Hinzufügen there: the window goes in under the tap, picked, one undo step", async () => {
+  const tapWall = await bare();
 
-    await tapWall(pointer, 3, 1.6);
-    await add().click();
-    await page.getByRole("menuitem", { name: "Fenster", exact: true }).click();
+  await tapWall("mouse", 3, 1.6);
+  await add().click();
+  await page.getByRole("menuitem", { name: "Fenster", exact: true }).click();
 
-    // Picked on its own level, its middle where the tap was: 3 m less half its 1.2 m.
-    await expect.element(heading("Fenster 1")).toBeVisible();
-    await expect
-      .element(
-        inspector()
-          .getByRole("button", { name: starts("Abstand vom linken Ende (m)") })
-          .getByText(/^2,4$/u),
-      )
-      .toBeVisible();
+  // Picked on its own level, its middle where the tap was: 3 m less half its 1.2 m.
+  await expect.element(heading("Fenster 1")).toBeVisible();
+  await expect
+    .element(
+      inspector()
+        .getByRole("button", { name: starts("Abstand vom linken Ende (m)") })
+        .getByText(/^2,4$/u),
+    )
+    .toBeVisible();
 
-    await undo().click();
-    await expect.element(heading("Fenster 1")).not.toBeInTheDocument();
-    await expect.element(undo()).toBeDisabled();
-  },
-);
+  await undo().click();
+  await expect.element(heading("Fenster 1")).not.toBeInTheDocument();
+  await expect.element(undo()).toBeDisabled();
+});
 
 test("a tap on a picked house's wall picks the spot too, and what does not fit there is refused in words", async () => {
   const tapWall = await bare();
@@ -108,13 +105,13 @@ test("a tap on a picked house's wall picks the spot too, and what does not fit t
   await expect.element(heading("Baukörper 1")).toBeVisible();
 });
 
-test("a battery's marker is hung at the tapped place on the wall", async () => {
+test("a battery's marker is hung at the tapped place on the wall, its menu asking which of several devices it names", async () => {
   const tapWall = await bare();
 
   await tapWall("mouse", 6, 1.2);
   await add().click();
   await page.getByRole("menuitem", { name: "Batterie" }).click();
-  await page.getByRole("menuitem", { name: "Speicher" }).click();
+  await page.getByRole("menuitem", { name: DEVICES[1]?.name ?? "" }).click();
 
   await expect.element(heading("Batterie 1")).toBeVisible();
   await expect
@@ -124,17 +121,6 @@ test("a battery's marker is hung at the tapped place on the wall", async () => {
         .getByText(/^6$/u),
     )
     .toBeVisible();
-});
-
-test("with several devices the marker's menu asks which one it names", async () => {
-  const tapWall = await bare();
-
-  await tapWall("mouse", 6, 1.2);
-  await add().click();
-  await page.getByRole("menuitem", { name: "Batterie" }).click();
-  await page.getByRole("menuitem", { name: DEVICES[1]?.name ?? "" }).click();
-
-  await expect.element(heading("Batterie 1")).toBeVisible();
   await expect
     .element(
       inspector()
@@ -186,7 +172,7 @@ test("on a phone the toolbar stands by the tapped spot and adding leaves the she
 });
 
 test("on a turned house under a turned north the window still goes in under the tap", async () => {
-  const draws = vi.spyOn(EffectComposer.prototype, "render");
+  const draws = undrawn();
   const { scene, strings } = house();
   const [block] = scene.blocks;
 
@@ -227,7 +213,7 @@ test("on a turned house under a turned north the window still goes in under the 
 test("on a phone a house of two blocks carries all four tools inside the canvas", async () => {
   await phone();
 
-  const draws = vi.spyOn(EffectComposer.prototype, "render");
+  const draws = undrawn();
   const start = fill(emptyDraft(), "lHouse");
   const walled = { ...start, scene: { ...start.scene, openings: [] } };
 

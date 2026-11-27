@@ -30,11 +30,11 @@
 </script>
 
 {#if on()}
-  <Card.Root {element} {...rest} class={["gap-0 overflow-clip py-0 empty:hidden", className]}
-    >{@render children()}</Card.Root
-  >
+  <Card.Root {element} {...rest} class={["gap-0 overflow-clip py-0 empty:hidden", className]}>
+    {@render children()}
+  </Card.Root>
 {:else}
-  <svelte:element this={element} {...rest} class={["empty:hidden", className]}
-    >{@render children()}</svelte:element
-  >
+  <svelte:element this={element} {...rest} class={["empty:hidden", className]}>
+    {@render children()}
+  </svelte:element>
 {/if}

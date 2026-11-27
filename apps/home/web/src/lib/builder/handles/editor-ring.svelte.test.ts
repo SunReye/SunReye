@@ -1,12 +1,20 @@
 // An editor's ring on the scene canvas (ADR 20): a consumer that offers it beside the other
 // handles turns a picked traced roof by dragging round it, one step shown at a time and one drop.
 import "../../../app.css";
-import { expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import { presetView, SceneCanvas } from "@sunreye/builder";
 import type { Scene } from "@sunreye/scene";
 import { handles } from "../../../../../../../packages/builder/src/builder/handles/grips.ts";
-import { onCanvas, press, pv, settle } from "../builder.harness.ts";
+import { onCanvas, press, pv, settle, undrawn } from "../builder.harness.ts";
+
+beforeEach(() => {
+  undrawn();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 const footprint = [
   [0, 0],

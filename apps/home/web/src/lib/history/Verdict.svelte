@@ -30,9 +30,9 @@
     >
       {#snippet children(d)}
         <p class="max-w-[62ch] text-base leading-6 font-medium text-pretty @[640px]:text-lg">
-          {d.sentence}{#if d.gapHours > 0}<span class="text-sm font-normal text-muted-foreground"
-              >{" "}{m.stats_gap_hours({ hours: num(d.gapHours) })}</span
-            >{/if}
+          {d.sentence}{#if d.gapHours > 0}<span class="text-sm font-normal text-muted-foreground">
+              {" "}{m.stats_gap_hours({ hours: num(d.gapHours) })}
+            </span>{/if}
         </p>
       {/snippet}
     </Pager>

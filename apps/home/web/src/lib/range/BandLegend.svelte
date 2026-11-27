@@ -158,17 +158,19 @@
 >
   <div class="flex h-7 items-center justify-between gap-3 pointer-coarse:h-10">
     <p class="min-w-0 truncate text-base font-semibold tabular-nums">
-      {legend.title}{#if legend.status}<span class="font-normal text-muted-foreground"
-          >&nbsp;· {legend.status}</span
-        >{/if}
+      {legend.title}{#if legend.status}<span class="font-normal text-muted-foreground">
+          &nbsp;· {legend.status}
+        </span>{/if}
     </p>
     {#if legend.open}
       <Button
         variant="outline"
         size="sm"
         class="h-7 shrink-0 gap-1 px-2 text-xs pointer-coarse:h-10 pointer-coarse:px-3"
-        onclick={onopen}>{drillLabel}<ArrowRight class="size-3.5" /></Button
+        onclick={onopen}
       >
+        {drillLabel}<ArrowRight class="size-3.5" />
+      </Button>
     {/if}
   </div>
   {#each rows as r (r.side)}

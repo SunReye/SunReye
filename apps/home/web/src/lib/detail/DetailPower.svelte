@@ -51,8 +51,10 @@
     {#if node?.leadEstimated}<span
         class="me-1 font-normal text-muted-foreground"
         title={m.detail_estimated()}
-        aria-label={m.detail_estimated()}>≈</span
-      >{/if}<Quantity
+        aria-label={m.detail_estimated()}
+      >
+        ≈
+      </span>{/if}<Quantity
       value={loading || watts === null ? null : Math.abs(watts)}
       unit="W"
       unitClass={[second ? "text-sm" : "text-lg", "font-medium text-muted-foreground"]}

@@ -78,12 +78,12 @@
     aria-label={m.editor_tap({ value: text })}
   >
     {#if whole}
-      <span class="flex"
-        ><RollingNumber
+      <span class="flex">
+        <RollingNumber
           value={(rows.at(0) + live * edit.step) / p10}
           max={edit.max / p10}
-        />{#if p10 > 1}<span class="tabular-nums">{"0".repeat(Math.log10(p10))}</span>{/if}</span
-      >
+        />{#if p10 > 1}<span class="tabular-nums">{"0".repeat(Math.log10(p10))}</span>{/if}
+      </span>
     {:else}
       <span class="tabular-nums">{nf.format(rows.at(index))}</span>
     {/if}

@@ -68,13 +68,9 @@
       </span>
       <span class="max-w-full truncate text-xs text-muted-foreground tabular-nums">
         {#if !quiet && against && f.change !== null}
-          <span class="font-medium text-foreground"
-            ><FigureNumber
-              value={f.change}
-              format={(v) => delta(v, f.points)}
-              appear={false}
-            /></span
-          ><span class="hidden @[640px]:inline">{" "}{against}</span>
+          <span class="font-medium text-foreground">
+            <FigureNumber value={f.change} format={(v) => delta(v, f.points)} appear={false} />
+          </span><span class="hidden @[640px]:inline">{" "}{against}</span>
         {:else}&nbsp;{/if}
       </span>
     </Pressable>
@@ -97,9 +93,9 @@
       pick("plant");
     }}
   >
-    <span class={["label", on ? "text-foreground" : "text-muted-foreground"]}
-      >{m.stats_plant()}</span
-    >
+    <span class={["label", on ? "text-foreground" : "text-muted-foreground"]}>
+      {m.stats_plant()}
+    </span>
     <span class="value">
       {#if shown && plant.weak > 0}
         <TriangleAlert class="size-4 shrink-0 self-center text-warning @[640px]:size-5" />
@@ -118,8 +114,9 @@
     <span class="max-w-full truncate text-xs text-muted-foreground">
       <span class="@[640px]:hidden">{m.stats_plant_short()}</span><span
         class="hidden @[640px]:inline"
-        >{plant.battery ? m.stats_plant_sub_battery() : m.stats_plant_sub()}</span
       >
+        {plant.battery ? m.stats_plant_sub_battery() : m.stats_plant_sub()}
+      </span>
     </span>
   </Pressable>
 {/snippet}

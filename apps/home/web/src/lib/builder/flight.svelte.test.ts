@@ -2,12 +2,12 @@ import "../../app.css";
 import { afterEach, expect, test, vi } from "vitest";
 import { cdp } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { motion } from "../../../../../../packages/builder/src/motion/tier.svelte.ts";
 import { presetView } from "../../../../../../packages/builder/src/builder/camera.ts";
 import type { Geometry, Point } from "../../../../../../packages/builder/src/builder/pv.ts";
 import { SceneCanvas } from "@sunreye/builder";
 import { stepUntil } from "../motion/clock.harness.ts";
+import { undrawn } from "./undrawn.harness.ts";
 
 type Projector = (point: Point) => readonly [number, number] | null;
 
@@ -42,7 +42,7 @@ const FRAME = 16;
 async function flying() {
   vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame"] });
 
-  const draws = vi.spyOn(EffectComposer.prototype, "render");
+  const draws = undrawn();
   let project: Projector | undefined;
 
   const screen = await render(SceneCanvas, {

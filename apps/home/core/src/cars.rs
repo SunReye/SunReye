@@ -65,11 +65,10 @@ impl CarBodies {
     }
 
     /// Uploading is the admin's; reading is a viewer's, who sees the scene.
-    pub fn routes(self) -> OpenApiRouter {
+    pub fn routes() -> OpenApiRouter<crate::api::App> {
         OpenApiRouter::new()
             .routes(routes!(upload))
             .routes(routes!(body))
-            .with_state(self)
     }
 
     fn path(&self, id: &str) -> PathBuf {

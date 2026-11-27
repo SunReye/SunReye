@@ -41,8 +41,9 @@
     <ContextMenu.Content>
       <ContextMenu.Group>
         <ContextMenu.Item>Rename</ContextMenu.Item>
-        <ContextMenu.Item>Duplicate<ContextMenu.Shortcut>⌘D</ContextMenu.Shortcut></ContextMenu.Item
-        >
+        <ContextMenu.Item>
+          Duplicate<ContextMenu.Shortcut>⌘D</ContextMenu.Shortcut>
+        </ContextMenu.Item>
         <ContextMenu.Separator />
         <ContextMenu.Item variant="destructive">Remove</ContextMenu.Item>
       </ContextMenu.Group>

@@ -61,9 +61,9 @@
       {m.rd_soc()}
     </span>
     <span class="flex gap-1.5 tabular-nums">
-      <span class="text-muted-foreground"
-        >{shown ? shown.title : m.range_mean({ series: m.rd_soc(), range: label })}</span
-      >
+      <span class="text-muted-foreground">
+        {shown ? shown.title : m.range_mean({ series: m.rd_soc(), range: label })}
+      </span>
       <span class="font-medium">{value === null ? "–" : `${num(value)} %`}</span>
     </span>
   </div>

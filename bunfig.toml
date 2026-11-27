@@ -1,6 +1,8 @@
 [test]
 # Component tests run in a real browser through Vitest (ADR 11).
-pathIgnorePatterns = ["**/*.svelte.test.ts", "**/node_modules/**"]
+# The docs' check reads the core binary `cargo test` builds: the gate runs it after that, with
+# `scripts/docs.bunfig.toml`.
+pathIgnorePatterns = ["**/*.svelte.test.ts", "**/node_modules/**", "scripts/docs.test.ts"]
 # Compiles the SPA's and the builder's messages first, so a unit test never reads stale
 # translations (ADR 11).
 preload = ["./apps/home/web/scripts/i18n.ts", "./packages/builder/scripts/i18n.ts"]

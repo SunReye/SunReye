@@ -31,10 +31,8 @@ pub struct Zone {
 }
 
 /// The timezone routes: viewers read the zone, the admin sets it.
-pub fn routes(zones: Zones, clock: Clock) -> OpenApiRouter {
-    OpenApiRouter::new()
-        .routes(routes!(timezone, set_timezone))
-        .with_state((zones, clock))
+pub fn routes() -> OpenApiRouter<crate::api::App> {
+    OpenApiRouter::new().routes(routes!(timezone, set_timezone))
 }
 
 type ZoneState = State<(Zones, Clock)>;

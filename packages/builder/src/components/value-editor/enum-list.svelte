@@ -45,9 +45,9 @@
             <Item.Title>{o.text}</Item.Title>
           </Item.Content>
           <Item.Actions>
-            {#if now === o.value}<span class="text-xs whitespace-nowrap text-muted-foreground"
-                >{m.editor_now()}</span
-              >{/if}
+            {#if now === o.value}<span class="text-xs whitespace-nowrap text-muted-foreground">
+                {m.editor_now()}
+              </span>{/if}
             {#if choice === o.value}<Check class="size-4 text-primary" />{/if}
           </Item.Actions>
         </Pressable>

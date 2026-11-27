@@ -264,11 +264,11 @@ fn every_profiles_settings_write_with_function_16_and_read_back_their_own_regist
                 mask: 0xFFFF,
             };
             assert_eq!(setting.read_back(), Some(Source::Register(whole)), "{key}");
-            assert!(
-                setting.encode(max).is_some() && setting.encode(max + 1.0).is_none(),
-                "{} {key}",
-                profile.id
-            );
+            // Each is a whole number in one word at scale 1: the word is the value itself.
+            let words = setting.encode(max);
+            let read = words.map(|w| w.into_iter().map(f64::from).collect::<Vec<_>>());
+            assert_eq!(read, Some(vec![max]), "{} {key}", profile.id);
+            assert!(setting.encode(max + 1.0).is_none(), "{} {key}", profile.id);
             assert!(
                 !setting.verified(),
                 "{} {key} is not checked on hardware",

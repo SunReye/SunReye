@@ -113,11 +113,10 @@ impl PlantLocation {
     }
 
     /// The location routes: the admin's location and everyone's sun tint.
-    pub fn routes(self, clock: Clock) -> OpenApiRouter {
+    pub fn routes() -> OpenApiRouter<crate::api::App> {
         OpenApiRouter::new()
             .routes(routes!(location, set_location))
             .routes(routes!(sun_tint))
-            .with_state((self, clock))
     }
 }
 

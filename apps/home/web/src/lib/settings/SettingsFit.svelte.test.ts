@@ -4,7 +4,8 @@ import { afterEach, expect, test } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
-import { connect, type Transport } from "../api/core.ts";
+import { connect, type Transport, type Update } from "../api/core.ts";
+import { json } from "../api/core.harness.ts";
 import { FakeCore } from "./devices.harness.ts";
 import SettingsScreen from "./SettingsScreen.svelte";
 import { attempt, CAPABILITIES, CHARGE } from "./settings.harness.ts";
@@ -25,6 +26,7 @@ const TARIFF = {
     bands: [{ days: [1, 2, 3, 4, 5], from: "22:00", to: "24:00", price: 0.2 }],
   },
   export: { price: 0.08, bands: [] },
+  standingCharge: 12,
 };
 
 /** A profile update touching every setting, so the devices page lists them. */
@@ -39,7 +41,7 @@ const UPDATE = {
     after: { range: { min: 0, max: 100 }, step: 1 },
   })),
   quantities: [],
-};
+} satisfies Update;
 
 /** A plant with something on every page, names long enough to wrap or cut. */
 function plant(): Transport {
@@ -57,24 +59,25 @@ function plant(): Transport {
   devices.devices.push({ id: 4, connection: 2, name: LONG, profile: "evcc", unit: 1 });
 
   const reads = new Map([
-    ["/api/v1/capabilities", () => Response.json(CAPABILITIES)],
+    ["/api/v1/capabilities", () => json("Support", CAPABILITIES)],
     [
       "/api/v1/writes",
-      () => Response.json({ writes: KEYS.map((setting) => attempt({ setting })) }),
+      () => json("WriteLog", { writes: KEYS.map((setting) => attempt({ setting })) }),
     ],
-    ["/api/v1/profile-updates", () => Response.json({ updates: [UPDATE] })],
-    ["/api/v1/timezone", () => Response.json({ name: "America/Argentina/ComodRivadavia" })],
-    ["/api/v1/location", () => Response.json({ latitude: 48.1, longitude: 11.6 })],
-    ["/api/v1/tariff", () => Response.json(TARIFF)],
-    ["/api/v1/spot-prices", () => Response.json({ zone: "DE-LU" })],
+    ["/api/v1/profile-updates", () => json("Updates", { updates: [UPDATE] })],
+    ["/api/v1/timezone", () => json("Zone", { name: "America/Argentina/ComodRivadavia" })],
+    ["/api/v1/location", () => json("Location", { latitude: 48.1, longitude: 11.6 })],
+    ["/api/v1/tariff", () => json("Tariff", TARIFF)],
+    ["/api/v1/spot-prices", () => json("SpotPriceZone", { zone: "DE-LU" })],
     [
       "/api/v1/payback",
-      () => Response.json({ investment: 12_000, savings: 312.5, remaining: 11_687.5 }),
+      () =>
+        json("Payback", { investment: 12_000, savings: 312.5, remaining: 11_687.5, months: [] }),
     ],
-    ["/api/v1/viewers", () => Response.json({ viewers: [{ id: 1, name: LONG }] })],
-    ["/api/v1/tokens", () => Response.json({ tokens: [{ id: 1, name: "evcc", scope: "read" }] })],
-    ["/api/v1/import", () => Response.json({ state: "idle", done: 0, total: 0 })],
-    ["/api/v1/import/files", () => Response.json({ files: [] })],
+    ["/api/v1/viewers", () => json("Viewers", { viewers: [{ id: 1, name: LONG }] })],
+    ["/api/v1/tokens", () => json("Tokens", { tokens: [{ id: 1, name: "evcc", scope: "read" }] })],
+    ["/api/v1/import", () => json("ImportStatus", { state: "idle", done: 0, total: 0 })],
+    ["/api/v1/import/files", () => json("ArchiveFiles", { files: [] })],
   ]);
 
   return {

@@ -285,8 +285,10 @@
     <output
       class="canvas-chip pointer-events-none absolute flex h-7 translate-x-3.5 -translate-y-1/2 items-center rounded-md px-2 text-xs whitespace-nowrap tabular-nums ring-1 ring-border/60 elevation-1"
       style:left="{left}px"
-      style:top="{top}px">{text}</output
+      style:top="{top}px"
     >
+      {text}
+    </output>
   {/if}
 </div>
 

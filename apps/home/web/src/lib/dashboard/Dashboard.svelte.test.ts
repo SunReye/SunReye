@@ -3,9 +3,10 @@ import { cdp, page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { connect, type Transport } from "../api/core.ts";
-import { eachSeries } from "../api/core.harness.ts";
+import { eachSeries, json } from "../api/core.harness.ts";
 import { feed } from "../live/stream.harness.ts";
 import Dashboard from "./Dashboard.svelte";
+import type { Device } from "../api/core.ts";
 
 const PLANT = "4294967294";
 const TARIFF = "4294967293";
@@ -56,7 +57,7 @@ interface Served {
   /** Whether today's history, forecasts and money answer; held otherwise. */
   day: boolean;
   /** The admin's device list; a viewer is refused it. */
-  devices: unknown[] | null;
+  devices: Device[] | null;
 }
 
 const served: Served = { live: NOON, day: true, devices: null };
@@ -66,10 +67,10 @@ const held = () => Promise.withResolvers<Response>().promise;
 /** Today's reads by path, a range read answering each series; any other forecast, an
  * inverter's or the weather's, is empty. */
 const DAY = new Map<string, (href: string) => Response>([
-  ["/api/v1/timezone", () => Response.json({ name: "UTC" })],
+  ["/api/v1/timezone", () => json("Zone", { name: "UTC" })],
   [
     "/api/v1/layout",
-    () => Response.json({ appliesFrom: "2026-11-01T00:00:00Z", strings: [], warnings: [] }),
+    () => json("Layout", { appliesFrom: "2026-11-01T00:00:00Z", strings: [], warnings: [] }),
   ],
   [
     `/api/v1/devices/${PLANT}/history`,
@@ -79,14 +80,15 @@ const DAY = new Map<string, (href: string) => Response>([
   [`/api/v1/devices/${SPOT}/forecasts`, (href) => eachSeries(href, () => forecast(0.061))],
   [
     "/api/v1/costs",
-    () => Response.json({ days: [], total: { paid: 0.32, earned: 0.33, saved: 2.1 } }),
+    () =>
+      json("CostDays", { days: [], total: { paid: 0.32, earned: 0.33, saved: 2.1, standing: 0 } }),
   ],
 ]);
 
 function deviceList(): Response {
   return served.devices === null
     ? Response.json({ status: 403, code: "auth.forbidden" }, { status: 403 })
-    : Response.json({ devices: served.devices });
+    : json("DeviceList", { devices: served.devices });
 }
 
 function answer(href: string): Promise<Response> {

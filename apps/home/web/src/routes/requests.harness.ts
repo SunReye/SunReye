@@ -6,6 +6,8 @@ import { warm } from "../../../../../packages/builder/src/scene/warm.ts";
 
 export { eachSeries, problem, settled, tally } from "../lib/api/settled.harness.ts";
 
+export { json, type Schema } from "../lib/api/core.harness.ts";
+
 /** One thing the fake clock fakes. */
 type Faked = NonNullable<NonNullable<Parameters<typeof vi.useFakeTimers>[0]>["toFake"]>[number];
 

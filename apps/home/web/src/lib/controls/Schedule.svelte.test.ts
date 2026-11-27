@@ -5,7 +5,7 @@ import "../../app.css";
 import { connect } from "../api/core.ts";
 import { finish } from "../motion/animations.harness.ts";
 import { haptics } from "@sunreye/ui/haptics";
-import { problem } from "../settings/settings.harness.ts";
+import { problem } from "../api/core.harness.ts";
 import Controls from "./Controls.svelte";
 import { SCHEDULE, controlsCore } from "./controls.harness.ts";
 
@@ -87,7 +87,9 @@ test("a switch above the slots turns the schedule on through the funnel", async 
   await expect.element(on).not.toBeChecked();
   await on.click();
 
-  await expect.element(on).toBeChecked();
+  // Checked while the write runs; still checked once the device is read again.
+  await expect.element(on).toBeEnabled();
+  expect(on.element()).toBeChecked();
   expect(transport.writes).toEqual([`PUT /api/v1/devices/3/settings/${SCHEDULE} {"value":1}`]);
   expect(screen.getByRole("listitem").elements()).toHaveLength(2);
   // The tap ticks; the read-back confirms. The value it reads back is no second tick.

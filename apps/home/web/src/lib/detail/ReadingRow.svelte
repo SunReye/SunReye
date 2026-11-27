@@ -88,8 +88,9 @@
         {href}
         aria-label={m.detail_explore({ label: row.label })}
         class="relative z-10 rounded-sm underline decoration-border underline-offset-4 outline-none hover:decoration-foreground focus-visible:ring-2 focus-visible:ring-ring"
-        ><ReadingValue {row} {loading} {dim} /></a
-      >{@render chevron()}
+      >
+        <ReadingValue {row} {loading} {dim} />
+      </a>{@render chevron()}
     </dd>
   </div>
 {/if}

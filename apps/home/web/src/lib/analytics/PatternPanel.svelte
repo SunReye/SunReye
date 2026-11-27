@@ -97,16 +97,16 @@
   />
   <div class="flex items-center gap-2 pl-10 text-xs text-muted-foreground tabular-nums">
     <span>0</span>
-    <span class="flex h-2 w-32 gap-px" data-heat-scale
-      >{#each { length: 10 } as _, i (i)}<span
+    <span class="flex h-2 w-32 gap-px" data-heat-scale>
+      {#each { length: 10 } as _, i (i)}<span
           class="flex-1"
           style:background={fill(((i + 1) / 10) * max)}
-        ></span>{/each}</span
-    >
+        ></span>{/each}
+    </span>
     <span>{m.heat_scale({ value: num(max, 1) })}</span>
-    <span class="ml-3 flex items-center gap-1.5"
-      ><span class="hatch size-2.5"></span>{m.range_no_data()}</span
-    >
+    <span class="ml-3 flex items-center gap-1.5">
+      <span class="hatch size-2.5"></span>{m.range_no_data()}
+    </span>
   </div>
 </div>
 

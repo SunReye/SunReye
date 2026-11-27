@@ -1,5 +1,5 @@
 import "../../app.css";
-import { beforeEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { type Corrections, type ModuleType, type Transport } from "../api/core.ts";
@@ -7,8 +7,16 @@ import Builder from "../../../../../../packages/builder/src/builder/Builder.svel
 import { emptyDraft } from "../../../../../../packages/builder/src/builder/modules.ts";
 import { fetchPv } from "@sunreye/builder/canvas";
 import { fill } from "../../../../../../packages/builder/src/builder/templates.ts";
-import { hosted } from "./builder.harness.ts";
+import { hosted, undrawn } from "./builder.harness.ts";
 import { pickDay, savedFrom, scrub } from "./moment.harness.ts";
+
+beforeEach(() => {
+  undrawn();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 // The builder's time slider (ADR 20): it reads history, forecasts and a clear sky, and never
 // changes the scene.

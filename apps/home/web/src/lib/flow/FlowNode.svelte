@@ -94,9 +94,9 @@
         <Icon class={hasSoc ? "size-4" : "size-6 sm:size-7"} />
       </span>
       {#if soc !== undefined}
-        <span class="mt-0.5 text-lg font-semibold tabular-nums sm:text-xl"
-          >{Math.round(soc)}<span class="text-[0.68em] font-medium">%</span></span
-        >
+        <span class="mt-0.5 text-lg font-semibold tabular-nums sm:text-xl">
+          {Math.round(soc)}<span class="text-[0.68em] font-medium">%</span>
+        </span>
       {/if}
     </span>
     {#if soc !== undefined}
@@ -139,8 +139,10 @@
       {#if node.estimated}<span
           class="me-0.5 font-normal text-muted-foreground"
           title={m.detail_estimated()}
-          aria-label={m.detail_estimated()}>≈</span
-        >{/if}<PowerNumber
+          aria-label={m.detail_estimated()}
+        >
+          ≈
+        </span>{/if}<PowerNumber
         watts={watts === null ? null : Math.abs(watts)}
         unitClass="text-xs font-normal text-muted-foreground"
       />

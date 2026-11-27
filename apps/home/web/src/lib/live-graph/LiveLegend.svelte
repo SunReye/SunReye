@@ -22,9 +22,9 @@
 <div class="flex items-baseline justify-between gap-3 text-xs text-muted-foreground">
   {#if reading}
     <span class="font-medium text-foreground tabular-nums">{ago(reading.ago)}</span>
-    <span class="font-semibold text-foreground tabular-nums"
-      >{reading.watts === null ? "–" : formatPower(reading.watts)}</span
-    >
+    <span class="font-semibold text-foreground tabular-nums">
+      {reading.watts === null ? "–" : formatPower(reading.watts)}
+    </span>
   {:else}
     <span class={["font-medium", warn && "text-warning"]}>{label}</span>
   {/if}

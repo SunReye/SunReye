@@ -1,10 +1,13 @@
 // The settings screen's test core, shared by its component tests.
-import type { Attempt, Transport } from "../api/core.ts";
+import type { Attempt, Capabilities, Transport } from "../api/core.ts";
+import { json } from "../api/core.harness.ts";
 
 export const CHARGE = "battery.max_charge_current";
 
 /** A profile's settings as the core's capabilities list them; no brand anywhere. */
-export const CAPABILITIES = {
+export const CAPABILITIES: Capabilities & {
+  readonly devices: { readonly "3": Capabilities["devices"][string] };
+} = {
   version: "5.0.0",
   schema: { min: 1, max: 1 },
   capabilities: [],
@@ -59,29 +62,22 @@ export function attempt(fields: Readonly<Partial<Attempt>>): Attempt {
   };
 }
 
-export function problem(status: number, code: string): Response {
-  return Response.json(
-    { status, code },
-    { status, headers: { "content-type": "application/problem+json" } },
-  );
-}
-
 /** What the test core always answers the same, by path. */
 const FIXED = new Map([
-  ["/api/v1/capabilities", () => Response.json(CAPABILITIES)],
-  ["/api/v1/devices", () => Response.json({ devices: [DEVICE] })],
-  ["/api/v1/connections", () => Response.json({ connections: [] })],
-  ["/api/v1/profiles", () => Response.json({ profiles: [] })],
-  ["/api/v1/profile-updates", () => Response.json({ updates: [] })],
+  ["/api/v1/capabilities", () => json("Support", CAPABILITIES)],
+  ["/api/v1/devices", () => json("DeviceList", { devices: [DEVICE] })],
+  ["/api/v1/connections", () => json("Connections", { connections: [] })],
+  ["/api/v1/profiles", () => json("Catalogue", { profiles: [] })],
+  ["/api/v1/profile-updates", () => json("Updates", { updates: [] })],
   // No import has run, and none is offered.
-  ["/api/v1/import", () => Response.json({ state: "idle", done: 0, total: 0 })],
-  ["/api/v1/import/files", () => Response.json({ files: [] })],
+  ["/api/v1/import", () => json("ImportStatus", { state: "idle", done: 0, total: 0 })],
+  ["/api/v1/import/files", () => json("ArchiveFiles", { files: [] })],
 ]);
 
 /** A test core: capabilities as above, the write log and each write answered by the test. */
 export function testCore(
   log: () => Response,
-  write: () => Response = () => Response.json(attempt({})),
+  write: () => Response = () => json("Entry", attempt({})),
   read: Readonly<Record<string, () => Response>> = {},
 ): Transport & { readonly writes: string[] } {
   const writes: string[] = [];

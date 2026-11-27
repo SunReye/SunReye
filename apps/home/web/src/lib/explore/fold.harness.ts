@@ -2,7 +2,7 @@
 // the statistics it answers for October 2026.
 import { render } from "vitest-browser-svelte";
 import { connect, type CatalogDevice, type Statistics, type Transport } from "../api/core.ts";
-import { eachSeries } from "../api/core.harness.ts";
+import { eachSeries, json } from "../api/core.harness.ts";
 import ExploreScreen from "./ExploreScreen.svelte";
 
 const SPAN = { first: "2026-01-01T00:00:00Z", last: "2026-11-15T12:00:00Z" };
@@ -69,9 +69,9 @@ function transport(): Transport {
       const url = new URL(request.url);
       const read = url.pathname.split("/").at(-1);
 
-      if (read === "timezone") return Promise.resolve(Response.json({ name: "UTC" }));
+      if (read === "timezone") return Promise.resolve(json("Zone", { name: "UTC" }));
 
-      if (read === "series") return Promise.resolve(Response.json({ devices: DEVICES }));
+      if (read === "series") return Promise.resolve(json("SeriesCatalog", { devices: DEVICES }));
 
       if (read === "statistics" && !plant.refused) {
         plant.asked.push(url.searchParams);

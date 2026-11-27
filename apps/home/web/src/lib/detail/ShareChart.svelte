@@ -100,9 +100,9 @@
   <div class="relative h-4 text-[11px] text-muted-foreground tabular-nums" aria-hidden="true">
     {#each bands as b, i (b.key)}
       {#if b.tick}
-        <span class="absolute -translate-x-1/2" style:left="{((i + 0.5) / bands.length) * 100}%"
-          >{b.label}</span
-        >
+        <span class="absolute -translate-x-1/2" style:left="{((i + 0.5) / bands.length) * 100}%">
+          {b.label}
+        </span>
       {/if}
     {/each}
   </div>

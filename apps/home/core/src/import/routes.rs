@@ -85,12 +85,11 @@ impl Imports {
         }))
     }
 
-    pub fn routes(self) -> OpenApiRouter {
+    pub fn routes() -> OpenApiRouter<crate::api::App> {
         OpenApiRouter::new()
             .routes(routes!(import_status, start_import))
             .routes(routes!(import_files))
             .routes(routes!(upload_import))
-            .with_state(self)
     }
 
     fn status(&self) -> ImportStatus {

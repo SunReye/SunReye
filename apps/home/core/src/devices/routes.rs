@@ -27,7 +27,7 @@ const PATH: Problem = Problem {
 type DevicesState = State<(Devices, Clock)>;
 
 impl Devices {
-    pub fn routes(self, clock: Clock) -> OpenApiRouter {
+    pub fn routes() -> OpenApiRouter<crate::api::App> {
         OpenApiRouter::new()
             .routes(routes!(list_connections, add_connection))
             .routes(routes!(change_connection, remove_connection))
@@ -39,7 +39,6 @@ impl Devices {
             .routes(routes!(set_deadband, remove_deadband))
             .routes(routes!(writes))
             .routes(routes!(scan))
-            .with_state((self, clock))
     }
 }
 

@@ -75,11 +75,13 @@
                 onopen(g.range);
               }}
             >
-              <span class="min-w-0 flex-1 tabular-nums"
-                >{m.stats_gap_row({ from: g.from })}<span
-                  class="block text-xs text-muted-foreground">{m.stats_gap_cause()}</span
-                ></span
-              >
+              <span class="min-w-0 flex-1 tabular-nums">
+                {m.stats_gap_row({ from: g.from })}<span
+                  class="block text-xs text-muted-foreground"
+                >
+                  {m.stats_gap_cause()}
+                </span>
+              </span>
               <span class="font-semibold tabular-nums">{g.hours} h</span>
               <ChevronRight class="size-4 shrink-0 self-center text-muted-foreground" />
             </Pressable>

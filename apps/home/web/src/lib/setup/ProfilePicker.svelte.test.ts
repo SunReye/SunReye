@@ -7,6 +7,7 @@ import { unfaded } from "../scroll-fade.harness.ts";
 import { tap } from "../builder/pointer.harness.ts";
 import ProfilePicker from "./ProfilePicker.svelte";
 import { closed } from "../motion/animations.harness.ts";
+import { json } from "../api/core.harness.ts";
 
 /** A phone; the sheet lands at once. */
 beforeEach(async () => {
@@ -41,7 +42,9 @@ const PROFILES = [
   listing("shelly-pro-3em", "Shelly", "Pro 3EM", null),
 ];
 
-function served(response: () => Response = () => Response.json({ profiles: PROFILES })): Transport {
+function served(
+  response: () => Response = () => json("Catalogue", { profiles: PROFILES }),
+): Transport {
   return { base: "http://core.test/", fetch: () => Promise.resolve(response()) };
 }
 

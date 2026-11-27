@@ -3,6 +3,7 @@ import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import App from "./shell.harness.svelte";
 import { keepOffline } from "./route.harness.ts";
+import { json } from "../lib/api/core.harness.ts";
 
 const pass = globalThis.fetch.bind(globalThis);
 
@@ -36,7 +37,9 @@ function answer(pathname: string): Response | undefined {
     case "/api/v1/devices":
       if (served.session !== undefined) return problem(401, served.session);
 
-      return served.admin ? Response.json({ devices: [INVERTER] }) : problem(403, "auth.forbidden");
+      return served.admin
+        ? json("DeviceList", { devices: [INVERTER] })
+        : problem(403, "auth.forbidden");
     case "/api/v1/live":
       return new Response(new ReadableStream(), {
         headers: { "content-type": "text/event-stream" },

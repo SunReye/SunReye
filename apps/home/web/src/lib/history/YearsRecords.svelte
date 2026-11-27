@@ -44,15 +44,15 @@
               route.open(y.range);
             }}
           >
-            <span class="w-24 font-medium tabular-nums"
-              >{y.year}{#if y.running}<span class="font-normal text-muted-foreground"
-                  >{" "}{m.stats_years_running()}</span
-                >{/if}</span
-            >
+            <span class="w-24 font-medium tabular-nums">
+              {y.year}{#if y.running}<span class="font-normal text-muted-foreground">
+                  {" "}{m.stats_years_running()}
+                </span>{/if}
+            </span>
             <span class="flex-1 text-right font-semibold tabular-nums">{y.value}</span>
-            <span class="w-20 text-right text-xs text-muted-foreground tabular-nums"
-              >{y.change}</span
-            >
+            <span class="w-20 text-right text-xs text-muted-foreground tabular-nums">
+              {y.change}
+            </span>
             <ChevronRight class="size-4 shrink-0 self-center text-muted-foreground" />
           </Pressable>
         </li>
@@ -71,9 +71,9 @@
               route.open(r.range);
             }}
           >
-            <span class="min-w-0 flex-1"
-              >{r.label}<span class="block text-xs text-muted-foreground">{r.when}</span></span
-            >
+            <span class="min-w-0 flex-1">
+              {r.label}<span class="block text-xs text-muted-foreground">{r.when}</span>
+            </span>
             <span class="font-semibold tabular-nums">{r.value}</span>
             <ChevronRight class="size-4 shrink-0 self-center text-muted-foreground" />
           </Pressable>

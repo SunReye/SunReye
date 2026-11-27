@@ -15,12 +15,14 @@
   });
 </script>
 
-<span
-  >{#if arrow}<span class="me-1">{arrow}</span>{/if}{#if chip.estimated}<span
-      class="me-0.5 text-muted-foreground">≈</span
-    >{/if}<PowerNumber
+<span>
+  {#if arrow}<span class="me-1">{arrow}</span>{/if}{#if chip.estimated}<span
+      class="me-0.5 text-muted-foreground"
+    >
+      ≈
+    </span>{/if}<PowerNumber
     watts={chip.watts === null ? null : Math.abs(chip.watts)}
     unitClass="text-muted-foreground"
     suffix={chip.kind === "inverter" ? " AC" : ""}
-  /></span
->
+  />
+</span>

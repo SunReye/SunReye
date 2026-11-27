@@ -1,12 +1,15 @@
+import { tick } from "svelte";
 import { beforeEach, expect, test, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { connect } from "../api/core.ts";
 import { closed, finish } from "../motion/animations.harness.ts";
-import { attempt, problem } from "../settings/settings.harness.ts";
+import { problem } from "../api/core.harness.ts";
+import { attempt } from "../settings/settings.harness.ts";
 import Controls from "./Controls.svelte";
 import { MAX_CHARGE, controlsCore } from "./controls.harness.ts";
+import { json } from "../api/core.harness.ts";
 
 beforeEach(async () => {
   await page.viewport(414, 896);
@@ -103,7 +106,7 @@ test("a refused apply names its reason beside the write log link and keeps the e
 
 test("a mismatch names the failed step", async () => {
   const transport = controlsCore({
-    refuse: () => Response.json(attempt({ outcome: "partial", after: null, failedStep: 2 })),
+    refuse: () => json("Entry", attempt({ outcome: "partial", after: null, failedStep: 2 })),
   });
 
   const screen = await render(Controls, {
@@ -135,6 +138,8 @@ test("with writes off every control is read-only under a banner", async () => {
   await expect.element(row).toHaveAttribute("aria-disabled", "true");
   // Playwright will not click an aria-disabled control; a finger can.
   row.element().dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  // Svelte opens an editor on its next flush: the absence is read after it.
+  await tick();
   expect(page.getByRole("spinbutton").elements()).toHaveLength(0);
 });
 

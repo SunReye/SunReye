@@ -74,6 +74,7 @@ export class SeriesView extends ModeView<Loaded | null> {
   protected async load(from: Readonly<Date>, to: Readonly<Date>): Promise<Loaded | null> {
     const { core, catalog } = this.input();
 
+    // oxlint-disable-next-line typescript/no-meaningless-void-operator -- track reactive state in loader.
     void this.#wanted;
 
     // A series' kind decides its read, and the catalog knows it.

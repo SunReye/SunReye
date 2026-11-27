@@ -3,7 +3,7 @@
 import { expect, setSystemTime, test } from "bun:test";
 import { connect, type Core } from "./core.ts";
 import type { Visibility } from "./live.ts";
-import { problem, tally } from "./core.harness.ts";
+import { json, problem, tally } from "./core.harness.ts";
 
 const LAYOUT = { appliesFrom: "2026-11-01T00:00:00Z", strings: [], warnings: [] };
 
@@ -11,14 +11,24 @@ type Answer = () => Response | Promise<Response>;
 
 /** What the fake core answers at a path; the rest succeed with an empty body. */
 const ANSWERS: readonly (readonly [string, Answer])[] = [
-  ["/api/v1/devices", () => Response.json({ devices: [] })],
-  ["/api/v1/layout", () => Response.json(LAYOUT)],
-  ["/api/v1/capabilities", () => Response.json({ devices: {} })],
-  ["/api/v1/timezone", () => Response.json({ name: "Europe/Berlin" })],
-  ["/api/v1/series", () => Response.json({ devices: [] })],
-  ["/api/v1/topology", () => Response.json({ appliesFrom: LAYOUT.appliesFrom, points: [] })],
-  ["/api/v1/module-types", () => Response.json({ moduleTypes: [] })],
-  ["/api/v1/location", () => Response.json({ latitude: 52.5, longitude: 13.4 })],
+  ["/api/v1/devices", () => json("DeviceList", { devices: [] })],
+  ["/api/v1/layout", () => json("Layout", LAYOUT)],
+  [
+    "/api/v1/capabilities",
+    () =>
+      json("Support", {
+        version: "5.0.0",
+        schema: { min: 1, max: 1 },
+        capabilities: [],
+        transports: [],
+        devices: {},
+      }),
+  ],
+  ["/api/v1/timezone", () => json("Zone", { name: "Europe/Berlin" })],
+  ["/api/v1/series", () => json("SeriesCatalog", { devices: [] })],
+  ["/api/v1/topology", () => json("Topology", { appliesFrom: LAYOUT.appliesFrom, points: [] })],
+  ["/api/v1/module-types", () => json("ModuleTypes", { moduleTypes: [] })],
+  ["/api/v1/location", () => json("Location", { latitude: 52.5, longitude: 13.4 })],
 ];
 
 /** A core whose `GET` answers can be swapped, with every GET it was asked by path; every write
@@ -169,8 +179,8 @@ test("a read in flight while a change lands is not kept", async () => {
   const before = core.timezone();
 
   await core.setTimezone("UTC");
-  answers.set("/api/v1/timezone", () => Response.json({ name: "UTC" }));
-  held.resolve(Response.json({ name: "Europe/Berlin" }));
+  answers.set("/api/v1/timezone", () => json("Zone", { name: "UTC" }));
+  held.resolve(json("Zone", { name: "Europe/Berlin" }));
 
   expect(await before).toEqual({ name: "Europe/Berlin" });
   expect(await core.timezone()).toEqual({ name: "UTC" });

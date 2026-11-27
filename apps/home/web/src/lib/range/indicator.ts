@@ -92,6 +92,7 @@ class Slide {
     style.opacity = "1";
 
     if (jump) {
+      // oxlint-disable-next-line typescript/no-meaningless-void-operator -- force reflow before enabling transition.
       void this.#node.offsetWidth;
       style.transition = GLIDE;
     }

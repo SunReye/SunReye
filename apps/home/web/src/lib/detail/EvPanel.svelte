@@ -43,13 +43,9 @@
       {#each view.sessions.slice(0, SHOWN) as s (s.start)}
         <li class="flex items-baseline justify-between gap-4 py-2 text-sm">
           <span class="min-w-0 text-pretty">{sessionTimes(s, view.days, zone)}</span>
-          <span class="shrink-0 font-semibold tabular-nums"
-            ><Quantity
-              value={s.kwh}
-              unit="kWh"
-              unitClass="font-medium text-muted-foreground"
-            /></span
-          >
+          <span class="shrink-0 font-semibold tabular-nums">
+            <Quantity value={s.kwh} unit="kWh" unitClass="font-medium text-muted-foreground" />
+          </span>
         </li>
       {/each}
     </ul>

@@ -75,6 +75,7 @@ export class Statistics {
     $effect(() => {
       let live = true;
 
+      // oxlint-disable-next-line typescript/no-meaningless-void-operator -- track retry state in effect.
       void this.#again;
 
       const read = async () => {

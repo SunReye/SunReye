@@ -93,12 +93,12 @@
   <div class="flex h-7 items-center justify-between gap-3 pointer-coarse:h-10" aria-live="polite">
     <p class="min-w-0 truncate text-sm">
       {#if active}
-        <span class="font-medium"
-          >{cols[active[0]]!.title} · {m.range_hours({ from: active[1], to: active[1] + 1 })}</span
-        >
+        <span class="font-medium">
+          {cols[active[0]]!.title} · {m.range_hours({ from: active[1], to: active[1] + 1 })}
+        </span>
         <span class="text-muted-foreground tabular-nums">
-          · {describe(cells[active[0]]![active[1]]!)}</span
-        >
+          · {describe(cells[active[0]]![active[1]]!)}
+        </span>
       {:else}<span class="text-muted-foreground">{idle}</span>{/if}
     </p>
     {#if active && reading.pinned && ondrill}
@@ -106,8 +106,10 @@
         variant="outline"
         size="sm"
         class="h-7 shrink-0 gap-1 px-2 text-xs pointer-coarse:h-10 pointer-coarse:px-3"
-        onclick={reading.open}>{drillLabel}<ArrowRight class="size-3.5" /></Button
+        onclick={reading.open}
       >
+        {drillLabel}<ArrowRight class="size-3.5" />
+      </Button>
     {/if}
   </div>
   <div class="grid grid-cols-[2.25rem_minmax(0,1fr)] gap-x-1">
@@ -159,14 +161,16 @@
     >
       {#each cols as c, i (i)}
         <!-- Twelve month names do not fit a phone: every other one drops out there. -->
-        <span class="relative flex-1"
-          >{#if c.tick}<span
+        <span class="relative flex-1">
+          {#if c.tick}<span
               class={[
                 "absolute left-1/2 -translate-x-1/2 whitespace-nowrap",
                 dense && i % 2 === 1 && "@max-[520px]:hidden",
-              ]}>{c.label}</span
-            >{/if}</span
-        >
+              ]}
+            >
+              {c.label}
+            </span>{/if}
+        </span>
       {/each}
     </div>
   </div>

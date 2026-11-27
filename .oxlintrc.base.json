@@ -1,0 +1,127 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "import", "promise"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "error",
+    "pedantic": "error",
+    "style": "off"
+  },
+  "options": {
+    "typeAware": true
+  },
+  "ignorePatterns": [
+    ".agents/**",
+    ".claude/**",
+    "tools/oxlint/anti-slop/**",
+    "fixtures/consumer/**",
+    "apps/home/core/openapi.json",
+    "apps/home/web/src/lib/api/schema.d.ts",
+    "packages/sdk/src/generated.ts",
+    "packages/scene/schema.d.ts",
+    "packages/scene/scene-schema.js",
+    "target/**",
+    "apps/home/web/src/lib/components/ui/**",
+    "packages/builder/src/motion.ts",
+    "packages/ui/src/alert/**",
+    "packages/ui/src/button/**",
+    "packages/ui/src/calendar/**",
+    "packages/ui/src/card/**",
+    "packages/ui/src/checkbox/**",
+    "packages/ui/src/context-menu/**",
+    "packages/ui/src/dialog/**",
+    "packages/ui/src/drawer/**",
+    "packages/ui/src/dropdown-menu/**",
+    "packages/ui/src/input/**",
+    "packages/ui/src/item/**",
+    "packages/ui/src/popover/**",
+    "packages/ui/src/pressable/**",
+    "packages/ui/src/separator/**",
+    "packages/ui/src/slider/**",
+    "packages/ui/src/spinner/**",
+    "packages/ui/src/toggle/**",
+    "packages/ui/src/toggle-group/**",
+    "packages/ui/src/track-active.ts",
+    "packages/ui/src/utils.ts",
+    "apps/home/web/src/lib/hooks/**",
+    "**/.svelte-kit/**"
+  ],
+  "jsPlugins": [
+    {
+      "name": "anti-slop",
+      "specifier": "./tools/oxlint/anti-slop/index.ts"
+    }
+  ],
+  "rules": {
+    "import/no-unassigned-import": ["error", { "allow": ["**/*.css"] }],
+    "oxc/no-accumulating-spread": "error",
+    "anti-slop/no-array-filter-map": "error",
+    "anti-slop/no-reduce-accumulator-copy": "error",
+    "anti-slop/no-chained-type-assertions": "error",
+    "anti-slop/no-conditional-empty-object-spread": "error",
+    "anti-slop/no-known-value-widening": "error",
+    "anti-slop/no-module-mocking": "error",
+    "anti-slop/no-object-parameters": "error",
+    "anti-slop/no-reflect-apply": "error",
+    "anti-slop/no-reflect-get": "error",
+    "anti-slop/no-runtime-typeof": "error",
+    "anti-slop/no-shape-in-symbol-names": "error",
+    "anti-slop/no-unknown-parameters": "error",
+    "anti-slop/no-unknown-returns": "error",
+    "anti-slop/no-unknown-type-aliases": "error",
+    "anti-slop/no-unsafe-dictionary-type": "error",
+    "anti-slop/no-widen-then-assert": "error",
+    "anti-slop/require-readable-spacing": "error",
+    "anti-slop/require-safety-comment-for-type-assertion": "error",
+    "typescript/prefer-readonly-parameter-types": [
+      "error",
+      {
+        "allow": [
+          {
+            "from": "lib",
+            "name": ["Function", "Global", "Memory", "Table"]
+          },
+          {
+            "from": "lib",
+            "name": [
+              "AbortSignal",
+              "Date",
+              "Element",
+              "ReadableStreamDefaultController",
+              "Request",
+              "Response",
+              "TransformStreamDefaultController",
+              "Uint8Array"
+            ]
+          },
+          {
+            "from": "package",
+            "package": "openapi-fetch",
+            "name": ["Client"]
+          },
+          {
+            "from": "package",
+            "package": "playwright-core",
+            "name": ["Browser", "CDPSession", "Page", "Request", "Response"]
+          }
+        ]
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["profiles/**/*.ts"],
+      "rules": {
+        "max-lines": "off",
+        "import/max-dependencies": "off"
+      }
+    },
+    {
+      "files": ["packages/catalogue/index.js"],
+      "rules": {
+        "import/max-dependencies": "off"
+      }
+    }
+  ]
+}

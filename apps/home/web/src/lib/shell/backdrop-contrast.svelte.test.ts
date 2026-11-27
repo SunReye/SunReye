@@ -7,6 +7,7 @@ import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { Toaster } from "../components/ui/sonner/index.js";
 import { clearToasts, holdToasts } from "../components/toasts.harness.ts";
+import { still } from "../contrast.harness.ts";
 import Backdrop from "./Backdrop.svelte";
 import {
   drifts,
@@ -91,25 +92,6 @@ async function paintedPixels(): Promise<Rgb[]> {
   return pixels;
 }
 
-const clamp = (c: number): number => Math.min(Math.max(c, 0), 255);
-
-/** The filter effects `saturate()` matrix, on sRGB as CSS filters work. */
-function saturate([r, g, b]: Rgb, s: number): Rgb {
-  return [
-    clamp((0.213 + 0.787 * s) * r + (0.715 - 0.715 * s) * g + (0.072 - 0.072 * s) * b),
-    clamp((0.213 - 0.213 * s) * r + (0.715 + 0.285 * s) * g + (0.072 - 0.072 * s) * b),
-    clamp((0.213 - 0.213 * s) * r + (0.715 - 0.715 * s) * g + (0.072 + 0.928 * s) * b),
-  ];
-}
-
-/** Ambient glass over `behind`. Its blur only averages what is behind it, so a pixel is the bound. */
-function glassOver(behind: Rgb, card: Rgb, opacity: number): Rgb {
-  const lit = saturate(behind, 1.4);
-  const mixed = (i: 0 | 1 | 2): number => card[i] * opacity + lit[i] * (1 - opacity);
-
-  return [mixed(0), mixed(1), mixed(2)];
-}
-
 function luminance(colour: Rgb): number {
   const [r = 0, g = 0, b = 0] = colour.map((c) => {
     const s = c / 255;
@@ -131,18 +113,12 @@ const INKS = ["--foreground", "--card-foreground", "--muted-foreground"] as cons
 
 /** A phone and a desk at half size: the lights are laid out in shares of the viewport. */
 const SCREENS = [
-  { width: 195, height: 422 },
-  { width: 640, height: 400 },
+  [195, 422],
+  [640, 400],
 ] as const;
 
-/** Every picture the backdrop can paint: where the lights rest, then where their drift has taken them. */
-const PICTURES = SCREENS.flatMap((size) =>
-  (["light", "dark"] as const).flatMap((theme) =>
-    [undefined, ...TINTS].flatMap((tint) =>
-      [0, 20, 45].map((seconds) => ({ size, theme, tint, seconds })),
-    ),
-  ),
-);
+/** Where the lights rest, then where their drift has taken them. */
+const DRIFTS = [0, 20, 45] as const;
 
 const STATUSES = ["success", "warning", "error"] as const;
 
@@ -191,17 +167,11 @@ async function statusInks(): Promise<Record<Theme, Record<(typeof STATUSES)[numb
   return inks;
 }
 
-/** Each ink's lowest contrast on ambient glass anywhere over the page as painted now. */
+/** Each ink's lowest contrast on the ambient glass, as painted now over the whole screen. */
 async function weakest(
   status: Record<(typeof STATUSES)[number], Rgb>,
 ): Promise<Record<Ink, number>> {
-  const card = token("--card");
-
-  const opacity = Number(
-    getComputedStyle(root).getPropertyValue("--ambient-opacity").replace("%", ""),
-  );
-
-  const glass = (await paintedPixels()).map((pixel) => glassOver(pixel, card, opacity / 100));
+  const glass = await paintedPixels();
 
   const lowest = (ink: Rgb): number => Math.min(...glass.map((behind) => contrast(ink, behind)));
 
@@ -215,16 +185,20 @@ async function weakest(
   };
 }
 
-/** A test a screen, a theme and a tint: each fits vitest's budget beside the other files. */
-const CASES = SCREENS.flatMap((size) =>
-  (["light", "dark"] as const).flatMap((theme) =>
-    [undefined, ...TINTS].map((tint) => ({ size, theme, tint: tint ?? "none" })),
-  ),
-);
+/** Ambient glass over the whole screen: the browser blurs and tints what lies behind it. */
+function ambientGlass(): HTMLElement {
+  const glass = document.createElement("div");
 
-test.for(CASES)(
-  "text and a toast's status icon on ambient glass keep AA contrast over the brightest light: $size.width px, $theme, $tint",
-  async (shown) => {
+  glass.className = "glass-ambient";
+  glass.style.cssText = "position: fixed; inset: 0; z-index: 10;";
+  document.body.append(glass);
+
+  return glass;
+}
+
+test.for(["light", "dark"] as const)(
+  "text and a toast's status icon keep AA contrast on ambient glass as painted over the backdrop's lights: %s",
+  async (theme) => {
     const produce = plantStream();
     const hand = handBeat();
     const status = await statusInks();
@@ -239,27 +213,39 @@ test.for(CASES)(
     for (const coming of lights(screen.container).flatMap((light) => light.getAnimations()))
       coming.finish();
 
-    const measure = async ({ size, theme, tint, seconds }: (typeof PICTURES)[number]) => {
-      await page.viewport(size.width, size.height);
-      root.classList.toggle("dark", theme === "dark");
+    const glass = ambientGlass();
 
-      if (tint === undefined) delete root.dataset["tod"];
-      else root.dataset["tod"] = tint;
+    // Each picture as it lands: a theme's or a tint's colours fade in over a moment.
+    document.head.append(still);
+    root.classList.toggle("dark", theme === "dark");
 
-      hand.at(seconds);
-      await expect.poll(() => drifts(screen.container).includes(RESTING)).toBe(seconds === 0);
+    const pictures = SCREENS.flatMap((size) =>
+      [undefined, ...TINTS].flatMap((tint) => DRIFTS.map((seconds) => ({ size, tint, seconds }))),
+    );
 
-      return weakest(status[theme]);
-    };
+    try {
+      for (const { size, tint, seconds } of pictures) {
+        // oxlint-disable-next-line no-await-in-loop -- one picture at a time: each is set, then measured.
+        await page.viewport(size[0], size[1]);
 
-    for (const picture of PICTURES.filter(
-      (p) => p.size === shown.size && p.theme === shown.theme && (p.tint ?? "none") === shown.tint,
-    )) {
-      // oxlint-disable-next-line no-await-in-loop -- one picture at a time: each is set, then measured.
-      const ratios = await measure(picture);
+        if (tint === undefined) delete root.dataset["tod"];
+        else root.dataset["tod"] = tint;
 
-      for (const ink of [...INKS, ...STATUSES])
-        expect(ratios[ink], `${ink}, ${JSON.stringify(picture)}`).toBeGreaterThanOrEqual(4.5);
+        hand.at(seconds);
+        // oxlint-disable-next-line no-await-in-loop -- one picture at a time: each is set, then measured.
+        await expect.poll(() => drifts(screen.container).includes(RESTING)).toBe(seconds === 0);
+        // oxlint-disable-next-line no-await-in-loop -- as above.
+        const ratios = await weakest(status[theme]);
+
+        for (const ink of [...INKS, ...STATUSES])
+          expect(
+            ratios[ink],
+            `${ink}, ${size.join("×")}, ${tint ?? "none"}, ${seconds} s`,
+          ).toBeGreaterThanOrEqual(4.5);
+      }
+    } finally {
+      still.remove();
+      glass.remove();
     }
   },
 );

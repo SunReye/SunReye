@@ -6,9 +6,11 @@ import {
   type Pixels,
 } from "../../../../../../packages/builder/src/scene/pixels.ts";
 
+let moduleMaps: Maps | undefined;
+
 function map(key: string): Pixels {
-  const maps: Maps = GROUPS.module();
-  const found = maps[key];
+  moduleMaps ??= GROUPS.module();
+  const found = moduleMaps[key];
 
   if (found === undefined) throw new Error(`no ${key}`);
 

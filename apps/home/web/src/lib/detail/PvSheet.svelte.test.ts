@@ -188,9 +188,18 @@ test("an estimated string's heat cells carry ≈ too", async () => {
 });
 
 test("the plant's PV, measured whole, carries no ≈", async () => {
-  const sheet = await sheetOf("pv", "PV gesamt");
+  const { screen } = await show("string-1");
+
+  // The estimates are read once a sheet opens: a string's figure carries its ≈.
+  await expect
+    .element(screen.getByRole("dialog", { name: "Süd" }).getByLabelText("geschätzt").first())
+    .toBeVisible();
+  await screen.rerender({ detail: "pv" });
+
+  const sheet = screen.getByRole("dialog", { name: "PV gesamt" });
 
   await expect.element(sheet.getByRole("term").filter({ hasText: "Spitze" })).toBeVisible();
+  await expect.element(sheet.getByRole("banner").getByText("4,2")).toBeVisible();
   expect(sheet.getByLabelText("geschätzt").elements()).toHaveLength(0);
   expect(sheet.getByText("≈").elements()).toHaveLength(0);
 });

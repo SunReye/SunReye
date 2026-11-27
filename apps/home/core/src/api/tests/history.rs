@@ -9,7 +9,7 @@ use tempfile::TempDir;
 
 use super::{Core, get, json, problem, with_cookie};
 use crate::bus::{DeviceId, Reading};
-use crate::storage::Policy;
+use crate::storage::{Backfill, Held, Policy};
 
 /// 2026-08-26 12:00 UTC, on an hour.
 const T0: u64 = 1_787_745_600;
@@ -41,10 +41,57 @@ async fn core(kind: RoleKind, cadence: u64) -> (TempDir, Core, String) {
     (dir, core, set_cookie)
 }
 
+fn policy_of(kind: RoleKind, cadence: u64) -> Policy {
+    Policy {
+        kind,
+        unit: None,
+        step: 0.1,
+        deadband: 0.0,
+        cadence: Duration::from_secs(cadence),
+    }
+}
+
 impl Core {
     /// Stores the readings, as seconds from `T0` and values, and flushes them a day later.
     async fn store(&self, readings: impl IntoIterator<Item = (u64, f64)>) {
         let last = self.record(readings).await;
+        self.storage.tick(at(last + 86_400)).await.unwrap();
+    }
+
+    /// Bulk-imports closed readings in one transaction, matching `store` for long spans.
+    async fn backfill(
+        &self,
+        kind: RoleKind,
+        cadence: u64,
+        readings: impl IntoIterator<Item = (u64, f64)>,
+    ) {
+        let series = self.bus.intern(POWER.0, POWER.1);
+        let policy = policy_of(kind, cadence);
+        let hold = Some(Duration::from_secs(cadence));
+        let mut last = 0;
+        let raw: Vec<Held> = readings
+            .into_iter()
+            .map(|(seconds, value)| {
+                last = seconds;
+                Held {
+                    time: at(seconds),
+                    value,
+                    hold,
+                }
+            })
+            .collect();
+        self.storage
+            .import(
+                DEVICE,
+                series,
+                policy,
+                Backfill {
+                    raw,
+                    ..Backfill::default()
+                },
+            )
+            .await
+            .unwrap();
         self.storage.tick(at(last + 86_400)).await.unwrap();
     }
 
@@ -218,9 +265,11 @@ async fn one_refused_series_refuses_the_request_and_is_named() {
 #[tokio::test]
 async fn a_counter_past_raw_intervals_refuses_the_series_read_with_it() {
     let (_dir, core, set_cookie) = core(RoleKind::Counter, 60).await;
-    core.store(steady(0, 7200, 60, |t| {
-        f64::from(1000 + u32::try_from(t).unwrap())
-    }))
+    core.backfill(
+        RoleKind::Counter,
+        60,
+        steady(0, 7200, 60, |t| f64::from(1000 + u32::try_from(t).unwrap())),
+    )
     .await;
 
     let (status, body) = core
@@ -253,9 +302,11 @@ fn steady(from: u64, to: u64, every: u64, value: impl Fn(u64) -> f64) -> Vec<(u6
 async fn a_range_over_a_day_returns_hourly_time_weighted_means() {
     let (_dir, core, set_cookie) = core(RoleKind::Measurement, 60).await;
     // 1 kW, then 2 kW from half past the first hour, for three hours.
-    core.store(steady(0, 10_800, 60, |t| {
-        if t < 1800 { 1000.0 } else { 2000.0 }
-    }))
+    core.backfill(
+        RoleKind::Measurement,
+        60,
+        steady(0, 10_800, 60, |t| if t < 1800 { 1000.0 } else { 2000.0 }),
+    )
     .await;
 
     let (status, body) = core.history(&set_cookie, 1800, 2 * 86_400).await;
@@ -290,8 +341,12 @@ async fn a_short_range_over_1500_intervals_returns_minute_means() {
         5,
         |t| if t % 10 == 0 { 1000.0 } else { 2000.0 },
     );
-    core.store(steady(0, 5430, 5, value).into_iter().chain(after))
-        .await;
+    core.backfill(
+        RoleKind::Measurement,
+        5,
+        steady(0, 5430, 5, value).into_iter().chain(after),
+    )
+    .await;
 
     let (status, body) = core.history(&set_cookie, 30, 10_800).await;
 
@@ -321,9 +376,11 @@ async fn a_short_range_over_1500_intervals_returns_minute_means() {
 #[tokio::test]
 async fn a_counter_bucket_is_the_time_weighted_mean_of_its_readings() {
     let (_dir, core, set_cookie) = core(RoleKind::Counter, 5).await;
-    core.store(steady(0, 7600, 5, |t| {
-        f64::from(1000 + u32::try_from(t).unwrap())
-    }))
+    core.backfill(
+        RoleKind::Counter,
+        5,
+        steady(0, 7600, 5, |t| f64::from(1000 + u32::try_from(t).unwrap())),
+    )
     .await;
 
     let (_, body) = core.history(&set_cookie, 0, 7600).await;
@@ -361,7 +418,12 @@ async fn the_hour_in_progress_is_read_from_change_points() {
 #[tokio::test]
 async fn a_series_never_exceeds_1500_points() {
     let (_dir, core, set_cookie) = core(RoleKind::Measurement, 3600).await;
-    core.store(steady(0, 1502 * 3600, 3600, |_| 1000.0)).await;
+    core.backfill(
+        RoleKind::Measurement,
+        3600,
+        steady(0, 1502 * 3600, 3600, |_| 1000.0),
+    )
+    .await;
     let longest_in_hours = 1499 * 3600;
 
     let (_, hours) = core
@@ -390,7 +452,7 @@ async fn a_held_value_and_a_status_read_as_raw_intervals_at_any_range() {
         let (_dir, core, set_cookie) = core(kind, 60).await;
         // 50 until half past the first hour, then 80, read for three hours and then lost.
         let readings = steady(0, 10_800, 60, |t| if t < 1800 { 50.0 } else { 80.0 });
-        core.store(readings).await;
+        core.backfill(kind, 60, readings).await;
 
         for to in [2 * 86_400, 1500 * 3600] {
             let (_, body) = core.history(&set_cookie, 0, to).await;
@@ -436,13 +498,17 @@ async fn a_held_values_intervals_end_at_the_clock() {
 async fn a_status_over_a_month_returns_its_intervals_carried_from_before_the_range() {
     let (_dir, core, set_cookie) = core(RoleKind::Status, 3600).await;
     // Hourly readings of a state that flips at noon each day, for 32 days.
-    core.store(steady(0, 32 * 86_400, 3600, |t| {
-        if (t + 43_200) / 86_400 % 2 == 0 {
-            0.0
-        } else {
-            1.0
-        }
-    }))
+    core.backfill(
+        RoleKind::Status,
+        3600,
+        steady(0, 32 * 86_400, 3600, |t| {
+            if (t + 43_200) / 86_400 % 2 == 0 {
+                0.0
+            } else {
+                1.0
+            }
+        }),
+    )
     .await;
 
     let (status, body) = core.history(&set_cookie, 86_400, 31 * 86_400).await;
@@ -465,9 +531,16 @@ async fn a_status_over_a_month_returns_its_intervals_carried_from_before_the_ran
 async fn a_status_past_1500_intervals_is_refused_even_within_a_day() {
     let (_dir, core, set_cookie) = core(RoleKind::Status, 30).await;
     // A state that flips with every reading, 1,501 of them.
-    core.store(steady(0, 1501 * 30, 30, |t| {
-        if t / 30 % 2 == 0 { 0.0 } else { 1.0 }
-    }))
+    core.backfill(
+        RoleKind::Status,
+        30,
+        steady(
+            0,
+            1501 * 30,
+            30,
+            |t| if t / 30 % 2 == 0 { 0.0 } else { 1.0 },
+        ),
+    )
     .await;
 
     let (status, body) = core.history(&set_cookie, 0, 1500 * 30).await;
@@ -540,9 +613,11 @@ async fn a_malformed_query_or_device_is_refused() {
 #[tokio::test]
 async fn a_counter_has_no_mean_past_raw_intervals() {
     let (_dir, core, set_cookie) = core(RoleKind::Counter, 60).await;
-    core.store(steady(0, 7200, 60, |t| {
-        f64::from(1000 + u32::try_from(t).unwrap())
-    }))
+    core.backfill(
+        RoleKind::Counter,
+        60,
+        steady(0, 7200, 60, |t| f64::from(1000 + u32::try_from(t).unwrap())),
+    )
     .await;
 
     let (status, body) = core.history(&set_cookie, 0, 2 * 86_400).await;

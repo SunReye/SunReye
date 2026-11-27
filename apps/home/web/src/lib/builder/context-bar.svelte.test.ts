@@ -1,5 +1,4 @@
 import "../../app.css";
-import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { cdp, page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
@@ -22,12 +21,16 @@ import {
   tap,
   testCore,
   undesk,
+  undrawn,
 } from "./builder.harness.ts";
 import { addGrid } from "../../../../../../packages/builder/src/builder/modules.ts";
 
 /** The context toolbar on the canvas. */
 const bar = () => page.getByRole("toolbar", { name: "Aktionen" });
 const act = (name: string) => bar().getByRole("button", { name });
+
+/** The toolbar however it shows: it mounts hidden, until measured, where a role query misses it. */
+const mounted = () => document.querySelector('[role="toolbar"][aria-label="Aktionen"]');
 
 beforeEach(async () => {
   localStorage.removeItem("sunreye.builder.view");
@@ -41,7 +44,7 @@ afterEach(async () => {
 });
 
 async function built(start = house()) {
-  const draws = vi.spyOn(EffectComposer.prototype, "render");
+  const draws = undrawn();
 
   await render(Builder, {
     pv,
@@ -55,13 +58,23 @@ async function built(start = house()) {
   await settle(() => draws.mock.calls.length > 0);
 }
 
-test("nothing selected, no toolbar; a picked opening carries duplicate, night light and remove", async () => {
+test("nothing selected, no toolbar; a face without a grid is filled from it in one step; a picked opening carries duplicate, night light and remove; it hides while a pointer is down", async () => {
   const count = house().scene.openings?.length ?? 0;
+  const undo = inspector().getByRole("button", { name: "Rückgängig" });
 
   await built();
-  await expect.element(bar()).not.toBeInTheDocument();
+  expect(mounted()).toBeNull();
 
-  await drill("Gebäude", "Fenster hinzufügen");
+  // The face carries one: what finds none above finds this.
+  await drill("Module", SOUTH);
+  await expect.poll(mounted).not.toBeNull();
+  await act("Füllen").click();
+  await expect.element(inspector().getByText("16 Module gesetzt")).toBeVisible();
+  // One step: the grid and its modules go together.
+  await undo.click();
+  await expect.element(undo).toBeDisabled();
+
+  await drill("Module", "Szene", "Gebäude", "Fenster hinzufügen");
   await act("Nachtlicht").click();
   await page.getByRole("menuitemradio", { name: "Dunkel" }).click();
   await expect
@@ -79,13 +92,27 @@ test("nothing selected, no toolbar; a picked opening carries duplicate, night li
 
   await act("Entfernen").click();
   await expect.element(inspector().getByRole("heading", { name: "Gebäude" })).toBeVisible();
+  expect(mounted()).toBeNull();
+
+  await drill("Baukörper 1");
+  await expect.element(bar()).toBeVisible();
+
+  // Open ground at the canvas's left edge: the press orbits.
+  const canvas = page.getByLabelText("3D-Szene des Hauses").element().getBoundingClientRect();
+  const [x, y] = [canvas.left + 60, canvas.top + canvas.height * 0.6];
+  const mouse = { button: "left", x, y } as const;
+
+  await cdp().send("Input.dispatchMouseEvent", { ...mouse, type: "mousePressed", clickCount: 1 });
   await expect.element(bar()).not.toBeInTheDocument();
+  await cdp().send("Input.dispatchMouseEvent", { ...mouse, type: "mouseReleased", clickCount: 1 });
+  await expect.element(bar()).toBeVisible();
 });
 
-test("a roof face is filled and auto-strung from the toolbar, its proposal kept there", async () => {
+test("a roof face is filled and auto-strung from the toolbar, its proposal kept there; one the inverter has no free input for says so in the toolbar, inside the canvas and off the status line", async () => {
   const start = house();
+  const scene = addGrid(addGrid(start.scene, 0, 1, MODULE.id), 0, 0, MODULE.id);
 
-  await built({ ...start, scene: addGrid(start.scene, 0, 1, MODULE.id) });
+  await built({ ...start, scene });
   await drill("Module", SOUTH);
 
   await act("Füllen").click();
@@ -101,31 +128,9 @@ test("a roof face is filled and auto-strung from the toolbar, its proposal kept 
   await expect
     .element(inspector().getByRole("button", { name: /^String 2.*8 Module/u }))
     .toBeVisible();
-});
-
-test("a roof face without a grid carries the toolbar too: Füllen lays its first modules", async () => {
-  await built();
-  await drill("Module", SOUTH);
-
-  await act("Füllen").click();
-  await expect.element(inspector().getByText("16 Module gesetzt")).toBeVisible();
-  // One step: the grid and its modules go together.
-  await inspector().getByRole("button", { name: "Rückgängig" }).click();
-  await expect.element(inspector().getByRole("button", { name: "Rückgängig" })).toBeDisabled();
-});
-
-test("an auto-stringing the inverter has no free input for says so in the toolbar, inside the canvas and off the status line", async () => {
-  const start = house();
-  const scene = addGrid(addGrid(start.scene, 0, 1, MODULE.id), 0, 0, MODULE.id);
-
-  await built({ ...start, scene });
-  await drill("Module", SOUTH);
-  await act("Füllen").click();
-  await act("Automatisch verdrahten").click();
-  await act("Übernehmen").click();
 
   // The one input is taken: the next face finds none free.
-  await drill("Module", "Baukörper 1, Fläche 1");
+  await drill("Szene", "Module", "Baukörper 1, Fläche 1");
   await act("Füllen").click();
   await act("Automatisch verdrahten").click();
   await expect
@@ -182,20 +187,4 @@ test("on a phone the toolbar stands in the canvas by the picked block, clear of 
     .toHaveAttribute("aria-expanded", "true");
   // A pulled-up sheet covers the canvas's lower zones: the toolbar goes with them.
   await expect.element(bar()).not.toBeInTheDocument();
-});
-
-test("the toolbar hides while a pointer is down on the canvas, and comes back with it up", async () => {
-  await built();
-  await drill("Gebäude", "Baukörper 1");
-  await expect.element(bar()).toBeVisible();
-
-  // Open ground at the canvas's left edge: the press orbits.
-  const canvas = page.getByLabelText("3D-Szene des Hauses").element().getBoundingClientRect();
-  const [x, y] = [canvas.left + 60, canvas.top + canvas.height * 0.6];
-  const mouse = { button: "left", x, y } as const;
-
-  await cdp().send("Input.dispatchMouseEvent", { ...mouse, type: "mousePressed", clickCount: 1 });
-  await expect.element(bar()).not.toBeInTheDocument();
-  await cdp().send("Input.dispatchMouseEvent", { ...mouse, type: "mouseReleased", clickCount: 1 });
-  await expect.element(bar()).toBeVisible();
 });

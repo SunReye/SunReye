@@ -1,5 +1,4 @@
 import "../../app.css";
-import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
@@ -19,6 +18,7 @@ import {
   settle,
   testCore,
   undesk,
+  undrawn,
 } from "./builder.harness.ts";
 import { finish } from "../motion/animations.harness.ts";
 import { onView } from "./projection.harness.ts";
@@ -38,7 +38,7 @@ afterEach(async () => {
 
 /** The builder on the template house, in the tracing mode once the canvas has turned down. */
 async function tracing(ontrace?: (edit: TraceEdit) => void): Promise<void> {
-  const draws = vi.spyOn(EffectComposer.prototype, "render");
+  const draws = undrawn();
 
   await render(Builder, {
     ontrace,

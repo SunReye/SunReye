@@ -1,9 +1,13 @@
 import "../../app.css";
 import { addLine, pullEaves, pullRidges, type Edited, type Scene } from "@sunreye/scene";
-import { expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { cdp } from "vitest/browser";
 import { settle } from "../motion/clock.harness.ts";
 import { EMPTY, tracing } from "./tracing.harness.ts";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 // An eave corner dragged keeps its face's pitch (ADR 20 "Points"): it follows the slope down or
 // up, the pitch shown while it moves; with Alt held it keeps its height and the pitch changes.

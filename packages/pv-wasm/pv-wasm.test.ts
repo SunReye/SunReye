@@ -27,17 +27,8 @@ async function install(dir: string, name: string): Promise<void> {
 
 beforeAll(async () => {
   out = await mkdtemp(join(tmpdir(), "sunreye-pv-wasm-"));
-  await install(here, "pv-wasm");
-  // The scene's types the loader's answers are written in come with it, as npm would install them.
-  await install(join(here, "../scene"), "scene");
+  await Promise.all([install(here, "pv-wasm"), install(join(here, "../scene"), "scene")]);
   await Bun.write(join(out, "package.json"), JSON.stringify({ type: "module" }));
-  await Bun.write(
-    join(out, "tsconfig.json"),
-    JSON.stringify({
-      compilerOptions: { strict: true, noEmit: true, module: "nodenext", types: [] },
-      include: ["consumer.ts"],
-    }),
-  );
 });
 
 afterAll(async () => {
@@ -67,7 +58,10 @@ test("the package ships the engine beside its loader", async () => {
 async function run(consumer: string): Promise<string> {
   await Bun.write(join(out, "consumer.js"), consumer);
 
-  const ran = Bun.spawnSync(["bun", "consumer.js"], { cwd: out });
+  const ran = Bun.spawnSync(["bun", "consumer.js"], {
+    cwd: out,
+    env: { ...process.env, FORCE_COLOR: "0", NO_COLOR: "1" },
+  });
 
   return ran.stdout.toString() + ran.stderr.toString();
 }
@@ -171,13 +165,34 @@ test("a consumer runs a plant over a year of weather", async () => {
   });
 });
 
-/** What the type checker says of a consumer's module; empty when it checks. */
-async function check(consumer: string): Promise<string> {
-  await Bun.write(join(out, "consumer.ts"), consumer);
+let checkIndex = 0;
 
-  const ran = Bun.spawnSync([tsrs, "-p", "tsconfig.json"], { cwd: out });
+type Checked = Readonly<{ code: number; said: string }>;
 
-  return ran.stdout.toString() + ran.stderr.toString();
+/** A module that type-checks: exit 0, nothing said; a killed checker says nothing too. */
+const CHECKS: Checked = { code: 0, said: "" };
+
+/** The type checker's exit code and what it says of a consumer's module. */
+async function check(consumer: string): Promise<Checked> {
+  const id = String(++checkIndex);
+  const file = `consumer-${id}.ts`;
+  const config = `tsconfig-${id}.json`;
+  const opts = { strict: true, noEmit: true, module: "nodenext", types: [] };
+
+  await Promise.all([
+    Bun.write(join(out, file), consumer),
+    Bun.write(join(out, config), JSON.stringify({ compilerOptions: opts, include: [file] })),
+  ]);
+
+  const proc = Bun.spawn([tsrs, "-p", config], { cwd: out, stdout: "pipe", stderr: "pipe" });
+
+  const [stdout, stderr, code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+
+  return { code, said: stdout + stderr };
 }
 
 const SHADED = `
@@ -194,10 +209,14 @@ export const roofs = geometry.faces.filter((face) => face.surface === "roof").le
 `;
 
 test("a consumer types the engine's answers with the published types", async () => {
-  expect(await check(SHADED)).toBe("");
-  expect(
-    await check(SHADED.replace("pv.geometry(scene)", "pv.geometry({ north: 180 })")),
-  ).toContain("is missing the following properties");
+  const [valid, invalid] = await Promise.all([
+    check(SHADED),
+    check(SHADED.replace("pv.geometry(scene)", "pv.geometry({ north: 180 })")),
+  ]);
+
+  expect(valid).toEqual(CHECKS);
+  expect(invalid.code).not.toBe(0);
+  expect(invalid.said).toContain("is missing the following properties");
 });
 
 /** A sibling package as a consumer names it by path. */
@@ -246,6 +265,7 @@ test("a consumer that installs the packages by path types the engine's answers",
 
     const checked = Bun.spawnSync([tsrs, "-p", "tsconfig.json"], { cwd: consumer });
 
+    expect(checked.exitCode).toBe(0);
     expect(checked.stdout.toString() + checked.stderr.toString()).toBe("");
   } finally {
     await rm(consumer, { recursive: true, force: true });
@@ -253,26 +273,14 @@ test("a consumer that installs the packages by path types the engine's answers",
 });
 
 test("the loader is what its declarations say", () => {
-  const ran = Bun.spawnSync(
-    [
-      tsrs,
-      "--ignoreConfig",
-      "--noEmit",
-      "--strict",
-      "--allowJs",
-      "--checkJs",
-      "--module",
-      "preserve",
-      "--target",
-      "esnext",
-      "--types",
-      "",
-      "index.js",
-      "replies.js",
-    ],
-    { cwd: here },
-  );
+  const flags =
+    "--ignoreConfig --noEmit --strict --allowJs --checkJs --module preserve --target esnext --types";
 
+  const ran = Bun.spawnSync([tsrs, ...flags.split(" "), "", "index.js", "replies.js"], {
+    cwd: here,
+  });
+
+  expect(ran.exitCode).toBe(0);
   expect(ran.stdout.toString() + ran.stderr.toString()).toBe("");
 });
 

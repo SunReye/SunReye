@@ -1,10 +1,10 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
 import { connect } from "./core.ts";
-import { answering, BASE, problem } from "./core.harness.ts";
+import { answering, BASE, json, problem } from "./core.harness.ts";
 
 test("viewers list by name, and a refusal reports its code", async () => {
-  const listed = answering(Response.json({ viewers: [{ id: 2, name: "Oma" }] }));
+  const listed = answering(json("Viewers", { viewers: [{ id: 2, name: "Oma" }] }));
   const refused = answering(problem(403, "auth.forbidden"));
 
   expect(await connect(listed).viewers()).toEqual([{ id: 2, name: "Oma" }]);
@@ -13,7 +13,7 @@ test("viewers list by name, and a refusal reports its code", async () => {
 });
 
 test("a viewer is added with its name and password, and answers without the password", async () => {
-  const core = answering(Response.json({ id: 4, name: "Oma" }, { status: 201 }));
+  const core = answering(json("Viewer", { id: 4, name: "Oma" }, { status: 201 }));
 
   const added = await connect(core).addViewer("Oma", "geheim123");
 
@@ -40,7 +40,7 @@ test("a viewer is removed by id", async () => {
 });
 
 test("tokens list with their scope, never the token", async () => {
-  const core = answering(Response.json({ tokens: [{ id: 1, name: "evcc", scope: "read" }] }));
+  const core = answering(json("Tokens", { tokens: [{ id: 1, name: "evcc", scope: "read" }] }));
 
   expect(await connect(core).tokens()).toEqual([{ id: 1, name: "evcc", scope: "read" }]);
   expect(core.sent[0]?.url).toBe(`${BASE}api/v1/tokens`);
@@ -48,7 +48,7 @@ test("tokens list with their scope, never the token", async () => {
 
 test("a created token answers the token once, with its name and scope", async () => {
   const created = { id: 3, name: "evcc", scope: "admin" as const, token: "a".repeat(64) };
-  const core = answering(Response.json(created, { status: 201 }));
+  const core = answering(json("Created", created, { status: 201 }));
 
   expect(await connect(core).addToken("evcc", "admin")).toEqual(created);
   expect(core.sent[0]?.method).toBe("POST");

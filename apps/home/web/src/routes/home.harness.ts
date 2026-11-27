@@ -2,8 +2,9 @@
 
 import { expect } from "vitest";
 import { page } from "vitest/browser";
-import { connect, type Layout } from "../lib/api/core.ts";
-import { problem } from "../lib/api/core.harness.ts";
+import { connect, type Device, type Layout } from "../lib/api/core.ts";
+import type { ScanReport } from "../lib/api/setup.ts";
+import { json, problem } from "../lib/api/core.harness.ts";
 import { motion } from "../../../../../packages/builder/src/motion/tier.svelte.ts";
 import { setLocale } from "../lib/paraglide/runtime.js";
 import { coreContext } from "../lib/shell/core.ts";
@@ -38,7 +39,7 @@ interface Served {
   scene: boolean;
   /** Signed in when undefined, Home Assistant's ingress too. */
   session: "auth.setup" | "auth.required" | undefined;
-  devices: readonly unknown[];
+  devices: readonly Device[];
   live: Readonly<Record<string, Readonly<Record<string, number>>>>;
 }
 
@@ -55,7 +56,7 @@ const SCAN = {
       devices: [{ profile: "deye-sg05lp3", name: "SG05LP3", unit: 1 }],
     },
   ],
-};
+} satisfies ScanReport;
 
 /** What a fresh core answers to the first run's writes, by method and path. */
 function configure(call: string): Response | undefined {
@@ -66,9 +67,9 @@ function configure(call: string): Response | undefined {
   if (call === "POST /api/v1/devices") served.devices = [INVERTER];
 
   const answers = new Map([
-    ["POST /api/v1/scan", () => Response.json(SCAN)],
+    ["POST /api/v1/scan", () => json("ScanReport", SCAN)],
     ["POST /api/v1/connections", () => Response.json({ id: 1, secrets: [] }, { status: 201 })],
-    ["POST /api/v1/devices", () => Response.json(INVERTER, { status: 201 })],
+    ["POST /api/v1/devices", () => json("Device", INVERTER, { status: 201 })],
   ]);
 
   // Every other write succeeds; the first run reads no answer back.
@@ -83,13 +84,13 @@ function answer(pathname: string): Response | undefined {
         ? new Response(null, { status: 204 })
         : problem(401, served.session);
     case "/api/v1/devices":
-      return Response.json({ devices: served.devices });
+      return json("DeviceList", { devices: served.devices });
     case "/api/v1/layout":
       return served.scene
-        ? Response.json(withScene)
+        ? json("Layout", withScene)
         : Response.json({ status: 404, code: "layout.none" }, { status: 404 });
     case "/api/v1/module-types":
-      return Response.json({ moduleTypes: [] });
+      return json("ModuleTypes", { moduleTypes: [] });
     case "/api/v1/capabilities":
       return Response.json({ code: "auth.required" }, { status: 401 });
     case "/api/v1/live":

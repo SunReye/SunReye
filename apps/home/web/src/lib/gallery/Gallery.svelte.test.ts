@@ -3,6 +3,7 @@ import { cdp } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { clearToasts, holdToasts } from "../components/toasts.harness.ts";
 import Gallery from "./Gallery.svelte";
+import { alpha } from "../alpha.harness.ts";
 
 /** Every component folder of the kit, the app's and the package's (ADR 25), by name. */
 const kit = Object.keys(
@@ -23,11 +24,6 @@ afterEach(async () => {
 
 function shown(): Element[] {
   return [...document.querySelectorAll("[data-gallery] *")];
-}
-
-/** The alpha of a computed colour; 1 when the colour has none. */
-function alpha(colour: string): number {
-  return Number(/\/\s*([\d.]+)\)$/u.exec(colour)?.[1] ?? 1);
 }
 
 /** A computed height in px, of the element or of one of its pseudo-elements. */

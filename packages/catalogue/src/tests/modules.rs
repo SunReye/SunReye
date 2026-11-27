@@ -53,7 +53,7 @@ fn a_value_out_of_its_range_is_refused() {
         ("voltageCoefficient", json!(-2.2)),
         ("currentCoefficient", json!(-0.05)),
         ("height", json!(1757.0)), // millimetres, not metres
-        ("width", json!(0.0)),
+        ("width", json!(1134.0)),  // millimetres too
         ("bypassDiodes", json!(0)),
     ];
     for (field, value) in out_of_range {

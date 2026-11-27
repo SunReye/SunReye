@@ -189,10 +189,11 @@ test("a pushed level hides its parent from the eye, the tab key and assistive te
   await expect.element(screen.getByText("Netz & Einspeisung", { exact: true })).not.toBeVisible();
   expect(screen.getByRole("button", { name: /Netz/u }).elements()).toHaveLength(0);
 
-  // Inert, and the tab key walks the page alone.
+  // Inert, and the tab key walks the page alone: its back button first.
   expect(root?.hasAttribute("inert")).toBe(true);
-  await userEvent.keyboard("{Tab}".repeat(6));
-  expect(document.activeElement).not.toBeNull();
+  await userEvent.keyboard("{Tab}");
+  expect(child()?.contains(document.activeElement)).toBe(true);
+  await userEvent.keyboard("{Tab}".repeat(5));
   expect(root?.contains(document.activeElement)).toBe(false);
 });
 

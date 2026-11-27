@@ -25,9 +25,9 @@
 
 <RemovableChip remove={m.explore_remove({ name: series.label })} {onremove}>
   <span class="min-w-0 truncate">
-    <span class={["font-medium", gone && "text-muted-foreground line-through"]}
-      >{series.estimated ? "≈ " : ""}{series.label}</span
-    >
+    <span class={["font-medium", gone && "text-muted-foreground line-through"]}>
+      {series.estimated ? "≈ " : ""}{series.label}
+    </span>
     <span class="text-muted-foreground"> · {gone ? m.explore_gone() : device}</span>
   </span>
 </RemovableChip>

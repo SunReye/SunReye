@@ -113,10 +113,8 @@ impl Changes {
     }
 
     /// The change log route, behind the admin's session.
-    pub fn routes(self) -> OpenApiRouter {
-        OpenApiRouter::new()
-            .routes(routes!(changes))
-            .with_state(self)
+    pub fn routes() -> OpenApiRouter<crate::api::App> {
+        OpenApiRouter::new().routes(routes!(changes))
     }
 }
 

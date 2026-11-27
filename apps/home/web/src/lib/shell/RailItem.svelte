@@ -35,8 +35,9 @@
       >
         <item.icon class={active ? "text-brand" : ""} />
         <span class="label">{item.label()}</span>
-        {#if item.admin}<Badge variant="secondary" class="label ml-auto">{m.nav_admin()}</Badge
-          >{/if}
+        {#if item.admin}<Badge variant="secondary" class="label ml-auto">
+            {m.nav_admin()}
+          </Badge>{/if}
       </NavLink>
     {/snippet}
   </Tooltip.Trigger>

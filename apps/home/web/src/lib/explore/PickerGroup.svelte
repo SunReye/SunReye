@@ -42,9 +42,9 @@
             onpick(each.ref);
           }}
         >
-          <span class="min-w-0 flex-1 truncate text-sm"
-            >{each.estimated ? "≈ " : ""}{each.label}</span
-          >
+          <span class="min-w-0 flex-1 truncate text-sm">
+            {each.estimated ? "≈ " : ""}{each.label}
+          </span>
           {#if each.unit !== null}
             <span class="shrink-0 text-xs text-muted-foreground tabular-nums">{each.unit}</span>
           {/if}

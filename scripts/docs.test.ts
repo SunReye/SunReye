@@ -1,5 +1,6 @@
 // Every command the docs show must exist (ADR 13): each `sunreye`, `sunreye-profile` and `bun`
-// invocation in a fenced shell block, read against the usage each program prints.
+// invocation in a fenced shell block, read against the usage each program prints. A gate step of
+// its own (`docs.bunfig.toml`), after `cargo test` builds the binary it reads; `bun test` skips it.
 import { expect, test } from "bun:test";
 import { Glob } from "bun";
 import { existsSync } from "node:fs";
@@ -64,8 +65,10 @@ async function sdkCommands(): Promise<Set<string>> {
 async function variables(): Promise<Set<string>> {
   const dirs = ["packages/sdk/src", "scripts", "packaging"];
   const scans = dirs.map((dir) => Array.fromAsync(new Glob(`${dir}/**/*.ts`).scan(root)));
+
   // Tests name variables that do not exist, this one among them.
   const files = (await Promise.all(scans)).flat().filter((file) => !file.endsWith(".test.ts"));
+
   const sources = await Promise.all(files.map((file) => text(file)));
   const subs = ["serve", ...(await coreSubcommands())];
   const usages = await Promise.all(subs.map((sub) => usage(sub)));

@@ -33,8 +33,10 @@
         class={[
           "absolute bottom-0 left-0 -translate-x-1/2 whitespace-nowrap",
           strong && "font-medium text-foreground",
-        ]}>{o.b.label}</span
+        ]}
       >
+        {o.b.label}
+      </span>
     {/if}
   </span>
 {/if}

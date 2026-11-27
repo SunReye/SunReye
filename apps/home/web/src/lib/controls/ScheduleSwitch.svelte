@@ -49,8 +49,9 @@
       >
         <Item.Content>
           <Item.Title class="text-[15px] font-normal">{label}</Item.Title>
-          {#if control.awaiting}<Item.Description>{m.controls_needs_enable()}</Item.Description
-            >{/if}
+          {#if control.awaiting}<Item.Description>
+              {m.controls_needs_enable()}
+            </Item.Description>{/if}
         </Item.Content>
         <Item.Actions>
           <Checkbox

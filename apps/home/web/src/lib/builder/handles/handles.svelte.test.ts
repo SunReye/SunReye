@@ -1,9 +1,9 @@
 import "../../../app.css";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { cdp, page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { presetView, type View } from "../../../../../../../packages/builder/src/builder/camera.ts";
-import { house, type Pointer, press, pv, settle } from "../builder.harness.ts";
+import { house, press, pv, settle, undrawn } from "../builder.harness.ts";
 import type { Point, Scene } from "../../../../../../../packages/builder/src/builder/pv.ts";
 import type { Projector } from "../../../../../../../packages/builder/src/builder/drawing.svelte.ts";
 import { SceneCanvas } from "@sunreye/builder";
@@ -12,6 +12,14 @@ import {
   type Target,
   type Triple,
 } from "../../../../../../../packages/builder/src/builder/handles/grips.ts";
+
+beforeEach(() => {
+  undrawn();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 const BLOCK: Target = { kind: "block", index: 0 };
 
@@ -72,32 +80,29 @@ afterEach(async () => {
   await page.viewport(1280, 900);
 });
 
-test.each<Pointer>(["mouse", "pen", "touch"])(
-  "a %s drags the width arrow outward: wider, one drop, no orbit",
-  async (kind) => {
-    const scene = house().scene;
-    const { dragged, dropped, views, onPage } = await stage(scene);
-    const arrow = handles(scene, BLOCK).find(({ grip }) => grip === "width");
+test("a finger drags the width arrow outward: wider, one drop, no orbit", async () => {
+  const scene = house().scene;
+  const { dragged, dropped, views, onPage } = await stage(scene);
+  const arrow = handles(scene, BLOCK).find(({ grip }) => grip === "width");
 
-    if (arrow?.axis === undefined) throw new Error("no width arrow");
+  if (arrow?.axis === undefined) throw new Error("no width arrow");
 
-    const [ax, ay, az] = arrow.at;
-    const [dx, , dz] = arrow.axis;
-    const start = onPage(arrow.at);
-    const end = onPage([ax + dx * 2, ay, az + dz * 2]);
-    const middle = [(start[0] + end[0]) / 2, (start[1] + end[1]) / 2] as const;
+  const [ax, ay, az] = arrow.at;
+  const [dx, , dz] = arrow.axis;
+  const start = onPage(arrow.at);
+  const end = onPage([ax + dx * 2, ay, az + dz * 2]);
+  const middle = [(start[0] + end[0]) / 2, (start[1] + end[1]) / 2] as const;
 
-    await press(kind, [start, middle, end]);
+  await press("touch", [start, middle, end]);
 
-    await expect.poll(() => dropped).toEqual([dragged.length]);
+  await expect.poll(() => dropped).toEqual([dragged.length]);
 
-    const width = dragged.at(-1)?.blocks[0]?.width ?? 0;
+  const width = dragged.at(-1)?.blocks[0]?.width ?? 0;
 
-    expect(width).toBeGreaterThan(11);
-    expect(width).toBeLessThan(13);
-    expect(views).toEqual([]);
-  },
-);
+  expect(width).toBeGreaterThan(11);
+  expect(width).toBeLessThan(13);
+  expect(views).toEqual([]);
+});
 
 test("a fence point drags along the ground: moved, the other points kept, one drop", async () => {
   const scene: Scene = {

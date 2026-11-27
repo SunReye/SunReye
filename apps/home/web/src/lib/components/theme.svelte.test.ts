@@ -2,6 +2,7 @@ import { afterEach, expect, test } from "vitest";
 import { cdp } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import Theme from "./theme.harness.svelte";
+import { alpha } from "../alpha.harness.ts";
 
 const root = document.documentElement;
 
@@ -15,18 +16,18 @@ function background(element: Element): string {
   return getComputedStyle(element).backgroundColor;
 }
 
-/** The alpha of a computed colour; 1 when the colour has none. */
-function alpha(colour: string): number {
-  return Number(/\/\s*([\d.]+)\)$/u.exec(colour)?.[1] ?? 1);
-}
-
 /** Lightness, chroma and hue of a computed `oklch()` colour. */
 function oklch(colour: string): number[] {
   return (colour.match(/[\d.]+/gu) ?? []).map(Number);
 }
 
+/** The harness's four glass surfaces: ambient, overlay, modal and sidebar. */
 function glassSurfaces(): Element[] {
-  return [...(document.querySelector("[data-testid=glass]")?.children ?? [])];
+  const surfaces = [...(document.querySelector("[data-testid=glass]")?.children ?? [])];
+
+  expect(surfaces).toHaveLength(4);
+
+  return surfaces;
 }
 
 test("ambient glass is about 64 % opaque in light and 58 % in dark", async () => {

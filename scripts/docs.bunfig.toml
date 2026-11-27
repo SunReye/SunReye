@@ -1,0 +1,3 @@
+# The docs' check alone (ADR 13), which the root bunfig.toml leaves out of `bun test`: it reads the
+# core binary that the gate's `cargo test` builds first.
+[test]

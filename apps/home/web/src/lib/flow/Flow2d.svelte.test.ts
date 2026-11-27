@@ -3,6 +3,7 @@ import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { connect, type Live, type Transport } from "../api/core.ts";
 import Flow2d from "./Flow2d.svelte";
+import { json } from "../api/core.harness.ts";
 
 const PLANT = "4294967294";
 const INVERTER = "1";
@@ -29,11 +30,15 @@ const MIDDAY = {
 function answer(href: string): Response {
   switch (new URL(href).pathname) {
     case "/api/v1/layout":
-      return Response.json({ appliesFrom: "2026-11-01T00:00:00Z", strings: STRINGS, warnings: [] });
+      return json("Layout", {
+        appliesFrom: "2026-11-01T00:00:00Z",
+        strings: STRINGS,
+        warnings: [],
+      });
     case "/api/v1/capabilities":
-      return Response.json({
+      return json("Support", {
         capabilities: [],
-        schema: {},
+        schema: { min: 1, max: 1 },
         transports: [],
         version: "5",
         devices: {

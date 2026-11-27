@@ -37,9 +37,9 @@
       class={[props.class, "text-left", !control.writable && "cursor-default"]}
     >
       <Item.Content>
-        <Item.Title class="text-[15px] leading-snug font-normal text-wrap"
-          >{control.setting.name ?? control.setting.key}</Item.Title
-        >
+        <Item.Title class="text-[15px] leading-snug font-normal text-wrap">
+          {control.setting.name ?? control.setting.key}
+        </Item.Title>
         {#if note}<Item.Description>{note}</Item.Description>{/if}
       </Item.Content>
       <Item.Actions class="gap-2">

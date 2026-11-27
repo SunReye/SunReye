@@ -1,4 +1,5 @@
 // Live frames (ADR 9): a snapshot, then deltas folded into it.
+import type { components } from "./schema";
 
 export type ByDevice = Readonly<Record<string, Readonly<Record<string, number>>>>;
 
@@ -14,11 +15,12 @@ export interface Values {
   readonly lost?: number;
 }
 
-/** A frame as sent: a stale value's age in seconds. */
-export interface Frame {
-  readonly devices: ByDevice;
-  readonly stale?: ByDevice;
-}
+export type Sent = components["schemas"]["Frame"];
+
+/** A frame as sent: a stale value's age in seconds. The schema's, read-only to the leaf. */
+export type Frame = {
+  readonly [K in keyof Sent]: Sent[K] extends ByDevice | undefined ? ByDevice : never;
+};
 
 export function parseFrame(json: string): Frame | undefined {
   const value: unknown = JSON.parse(json);

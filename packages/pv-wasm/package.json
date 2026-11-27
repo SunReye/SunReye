@@ -18,7 +18,7 @@
     "./pv.wasm": "./dist/pv.wasm"
   },
   "scripts": {
-    "wasm": "cargo build --locked --release -p sunreye-pv-wasm --target wasm32-unknown-unknown && mkdir -p dist && cp ../../target/wasm32-unknown-unknown/release/sunreye_pv_wasm.wasm dist/pv.wasm"
+    "wasm": "cargo build --locked --release -p sunreye-pv-wasm --target wasm32-unknown-unknown && mkdir -p dist && cp ../../target/wasm32-unknown-unknown/release/sunreye_pv_wasm.wasm dist/pv.wasm.tmp && mv -f dist/pv.wasm.tmp dist/pv.wasm"
   },
   "peerDependencies": {
     "@sunreye/scene": "^5.0.0"

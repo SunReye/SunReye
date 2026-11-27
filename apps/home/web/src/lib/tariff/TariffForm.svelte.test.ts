@@ -4,6 +4,7 @@ import { render } from "vitest-browser-svelte";
 import { connect } from "../api/core.ts";
 import { testCore } from "./tariff.harness.ts";
 import TariffForm from "./TariffForm.svelte";
+import { json } from "../api/core.harness.ts";
 
 const TARIFF = {
   appliesFrom: "2026-11-13T12:00:00Z",
@@ -20,7 +21,7 @@ test("a saved tariff is confirmed by a toast, not by a line under the form", asy
   const success = vi.spyOn(toast, "success");
 
   const core = testCore({
-    "PUT /api/v1/tariff": () => Response.json(TARIFF),
+    "PUT /api/v1/tariff": () => json("Tariff", TARIFF),
   });
 
   const screen = await render(TariffForm, { core: connect(core), tariff: TARIFF });

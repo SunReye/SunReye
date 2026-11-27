@@ -22,14 +22,13 @@ const PATH: Problem = Problem {
 };
 
 impl Profiles {
-    pub fn routes(self, clock: Clock) -> OpenApiRouter {
+    pub fn routes() -> OpenApiRouter<crate::api::App> {
         OpenApiRouter::new()
             .routes(routes!(catalogue))
             .routes(routes!(indexes, add_index))
             .routes(routes!(check))
             .routes(routes!(updates))
             .routes(routes!(apply))
-            .with_state((self, clock))
     }
 }
 

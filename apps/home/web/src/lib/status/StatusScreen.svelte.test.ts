@@ -2,7 +2,9 @@ import { expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect, type Transport } from "../api/core.ts";
+import type { Connection } from "../api/setup.ts";
 import StatusScreen from "./StatusScreen.svelte";
+import { json } from "../api/core.harness.ts";
 
 const BROKER = {
   id: 2,
@@ -12,7 +14,7 @@ const BROKER = {
   port: 1883,
   secrets: [],
   status: { connected: false, lastError: "connection refused" },
-};
+} satisfies Connection;
 
 const GATEWAY = {
   id: 1,
@@ -21,7 +23,7 @@ const GATEWAY = {
   host: "192.168.1.20",
   port: 502,
   secrets: [],
-};
+} satisfies Connection;
 
 function problem(status: number, code: string): Response {
   return Response.json(
@@ -44,9 +46,10 @@ function testCore(logs: readonly (() => Response)[]): Transport {
 
   function answer(path: string): Response {
     if (path === "/api/v1/problems")
-      return Response.json({ problems: [{ code: "clock.unsynced" }] });
+      return json("Problems", { problems: [{ code: "clock.unsynced" }] });
 
-    if (path === "/api/v1/connections") return Response.json({ connections: [GATEWAY, BROKER] });
+    if (path === "/api/v1/connections")
+      return json("Connections", { connections: [GATEWAY, BROKER] });
 
     return path === "/api/v1/logs" ? log() : new Response(null, { status: 404 });
   }
@@ -60,7 +63,7 @@ function testCore(logs: readonly (() => Response)[]): Transport {
 const lines =
   (...logged: readonly string[]) =>
   () =>
-    Response.json({ lines: logged });
+    json("Lines", { lines: logged });
 
 const SERVING = "2026-11-13T09:12:00.000001Z  INFO sunreye_core::api: serving";
 const UNREACHABLE = "2026-11-13T09:12:01.000001Z  WARN sunreye_core::poll: unreachable device=1";

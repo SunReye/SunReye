@@ -7,6 +7,7 @@ import { haptics } from "@sunreye/ui/haptics";
 import { feed } from "../live/stream.harness.ts";
 import TopologyStep from "./TopologyStep.svelte";
 import { closed } from "../motion/animations.harness.ts";
+import { json } from "../api/core.harness.ts";
 
 const INVERTER = { id: 1, name: "Wechselrichter", profile: "p", connection: 1, unit: 1 };
 
@@ -31,7 +32,7 @@ function testCore(): Transport & { readonly changes: unknown[] } {
     fetch: async (request) => {
       changes.push(JSON.parse(await request.text()));
 
-      return Response.json({ appliesFrom: "2026-11-09T00:00:00Z", points: [] });
+      return json("Topology", { appliesFrom: "2026-11-09T00:00:00Z", points: [] });
     },
   };
 }

@@ -1,5 +1,4 @@
 import "../../app.css";
-import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { cdp, page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
@@ -20,6 +19,7 @@ import {
   tap,
   testCore,
   undesk,
+  undrawn,
 } from "./builder.harness.ts";
 import { addGrid, type Draft } from "../../../../../../packages/builder/src/builder/modules.ts";
 
@@ -86,7 +86,7 @@ async function row(label: string): Promise<void> {
 test("on a phone a finger lays a row on the selected face and a tap selects one; a second finger orbits", async () => {
   await phone();
 
-  const draws = vi.spyOn(EffectComposer.prototype, "render");
+  const draws = undrawn();
   const draft = gridded();
 
   await render(Builder, {

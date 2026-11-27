@@ -14,81 +14,52 @@ afterEach(() => {
 });
 
 const KINDS = [
-  ["toggle-group", "radio"],
-  ["radio-group", "radio"],
-  ["menu", "menuitemradio"],
+  ["toggle-group", "radio", "aria-checked"],
+  ["radio-group", "radio", "aria-checked"],
+  ["menu", "menuitemradio", "aria-checked"],
+  ["select", "option", "aria-selected"],
 ] as const;
 
-test.each(KINDS)("a %s ticks once when the user picks another option", async (kind, role) => {
+/** The user picks the chosen option, then another; then the value is set from outside. */
+async function pick([kind, role, chosen]: (typeof KINDS)[number]): Promise<void> {
   const selection = vi.spyOn(haptics, "selection");
+  const screen = kind === "select" ? await render(Probe) : await render(Choices, { kind });
 
-  await render(Choices, { kind });
-  await page.getByRole(role, { name: "b" }).click();
-
-  expect(selection).toHaveBeenCalledOnce();
-});
-
-test.each(KINDS)("a %s stays still when the user picks the chosen option", async (kind, role) => {
-  const selection = vi.spyOn(haptics, "selection");
-
-  await render(Choices, { kind });
   await page.getByRole(role, { name: "a" }).click();
+  expect(selection, `${kind}: the chosen option`).not.toHaveBeenCalled();
 
-  expect(selection).not.toHaveBeenCalled();
-});
+  if (kind === "select") await page.getByRole("combobox", { name: "Probe" }).click();
 
-test.each(KINDS)("a %s set from outside is silent", async (kind, role) => {
-  const selection = vi.spyOn(haptics, "selection");
-  const screen = await render(Choices, { kind });
-
-  await screen.rerender({ value: "c" });
-  await expect.element(page.getByRole(role, { name: "c" })).toHaveAttribute("aria-checked", "true");
-
-  expect(selection).not.toHaveBeenCalled();
-});
-
-test("a select ticks once when the user picks another option, and not for the chosen one", async () => {
-  const selection = vi.spyOn(haptics, "selection");
-
-  await render(Probe);
-  await page.getByRole("option", { name: "a" }).click();
-
-  expect(selection).not.toHaveBeenCalled();
-
-  await page.getByRole("combobox", { name: "Probe" }).click();
-  await page.getByRole("option", { name: "b" }).click();
-
-  expect(selection).toHaveBeenCalledOnce();
-});
-
-test("a select set from outside is silent", async () => {
-  const selection = vi.spyOn(haptics, "selection");
-  const screen = await render(Probe);
+  await page.getByRole(role, { name: "b" }).click();
+  expect(selection, `${kind}: another option`).toHaveBeenCalledOnce();
 
   await screen.rerender({ value: "c" });
-  await expect
-    .element(page.getByRole("option", { name: "c" }))
-    .toHaveAttribute("aria-selected", "true");
+  await expect.element(page.getByRole(role, { name: "c" })).toHaveAttribute(chosen, "true");
+  expect(selection, `${kind}: set from outside`).toHaveBeenCalledOnce();
 
-  expect(selection).not.toHaveBeenCalled();
-});
+  await screen.unmount();
+  selection.mockRestore();
+}
 
-test("a disclosure ticks once when the user opens it, and not when it is opened from outside", async () => {
+/** A disclosure opened by the user, then from outside. */
+async function disclose(): Promise<void> {
   const selection = vi.spyOn(haptics, "selection");
   const screen = await render(Choices, { kind: "collapsible" });
 
   await page.getByRole("button", { name: "Probe" }).click();
   await expect.element(page.getByText("Inside")).toBeVisible();
-
-  expect(selection).toHaveBeenCalledOnce();
+  expect(selection, "disclosure: opened").toHaveBeenCalledOnce();
 
   await screen.rerender({ open: false });
   await screen.rerender({ open: true });
+  expect(selection, "disclosure: from outside").toHaveBeenCalledOnce();
 
-  expect(selection).toHaveBeenCalledOnce();
-});
+  await screen.unmount();
+  selection.mockRestore();
+}
 
-test("a toggle ticks once when the user presses it, and not when pressed from outside", async () => {
+/** A toggle pressed by the user, then from outside. */
+async function press(): Promise<void> {
   const selection = vi.spyOn(haptics, "selection");
   const screen = await render(Toggle, { "aria-label": "Probe", pressed: false });
 
@@ -96,10 +67,17 @@ test("a toggle ticks once when the user presses it, and not when pressed from ou
   await expect
     .element(page.getByRole("button", { name: "Probe" }))
     .toHaveAttribute("aria-pressed", "true");
-
-  expect(selection).toHaveBeenCalledOnce();
+  expect(selection, "toggle: pressed").toHaveBeenCalledOnce();
 
   await screen.rerender({ pressed: false });
+  expect(selection, "toggle: from outside").toHaveBeenCalledOnce();
+}
 
-  expect(selection).toHaveBeenCalledOnce();
+// One case for every control: each mount costs the browser more than its checks.
+test("each control that chooses ticks once for the user's change, never for the chosen option or a value set from outside", async () => {
+  // oxlint-disable-next-line no-await-in-loop -- one control at a time.
+  for (const kind of KINDS) await pick(kind);
+
+  await disclose();
+  await press();
 });

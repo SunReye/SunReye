@@ -13,6 +13,7 @@ const here = new URL(".", import.meta.url).pathname;
 let out = "";
 let installed = "";
 let shipped: readonly string[] = [];
+const compiled = new Map<string, Promise<string>>();
 
 /**
  * Packs the package and installs the tarball where a consumer's resolver finds it, with the
@@ -35,6 +36,7 @@ async function publish(): Promise<string> {
 }
 
 beforeAll(async () => {
+  compiled.clear();
   out = await publish();
   const files = await readdir(installed, { recursive: true, encoding: "utf8" });
 
@@ -56,15 +58,25 @@ function packageOf(specifier: string): string {
 const scripts = (): readonly string[] =>
   shipped.filter((file) => /\.(?:svelte|ts)$/u.test(file) && !file.endsWith(".d.ts"));
 
-/** The JavaScript a consumer's bundler sees for a shipped file. */
-async function script(file: string): Promise<string> {
-  const source = await Bun.file(join(installed, file)).text();
+/** The JavaScript a consumer's bundler sees for a shipped file, compiled once per test run. */
+function script(file: string): Promise<string> {
+  const cached = compiled.get(file);
 
-  if (file.endsWith(".svelte")) return compile(source, { filename: file }).js.code;
+  if (cached !== undefined) return cached;
 
-  const js = new Bun.Transpiler({ loader: "ts" }).transformSync(source);
+  const built = (async () => {
+    const source = await Bun.file(join(installed, file)).text();
 
-  return file.endsWith(".svelte.ts") ? compileModule(js, { filename: file }).js.code : js;
+    if (file.endsWith(".svelte")) return compile(source, { filename: file }).js.code;
+
+    const js = new Bun.Transpiler({ loader: "ts" }).transformSync(source);
+
+    return file.endsWith(".svelte.ts") ? compileModule(js, { filename: file }).js.code : js;
+  })();
+
+  compiled.set(file, built);
+
+  return built;
 }
 
 test("the scene canvas resolves from the package's entry, as a consumer imports it", () => {

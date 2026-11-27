@@ -90,10 +90,10 @@
   <Pressable feedback class={cell} onclick={() => onopen("price")}>
     <span class={label}>{priceLabel}</span>
     <!-- A currency subunit symbol, the same in every locale. -->
-    <span class={figure}
-      ><AnimatedNumber value={cents} />
-      <span class={unit}>ct/kWh</span></span
-    >
+    <span class={figure}>
+      <AnimatedNumber value={cents} />
+      <span class={unit}>ct/kWh</span>
+    </span>
     <span class="{sub} {levelClass}">{levelWord}</span>
   </Pressable>
   <Pressable feedback class={cell} onclick={() => onopen("forecast")}>
@@ -103,10 +103,10 @@
   </Pressable>
   <Pressable feedback class={cell} onclick={() => onopen("weather")}>
     <span class={label}>{m.dash_weather()}</span>
-    <span class={figure}
-      ><AnimatedNumber value={celsius} digits={0} />
-      <span class={unit}>°C</span></span
-    >
+    <span class={figure}>
+      <AnimatedNumber value={celsius} digits={0} />
+      <span class={unit}>°C</span>
+    </span>
     <span class="{sub} flex items-center gap-1">
       {#if sky === null}
         {BLANK}

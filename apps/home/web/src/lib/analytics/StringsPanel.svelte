@@ -159,29 +159,29 @@
               <StringFlag flag={r.flag} label />
               <span class="min-w-0">
                 <span class="line-clamp-2 font-medium">{r.name}</span>
-                <span class="block truncate text-xs text-muted-foreground tabular-nums"
-                  >{num(r.kwp, 1)} kWp{r.kwh === null ? "" : ` · ${energy(r.kwh)}`}{r.estimated
+                <span class="block truncate text-xs text-muted-foreground tabular-nums">
+                  {num(r.kwp, 1)} kWp{r.kwh === null ? "" : ` · ${energy(r.kwh)}`}{r.estimated
                     ? ` · ${m.detail_estimated()}`
-                    : ""}</span
-                >
+                    : ""}
+                </span>
               </span>
             </span>
             <span role="cell" class="flex flex-col items-end gap-1">
-              <span class="font-semibold tabular-nums"
-                >{r.perKwp === null ? "–" : num(r.perKwp, r.perKwp < 100 ? 1 : 0)}</span
-              >
-              <span class="h-1 w-full max-w-24 bg-foreground/10"
-                ><span
+              <span class="font-semibold tabular-nums">
+                {r.perKwp === null ? "–" : num(r.perKwp, r.perKwp < 100 ? 1 : 0)}
+              </span>
+              <span class="h-1 w-full max-w-24 bg-foreground/10">
+                <span
                   class="block h-full origin-left bg-solar"
                   style:width="{((r.perKwp ?? 0) / best) * 100}%"
                   style:--i={i / rows.length}
                   data-grow="x"
-                ></span></span
-              >
+                ></span>
+              </span>
             </span>
-            <span role="cell" class="text-right font-semibold tabular-nums"
-              >{ratioText(r.ratio)}</span
-            >
+            <span role="cell" class="text-right font-semibold tabular-nums">
+              {ratioText(r.ratio)}
+            </span>
           </Pressable>
         {/each}
         <p class="pt-2 text-xs text-muted-foreground">{m.strings_foot({ range: route.label })}</p>
@@ -220,10 +220,9 @@
             class="flex flex-wrap items-center gap-x-2 gap-y-1 pl-10 text-xs text-muted-foreground tabular-nums"
           >
             <span>80 %</span>
-            <span class="flex h-2 w-40 gap-px"
-              >{#each SCALE as v (v)}<span class="flex-1" style:background={fill(v)}
-                ></span>{/each}</span
-            >
+            <span class="flex h-2 w-40 gap-px">
+              {#each SCALE as v (v)}<span class="flex-1" style:background={fill(v)}></span>{/each}
+            </span>
             <span>{m.strings_scale({ value: "120 %" })}</span>
           </div>
         {/if}

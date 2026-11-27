@@ -36,6 +36,8 @@ const KIT = [
 let out = "";
 let installed = "";
 let shipped: readonly string[] = [];
+const compiled = new Map<string, Promise<string>>();
+let tailwindSheet: Promise<Awaited<ReturnType<typeof tailwind>>> | undefined;
 
 /**
  * Packs the package and installs the tarball where a consumer's resolver finds it, with the
@@ -62,6 +64,8 @@ async function publish(): Promise<string> {
 }
 
 beforeAll(async () => {
+  compiled.clear();
+  tailwindSheet = undefined;
   out = await publish();
   shipped = (await readdir(installed, { recursive: true, encoding: "utf8" })).filter(
     (file) => !file.startsWith("node_modules") && /\.(svelte|ts|css)$/u.test(file),
@@ -84,13 +88,32 @@ function scripts(): readonly string[] {
   return shipped.filter((file) => !file.endsWith(".css"));
 }
 
-/** The JavaScript a consumer's bundler sees for a shipped file. */
-async function script(file: string): Promise<string> {
-  const source = await Bun.file(join(installed, file)).text();
+/** The JavaScript a consumer's bundler sees for a shipped file, compiled once per test run. */
+function script(file: string): Promise<string> {
+  const cached = compiled.get(file);
 
-  if (file.endsWith(".svelte")) return compile(source, { filename: file }).js.code;
+  if (cached !== undefined) return cached;
 
-  return new Bun.Transpiler({ loader: "ts" }).transformSync(source);
+  const built = (async () => {
+    const source = await Bun.file(join(installed, file)).text();
+
+    if (file.endsWith(".svelte")) return compile(source, { filename: file }).js.code;
+
+    return new Bun.Transpiler({ loader: "ts" }).transformSync(source);
+  })();
+
+  compiled.set(file, built);
+
+  return built;
+}
+
+function compiledTailwind() {
+  tailwindSheet ??= tailwind(`@import "tailwindcss";\n@import "@sunreye/ui/theme.css";\n`, {
+    base: out,
+    onDependency: () => {},
+  });
+
+  return tailwindSheet;
 }
 
 test("each kit component, the helpers and the sheet resolve as a consumer imports them", () => {
@@ -141,8 +164,7 @@ test("a shipped file imports only what the package ships or declares", async () 
 });
 
 test("the sheet builds the kit's utilities and variants under a consumer's Tailwind", async () => {
-  const css = `@import "tailwindcss";\n@import "@sunreye/ui/theme.css";\n`;
-  const sheet = await tailwind(css, { base: out, onDependency: () => {} });
+  const sheet = await compiledTailwind();
   // A build keeps every candidate it was given: one that adds no rule leaves the output as it was.
   let built = sheet.build([]);
 
@@ -173,8 +195,7 @@ test("the sheet builds the kit's utilities and variants under a consumer's Tailw
 });
 
 test("the button's text size is the sheet's --button-text, by default Tailwind's text-sm", async () => {
-  const css = `@import "tailwindcss";\n@import "@sunreye/ui/theme.css";\n`;
-  const sheet = await tailwind(css, { base: out, onDependency: () => {} });
+  const sheet = await compiledTailwind();
   // The candidates Tailwind's scanner finds in the shipped button.
   const source = await Bun.file(join(installed, "src/button/button.svelte")).text();
   const built = sheet.build(source.split(/[\s"'`]+/u));

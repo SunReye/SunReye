@@ -87,6 +87,8 @@
     class="w-full"
     onclick={() => {
       onchange({ ...draft, scene: removeGrid(draft.scene, index) });
-    }}>{m.builder_remove_grid()}</Button
+    }}
   >
+    {m.builder_remove_grid()}
+  </Button>
 </div>

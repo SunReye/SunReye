@@ -38,11 +38,11 @@
           <span>{m.stats_tariff_import({ price: ctPerKwh(tariff.import.price) })}</span>
           <span>{m.stats_tariff_export({ price: ctPerKwh(tariff.export.price) })}</span>
           {#if tariff.import.bands.length + tariff.export.bands.length > 0}
-            <span class="ml-auto text-xs text-muted-foreground"
-              >{m.stats_tariff_bands({
+            <span class="ml-auto text-xs text-muted-foreground">
+              {m.stats_tariff_bands({
                 count: tariff.import.bands.length + tariff.export.bands.length,
-              })}</span
-            >
+              })}
+            </span>
           {/if}
         </li>
       </ul>

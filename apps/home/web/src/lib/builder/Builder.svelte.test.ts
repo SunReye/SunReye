@@ -24,6 +24,7 @@ import {
   settle,
   testCore,
   undesk,
+  undrawn,
 } from "./builder.harness.ts";
 import { saveFrom, savedFrom } from "./moment.harness.ts";
 
@@ -99,6 +100,8 @@ test("the admin lays modules, wires one into a string, undoes one and saves from
 });
 
 test("a module the setback no longer holds is flagged before saving", async () => {
+  // Its frames counted, not drawn: the journey above draws every frame.
+  undrawn();
   const screen = await gridOnTheSouthFace(testCore());
   const roof = await onTheRoof();
 

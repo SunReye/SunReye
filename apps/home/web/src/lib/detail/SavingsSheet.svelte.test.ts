@@ -14,6 +14,7 @@ import {
   TARIFF,
   type Asked,
 } from "./detail.harness.ts";
+import { json } from "../api/core.harness.ts";
 
 beforeEach(async () => {
   await prepare();
@@ -101,7 +102,7 @@ const NOVEMBER = {
 };
 
 test("the range's chart shows the euros saved per day, split into avoided purchase and feed-in pay, the purchase left below", async () => {
-  served.costs = () => Response.json(NOVEMBER);
+  served.costs = () => json("CostDays", NOVEMBER);
 
   const { sheet } = await sheetOf("range=month&at=2026-11-01");
   const chart = sheet.getByRole("region", { name: "Verlauf" });
@@ -259,7 +260,7 @@ test("the sheet links the tariff at its range", async () => {
 
 test("a refused stream is no missing tariff: the sheet still reads its range", async () => {
   served.refuses = true;
-  served.costs = () => Response.json(NOVEMBER);
+  served.costs = () => json("CostDays", NOVEMBER);
 
   const { sheet } = await sheetOf("range=month&at=2026-11-01", true);
 

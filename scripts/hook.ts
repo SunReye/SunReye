@@ -6,7 +6,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { BOTH, JS, runGate, web, type Step } from "./gate.ts";
+import { BOTH, JS, runGate, stepKey, web, type Step } from "./gate.ts";
 import { commonDir, hasher } from "./gate-cache.ts";
 
 const FORMATTED = /\.(?:svelte|[cm]?[jt]s|json|jsonc|md|css|ya?ml|toml|html)$/u;
@@ -37,6 +37,14 @@ export interface Staged {
   readonly exists: (path: string) => boolean;
 }
 
+const OXLINT_CMD = [
+  "oxlint",
+  "-c",
+  ".oxlintrc.base.json",
+  "--deny-warnings",
+  "--no-error-on-unmatched-pattern",
+] as const;
+
 /** The hook's steps for what is staged; none when nothing is. */
 export function hookSteps(staged: Readonly<Staged>): readonly Step[] {
   const { files } = staged;
@@ -62,9 +70,7 @@ export function hookSteps(staged: Readonly<Staged>): readonly Step[] {
       ? [{ run: ["rsvelte", "format", "--check", "--no-error-on-unmatched-pattern", ...formatted] }]
       : []),
     ...(crates.length > 0 ? [{ run: ["cargo", "fmt", "--check", ...packages(crates)] }] : []),
-    ...(linted.length > 0
-      ? [{ run: ["oxlint", "--deny-warnings", "--no-error-on-unmatched-pattern", ...linted] }]
-      : []),
+    ...(linted.length > 0 ? [{ run: [...OXLINT_CMD, ...linted] }] : []),
     { run: ["bun", "scripts/native-controls.ts"], reads: JS },
     { run: ["bun", "scripts/one-owner.ts"], reads: JS },
     { run: ["bun", "scripts/fake-time.ts"], reads: JS },
@@ -124,7 +130,7 @@ if (import.meta.main) {
       : {
           dir: join(commonDir(root), "gate-cache"),
           key: (step: Readonly<Step>) =>
-            step.reads === undefined ? null : hash(step.run.join(" "), step.reads),
+            step.reads === undefined ? null : hash(stepKey(step, steps), step.reads),
         },
   );
 

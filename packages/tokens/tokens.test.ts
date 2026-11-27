@@ -11,6 +11,8 @@ const here = new URL(".", import.meta.url).pathname;
 let unpacked = "";
 let entry = "";
 let browser: Browser;
+let lightPage: Page;
+let darkPage: Page;
 
 /** Packs the package and installs the tarball where a consumer's resolver finds it. */
 async function publish(): Promise<string> {
@@ -68,7 +70,14 @@ const surface = (page: Page, selector: string) =>
     if (element === null) throw new Error(`No ${s} on the page.`);
 
     const style = getComputedStyle(element);
-    const alpha = /\/\s*([\d.]+)\)$/u.exec(style.backgroundColor)?.[1];
+    const colour = style.backgroundColor;
+
+    // After a modern colour's slash, or a legacy `rgba()`'s fourth number; none is opaque.
+    const alpha =
+      colour === "transparent"
+        ? "0"
+        : (/\/\s*([\d.e-]+)\s*\)$/u.exec(colour)?.[1] ??
+          /^rgba\((?:[^,]+,){3}\s*([\d.e-]+)\s*\)$/u.exec(colour)?.[1]);
 
     return { alpha: alpha === undefined ? 1 : Number(alpha), blur: style.backdropFilter };
   }, selector);
@@ -94,6 +103,7 @@ async function sheets(
 beforeAll(async () => {
   unpacked = await publish();
   browser = await chromium.launch();
+  [lightPage, darkPage] = await Promise.all([open(false), open(true)]);
 });
 
 afterAll(async () => {
@@ -113,39 +123,34 @@ test("ships plain CSS: every import resolves in the package, and no Tailwind", a
 });
 
 test("colour follows the theme: light by default, dark under .dark", async () => {
-  const light = await open(false);
-  const dark = await open(true);
-
-  expect(await token(light, "--card")).toBe("oklch(0.993 0.001 270)");
-  expect(await token(dark, "--card")).toBe("oklch(0.19 0.005 270)");
-  expect(await token(light, "--brand")).toBe("oklch(0.546 0.245 262.9)");
-  expect(await token(dark, "--brand")).toBe("oklch(0.623 0.214 259.8)");
-  expect(await token(light, "--e-solar")).toBe("oklch(0.665 0.148 67)");
-  expect(await token(dark, "--e-solar")).toBe("oklch(0.815 0.162 74)");
+  expect(await token(lightPage, "--card")).toBe("oklch(0.993 0.001 270)");
+  expect(await token(darkPage, "--card")).toBe("oklch(0.19 0.005 270)");
+  expect(await token(lightPage, "--brand")).toBe("oklch(0.546 0.245 262.9)");
+  expect(await token(darkPage, "--brand")).toBe("oklch(0.623 0.214 259.8)");
+  expect(await token(lightPage, "--e-solar")).toBe("oklch(0.665 0.148 67)");
+  expect(await token(darkPage, "--e-solar")).toBe("oklch(0.815 0.162 74)");
 });
 
 test("carries type, spacing, radius and icon tokens", async () => {
-  const page = await open(false);
-
-  expect(await token(page, "--type-sans")).toBe('"Inter Variable", sans-serif');
-  expect(await token(page, "--type-mono")).toBe('"JetBrains Mono Variable", monospace');
-  expect(await token(page, "--space")).toBe("0.25rem");
-  expect(await token(page, "--touch-target")).toBe("2.75rem");
-  expect(await token(page, "--radius")).toBe("0.125rem");
-  expect(await token(page, "--icon-size")).toBe("1rem");
-  expect(await token(page, "--icon-stroke")).toBe("2");
+  expect(await token(lightPage, "--type-sans")).toBe('"Inter Variable", sans-serif');
+  expect(await token(lightPage, "--type-mono")).toBe('"JetBrains Mono Variable", monospace');
+  expect(await token(lightPage, "--space")).toBe("0.25rem");
+  expect(await token(lightPage, "--touch-target")).toBe("2.75rem");
+  expect(await token(lightPage, "--radius")).toBe("0.125rem");
+  expect(await token(lightPage, "--icon-size")).toBe("1rem");
+  expect(await token(lightPage, "--icon-stroke")).toBe("2");
 });
 
 test("ambient glass is thin and blurred: 64 % in light, 58 % in dark", async () => {
-  expect(await surface(await open(false), ".glass-ambient")).toEqual({
+  expect(await surface(lightPage, ".glass-ambient")).toEqual({
     alpha: 0.64,
     blur: "blur(16px) saturate(1.4)",
   });
-  expect((await surface(await open(true), ".glass-ambient")).alpha).toBe(0.58);
+  expect((await surface(darkPage, ".glass-ambient")).alpha).toBe(0.58);
 });
 
 test("a canvas chip takes no blur", async () => {
-  expect(await surface(await open(true), ".canvas-chip")).toEqual({ alpha: 0.9, blur: "none" });
+  expect(await surface(darkPage, ".canvas-chip")).toEqual({ alpha: 0.9, blur: "none" });
 });
 
 test("reduced transparency turns every glass surface opaque", async () => {

@@ -65,6 +65,8 @@
     class={[
       "label truncate text-xs",
       chip.loud ? "font-medium text-foreground" : "text-muted-foreground",
-    ]}>{chip.text}</span
+    ]}
   >
+    {chip.text}
+  </span>
 {/if}

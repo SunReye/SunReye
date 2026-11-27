@@ -28,15 +28,19 @@
     disabled={!session.undoable}
     onclick={() => {
       session.undo();
-    }}><Undo2 /></Button
+    }}
   >
+    <Undo2 />
+  </Button>
   <Button
     size="icon-lg"
     aria-label={m.builder_add()}
     onclick={() => {
       adding = true;
-    }}><Plus /></Button
+    }}
   >
+    <Plus />
+  </Button>
 </div>
 
 <AddSheet

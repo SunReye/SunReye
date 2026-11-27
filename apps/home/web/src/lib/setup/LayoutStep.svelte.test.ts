@@ -8,6 +8,7 @@ import { stream } from "../live/stream.svelte.ts";
 import { m } from "../paraglide/messages.js";
 import { locales, setLocale } from "../paraglide/runtime.js";
 import LayoutStep from "./LayoutStep.svelte";
+import { json } from "../api/core.harness.ts";
 
 // Setup's layout step on a phone (ADR 20, 21): its title whole, the canvas's notices apart.
 
@@ -33,7 +34,7 @@ const core = () =>
     base: "http://core.test/",
     fetch: (request) => {
       if (request.url.endsWith("/api/v1/module-types"))
-        return Promise.resolve(Response.json({ moduleTypes: [MODULE] }));
+        return Promise.resolve(json("ModuleTypes", { moduleTypes: [MODULE] }));
 
       if (request.url.endsWith("/api/v1/live")) return Promise.resolve(live());
 

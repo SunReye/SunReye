@@ -18,7 +18,7 @@ export const CORRECTIONS = {
 /** Both strings share input 1, so both are estimated. */
 const CAPABILITIES = {
   capabilities: [],
-  schema: {},
+  schema: { min: 1, max: 1 },
   transports: [],
   version: "5",
   devices: {
@@ -42,7 +42,7 @@ export const TOPOLOGY = {
 
 /** The capabilities, the inverter's profile publishing `series`. */
 export function capabilities(series: readonly string[]) {
-  const inverter = { ...CAPABILITIES.devices[INVERTER], series };
+  const inverter = { ...CAPABILITIES.devices[INVERTER], series: [...series] };
 
   return { ...CAPABILITIES, devices: { [INVERTER]: inverter } };
 }

@@ -337,12 +337,18 @@ async fn polling_the_bundled_deye_profile_sends_only_reads() {
             unit: 0,
             profile: Arc::clone(&profile),
         };
-        let _task = spawn(endpoint, CADENCE, vec![device], Bus::default());
+        // A short cycle: the next cycle's first read follows any write the first cycle sent.
+        let _task = spawn(
+            endpoint,
+            Duration::from_millis(50),
+            vec![device],
+            Bus::default(),
+        );
         let mut functions = Vec::new();
-        for _ in 0..requests {
+        for _ in 0..=requests {
             functions.push(fake.reads.recv().await.unwrap().function);
         }
-        assert_eq!(functions, vec![3; requests]);
+        assert_eq!(functions, vec![3; requests + 1]);
         assert!(
             fake.writes.try_recv().is_err(),
             "a poll wrote to the device"

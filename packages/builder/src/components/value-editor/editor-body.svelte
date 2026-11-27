@@ -139,14 +139,17 @@
       <span
         class="flex h-[64px] items-center text-5xl font-semibold tracking-tight"
         aria-label={nextText}
-        ><RollingNumber value={liveTime.hour} max={23} pad={2} /><span
-          class="-mt-1 px-0.5 text-muted-foreground">:</span
-        ><RollingNumber value={liveTime.minute} max={59} pad={2} /></span
       >
+        <RollingNumber value={liveTime.hour} max={23} pad={2} /><span
+          class="-mt-1 px-0.5 text-muted-foreground"
+        >
+          :
+        </span><RollingNumber value={liveTime.minute} max={59} pad={2} />
+      </span>
     {:else}
-      <span class="flex h-[48px] items-center text-2xl font-semibold tracking-tight"
-        >{nextText}</span
-      >
+      <span class="flex h-[48px] items-center text-2xl font-semibold tracking-tight">
+        {nextText}
+      </span>
     {/if}
   </header>
 

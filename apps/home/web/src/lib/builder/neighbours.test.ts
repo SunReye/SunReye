@@ -89,8 +89,10 @@ test("a supplied neighbour south of the house shades its string under a clear sk
     height: 30,
   };
 
-  expect(noon([])).toBe(noon());
-  expect(noon([wall])).toBeLessThan(noon() / 2);
+  const open = noon();
+
+  expect(noon([])).toBe(open);
+  expect(noon([wall])).toBeLessThan(open / 2);
 });
 
 test("a supplied neighbour reaches the browser as its walls and its top, east and north up", () => {

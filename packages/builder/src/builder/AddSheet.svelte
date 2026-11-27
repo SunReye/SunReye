@@ -63,9 +63,9 @@
                   }}
                 >
                   <Item.Media variant="icon"><Plus /></Item.Media>
-                  <Item.Content
-                    ><Item.Title class="text-[15px]">{add.label}</Item.Title></Item.Content
-                  >
+                  <Item.Content>
+                    <Item.Title class="text-[15px]">{add.label}</Item.Title>
+                  </Item.Content>
                 </Pressable>
               {/snippet}
             </Item.Root>

@@ -532,12 +532,11 @@ impl Layouts {
     }
 
     /// The module type and layout routes; viewers read them (ADR 20).
-    pub fn routes(self, clock: Clock) -> OpenApiRouter {
+    pub fn routes() -> OpenApiRouter<crate::api::App> {
         OpenApiRouter::new()
             .routes(routes!(list_module_types, add_module_type))
             .routes(routes!(module_catalogue))
             .routes(routes!(layout, change_layout))
-            .with_state((self, clock))
     }
 }
 

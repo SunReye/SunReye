@@ -7,7 +7,7 @@ import {
   type Connection,
   type Transport,
 } from "./core.ts";
-import { BASE, problem, scripted } from "./core.harness.ts";
+import { BASE, json, problem, scripted } from "./core.harness.ts";
 
 function recording(response: Response): Transport & { readonly asked: string[] } {
   const asked: string[] = [];
@@ -36,7 +36,7 @@ test("a setting is written under the device with its value, and answers the atte
     actor: "admin",
   };
 
-  const transport = recording(Response.json(entry));
+  const transport = recording(json("Entry", entry));
 
   const written = await connect(transport).write(1, "battery.max_charge_current", 50);
 
@@ -47,8 +47,8 @@ test("a setting is written under the device with its value, and answers the atte
 });
 
 test("a setting's current value is read under the device, null when unknown", async () => {
-  const known = recording(Response.json({ value: 108 }));
-  const unknown = recording(Response.json({ value: null }));
+  const known = recording(json("SettingNow", { value: 108 }));
+  const unknown = recording(json("SettingNow", { value: null }));
 
   expect(await connect(known).read(1, "battery.max_charge_current")).toEqual({ value: 108 });
   expect(await connect(unknown).read(1, "work_mode")).toEqual({ value: null });
@@ -79,8 +79,8 @@ test("capabilities and the write log are read from the core", async () => {
     devices: {},
   };
 
-  const capabilities = recording(Response.json(support));
-  const log = recording(Response.json({ writes: [] }));
+  const capabilities = recording(json("Support", support));
+  const log = recording(json("WriteLog", { writes: [] }));
 
   expect(await connect(capabilities).capabilities()).toEqual(support);
   expect(await connect(log).writes()).toEqual({ writes: [] });
@@ -92,7 +92,7 @@ test("capabilities and the write log are read from the core", async () => {
 
 test("the devices are listed from the core", async () => {
   const device = { id: 1, name: "Deye", profile: "deye-sg05lp3", connection: 1, unit: 1 };
-  const listed = recording(Response.json({ devices: [device] }));
+  const listed = recording(json("DeviceList", { devices: [device] }));
 
   expect(await connect(listed).devices()).toEqual([device]);
   expect(listed.asked).toEqual([`GET ${BASE}api/v1/devices`]);
@@ -116,7 +116,7 @@ test("a broker is added with its topic root and secrets, and its secrets are onl
     secrets: ["password", "username"],
   };
 
-  const transport = recording(Response.json(created, { status: 201 }));
+  const transport = recording(json("Connection", created, { status: 201 }));
 
   const answer = await connect(transport).addConnection({
     name: "EVCC",
@@ -135,7 +135,7 @@ test("a broker is added with its topic root and secrets, and its secrets are onl
 
 test("a connection is changed and removed by its id; a removal in use reports the problem code", async () => {
   const changed = recording(
-    Response.json({
+    json("Connection", {
       id: 2,
       name: "Gateway",
       transport: "modbus-tcp",
@@ -155,6 +155,10 @@ test("a connection is changed and removed by its id; a removal in use reports th
   expect(changed.asked).toEqual([
     `PUT ${BASE}api/v1/connections/2 {"name":"Gateway","transport":"modbus-tcp","host":"10.0.0.9","port":502}`,
   ]);
+  const removed = recording(new Response(null, { status: 204 }));
+
+  expect(await connect(removed).removeConnection(2)).toBeUndefined();
+  expect(removed.asked).toEqual([`DELETE ${BASE}api/v1/connections/2`]);
   expect(await connect(scripted(problem(409, "connection.in-use"))).removeConnection(2)).toEqual({
     problem: "connection.in-use",
   });

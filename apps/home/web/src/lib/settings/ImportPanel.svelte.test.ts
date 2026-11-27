@@ -4,6 +4,7 @@ import { render } from "vitest-browser-svelte";
 import { connect, type ImportStatus, type Transport } from "../api/core.ts";
 import ImportPanel from "./ImportPanel.svelte";
 import { closed } from "../motion/animations.harness.ts";
+import { json } from "../api/core.harness.ts";
 
 const SLUG = "inverter-v3";
 
@@ -53,21 +54,21 @@ function testCore(
       const path = new URL(request.url).pathname;
 
       if (path === "/api/v1/import/files")
-        return Response.json({ files: [{ path: "v3/export.tar.gz", ...ARCHIVE }] });
+        return json("ArchiveFiles", { files: [{ path: "v3/export.tar.gz", ...ARCHIVE }] });
 
-      if (path === "/api/v1/devices") return Response.json({ devices: [DEVICE] });
+      if (path === "/api/v1/devices") return json("DeviceList", { devices: [DEVICE] });
 
       if (request.method === "GET") {
-        const status = statuses[Math.min(read, statuses.length - 1)];
+        const status = statuses[Math.min(read, statuses.length - 1)] ?? IDLE;
         read += 1;
 
-        return Response.json(status);
+        return json("ImportStatus", status);
       }
 
       if (path === "/api/v1/import/upload") {
         sent.push(`${request.method} ${path} ${request.headers.get("content-type") ?? ""}`);
 
-        return Response.json(ARCHIVE, { status: 201 });
+        return json("ImportArchive", ARCHIVE, { status: 201 });
       }
 
       sent.push(`${request.method} ${path} ${await request.text()}`);

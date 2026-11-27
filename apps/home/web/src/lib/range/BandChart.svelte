@@ -282,12 +282,12 @@
 {#snippet skeleton()}
   <div class="absolute inset-0 flex animate-pulse motion-reduce:animate-none" aria-hidden="true">
     {#each { length: 14 } as _, i (i)}
-      <span class="relative flex-1"
-        ><span
+      <span class="relative flex-1">
+        <span
           class="absolute bottom-[30%] left-1/2 w-[62%] max-w-6 -translate-x-1/2 bg-foreground/10"
           style:height="{18 + ((i * 37) % 45)}%"
-        ></span></span
-      >
+        ></span>
+      </span>
     {/each}
   </div>
 {/snippet}
@@ -310,9 +310,9 @@
   <ChartEntrance build="grow" ready={!loading && bars.list.length > 0}>
     <div class="grid grid-cols-[2.25rem_minmax(0,1fr)] gap-x-1">
       <!-- Above the top gridline's figure, which sits half above the plot. -->
-      <span class="mb-2.5 text-right text-[11px] leading-none text-muted-foreground opacity-70"
-        >{unit}</span
-      >
+      <span class="mb-2.5 text-right text-[11px] leading-none text-muted-foreground opacity-70">
+        {unit}
+      </span>
       <span></span>
       <div
         class="axis relative text-[11px] text-muted-foreground tabular-nums"

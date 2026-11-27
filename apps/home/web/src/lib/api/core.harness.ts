@@ -1,5 +1,30 @@
 /// <reference types="bun" />
 import type { Problem, Transport } from "./core.ts";
+import type { components } from "./schema";
+
+export type Schemas = components["schemas"];
+
+/** A body the API schema names (ADR 9). */
+export type Schema<K extends keyof Schemas> = Schemas[K];
+
+/** A body as a fake holds it: read-only to the leaf, as a fixture may be. */
+export type Frozen<T> = T extends readonly (infer U)[]
+  ? readonly Frozen<U>[]
+  : T extends object
+    ? { readonly [P in keyof T]: Frozen<T[P]> }
+    : T;
+
+/**
+ * A fake core's JSON answer, its body typed by the API schema it is named for: a fake that drifts
+ * from the core's contract (ADR 9) fails the type check.
+ */
+export function json<K extends keyof Schemas>(
+  _schema: K,
+  body: Frozen<Schemas[K]>,
+  init?: Readonly<{ status?: number; headers?: Readonly<Record<string, string>> }>,
+): Response {
+  return Response.json(body, init);
+}
 
 export const BASE = "http://core.test/prefix/";
 

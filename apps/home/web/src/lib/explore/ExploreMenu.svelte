@@ -44,35 +44,39 @@
       disabled={table === null}
       onSelect={() => {
         if (table) save(table);
-      }}>{m.explore_export()}</DropdownMenu.Item
+      }}
     >
+      {m.explore_export()}
+    </DropdownMenu.Item>
     <DropdownMenu.Separator />
     {#if saved.marked}
       {@const view = saved.marked}
-      <DropdownMenu.Item class="min-h-10" onSelect={() => (actions.renaming = view)}
-        >{m.explore_view_rename()}</DropdownMenu.Item
-      >
+      <DropdownMenu.Item class="min-h-10" onSelect={() => (actions.renaming = view)}>
+        {m.explore_view_rename()}
+      </DropdownMenu.Item>
       <DropdownMenu.Item
         class="min-h-10"
         variant="destructive"
-        onSelect={() => (actions.deleting = view)}>{m.explore_view_delete()}</DropdownMenu.Item
+        onSelect={() => (actions.deleting = view)}
       >
+        {m.explore_view_delete()}
+      </DropdownMenu.Item>
     {:else if saved.changed}
       {@const view = saved.changed}
       <!-- Which view an update writes: its chip is no longer marked. -->
-      <DropdownMenu.Label class="max-w-64 truncate text-xs font-normal text-muted-foreground"
-        >{m.explore_view_open({ name: view.name })}</DropdownMenu.Label
-      >
-      <DropdownMenu.Item class="min-h-10" onSelect={() => void actions.update(view)}
-        >{m.explore_view_update()}</DropdownMenu.Item
-      >
-      <DropdownMenu.Item class="min-h-10" onSelect={() => (actions.naming = true)}
-        >{m.explore_view_save_new()}</DropdownMenu.Item
-      >
+      <DropdownMenu.Label class="max-w-64 truncate text-xs font-normal text-muted-foreground">
+        {m.explore_view_open({ name: view.name })}
+      </DropdownMenu.Label>
+      <DropdownMenu.Item class="min-h-10" onSelect={() => void actions.update(view)}>
+        {m.explore_view_update()}
+      </DropdownMenu.Item>
+      <DropdownMenu.Item class="min-h-10" onSelect={() => (actions.naming = true)}>
+        {m.explore_view_save_new()}
+      </DropdownMenu.Item>
     {:else}
-      <DropdownMenu.Item class="min-h-10" onSelect={() => (actions.naming = true)}
-        >{m.explore_view_save()}</DropdownMenu.Item
-      >
+      <DropdownMenu.Item class="min-h-10" onSelect={() => (actions.naming = true)}>
+        {m.explore_view_save()}
+      </DropdownMenu.Item>
     {/if}
   </DropdownMenu.Content>
 </DropdownMenu.Root>

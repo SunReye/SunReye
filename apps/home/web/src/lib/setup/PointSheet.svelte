@@ -57,8 +57,10 @@
           class="w-full sm:w-auto"
           onclick={() => {
             open = false;
-          }}>{m.topology_done()}</Button
+          }}
         >
+          {m.topology_done()}
+        </Button>
         {#if !root}
           <Button
             variant="ghost"

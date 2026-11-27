@@ -1,5 +1,4 @@
 import "../../app.css";
-import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
@@ -18,6 +17,7 @@ import {
   settle,
   testCore,
   undesk,
+  undrawn,
 } from "./builder.harness.ts";
 import { saveFrom } from "./moment.harness.ts";
 import { addGrid, type Draft } from "../../../../../../packages/builder/src/builder/modules.ts";
@@ -66,7 +66,7 @@ afterEach(async () => {
 });
 
 async function opened(draft: Draft, transport: Readonly<Transport> = testCore()): Promise<void> {
-  const draws = vi.spyOn(EffectComposer.prototype, "render");
+  const draws = undrawn();
 
   await render(Builder, {
     pv,
@@ -130,5 +130,7 @@ test("a tap on a free-form block's wall picks the block and offers nothing to ad
 
   const bar = page.getByRole("toolbar", { name: "Aktionen" });
 
+  // Read once the toolbar is measured and shown: until then it is hidden, and so is each button.
+  await expect.element(bar.getByRole("button", { name: "Bearbeiten" })).toBeVisible();
   expect(bar.getByRole("button", { name: "Hinzufügen" }).elements()).toHaveLength(0);
 });

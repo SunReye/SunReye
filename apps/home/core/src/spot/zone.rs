@@ -61,10 +61,8 @@ impl SpotZone {
     }
 
     /// The zone routes, behind the admin's session.
-    pub fn routes(self, clock: Clock) -> OpenApiRouter {
-        OpenApiRouter::new()
-            .routes(routes!(spot_prices, set_spot_prices))
-            .with_state((self, clock))
+    pub fn routes() -> OpenApiRouter<crate::api::App> {
+        OpenApiRouter::new().routes(routes!(spot_prices, set_spot_prices))
     }
 }
 

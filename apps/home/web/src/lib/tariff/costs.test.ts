@@ -78,3 +78,12 @@ test("a month with a DST change sums to the whole charge, its long day to its re
   expect(month![1]).toBeCloseTo(16, 9);
   expect(sunday![1]).toBeCloseTo((16 * 25) / 745, 9);
 });
+
+test("a band holds each of the day's sums in its own column, in the share it spans", () => {
+  const start = Date.parse("2026-11-28T23:00:00Z");
+  const day = { ...owing(start, 24, 0.5), paid: 2, earned: 1.5, saved: 5 };
+  const bands = costBands([day], [[start, start + 12 * HOUR]], NOW);
+
+  // Half the day: avoided import 1,75 € and feed-in pay 0,75 €; import 1 € and standing 0,25 €.
+  expect(bands(EDGE, 0)).toMatchObject({ up: [1.75, 0.75], down: [1, 0.25] });
+});

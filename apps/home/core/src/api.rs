@@ -3,9 +3,12 @@
 
 use std::collections::BTreeMap;
 use std::convert::Infallible;
+use std::sync::{Arc, OnceLock};
 
+use axum::body::Bytes;
 use axum::extract::State;
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri, header};
+use axum::middleware;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
@@ -56,6 +59,7 @@ mod range;
 mod records;
 mod roles;
 mod series;
+mod state;
 mod statistics;
 
 #[derive(OpenApi)]
@@ -93,43 +97,62 @@ pub struct Api {
 
 pub type Clock = std::sync::Arc<dyn Fn() -> std::time::SystemTime + Send + Sync>;
 
+/// Shared state passed to the process-wide route template via [`axum::extract::FromRef`].
+#[derive(Clone)]
+pub struct App(Arc<Api>);
+
+/// Builds the route table and OpenAPI document once per process: both depend only on the compiled
+/// routes, never on per-instance state.
+fn template() -> &'static (Router<App>, Bytes) {
+    static TEMPLATE: OnceLock<(Router<App>, Bytes)> = OnceLock::new();
+    TEMPLATE.get_or_init(|| {
+        let api_routes = merged(vec![
+            capability_routes(),
+            stored_routes(),
+            OpenApiRouter::new()
+                .routes(routes!(live_values))
+                .routes(routes!(roles::role)),
+            OpenApiRouter::new().routes(routes!(problems)),
+            Topologies::residual_routes(),
+            Topologies::routes(),
+            Devices::routes(),
+            Tariffs::routes(),
+            Changes::routes(),
+            CarBodies::routes(),
+            Views::routes(),
+            PlantLocation::routes(),
+            SpotZone::routes(),
+            storage_routes(),
+            Profiles::routes(),
+            Imports::routes(),
+            Backups::routes(),
+            Logs::routes(),
+            Layouts::routes(),
+        ]);
+        let (routes, document) = OpenApiRouter::with_openapi(Document::openapi())
+            .merge(Auth::routes(api_routes))
+            .split_for_parts();
+        let document = Bytes::from(document.to_json().unwrap_or_default());
+        (routes, document)
+    })
+}
+
 pub fn router(api: Api) -> Router {
-    let api_routes = merged(vec![
-        capability_routes(&api),
-        stored_routes(&api),
-        OpenApiRouter::new()
-            .routes(routes!(live_values))
-            .routes(routes!(roles::role))
-            .with_state(api.live),
-        OpenApiRouter::new()
-            .routes(routes!(problems))
-            .with_state(api.problems),
-        api.topologies.clone().residual_routes(api.history),
-        api.topologies
-            .routes(api.devices.clone(), Clock::clone(&api.clock)),
-        api.devices.routes(Clock::clone(&api.clock)),
-        api.tariffs.routes(Clock::clone(&api.clock)),
-        api.changes.routes(),
-        api.cars.routes(),
-        api.views.routes(Clock::clone(&api.clock)),
-        api.location.routes(Clock::clone(&api.clock)),
-        api.spot.routes(Clock::clone(&api.clock)),
-        storage_routes(api.storage, &api.clock),
-        api.profiles.routes(Clock::clone(&api.clock)),
-        api.imports.routes(),
-        api.backups.routes(),
-        api.logs.routes(),
-        api.layouts.routes(Clock::clone(&api.clock)),
-    ]);
-    let (router, document) = OpenApiRouter::with_openapi(Document::openapi())
-        .merge(api.auth.routes(api_routes, api.clock))
-        .split_for_parts();
-    // Serialised once: the document changes only with the build.
-    let document = document.to_json().unwrap_or_default();
-    router
+    let (routes, document) = template();
+    let auth = api.auth.clone();
+    let document = document.clone();
+    let guarded = routes
+        .clone()
+        .with_state(App(Arc::new(api)))
+        .layer(middleware::from_fn_with_state(auth, crate::auth::guard));
+    Router::new()
+        .merge(guarded)
         .route(
             "/openapi.json",
-            get(|| async { ([(header::CONTENT_TYPE, "application/json")], document) }),
+            get(move || {
+                let document = document.clone();
+                async move { ([(header::CONTENT_TYPE, "application/json")], document) }
+            }),
         )
         .fallback(|method: Method, uri: Uri, headers: HeaderMap| async move {
             spa::serve(&method, &uri, &headers).unwrap_or_else(|| ROUTE.into_response())
@@ -169,54 +192,25 @@ where
 }
 
 /// The plant's storage settings: its timezone and change-point retention.
-fn storage_routes(storage: storage::Settings, clock: &Clock) -> OpenApiRouter {
-    merged([
-        crate::zone::routes(storage.zones, Clock::clone(clock)),
-        crate::retention::routes(storage.retention, Clock::clone(clock)),
-    ])
+fn storage_routes() -> OpenApiRouter<App> {
+    merged([crate::zone::routes(), crate::retention::routes()])
 }
 
 /// History, forecasts and the learned corrections: what storage holds, read like history.
-fn stored_routes(api: &Api) -> OpenApiRouter {
+fn stored_routes() -> OpenApiRouter<App> {
     merged([
-        OpenApiRouter::new()
-            .routes(routes!(history::history))
-            .with_state((api.history.clone(), Clock::clone(&api.clock))),
-        OpenApiRouter::new()
-            .routes(routes!(statistics::statistics))
-            .with_state((api.history.clone(), api.storage.zones.watch())),
-        OpenApiRouter::new()
-            .routes(routes!(forecasts::forecasts))
-            .with_state(api.history.clone()),
-        OpenApiRouter::new()
-            .routes(routes!(records::records))
-            .with_state((
-                api.history.clone(),
-                api.storage.zones.watch(),
-                Clock::clone(&api.clock),
-            )),
-        OpenApiRouter::new()
-            .routes(routes!(series::catalog))
-            .with_state((
-                api.history.clone(),
-                api.devices.clone(),
-                api.layouts.clone(),
-            )),
-        OpenApiRouter::new()
-            .routes(routes!(battery::capacity))
-            .with_state((api.history.clone(), Clock::clone(&api.clock))),
-        api.corrections.clone().routes(api.location.watch()),
+        OpenApiRouter::new().routes(routes!(history::history)),
+        OpenApiRouter::new().routes(routes!(statistics::statistics)),
+        OpenApiRouter::new().routes(routes!(forecasts::forecasts)),
+        OpenApiRouter::new().routes(routes!(records::records)),
+        OpenApiRouter::new().routes(routes!(series::catalog)),
+        OpenApiRouter::new().routes(routes!(battery::capacity)),
+        Corrections::routes(),
     ])
 }
 
-fn capability_routes(api: &Api) -> OpenApiRouter {
-    OpenApiRouter::new()
-        .routes(routes!(capabilities))
-        .with_state((
-            api.layouts.clone(),
-            api.devices.clone(),
-            Clock::clone(&api.clock),
-        ))
+fn capability_routes() -> OpenApiRouter<App> {
+    OpenApiRouter::new().routes(routes!(capabilities))
 }
 
 /// What this core supports (ADR 9). The schemas and capabilities are the profile crate's table,

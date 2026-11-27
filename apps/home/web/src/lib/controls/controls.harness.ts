@@ -1,64 +1,71 @@
 // Controls' component tests share one fake core: capabilities and each setting's stored value.
-import { type Transport } from "../api/core.ts";
-import { attempt, problem } from "../settings/settings.harness.ts";
+import { type Capabilities, type Transport } from "../api/core.ts";
+import { json, problem } from "../api/core.harness.ts";
+import { attempt } from "../settings/settings.harness.ts";
+
+/** A device's settings, as its capabilities list them. */
+export type Settings = Capabilities["devices"][string]["settings"];
+
+/** A setting's enable (ADR 8). */
+export type Enable = Settings[number]["enable"];
 
 export const SCHEDULE = "battery.time_of_use.enabled";
 
 export const MAX_CHARGE = "battery.max_charge_current";
 const LOCK = "battery.discharge_lock";
 
-function capabilities(writes = true, enable = "on", scheduleEnable = "on") {
+/** The device's settings: the charge current and the schedule switch wait on `enable`s. */
+function settings(enable: Enable, scheduleEnable: Enable): Settings {
+  return [
+    {
+      key: MAX_CHARGE,
+      name: "Max charge current",
+      unit: "A",
+      range: { min: 0, max: 190 },
+      step: 1,
+      enable,
+    },
+    {
+      key: LOCK,
+      name: "Discharge lock",
+      values: [0, 1],
+      labels: [
+        { value: 0, text: "Unlocked" },
+        { value: 1, text: "Locked" },
+      ],
+      step: 1,
+      enable: "on",
+    },
+    { key: "work_mode", name: "Work mode", values: [0, 1, 2], step: 1, enable: "on" },
+    {
+      key: SCHEDULE,
+      name: "Time-of-use schedule",
+      values: [0, 1],
+      labels: [
+        { value: 0, text: "Off" },
+        { value: 1, text: "On" },
+      ],
+      step: 1,
+      enable: scheduleEnable,
+    },
+    ...[1, 2].flatMap((n) => slot(n)),
+  ];
+}
+
+function capabilities(writes = true, enable: Enable = "on", scheduleEnable: Enable = "on") {
   return {
     version: "5.0.0",
     schema: { min: 1, max: 1 },
     capabilities: [],
     transports: [],
     devices: {
-      "3": {
-        estimated: [],
-        series: [],
-        writes,
-        settings: [
-          {
-            key: MAX_CHARGE,
-            name: "Max charge current",
-            unit: "A",
-            range: { min: 0, max: 190 },
-            step: 1,
-            enable,
-          },
-          {
-            key: LOCK,
-            name: "Discharge lock",
-            values: [0, 1],
-            labels: [
-              { value: 0, text: "Unlocked" },
-              { value: 1, text: "Locked" },
-            ],
-            step: 1,
-            enable: "on",
-          },
-          { key: "work_mode", name: "Work mode", values: [0, 1, 2], step: 1, enable: "on" },
-          {
-            key: SCHEDULE,
-            name: "Time-of-use schedule",
-            values: [0, 1],
-            labels: [
-              { value: 0, text: "Off" },
-              { value: 1, text: "On" },
-            ],
-            step: 1,
-            enable: scheduleEnable,
-          },
-          ...[1, 2].flatMap((n) => slot(n)),
-        ],
-      },
+      "3": { estimated: [], series: [], writes, settings: settings(enable, scheduleEnable) },
     },
-  };
+  } satisfies Capabilities;
 }
 
 /** Time-of-use slot `n`'s settings, as a Deye profile declares them. */
-function slot(n: number) {
+function slot(n: number): Settings {
   const key = `battery.time_of_use.${n}`;
 
   return [
@@ -119,9 +126,9 @@ function stored(): Map<string, number> {
 export function controlsCore(
   options: Readonly<{
     writes?: boolean;
-    enable?: string;
+    enable?: Enable;
     /** The schedule switch's enable (ADR 8). */
-    scheduleEnable?: string;
+    scheduleEnable?: Enable;
     refuse?: () => Response;
   }> = {},
 ): Transport & { readonly writes: string[] } {
@@ -137,13 +144,13 @@ export function controlsCore(
     fetch: async (request) => {
       const path = new URL(request.url).pathname;
 
-      if (path === "/api/v1/capabilities") return Response.json(support);
+      if (path === "/api/v1/capabilities") return json("Support", support);
 
       const key = /^\/api\/v1\/devices\/3\/settings\/(.+)$/u.exec(path)?.[1];
 
       if (key === undefined) return problem(404, "request.route");
 
-      if (request.method === "GET") return Response.json({ value: values.get(key) ?? null });
+      if (request.method === "GET") return json("SettingNow", { value: values.get(key) ?? null });
 
       const body = await request.text();
 
@@ -155,7 +162,7 @@ export function controlsCore(
 
       values.set(key, value);
 
-      return Response.json(attempt({ requested: value, after: value }));
+      return json("Entry", attempt({ requested: value, after: value }));
     },
   };
 }
