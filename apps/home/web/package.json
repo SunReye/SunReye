@@ -16,7 +16,7 @@
     "api:types": "openapi-typescript ../core/openapi.json -o src/lib/api/schema.d.ts",
     "api:check": "bun run api:types --check",
     "sync": "bun run i18n && svelte-kit sync",
-    "check": "bun run sync && rsvelte typecheck && rsvelte lint",
+    "check": "bun run sync && rsvelte typecheck && rsvelte lint --deny-warnings",
     "test:components": "bun run wasm && bun run i18n && bun ../../../scripts/components.ts",
     "wasm": "bun run --cwd ../../../packages/pv-wasm wasm"
   },

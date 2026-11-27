@@ -2,7 +2,7 @@
 // or new, by content. The store sits in the git common dir, so every worktree of the clone shares it.
 
 import { createHash } from "node:crypto";
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 export interface Reads {
@@ -28,7 +28,16 @@ function listed(root: string, paths: readonly string[]): string[] {
   return decode(found.stdout).split("\0").filter(Boolean);
 }
 
+/** The files under `dir`, or `dir` itself when it is a file. */
 async function walked(root: string, dir: string): Promise<string[]> {
+  const isFile = await stat(join(root, dir)).then(
+    // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the stats are only read.
+    (stats) => stats.isFile(),
+    () => false,
+  );
+
+  if (isFile) return [dir];
+
   const found = await readdir(join(root, dir), { recursive: true, withFileTypes: true }).catch(
     () => [],
   );

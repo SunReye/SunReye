@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { gateSteps, stepKey } from "./gate.ts";
 import { hookSteps, type Staged } from "./hook.ts";
 
 function staged(files: readonly string[], built = true): Staged {
@@ -19,7 +20,7 @@ test("format and lint read only the staged files", () => {
     "rsvelte format --check --no-error-on-unmatched-pattern apps/home/web/src/a.svelte packages/sdk/src/b.ts README.md",
   );
   expect(run).toContain(
-    "oxlint --deny-warnings --no-error-on-unmatched-pattern apps/home/web/src/a.svelte packages/sdk/src/b.ts",
+    "oxlint -c .oxlintrc.base.json --deny-warnings --no-error-on-unmatched-pattern apps/home/web/src/a.svelte packages/sdk/src/b.ts",
   );
 });
 
@@ -58,8 +59,12 @@ test("missing WASM is built though no crate is staged", () => {
   expect(commands(["packages/sdk/src/b.ts"])).not.toContain("bun run --cwd packages/sdk wasm");
 });
 
-test("the whole-tree checks key on their inputs, so a green gate lets the hook skip them", () => {
-  const tsrs = hookSteps(staged(["a.ts"])).find((step) => step.run[0] === "tsrs");
+test("the whole-tree checks key as the gate keys them, so a green gate lets the hook skip them", () => {
+  const hook = hookSteps(staged(["a.ts"]));
+  const gate = gateSteps("cache");
+  const hookTsrs = hook.find((step) => step.run[0] === "tsrs");
+  const gateTsrs = gate.find((step) => step.run[0] === "tsrs");
 
-  expect(tsrs?.reads).toBeDefined();
+  expect(hookTsrs?.reads).toBeDefined();
+  expect(hookTsrs && stepKey(hookTsrs, hook)).toBe(gateTsrs && stepKey(gateTsrs, gate));
 });

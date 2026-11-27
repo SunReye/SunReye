@@ -1,16 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["typescript", "unicorn", "oxc", "import", "promise"],
-  "categories": {
-    "correctness": "error",
-    "suspicious": "error",
-    "perf": "error",
-    "pedantic": "error",
-    "style": "off"
-  },
-  "options": {
-    "typeAware": true
-  },
+  "extends": ["./.oxlintrc.base.json"],
   "ignorePatterns": [
     ".agents/**",
     ".claude/**",
@@ -47,80 +37,21 @@
     "apps/home/web/src/lib/hooks/**",
     "**/.svelte-kit/**"
   ],
-  "jsPlugins": [
-    {
-      "name": "anti-slop",
-      "specifier": "./tools/oxlint/anti-slop/index.ts"
-    }
-  ],
   "rules": {
-    "import/no-unassigned-import": ["error", { "allow": ["**/*.css"] }],
-    "oxc/no-accumulating-spread": "error",
-    "anti-slop/no-array-filter-map": "error",
-    "anti-slop/no-reduce-accumulator-copy": "error",
-    "anti-slop/no-chained-type-assertions": "error",
-    "anti-slop/no-conditional-empty-object-spread": "error",
-    "anti-slop/no-known-value-widening": "error",
-    "anti-slop/no-module-mocking": "error",
-    "anti-slop/no-object-parameters": "error",
-    "anti-slop/no-reflect-apply": "error",
-    "anti-slop/no-reflect-get": "error",
-    "anti-slop/no-runtime-typeof": "error",
-    "anti-slop/no-shape-in-symbol-names": "error",
-    "anti-slop/no-unknown-parameters": "error",
-    "anti-slop/no-unknown-returns": "error",
-    "anti-slop/no-unknown-type-aliases": "error",
-    "anti-slop/no-unsafe-dictionary-type": "error",
-    "anti-slop/no-widen-then-assert": "error",
-    "anti-slop/require-readable-spacing": "error",
-    "anti-slop/require-safety-comment-for-type-assertion": "error",
-    "typescript/prefer-readonly-parameter-types": [
-      "error",
-      {
-        "allow": [
-          {
-            "from": "lib",
-            "name": ["Function", "Global", "Memory", "Table"]
-          },
-          {
-            "from": "lib",
-            "name": [
-              "AbortSignal",
-              "Date",
-              "Element",
-              "ReadableStreamDefaultController",
-              "Request",
-              "Response",
-              "TransformStreamDefaultController",
-              "Uint8Array"
-            ]
-          },
-          {
-            "from": "package",
-            "package": "openapi-fetch",
-            "name": ["Client"]
-          },
-          {
-            "from": "package",
-            "package": "playwright-core",
-            "name": ["Browser", "CDPSession", "Page", "Request", "Response"]
-          }
-        ]
-      }
-    ]
+    "svelte/button-has-type": "error",
+    "svelte/no-at-html-tags": "error",
+    "svelte/no-navigation-without-resolve": "off",
+    "svelte/no-unused-class-name": "off",
+    "svelte/no-useless-mustaches": "off",
+    "svelte/prefer-destructured-store-props": "off",
+    "svelte/prefer-svelte-reactivity": "off",
+    "svelte/require-optimized-style-attribute": "off"
   },
   "overrides": [
     {
-      "files": ["profiles/**/*.ts"],
+      "files": ["**/*.svelte"],
       "rules": {
-        "max-lines": "off",
-        "import/max-dependencies": "off"
-      }
-    },
-    {
-      "files": ["packages/catalogue/index.js"],
-      "rules": {
-        "import/max-dependencies": "off"
+        "no-unused-vars": "off"
       }
     }
   ]
