@@ -5,12 +5,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use serde_json::{Value, json};
-use sunreye_profile::{Framing, Profile};
+use sunreye_profile::{Framing, Profile, Setting};
 
 use super::{Applied, Job, Outcome, Refusal, Secret};
 use crate::bus::{Bus, DeviceId};
 use crate::endpoint::{self, Device};
-use crate::transport::{Capture, Endpoint, Exchange};
+use crate::transport::{Capture, Endpoint, Exchange, fake};
 
 /// A device with no quantities, so its task polls nothing, and one setting with `recipe`.
 fn job(setting: &Value, value: f64) -> (Device, Job) {
@@ -89,13 +89,51 @@ async fn run(device: Device, job: Job, exchanges: Vec<Exchange>) -> Applied {
     attempt(device, job, exchanges).await.unwrap()
 }
 
-async fn attempt(device: Device, job: Job, exchanges: Vec<Exchange>) -> Result<Applied, Refusal> {
+/// Runs `job` over `exchanges`, then proves the job used every one of them: a probe read scripted
+/// after them answers only once the capture before it is spent.
+async fn attempt(
+    device: Device,
+    job: Job,
+    mut exchanges: Vec<Exchange>,
+) -> Result<Applied, Refusal> {
+    let requests = exchanges
+        .iter()
+        .filter(|e| matches!(e, Exchange::Request(_)))
+        .count();
+    let next = u16::try_from(requests + 1).unwrap();
+    exchanges.extend(read(next, PROBE, PROBED));
     let endpoint = Endpoint::Sim(Capture {
         framing: Framing::Tcp,
         exchanges,
     });
     let task = endpoint::spawn(endpoint, endpoint::CADENCE, vec![device], Bus::default());
-    task.write(job).await.unwrap()
+    let applied = task.write(job).await.unwrap();
+    assert_eq!(
+        task.read(1, probe()).await,
+        Some(f64::from(PROBED)),
+        "the job strayed from its capture or left part of it unused"
+    );
+    applied
+}
+
+/// A register no case touches, and what it reads as.
+const PROBE: u16 = 900;
+const PROBED: u16 = 4242;
+
+fn probe() -> Setting {
+    let doc = json!({
+        "schema": 1, "id": "probe", "name": "probe", "manufacturer": "test", "version": "1.0.0",
+        "requires": sunreye_profile::CAPABILITIES, "quantities": [],
+        "settings": [{
+            "key": "probe", "type": "u16", "range": { "min": 0, "max": 65535 }, "minInterval": 60,
+            "recipe": [{ "write": { "register": PROBE } }], "readBack": { "register": PROBE },
+        }],
+    });
+    Profile::load(&doc.to_string())
+        .unwrap()
+        .setting("probe")
+        .unwrap()
+        .clone()
 }
 
 #[tokio::test(start_paused = true)]
@@ -168,27 +206,31 @@ async fn a_write_only_setting_is_written_unread_and_unknown() {
     );
 }
 
-#[tokio::test(start_paused = true)]
+// Real time over a local device: a paused clock would jump while the socket works.
+#[tokio::test]
 async fn a_delay_holds_the_next_step_back() {
     let recipe = json!([
         { "write": { "register": 108 } },
-        { "delay": { "ms": 500 } },
+        { "delay": { "ms": 200 } },
         { "write": { "register": 109 } },
     ]);
     let (device, job) = job(&current(&recipe), 50.0);
-    let exchanges = [
-        read(1, 108, 108),
-        write(2, 108, 50, &echo(108)),
-        write(3, 109, 50, &echo(109)),
-        read(4, 108, 50),
-    ]
-    .concat();
-    let start = tokio::time::Instant::now();
+    let mut fake = fake::serve().await;
+    let task = endpoint::spawn(
+        fake.endpoint(),
+        endpoint::CADENCE,
+        vec![device],
+        Bus::default(),
+    );
 
-    let applied = run(device, job, exchanges).await;
+    let applied = task.write(job).await.unwrap().unwrap();
 
     assert_eq!(applied.outcome, Outcome::Verified);
-    assert!(start.elapsed() >= Duration::from_millis(500));
+    let (first, at) = fake.arrivals.recv().await.unwrap();
+    let (second, then) = fake.arrivals.recv().await.unwrap();
+    assert_eq!((first, second), (108, 109));
+    // The device answered 108 before the delay began, so the gap holds however slow the host.
+    assert!(then - at >= Duration::from_millis(200), "{:?}", then - at);
 }
 
 #[tokio::test(start_paused = true)]
@@ -259,6 +301,31 @@ async fn a_masked_write_changes_only_its_bits_and_reads_back_through_its_mask() 
             outcome: Outcome::Verified,
             before: Some(0.0),
             after: Some(2.0),
+            failed_step: None,
+        }
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_setting_read_back_from_another_register_is_compared_there() {
+    let mut setting = current(&json!([{ "write": { "register": 108 } }]));
+    setting["readBack"] = json!({ "register": 109 });
+    let (device, job) = job(&setting, 50.0);
+    let exchanges = [
+        read(1, 109, 7),
+        write(2, 108, 50, &echo(108)),
+        read(3, 109, 50),
+    ]
+    .concat();
+
+    let applied = run(device, job, exchanges).await;
+
+    assert_eq!(
+        applied,
+        Applied {
+            outcome: Outcome::Verified,
+            before: Some(7.0),
+            after: Some(50.0),
             failed_step: None,
         }
     );

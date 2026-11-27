@@ -52,6 +52,15 @@ async fn expired_hours_lose_their_change_points_and_keep_their_rollups() {
         .await
         .unwrap();
     assert_eq!(measured(&first().await), hourly);
+    // Its day, from noon before, keeps them too: 1 to 4 for half an hour each, then 5 for 5 s.
+    let daily = [(-12.0, 2.001, 2.502, 1.0, 5.0, 5.007)];
+    let day = || rollups(&storage, plant.power, Tier::Day, -DAY, DAY);
+    assert_eq!(measured(&day().await), daily);
+    storage
+        .rebuild(DEVICE, plant.power, at(-DAY)..at(DAY))
+        .await
+        .unwrap();
+    assert_eq!(measured(&day().await), daily);
 }
 
 #[tokio::test]

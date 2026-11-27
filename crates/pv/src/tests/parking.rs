@@ -86,9 +86,25 @@ fn a_place_without_size_with_a_colour_no_hex_code_or_a_model_no_digest_is_refuse
         model: Some("ab".repeat(32)),
         ..place(0.0)
     };
+    // As long as a code or a digest, but not hex.
+    let unpainted = CarPlace {
+        colour: Some("#zzzzzz".to_owned()),
+        ..place(0.0)
+    };
+    let shouted = CarPlace {
+        model: Some("AB".repeat(32)),
+        ..place(0.0)
+    };
+    let misnamed = CarPlace {
+        model: Some("zz".repeat(32)),
+        ..place(0.0)
+    };
 
     assert_eq!(scene(0.0, vec![place(0.0), flat]).stands(), Err(1));
     assert_eq!(scene(0.0, vec![named]).stands(), Err(0));
     assert_eq!(scene(0.0, vec![linked]).stands(), Err(0));
+    assert_eq!(scene(0.0, vec![unpainted]).stands(), Err(0));
+    assert_eq!(scene(0.0, vec![shouted]).stands(), Err(0));
+    assert_eq!(scene(0.0, vec![misnamed]).stands(), Err(0));
     assert!(scene(0.0, vec![uploaded]).stands().is_ok());
 }

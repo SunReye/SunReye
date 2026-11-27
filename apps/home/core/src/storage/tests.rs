@@ -5,7 +5,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use sunreye_profile::RoleKind;
 
-use super::{ChangePoint, Issue, Keep, Policy, Problem, Storage};
+use super::{ChangePoint, Error, Issue, Keep, Policy, Problem, Storage};
 use crate::bus::{Bus, DeviceId, Reading, SeriesId};
 
 mod import;
@@ -301,7 +301,10 @@ async fn a_changed_step_is_refused() {
         step: 1.0,
         ..policy()
     };
-    assert!(storage.declare(DEVICE, plant.power, coarser).await.is_err());
+    assert!(matches!(
+        storage.declare(DEVICE, plant.power, coarser).await,
+        Err(Error::StepChanged)
+    ));
 }
 
 #[tokio::test]

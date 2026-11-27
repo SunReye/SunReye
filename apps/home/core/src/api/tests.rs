@@ -2,7 +2,7 @@
 
 use std::net::{IpAddr, SocketAddr};
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::Router;
@@ -75,9 +75,12 @@ mod zone;
 
 /// The owner's Deye as device 1.
 fn deye() -> Inverters {
-    let profile = include_str!("../../../../../profiles/deye-sg05lp3.json");
-    let profile = sunreye_profile::Profile::load(profile).unwrap();
-    std::iter::once((crate::bus::DeviceId(1), Arc::new(profile))).collect()
+    static PROFILE: OnceLock<Arc<sunreye_profile::Profile>> = OnceLock::new();
+    let profile = PROFILE.get_or_init(|| {
+        let json = include_str!("../../../../../profiles/deye-sg05lp3.json");
+        Arc::new(sunreye_profile::Profile::load(json).unwrap())
+    });
+    std::iter::once((crate::bus::DeviceId(1), Arc::clone(profile))).collect()
 }
 
 /// Devices over their own inverters, none registered.
@@ -126,26 +129,29 @@ impl Core {
 
     /// A core that trusts Home Assistant ingress from `ingress`, and profiles signed by `keys`.
     async fn trusting(path: &Path, ingress: Option<IpAddr>, keys: Option<Keys>) -> Self {
-        Self::build(path, ingress, keys, quiet()).await
+        Self::build(path, ingress, keys, quiet(), false).await
     }
 
     /// A signed-in core whose setup scan is `scanner`; returns it and the session's `Set-Cookie`.
     async fn scanning(path: &Path, scanner: Scanner) -> (Self, String) {
-        let core = Self::build(path, None, None, scanner).await;
-        let setup = core.send(post("/api/v1/setup", "correct horse")).await;
-        assert_eq!(setup.status(), StatusCode::NO_CONTENT);
+        let core = Self::build(path, None, None, scanner, true).await;
         let set_cookie = core.sign_in(post("/api/v1/login", "correct horse")).await;
         (core, set_cookie)
     }
 
+    /// `seeded` stores the admin password as [`seed_admin`] does.
     async fn build(
         path: &Path,
         ingress: Option<IpAddr>,
         keys: Option<Keys>,
         scanner: Scanner,
+        seeded: bool,
     ) -> Self {
         let bus = Bus::default();
         let storage = Storage::open(path, UNIX_EPOCH, "UTC", &bus).unwrap();
+        if seeded {
+            seed_admin(&storage).await;
+        }
         let auth = Auth::open(storage.database(), ingress).await.unwrap();
         let (problems, watched) = watch::channel(Vec::new());
         let clock = Arc::new(Mutex::new(None));
@@ -180,7 +186,7 @@ impl Core {
             clock: Arc::new(move || set.lock().unwrap().unwrap_or_else(SystemTime::now)),
         };
         Self {
-            router: contract(router(api)).await,
+            router: contract_cached(router(api)).await,
             host,
             bus,
             problems,
@@ -199,14 +205,43 @@ impl Core {
     }
 }
 
+/// Stores the admin password `correct horse` as `/api/v1/setup` would, but at bcrypt's lowest
+/// cost: a sign-in then costs a millisecond, not a third of a second, in every test that only
+/// needs a session. The setup route's own tests set it through the route.
+async fn seed_admin(storage: &Storage) {
+    let hash = bcrypt::hash("correct horse", 4).unwrap();
+    storage
+        .database()
+        .run(move |db| db.execute("INSERT INTO admin (id, hash) VALUES (0, ?1)", [hash]))
+        .await
+        .unwrap();
+}
+
 /// The contract test (ADR 9): every route a test's request reaches must be described, with its
 /// method, by the served OpenAPI document.
 async fn contract(router: Router) -> Router {
     let response = router.clone().oneshot(get("/openapi.json")).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
-    let document = json(response).await;
+    enforce_contract(router, Arc::new(json(response).await))
+}
+
+/// Same contract check, reusing the parsed OpenAPI document across standard `Core::build` tests.
+async fn contract_cached(router: Router) -> Router {
+    static DOCUMENT: OnceLock<Arc<serde_json::Value>> = OnceLock::new();
+    let document = if let Some(cached) = DOCUMENT.get() {
+        Arc::clone(cached)
+    } else {
+        let response = router.clone().oneshot(get("/openapi.json")).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let parsed = Arc::new(json(response).await);
+        Arc::clone(DOCUMENT.get_or_init(|| parsed))
+    };
+    enforce_contract(router, document)
+}
+
+fn enforce_contract(router: Router, document: Arc<serde_json::Value>) -> Router {
     router.layer(middleware::from_fn(move |request: Incoming, next: Next| {
-        let document = document.clone();
+        let document = Arc::clone(&document);
         async move {
             let path = request.extensions().get::<MatchedPath>().cloned();
             let method = request.method().as_str().to_ascii_lowercase();
@@ -397,10 +432,7 @@ async fn after_the_first_run_a_request_without_a_session_is_refused() {
 impl Core {
     /// A core whose admin password is `correct horse`.
     async fn set_up(path: &Path) -> Self {
-        let core = Self::open(path).await;
-        let setup = core.send(post("/api/v1/setup", "correct horse")).await;
-        assert_eq!(setup.status(), StatusCode::NO_CONTENT);
-        core
+        Self::build(path, None, None, quiet(), true).await
     }
 
     /// Signs in and returns the `Set-Cookie` header.
@@ -579,7 +611,10 @@ async fn a_session_ends_30_days_after_its_last_use() {
 async fn the_admin_password_survives_a_restart_and_is_set_only_once() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("core.sqlite");
-    drop(Core::set_up(&path).await);
+    let first = Core::open(&path).await;
+    let setup = first.send(post("/api/v1/setup", "correct horse")).await;
+    assert_eq!(setup.status(), StatusCode::NO_CONTENT);
+    drop(first);
 
     let core = Core::open(&path).await;
 

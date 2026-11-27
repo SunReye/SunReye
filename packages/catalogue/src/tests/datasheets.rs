@@ -99,8 +99,12 @@ fn the_place_of_manufacture_is_left_out_where_the_datasheet_states_none() {
         .unwrap()
         .remove("madeIn");
 
-    assert!(load(&unstated).is_ok());
-    assert_eq!(sheet()["inverters"][0]["inverter"].get("madeIn"), None);
+    let unstated = serde_json::to_value(load(&unstated).unwrap()).unwrap();
+    let stated = serde_json::to_value(load(&sheet()).unwrap()).unwrap();
+
+    assert_eq!(unstated["batteries"][0]["battery"].get("madeIn"), None);
+    assert_eq!(stated["inverters"][0]["inverter"].get("madeIn"), None);
+    assert_eq!(stated["batteries"][0]["battery"]["madeIn"], "CN");
 }
 
 #[test]
@@ -226,10 +230,20 @@ fn a_profile_link_that_names_no_model_is_refused() {
 
 #[test]
 fn a_member_the_format_does_not_know_is_refused() {
-    let mut unknown = sheet();
-    unknown["inverters"][0]["warranty"] = json!(10);
+    let places: [fn(&mut Value) -> &mut Value; 6] = [
+        |s| s,
+        |s| &mut s["source"],
+        |s| &mut s["inverters"][0],
+        |s| &mut s["inverters"][0]["profile"],
+        |s| &mut s["batteries"][0],
+        |s| &mut s["batteries"][0]["profile"],
+    ];
+    for (at, place) in places.into_iter().enumerate() {
+        let mut unknown = sheet();
+        place(&mut unknown)["warranty"] = json!(10);
 
-    assert!(serde_json::from_value::<Sheet>(unknown).is_err());
+        assert!(serde_json::from_value::<Sheet>(unknown).is_err(), "{at}");
+    }
 }
 
 #[test]

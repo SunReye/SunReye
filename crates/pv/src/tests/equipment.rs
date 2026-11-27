@@ -104,7 +104,7 @@ fn a_wall_carries_its_frame_from_its_left_end_seen_from_outside() {
             .all(|(a, e)| (a - e).abs() < 1e-9);
         assert!(close, "{actual:?} is not {expected:?}");
     };
-    let [front, right, _, _] = house(vec![]).walls().remove(0);
+    let [front, right, back, left] = house(vec![]).walls().remove(0);
 
     // The front wall runs along +z = 8 m, 8 m south; seen from the south, east is to the right.
     near(front.left, [0.0, -8.0, 0.0]);
@@ -114,6 +114,14 @@ fn a_wall_carries_its_frame_from_its_left_end_seen_from_outside() {
     near(right.left, [10.0, -8.0, 0.0]);
     near(right.right, [0.0, 1.0, 0.0]);
     near(right.out, [1.0, 0.0, 0.0]);
+    // The back wall starts at the north-east corner and runs west; the left at the north-west,
+    // running south.
+    near(back.left, [10.0, 0.0, 0.0]);
+    near(back.right, [-1.0, 0.0, 0.0]);
+    near(back.out, [0.0, 1.0, 0.0]);
+    near(left.left, [0.0, 0.0, 0.0]);
+    near(left.right, [0.0, -1.0, 0.0]);
+    near(left.out, [-1.0, 0.0, 0.0]);
 
     // Turned a quarter clockwise about its corner, the front faces west and runs south.
     let mut turned = house(vec![]);

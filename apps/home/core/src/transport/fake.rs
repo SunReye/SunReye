@@ -9,6 +9,7 @@ use sunreye_profile::Framing;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
+use tokio::time::Instant;
 
 use super::{Endpoint, rtu, solarman};
 
@@ -52,6 +53,8 @@ pub struct Fake {
     framing: Framing,
     pub reads: mpsc::UnboundedReceiver<Read>,
     pub writes: mpsc::UnboundedReceiver<Write>,
+    /// Each write's first register and when it arrived, stamped before the device answers.
+    pub arrivals: mpsc::UnboundedReceiver<(u16, Instant)>,
     registers: Registers,
 }
 
@@ -131,6 +134,7 @@ async fn start(host: &str, framing: Framing, writes: Writes, unit: Option<u8>) -
     let address = listener.local_addr().unwrap();
     let (read_tx, reads) = mpsc::unbounded_channel();
     let (write_tx, written) = mpsc::unbounded_channel();
+    let (arrival_tx, arrivals) = mpsc::unbounded_channel();
     let registers = Registers::default();
     let held = Arc::clone(&registers);
     tokio::spawn(async move {
@@ -144,6 +148,7 @@ async fn start(host: &str, framing: Framing, writes: Writes, unit: Option<u8>) -
                 registers: Arc::clone(&registers),
                 reads: read_tx.clone(),
                 written: write_tx.clone(),
+                arrived: arrival_tx.clone(),
             };
             tokio::spawn(async move { device.answer(stream).await });
             connection += 1;
@@ -154,6 +159,7 @@ async fn start(host: &str, framing: Framing, writes: Writes, unit: Option<u8>) -
         framing,
         reads,
         writes: written,
+        arrivals,
         registers: held,
     }
 }
@@ -167,6 +173,7 @@ struct Device {
     registers: Registers,
     reads: mpsc::UnboundedSender<Read>,
     written: mpsc::UnboundedSender<Write>,
+    arrived: mpsc::UnboundedSender<(u16, Instant)>,
 }
 
 /// One request off the wire: its unit id and PDU, and how to frame the answer.
@@ -308,6 +315,7 @@ impl Device {
         let start = u16::from_be_bytes([pdu[1], pdu[2]]);
         let count = u16::from_be_bytes([pdu[3], pdu[4]]);
         if pdu[0] == 0x10 {
+            self.arrived.send((start, Instant::now())).ok();
             return self.write(request.unit, start, &pdu[6..]);
         }
         self.reads

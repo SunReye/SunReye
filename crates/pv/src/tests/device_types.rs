@@ -132,12 +132,15 @@ fn an_unphysical_battery_type_names_its_first_bad_value() {
 /// plan (ADR 25).
 #[test]
 fn a_type_with_a_field_this_schema_does_not_know_is_refused() {
+    let mut input = serde_json::to_value(inverter()).unwrap();
+    input["inputs"][0]["batteryVoltage"] = 48.into();
     let mut inverter = serde_json::to_value(inverter()).unwrap();
-    inverter["inputs"][0]["batteryVoltage"] = 48.into();
+    inverter["phases"] = 3.into();
     let mut battery = serde_json::to_value(battery()).unwrap();
     battery["cycles"] = 6000.into();
 
     assert!(serde_json::from_value::<InverterType>(inverter).is_err());
+    assert!(serde_json::from_value::<InverterType>(input).is_err());
     assert!(serde_json::from_value::<BatteryType>(battery).is_err());
 }
 

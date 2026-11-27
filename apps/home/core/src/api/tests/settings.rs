@@ -245,7 +245,7 @@ async fn a_value_equal_to_the_current_one_is_unchanged_and_not_written() {
 
 #[tokio::test]
 async fn a_write_inside_the_minimum_interval_is_refused() {
-    let plant = Plant::new(Writes::Store, true).await;
+    let mut plant = Plant::new(Writes::Store, true).await;
     let start = UNIX_EPOCH + Duration::from_hours(498_384);
     assert_eq!(plant.write(CHARGE, json!(50)).await.0, StatusCode::OK);
 
@@ -254,6 +254,7 @@ async fn a_write_inside_the_minimum_interval_is_refused() {
         plant.write(CHARGE, json!(60)).await,
         refused(StatusCode::TOO_MANY_REQUESTS, "setting.interval")
     );
+    assert_eq!(plant.received(), [written_charge(50)]);
     let log = plant.log().await;
     assert_eq!(
         (&log[1]["outcome"], &log[1]["refusal"]),

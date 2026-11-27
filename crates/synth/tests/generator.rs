@@ -212,9 +212,11 @@ fn generated(seed: u64) -> (tempfile::TempDir, Vec<(String, Vec<String>)>) {
 
 #[test]
 fn a_seed_generates_the_same_store_and_another_seed_another() {
-    let (_a, first) = generated(SEED);
-    let (_b, again) = generated(SEED);
-    let (_c, other) = generated(SEED + 1);
+    // Each run learns its corrections from 90 days of weather, whatever its span: run them at once.
+    let [(_a, first), (_b, again), (_c, other)] = std::thread::scope(|threads| {
+        let runs = [SEED, SEED, SEED + 1].map(|seed| threads.spawn(move || generated(seed)));
+        runs.map(|run| run.join().unwrap())
+    });
 
     let count = |rows: &[(String, Vec<String>)], table: &str| {
         rows.iter()

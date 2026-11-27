@@ -90,12 +90,21 @@ fn words_read_back_decode_at_the_settings_scale() {
     let mut volts = current();
     volts["type"] = json!("i16");
     volts["scale"] = json!(0.1);
+    let mut energy = current();
+    energy["type"] = json!("u32");
+    energy["range"] = json!({ "min": 0, "max": 100_000 });
     let profile = load(&json!([volts])).unwrap();
     let volts = profile.setting("current").unwrap();
+    let energy = load(&json!([energy])).unwrap();
+    let energy = energy.setting("current").unwrap();
 
     assert_eq!(volts.width(), 1);
     assert_eq!(volts.decode(&[0xFFF1]), Some(-1.5));
     assert_eq!(volts.decode(&[]), None);
+    // Low word first, as written.
+    assert_eq!(energy.width(), 2);
+    assert_eq!(energy.decode(&[4464, 1]), Some(70_000.0));
+    assert_eq!(energy.decode(&[4464]), None);
 }
 
 #[test]
@@ -217,6 +226,20 @@ fn a_block_write_carries_the_value_once_among_fixed_words() {
     let long = json!([{ "writeBlock": { "register": 100, "words": words } }]);
     assert_eq!(
         refusal(&json!([with_recipe(&long)])).1,
+        "a block is at most 123 registers"
+    );
+    // A u32 value takes two of them.
+    let wide = |fixed: usize| {
+        let mut words = vec![json!(0); fixed];
+        words.push(json!("value"));
+        let mut setting =
+            with_recipe(&json!([{ "writeBlock": { "register": 100, "words": words } }]));
+        setting["type"] = json!("u32");
+        setting
+    };
+    assert!(load(&json!([wide(121)])).is_ok());
+    assert_eq!(
+        refusal(&json!([wide(122)])).1,
         "a block is at most 123 registers"
     );
     assert_eq!(

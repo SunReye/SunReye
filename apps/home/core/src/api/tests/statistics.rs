@@ -10,7 +10,7 @@ use tempfile::TempDir;
 use super::devices::send;
 use super::{Core, get};
 use crate::bus::{DeviceId, Reading};
-use crate::storage::Policy;
+use crate::storage::{Backfill, Held, Policy};
 
 const DEVICE: DeviceId = DeviceId(7);
 
@@ -20,6 +20,11 @@ fn at(text: &str) -> SystemTime {
 
 /// A signed-in core on Berlin time storing `role` of device 7, read hourly.
 async fn berlin(role: &str, kind: RoleKind) -> (TempDir, Core, String) {
+    berlin_every(role, kind, Duration::from_hours(1)).await
+}
+
+/// As [`berlin`], read every `cadence`.
+async fn berlin_every(role: &str, kind: RoleKind, cadence: Duration) -> (TempDir, Core, String) {
     let dir = tempfile::tempdir().unwrap();
     let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
     core.set_clock(at("2026-09-01T00:00:00Z"));
@@ -33,7 +38,7 @@ async fn berlin(role: &str, kind: RoleKind) -> (TempDir, Core, String) {
         unit: None,
         step: 0.5,
         deadband: 0.0,
-        cadence: Duration::from_hours(1),
+        cadence,
     };
     let series = core.bus.intern(role, None);
     core.storage.declare(DEVICE, series, policy).await.unwrap();
@@ -43,7 +48,57 @@ async fn berlin(role: &str, kind: RoleKind) -> (TempDir, Core, String) {
 impl Core {
     /// Stores `role` of device 7 every hour from `from` to `to` inclusive, the `n`th reading
     /// `value(n)`, and closes every day.
-    async fn hourly_until(&self, role: &str, (from, to): (&str, &str), value: impl Fn(u32) -> f64) {
+    async fn hourly_until(
+        &self,
+        role: &str,
+        kind: RoleKind,
+        (from, to): (&str, &str),
+        value: impl Fn(u32) -> f64,
+    ) {
+        let series = self.bus.intern(role, None);
+        let policy = Policy {
+            kind,
+            unit: None,
+            step: 0.5,
+            deadband: 0.0,
+            cadence: Duration::from_hours(1),
+        };
+        let (mut time, end, mut n) = (at(from), at(to), 0);
+        let mut raw = Vec::new();
+        while time <= end {
+            raw.push(Held {
+                time,
+                value: value(n),
+                hold: Some(Duration::from_hours(1)),
+            });
+            time += Duration::from_hours(1);
+            n += 1;
+        }
+        self.storage
+            .import(
+                DEVICE,
+                series,
+                policy,
+                Backfill {
+                    raw,
+                    ..Backfill::default()
+                },
+            )
+            .await
+            .unwrap();
+        let later = end + Duration::from_hours(72);
+        self.storage.tick(later).await.unwrap();
+        self.set_clock(later);
+    }
+
+    /// As [`Core::hourly_until`] for the series `berlin` declared, through the live path: each
+    /// reading recorded as a poll would be, and every hour rolled up as it closes.
+    async fn recorded_hourly_until(
+        &self,
+        role: &str,
+        (from, to): (&str, &str),
+        value: impl Fn(u32) -> f64,
+    ) {
         let series = self.bus.intern(role, None);
         let (mut time, end, mut n) = (at(from), at(to), 0);
         while time <= end {
@@ -88,6 +143,7 @@ async fn one_request_reads_several_series_each_by_name() {
     let (_dir, core, set_cookie) = berlin("pv.power", RoleKind::Measurement).await;
     core.hourly_until(
         "pv.power",
+        RoleKind::Measurement,
         ("2026-10-24T22:00:00Z", "2026-10-25T22:00:00Z"),
         |_| 100.0,
     )
@@ -149,7 +205,8 @@ async fn a_week_sums_its_plant_local_days_across_the_end_of_summer_time() {
     let (_dir, core, set_cookie) = berlin("pv.energy.total", RoleKind::Counter).await;
     // 1 kWh more each hour, from the hour before Monday 19 October 00:00 CEST to the last hour
     // before Monday 26 October 00:00 CET.
-    core.hourly_until(
+    // Recorded live, so the hourly rollups and the days are those `roll` writes.
+    core.recorded_hourly_until(
         "pv.energy.total",
         ("2026-10-18T21:00:00Z", "2026-10-25T22:00:00Z"),
         f64::from,
@@ -185,6 +242,7 @@ async fn a_month_is_time_weighted_over_its_plant_local_days() {
     // October in Berlin, 745 hours: 1,745 W on the 1st, else 1 kW; the last reading holds an hour.
     core.hourly_until(
         "pv.power",
+        RoleKind::Measurement,
         ("2026-09-30T22:00:00Z", "2026-10-31T22:00:00Z"),
         |n| if n < 24 { 1745.0 } else { 1000.0 },
     )
@@ -222,6 +280,7 @@ async fn only_periods_starting_in_the_range_are_read() {
     let (_dir, core, set_cookie) = berlin("pv.energy.total", RoleKind::Counter).await;
     core.hourly_until(
         "pv.energy.total",
+        RoleKind::Counter,
         ("2026-10-18T21:00:00Z", "2026-10-25T22:00:00Z"),
         f64::from,
     )
@@ -252,15 +311,74 @@ async fn only_periods_starting_in_the_range_are_read() {
 }
 
 #[tokio::test]
-async fn an_hour_is_read_from_its_hourly_rollup() {
+async fn an_hour_of_an_hourly_series_is_read_from_its_change_points() {
     let (_dir, core, set_cookie) = berlin("pv.power", RoleKind::Measurement).await;
     // 1 kW, then 2 kW, then 3 kW, each held an hour.
     core.hourly_until(
         "pv.power",
+        RoleKind::Measurement,
         ("2026-10-24T10:00:00Z", "2026-10-24T12:00:00Z"),
         |n| f64::from(n + 1) * 1000.0,
     )
     .await;
+
+    let (status, body) = core
+        .statistics(
+            &set_cookie,
+            "series=pv.power&period=hour&from=2026-10-24T11:00:00Z&to=2026-10-24T13:00:00Z",
+        )
+        .await;
+
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let hour = |start: &str, end: &str, watts: f64| {
+        json!({
+            "date": "2026-10-24", "start": start, "end": end,
+            "mean": watts, "min": watts, "max": watts, "integral": watts, "hours": 1.0,
+        })
+    };
+    assert_eq!(
+        body,
+        json!({
+            "period": "hour",
+            "points": [
+                hour("2026-10-24T11:00:00Z", "2026-10-24T12:00:00Z", 2000.0),
+                hour("2026-10-24T12:00:00Z", "2026-10-24T13:00:00Z", 3000.0),
+            ],
+        })
+    );
+}
+
+#[tokio::test]
+async fn an_hour_past_change_point_retention_is_read_from_its_hourly_rollup() {
+    let five_minutes = Duration::from_mins(5);
+    let (_dir, core, set_cookie) =
+        berlin_every("pv.power", RoleKind::Measurement, five_minutes).await;
+    core.storage
+        .retention()
+        .set(Duration::from_hours(24), Box::new(|_| Ok(())))
+        .await
+        .unwrap();
+    // 1 kW, then 2 kW, then 3 kW, each read every five minutes for an hour.
+    let series = core.bus.intern("pv.power", None);
+    let mut time = at("2026-10-24T10:00:00Z");
+    for watts in [1000.0, 2000.0, 3000.0] {
+        for _ in 0..12 {
+            let reading = Reading {
+                device: DEVICE,
+                series,
+                value: watts,
+                unit: None,
+                time,
+                cadence: five_minutes,
+            };
+            core.storage.record(reading).await.unwrap();
+            time += five_minutes;
+        }
+    }
+    // Three days on, the hours have no change points left.
+    let later = at("2026-10-27T13:00:00Z");
+    core.storage.tick(later).await.unwrap();
+    core.set_clock(later);
 
     let (status, body) = core
         .statistics(

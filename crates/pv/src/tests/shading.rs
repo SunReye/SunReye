@@ -363,7 +363,20 @@ fn the_table_is_traced_again_when_the_scene_or_the_layout_changes_and_not_otherw
         table.refresh(&layout);
         table.refresh(&changed)
     };
-    let scene_and_layout: [Change; 6] = [
+    for (what, change) in retraced() {
+        assert!(changed(change), "{what}");
+    }
+    for (what, change) in kept() {
+        assert!(!changed(change), "{what}");
+    }
+}
+
+/// What changed, and the change.
+type Change<'a> = (&'a str, &'a dyn Fn(&mut Layout));
+
+/// Changes to what shading reads: each traces the table again.
+fn retraced() -> [Change<'static>; 8] {
+    [
         ("a caster removed", &|l| l.occluders.truncate(2)),
         ("a module moved", &|l| {
             first(l).modules[0].place.as_mut().unwrap().centre[0] += 0.1;
@@ -375,14 +388,17 @@ fn the_table_is_traced_again_when_the_scene_or_the_layout_changes_and_not_otherw
         ("a module type with other bypass diodes", &|l| {
             first(l).module.bypass_diodes = 2;
         }),
+        ("a wider module type", &|l| first(l).module.width += 0.1),
+        ("a taller module type", &|l| first(l).module.height += 0.1),
         ("strings rewired", &|l| {
             l.inverters[0].inputs[0].strings.reverse();
         }),
-    ];
-    for (what, change) in scene_and_layout {
-        assert!(changed(change), "{what}");
-    }
-    let otherwise: [Change; 5] = [
+    ]
+}
+
+/// Changes shading does not read.
+fn kept() -> [Change<'static>; 5] {
+    [
         ("the location", &|l| l.location = SYDNEY),
         ("a string's loss", &|l| first(l).loss = 5.0),
         ("a datasheet's electrics", &|l| first(l).module.vmp += 1.0),
@@ -395,14 +411,8 @@ fn the_table_is_traced_again_when_the_scene_or_the_layout_changes_and_not_otherw
                 start_voltage: 180.0,
             });
         }),
-    ];
-    for (what, change) in otherwise {
-        assert!(!changed(change), "{what}");
-    }
+    ]
 }
-
-/// What changed, and the change.
-type Change<'a> = (&'a str, &'a dyn Fn(&mut Layout));
 
 fn first(layout: &mut Layout) -> &mut PvString {
     &mut layout.inverters[0].inputs[0].strings[0]
