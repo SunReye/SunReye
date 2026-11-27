@@ -30,10 +30,8 @@ const NONE: Problem = Problem {
 
 impl Topologies {
     /// The topology routes; `devices` names the registered devices a claim may name.
-    pub fn routes(self, devices: Devices, clock: Clock) -> OpenApiRouter {
-        OpenApiRouter::new()
-            .routes(routes!(topology, change_topology))
-            .with_state((self, devices, clock))
+    pub fn routes() -> OpenApiRouter<crate::api::App> {
+        OpenApiRouter::new().routes(routes!(topology, change_topology))
     }
 }
 

@@ -32,10 +32,8 @@ const SPAN: Duration = Duration::from_hours(24 * 1498);
 
 impl Topologies {
     /// The energy balance check, over the history `reader` reads.
-    pub fn residual_routes(self, reader: Reader) -> OpenApiRouter {
-        OpenApiRouter::new()
-            .routes(routes!(balance))
-            .with_state((self, reader))
+    pub fn residual_routes() -> OpenApiRouter<crate::api::App> {
+        OpenApiRouter::new().routes(routes!(balance))
     }
 }
 

@@ -17,10 +17,8 @@ type Routed = (Corrections, watch::Receiver<Option<Location>>);
 
 impl Corrections {
     /// The last 30 days are reported while the plant has a `location`.
-    pub fn routes(self, location: watch::Receiver<Option<Location>>) -> OpenApiRouter {
-        OpenApiRouter::new()
-            .routes(routes!(corrections))
-            .with_state((self, location))
+    pub fn routes() -> OpenApiRouter<crate::api::App> {
+        OpenApiRouter::new().routes(routes!(corrections))
     }
 }
 

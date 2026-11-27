@@ -36,14 +36,13 @@ const SPAN: Duration = Duration::from_hours(24 * 1498);
 
 impl Tariffs {
     /// The tariff routes.
-    pub fn routes(self, clock: Clock) -> OpenApiRouter {
+    pub fn routes() -> OpenApiRouter<crate::api::App> {
         OpenApiRouter::new()
             .routes(routes!(tariff, change_tariff))
             .routes(routes!(reprice))
             .routes(routes!(payback))
             .routes(routes!(invest))
             .routes(routes!(costs))
-            .with_state((self, clock))
     }
 }
 

@@ -33,8 +33,8 @@ impl Logs {
     }
 
     /// The log route, behind the admin's session: a line may name a host.
-    pub fn routes(self) -> OpenApiRouter {
-        OpenApiRouter::new().routes(routes!(logs)).with_state(self)
+    pub fn routes() -> OpenApiRouter<crate::api::App> {
+        OpenApiRouter::new().routes(routes!(logs))
     }
 
     fn held(&self) -> std::sync::MutexGuard<'_, VecDeque<String>> {

@@ -16,7 +16,7 @@ use axum::Json;
 use axum::extract::rejection::JsonRejection;
 use axum::extract::{ConnectInfo, MatchedPath, Request, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
-use axum::middleware::{self, Next};
+use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use rusqlite::OptionalExtension;
 use serde::Deserialize;
@@ -25,7 +25,7 @@ use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-use crate::api::{Clock, Code, INTERNAL, Problem, ProblemDetails, internal};
+use crate::api::{App, Code, INTERNAL, Problem, ProblemDetails, internal};
 use crate::storage::{Database, Error};
 use backoff::Backoff;
 use sessions::{Grant, IDLE, Sessions};
@@ -138,24 +138,20 @@ impl Auth {
         })))
     }
 
-    /// The sign-in and viewer routes beside `api`, each guarded as the access table classifies
-    /// it.
-    pub fn routes(&self, api: OpenApiRouter, clock: Clock) -> OpenApiRouter {
+    /// The sign-in and viewer routes beside `api`.
+    pub fn routes(api: OpenApiRouter<App>) -> OpenApiRouter<App> {
         crate::api::merged([
             OpenApiRouter::new()
                 .routes(routes!(session))
                 .routes(routes!(setup))
-                .routes(routes!(login))
-                .with_state(self.clone()),
+                .routes(routes!(login)),
             OpenApiRouter::new()
                 .routes(routes!(viewers::list_viewers, viewers::add_viewer))
                 .routes(routes!(viewers::remove_viewer))
                 .routes(routes!(tokens::list_tokens, tokens::add_token))
-                .routes(routes!(tokens::remove_token))
-                .with_state((self.clone(), clock)),
+                .routes(routes!(tokens::remove_token)),
             api,
         ])
-        .layer(middleware::from_fn_with_state(self.clone(), guard))
     }
 
     /// Whether the Supervisor proxied `request` through ingress, which names its prefix in
@@ -319,7 +315,7 @@ async fn login(
 
 /// Lets a request through as the access table classifies its route; an unclassified one needs
 /// admin.
-async fn guard(State(auth): State<Auth>, request: Request, next: Next) -> Response {
+pub(crate) async fn guard(State(auth): State<Auth>, request: Request, next: Next) -> Response {
     let access = request
         .extensions()
         .get::<MatchedPath>()

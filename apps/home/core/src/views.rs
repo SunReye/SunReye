@@ -91,11 +91,10 @@ impl Views {
     }
 
     /// The saved-views routes: everyone's list, the admin's writes.
-    pub fn routes(self, clock: Clock) -> OpenApiRouter {
+    pub fn routes() -> OpenApiRouter<crate::api::App> {
         OpenApiRouter::new()
             .routes(routes!(list_views, add_view))
             .routes(routes!(change_view, remove_view))
-            .with_state((self, clock))
     }
 }
 

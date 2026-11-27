@@ -35,10 +35,8 @@ pub struct Kept {
 }
 
 /// The retention routes, behind the admin's session.
-pub fn routes(kept: Retention, clock: Clock) -> OpenApiRouter {
-    OpenApiRouter::new()
-        .routes(routes!(retention, set_retention))
-        .with_state((kept, clock))
+pub fn routes() -> OpenApiRouter<crate::api::App> {
+    OpenApiRouter::new().routes(routes!(retention, set_retention))
 }
 
 type RetentionState = State<(Retention, Clock)>;

@@ -52,10 +52,8 @@ impl Backups {
         }))
     }
 
-    pub fn routes(self) -> OpenApiRouter {
-        OpenApiRouter::new()
-            .routes(routes!(back_up))
-            .with_state(self)
+    pub fn routes() -> OpenApiRouter<crate::api::App> {
+        OpenApiRouter::new().routes(routes!(back_up))
     }
 }
 
