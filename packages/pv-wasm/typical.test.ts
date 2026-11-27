@@ -64,12 +64,14 @@ const plant = {
   ],
 };
 
+const typicalYear = pv.typicalYear({ location: plant.location, years });
+
 test("a rounded location is to a hundredth of a degree", () => {
   expect(plant.location).toEqual({ latitude: 52.52, longitude: 13.37 });
 });
 
 test("twenty hourly past years give one typical year at quarter hours, each month from one of them", () => {
-  const { weather, sources } = pv.typicalYear({ location: plant.location, years });
+  const { weather, sources } = typicalYear;
 
   expect(weather.start).toBe(Date.UTC(2001, 0, 1) / 1000 + QUARTER / 2);
   expect(weather.step).toBe(QUARTER);
@@ -86,7 +88,7 @@ test("nineteen past years are refused", () => {
 });
 
 test("the quarter hours keep each source month's energy", () => {
-  const { weather, sources } = pv.typicalYear({ location: plant.location, years });
+  const { weather, sources } = typicalYear;
 
   // Each month's hourly global irradiation in its source year, 29 February left out.
   const expected = sources.reduce((sum, year, month) => {
@@ -105,7 +107,7 @@ test("the quarter hours keep each source month's energy", () => {
 });
 
 test("P50 is the simulated typical year and P90 lies below it by the past years' spread", () => {
-  const { weather } = pv.typicalYear({ location: plant.location, years });
+  const { weather } = typicalYear;
   const typical = pv.irradiation({ ...plant, weather });
 
   const past = years.map((year, i) => ({
@@ -115,13 +117,20 @@ test("P50 is the simulated typical year and P90 lies below it by the past years'
 
   const figure = pv.cautious({ simulated: 10_000_000, typical, years: past });
 
+  // ADR 17's σ: the sample deviation of each past year's irradiation over the typical year's.
+  const ratios = past.map((year: Readonly<(typeof past)[number]>) => year.irradiation / typical);
+  const mean = ratios.reduce((a, b) => a + b, 0) / ratios.length;
+
+  const sigma = Math.sqrt(
+    ratios.reduce((sum, r) => sum + (r - mean) ** 2, 0) / (ratios.length - 1),
+  );
+
   expect(past[19]?.irradiation ?? 0).toBeGreaterThan(past[0]?.irradiation ?? 0);
+  expect(sigma).toBeGreaterThan(0);
   expect(figure.p90).toBeLessThan(figure.p50);
   expect(figure.p50).toBe(10_000_000);
-  expect(figure.p90).toBeCloseTo(
-    10_000_000 * (1 - 1.281_551_565_544_6 * figure.basis.deviation),
-    3,
-  );
+  expect(figure.p90).toBeCloseTo(10_000_000 * (1 - 1.281_551_565_544_6 * sigma), 3);
+  expect(figure.basis.deviation).toBeCloseTo(sigma, 12);
   expect(figure.basis.method).toBe("irradiationScaling");
   expect(figure.basis.typical).toBe(typical);
   expect(figure.basis.years).toEqual(past);

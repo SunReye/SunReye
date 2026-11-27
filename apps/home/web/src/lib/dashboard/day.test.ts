@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { connect } from "../api/core.ts";
-import { eachSeries } from "../api/core.harness.ts";
+import { eachSeries, json } from "../api/core.harness.ts";
 import { readDay } from "./day.ts";
 
 /** Each history, statistics and forecast read, as its route, series and `from`. */
@@ -17,13 +17,17 @@ function fake(zone: string) {
       const url = new URL(request.url);
       const route = url.pathname.split("/").at(-1) ?? "";
 
-      if (route === "timezone") return Promise.resolve(Response.json({ name: zone }));
+      if (route === "timezone") return Promise.resolve(json("Zone", { name: zone }));
 
       if (!["history", "statistics", "forecasts"].includes(route))
         return Promise.resolve(Response.json({ strings: [] }));
 
-      for (const series of url.searchParams.getAll("series"))
-        asked.push({ route, series, from: url.searchParams.get("from") });
+      const from = url.searchParams.get("from");
+      const series = url.searchParams.getAll("series");
+
+      // A read naming no series is recorded too, as one without.
+      for (const one of series.length === 0 ? [null] : series)
+        asked.push({ route, series: one, from });
 
       return Promise.resolve(eachSeries(request.url, () => ({ points: [] })));
     },
@@ -55,8 +59,7 @@ test("the day's weather is the weather device's at the instant it was read", asy
       const url = new URL(request.url);
       const weather = url.pathname.endsWith("/devices/4294967295/forecasts");
 
-      if (url.pathname.endsWith("/timezone"))
-        return Promise.resolve(Response.json({ name: "UTC" }));
+      if (url.pathname.endsWith("/timezone")) return Promise.resolve(json("Zone", { name: "UTC" }));
 
       const points = [
         {

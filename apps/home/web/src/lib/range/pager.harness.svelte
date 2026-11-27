@@ -35,8 +35,10 @@
   onclick={() => {
     dragged = true;
     n += 1;
-  }}>Später</Button
+  }}
 >
+  Später
+</Button>
 <Button onclick={() => (n += 1)}>Reiter</Button>
 <div style="width: 400px">
   <Card.Root class="py-0" data-testid="card" bind:ref={card}>

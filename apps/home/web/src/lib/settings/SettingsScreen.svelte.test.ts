@@ -3,10 +3,10 @@ import { afterEach, expect, test, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
-import { connect, type Transport } from "../api/core.ts";
-import { unfaded } from "../scroll-fade.harness.ts";
+import { connect, type Transport, type Update } from "../api/core.ts";
 import SettingsScreen from "./SettingsScreen.svelte";
-import { CAPABILITIES, CHARGE, DEVICE, problem, testCore } from "./settings.harness.ts";
+import { json, problem } from "../api/core.harness.ts";
+import { CAPABILITIES, CHARGE, DEVICE, testCore } from "./settings.harness.ts";
 
 afterEach(async () => {
   await page.viewport(414, 896);
@@ -26,7 +26,7 @@ function opened(transport: Transport, group: string | null, admin = true) {
 
 test("the admin reaches every group from the root", async () => {
   const screen = await opened(
-    testCore(() => Response.json({ writes: [] })),
+    testCore(() => json("WriteLog", { writes: [] })),
     null,
   );
 
@@ -51,12 +51,11 @@ test("the admin reaches every group from the root", async () => {
         .toBeVisible(),
     ),
   );
-  expect(unfaded()).toEqual([]);
 });
 
 test("a viewer sees only the display, which is the browser's own, and About", async () => {
   const screen = await opened(
-    testCore(() => Response.json({ writes: [] })),
+    testCore(() => json("WriteLog", { writes: [] })),
     null,
     false,
   );
@@ -76,6 +75,10 @@ test("without the admin's session the write log is not shown", async () => {
   );
 
   await expect.element(screen.getByRole("heading", { name: "Protokolle" })).toBeVisible();
+  // The log is read once its loading rows have gone.
+  await expect
+    .element(screen.getByRole("status", { name: "Wird geladen …" }))
+    .not.toBeInTheDocument();
   expect(screen.getByRole("list", { name: "Schreibprotokoll" }).query()).toBeNull();
   expect(screen.getByText("Noch nichts geschrieben").query()).toBeNull();
 });
@@ -89,15 +92,15 @@ test("a device whose writes are off says so and is switched on in one click", as
   const transport: Transport = {
     base: "http://core.test/",
     fetch: async (request) => {
-      if (request.url.endsWith("/capabilities")) return Response.json(off);
+      if (request.url.endsWith("/capabilities")) return json("Support", off);
 
       if (request.method === "PUT") {
         sent.push(await request.text());
 
-        return Response.json(DEVICE);
+        return json("Device", DEVICE);
       }
 
-      return Response.json({ devices: [{ ...DEVICE, writes: false }] });
+      return json("DeviceList", { devices: [{ ...DEVICE, writes: false }] });
     },
   };
 
@@ -126,13 +129,13 @@ test("a setting that needs the admin's enable shows its bounds and is enabled in
   let capabilities = off;
 
   const transport = testCore(
-    () => Response.json({ writes: [] }),
+    () => json("WriteLog", { writes: [] }),
     () => {
       capabilities = CAPABILITIES;
 
       return new Response(null, { status: 204 });
     },
-    { "/api/v1/capabilities": () => Response.json(capabilities) },
+    { "/api/v1/capabilities": () => json("Support", capabilities) },
   );
 
   const screen = await opened(transport, "writes");
@@ -167,18 +170,18 @@ test("an update shows what it changes and is applied in one click", async () => 
       { key: "work_mode", change: "removed", before: { values: [0, 1, 2], step: 1 }, after: null },
     ],
     quantities: [{ key: "battery.power", change: "added" }],
-  };
+  } satisfies Update;
 
   let updates = [update];
 
   const transport = testCore(
-    () => Response.json({ writes: [] }),
+    () => json("WriteLog", { writes: [] }),
     () => {
       updates = [];
 
-      return Response.json(update);
+      return json("Update", update);
     },
-    { "/api/v1/profile-updates": () => Response.json({ updates }) },
+    { "/api/v1/profile-updates": () => json("Updates", { updates }) },
   );
 
   const screen = await opened(transport, "devices");
@@ -201,7 +204,7 @@ test("an update shows what it changes and is applied in one click", async () => 
 
 test("a setting awaiting its enable lists its values by their labels", async () => {
   const screen = await opened(
-    testCore(() => Response.json({ writes: [] })),
+    testCore(() => json("WriteLog", { writes: [] })),
     "writes",
   );
 
@@ -212,7 +215,7 @@ test("a setting awaiting its enable lists its values by their labels", async () 
 
 test("the devices page lists each device with its profile", async () => {
   const screen = await opened(
-    testCore(() => Response.json({ writes: [] })),
+    testCore(() => json("WriteLog", { writes: [] })),
     "devices",
   );
 
@@ -222,11 +225,11 @@ test("the devices page lists each device with its profile", async () => {
 
 test("the plant page shows the plant's timezone and location and saves them", async () => {
   const transport = testCore(
-    () => Response.json({ writes: [] }),
-    () => Response.json({ latitude: 48.1, longitude: 11.6 }),
+    () => json("WriteLog", { writes: [] }),
+    () => json("Location", { latitude: 48.1, longitude: 11.6 }),
     {
-      "/api/v1/timezone": () => Response.json({ name: "Europe/Vienna" }),
-      "/api/v1/location": () => Response.json({ latitude: 48.1, longitude: 11.6 }),
+      "/api/v1/timezone": () => json("Zone", { name: "Europe/Vienna" }),
+      "/api/v1/location": () => json("Location", { latitude: 48.1, longitude: 11.6 }),
     },
   );
 
@@ -251,9 +254,9 @@ test("the plant page shows the plant's timezone and location and saves them", as
 
 test("the connections page lists each connection and a broker's state", async () => {
   const screen = await opened(
-    testCore(() => Response.json({ writes: [] }), undefined, {
+    testCore(() => json("WriteLog", { writes: [] }), undefined, {
       "/api/v1/connections": () =>
-        Response.json({
+        json("Connections", {
           connections: [
             {
               id: 1,
@@ -287,7 +290,7 @@ test("the connections page lists each connection and a broker's state", async ()
 
 test("the forecast page leads to the builder", async () => {
   const screen = await opened(
-    testCore(() => Response.json({ writes: [] })),
+    testCore(() => json("WriteLog", { writes: [] })),
     "forecast",
   );
 

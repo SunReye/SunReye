@@ -7,6 +7,7 @@ import { tap } from "../builder/pointer.harness.ts";
 import DevicesStep from "./DevicesStep.svelte";
 import { pressEnabled } from "./press.harness.ts";
 import { closed } from "../motion/animations.harness.ts";
+import { json, type Schema } from "../api/core.harness.ts";
 
 /** A phone; the value editor lands at once. */
 beforeEach(async () => {
@@ -86,7 +87,7 @@ const REPORT = {
     },
     { transport: "modbus-tcp", host: "192.168.1.30", port: 502, devices: [] },
   ],
-};
+} satisfies Schema<"ScanReport">;
 
 /** The device the scan finds, as its checkbox names it. */
 const FOUND = "SUN-15K-SG05LP3-EU-SM2 an 192.168.1.20:8899, Adresse 1";
@@ -100,8 +101,8 @@ function testCore(refusals = 0): Transport & { readonly calls: string[] } {
   let refuse = refusals;
 
   const answers = new Map<string, () => Response>([
-    ["/api/v1/scan", () => Response.json(REPORT)],
-    ["/api/v1/profiles", () => Response.json({ profiles: PROFILES })],
+    ["/api/v1/scan", () => json("ScanReport", REPORT)],
+    ["/api/v1/profiles", () => json("Catalogue", { profiles: PROFILES })],
     ["/api/v1/connections", () => Response.json({ id: 5, secrets: [] }, { status: 201 })],
     [
       "/api/v1/devices",
@@ -261,7 +262,7 @@ test("hosts no profile recognises wait folded away under their own row", async (
 test("a scan that finds nothing says so and offers the endpoint by hand", async () => {
   const transport: Transport = {
     base: "http://core.test/",
-    fetch: () => Promise.resolve(Response.json({ subnet: "192.168.1.0/24", endpoints: [] })),
+    fetch: () => Promise.resolve(json("ScanReport", { subnet: "192.168.1.0/24", endpoints: [] })),
   };
 
   const screen = await render(DevicesStep, { core: connect(transport), ondone: () => {} });
@@ -289,6 +290,6 @@ test("a running scan shows its progress", async () => {
   await expect
     .element(screen.getByRole("status").getByText(/Netzwerk wird durchsucht/u))
     .toBeVisible();
-  report.resolve(Response.json(REPORT));
+  report.resolve(json("ScanReport", REPORT));
   await expect.element(screen.getByRole("checkbox", { name: FOUND })).toBeChecked();
 });

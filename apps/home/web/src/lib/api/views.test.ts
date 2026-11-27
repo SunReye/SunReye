@@ -1,12 +1,14 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
 import { connect } from "./core.ts";
-import { answering, BASE, problem } from "./core.harness.ts";
+import { answering, BASE, json, problem } from "./core.harness.ts";
 
 const TODAY = { id: 3, name: "Heute", query: "r=day&s=pv.power" };
 
 test("saved views list in the order saved, and a refusal reports its code", async () => {
-  const listed = answering(Response.json({ views: [TODAY, { id: 5, name: "Woche", query: "" }] }));
+  const listed = answering(
+    json("SavedViews", { views: [TODAY, { id: 5, name: "Woche", query: "" }] }),
+  );
 
   expect(await connect(listed).views()).toEqual([TODAY, { id: 5, name: "Woche", query: "" }]);
   expect(listed.sent[0]?.url).toBe(`${BASE}api/v1/views`);
@@ -16,7 +18,7 @@ test("saved views list in the order saved, and a refusal reports its code", asyn
 });
 
 test("a view is saved with its name and query, and a taken name or a full list is refused", async () => {
-  const core = answering(Response.json(TODAY, { status: 201 }));
+  const core = answering(json("SavedView", TODAY, { status: 201 }));
 
   expect(await connect(core).saveView("Heute", "r=day&s=pv.power")).toEqual(TODAY);
   expect(core.sent[0]?.method).toBe("POST");
@@ -31,7 +33,7 @@ test("a view is saved with its name and query, and a taken name or a full list i
 });
 
 test("a view is replaced by id with its name and query", async () => {
-  const core = answering(Response.json(TODAY));
+  const core = answering(json("SavedView", TODAY));
 
   expect(await connect(core).replaceView(3, "Heute", "r=day&s=pv.power")).toEqual(TODAY);
   expect(core.sent[0]?.method).toBe("PUT");

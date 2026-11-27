@@ -3,6 +3,7 @@ import { cdp, page, userEvent, type Locator } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { connect } from "../api/core.ts";
+import { json } from "../api/core.harness.ts";
 import { testCore } from "../tariff/tariff.harness.ts";
 import TariffSettings from "./TariffSettings.svelte";
 import { closed } from "../motion/animations.harness.ts";
@@ -41,11 +42,11 @@ test("payback shows the savings against the investment, which the admin enters",
 
   const core = testCore({
     "GET /api/v1/payback": () =>
-      Response.json({ investment, savings: 0.62, remaining: investment - 0.62 }),
+      json("Payback", { investment, savings: 0.62, remaining: investment - 0.62, months: [] }),
     "PUT /api/v1/investment": () => {
       investment = 12_000;
 
-      return Response.json({ amount: investment });
+      return json("Investment", { amount: investment });
     },
   });
 
@@ -83,8 +84,8 @@ const WEEKNIGHTS = {
 
 test("the admin changes the tariff in force from now on", async () => {
   const core = testCore({
-    "GET /api/v1/tariff": () => Response.json(WEEKNIGHTS),
-    "PUT /api/v1/tariff": () => Response.json(WEEKNIGHTS),
+    "GET /api/v1/tariff": () => json("Tariff", WEEKNIGHTS),
+    "PUT /api/v1/tariff": () => json("Tariff", WEEKNIGHTS),
   });
 
   const screen = await render(TariffSettings, { core: connect(core) });
@@ -118,8 +119,8 @@ test("the admin changes the tariff in force from now on", async () => {
 
 test("the admin sets the standing charge in euros a month", async () => {
   const core = testCore({
-    "GET /api/v1/tariff": () => Response.json(WEEKNIGHTS),
-    "PUT /api/v1/tariff": () => Response.json(WEEKNIGHTS),
+    "GET /api/v1/tariff": () => json("Tariff", WEEKNIGHTS),
+    "PUT /api/v1/tariff": () => json("Tariff", WEEKNIGHTS),
   });
 
   const screen = await render(TariffSettings, { core: connect(core) });
@@ -156,8 +157,8 @@ async function wheelTo(group: string, field: string, hours: number, shows: strin
 
 test("the admin adds a band and reprices from a past date", async () => {
   const core = testCore({
-    "GET /api/v1/tariff": () => Response.json(WEEKNIGHTS),
-    "POST /api/v1/tariff/reprice": () => Response.json(WEEKNIGHTS),
+    "GET /api/v1/tariff": () => json("Tariff", WEEKNIGHTS),
+    "POST /api/v1/tariff/reprice": () => json("Tariff", WEEKNIGHTS),
   });
 
   const screen = await render(TariffSettings, { core: connect(core) });
@@ -195,7 +196,7 @@ test("the admin adds a band and reprices from a past date", async () => {
 
 test("a tariff the core refuses shows why", async () => {
   const core = testCore({
-    "GET /api/v1/tariff": () => Response.json(WEEKNIGHTS),
+    "GET /api/v1/tariff": () => json("Tariff", WEEKNIGHTS),
     "PUT /api/v1/tariff": () =>
       Response.json(
         { status: 422, code: "tariff.band" },
@@ -214,15 +215,18 @@ test("a tariff the core refuses shows why", async () => {
     screen.getByRole("region", { name: "Tarif" }).getByRole("button", { name: "Speichern" }),
   );
 
+  // Problem `tariff.band`, in the app's words.
   await expect
     .element(screen.getByRole("region", { name: "Tarif" }).getByRole("alert"))
-    .toBeVisible();
+    .toHaveTextContent(
+      "Ein Zeitfenster braucht Wochentage von 1 bis 7 und eine Spanne eines Tages von HH:MM bis zu einem späteren HH:MM, ohne ein anderes Zeitfenster derselben Richtung zu überschneiden.",
+    );
 });
 
 test("the admin chooses the bidding zone spot prices are fetched for", async () => {
   const core = testCore({
-    "GET /api/v1/spot-prices": () => Response.json({ zone: null }),
-    "PUT /api/v1/spot-prices": () => Response.json({ zone: "DE-LU" }),
+    "GET /api/v1/spot-prices": () => json("SpotPriceZone", { zone: null }),
+    "PUT /api/v1/spot-prices": () => json("SpotPriceZone", { zone: "DE-LU" }),
   });
 
   const screen = await render(TariffSettings, { core: connect(core) });

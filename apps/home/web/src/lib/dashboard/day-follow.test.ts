@@ -3,7 +3,7 @@
 // and the day move on.
 import { afterEach, beforeEach, expect, jest, setSystemTime, test } from "bun:test";
 import { connect } from "../api/core.ts";
-import { eachSeries, tally } from "../api/core.harness.ts";
+import { eachSeries, json, tally } from "../api/core.harness.ts";
 import type { Visibility } from "../api/live.ts";
 import type { Day } from "./day.ts";
 import { followDay } from "./day-follow.ts";
@@ -77,9 +77,9 @@ function plant(page: Visibility) {
 
         urls.push(request.url);
 
-        if (path.endsWith("/timezone")) return Response.json({ name: "UTC" });
+        if (path.endsWith("/timezone")) return json("Zone", { name: "UTC" });
 
-        if (path.endsWith("/layout")) return Response.json(LAYOUT);
+        if (path.endsWith("/layout")) return json("Layout", LAYOUT);
 
         const made = state.made;
 

@@ -43,13 +43,39 @@ afterAll(async () => {
   await rm(out, { recursive: true, force: true });
 });
 
-/** What the type checker says of a consumer's module; empty when it checks. */
-async function check(consumer: string): Promise<string> {
-  await Bun.write(join(out, "consumer.ts"), consumer);
+let checkIndex = 0;
 
-  const run = Bun.spawnSync([tsrs, "-p", "tsconfig.json"], { cwd: out });
+type Checked = Readonly<{ code: number; said: string }>;
 
-  return run.stdout.toString() + run.stderr.toString();
+/** A module that type-checks: exit 0, nothing said; a killed checker says nothing too. */
+const CHECKS: Checked = { code: 0, said: "" };
+
+/** The type checker's exit code and what it says of a consumer's module. */
+async function check(consumer: string): Promise<Checked> {
+  const id = ++checkIndex;
+  const file = `consumer-${String(id)}.ts`;
+  const config = `tsconfig-${String(id)}.json`;
+
+  await Promise.all([
+    Bun.write(join(out, file), consumer),
+    Bun.write(
+      join(out, config),
+      JSON.stringify({
+        compilerOptions: { strict: true, noEmit: true, module: "nodenext", types: [] },
+        include: [file],
+      }),
+    ),
+  ]);
+
+  const proc = Bun.spawn([tsrs, "-p", config], { cwd: out, stdout: "pipe", stderr: "pipe" });
+
+  const [stdout, stderr, code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+
+  return { code, said: stdout + stderr };
 }
 
 const HOUSE = `
@@ -75,15 +101,18 @@ export const house: Scene = {
 `;
 
 test("a consumer types a scene with the published types", async () => {
-  expect(await check(HOUSE)).toBe("");
+  expect(await check(HOUSE)).toEqual(CHECKS);
 });
 
 test("the published types refuse what the core refuses", async () => {
   const unknown = HOUSE.replace("north: 180,", "north: 180, south: 0,");
   const dome = HOUSE.replace('"gable"', '"dome"');
+  const [unknownOut, domeOut] = await Promise.all([check(unknown), check(dome)]);
 
-  expect(await check(unknown)).toContain("'south' does not exist in type");
-  expect(await check(dome)).toContain(`Type '"dome"' is not assignable`);
+  expect(unknownOut.code).not.toBe(0);
+  expect(unknownOut.said).toContain("'south' does not exist in type");
+  expect(domeOut.code).not.toBe(0);
+  expect(domeOut.said).toContain(`Type '"dome"' is not assignable`);
 });
 
 test("a consumer types a module type with its datasheet", async () => {
@@ -93,7 +122,7 @@ import type { ModuleType } from "@sunreye/scene";
 export const moduleType: Pick<ModuleType, "id" | "width" | "height"> = { id: 1, width: 1.1, height: 1.7 };
 `;
 
-  expect(await check(sheet)).toBe("");
+  expect(await check(sheet)).toEqual(CHECKS);
 });
 
 /** A module namespace has a null prototype, so `instanceof Object` cannot narrow it. */
@@ -130,7 +159,7 @@ export const edited: Edited = addLine(empty, { x: 0, z: 0 }, { x: 0, z: 4 }, 0.3
 
   const module: unknown = await import(Bun.resolveSync("@sunreye/scene", out));
 
-  expect(await check(consumer)).toBe("");
+  expect(await check(consumer)).toEqual(CHECKS);
   expect(Object.prototype.hasOwnProperty.call(module, "addLine")).toBe(true);
 });
 

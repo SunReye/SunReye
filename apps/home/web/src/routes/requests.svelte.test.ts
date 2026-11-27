@@ -6,11 +6,13 @@ import { connect } from "../lib/api/core.ts";
 import {
   eachSeries,
   fakeClock,
+  json,
   problem,
   restoreClock,
   sceneMayMount,
   settled,
   tally,
+  type Schema,
 } from "./requests.harness.ts";
 import { coreContext } from "../lib/shell/core.ts";
 import App from "./shell.harness.svelte";
@@ -50,18 +52,28 @@ const LAYOUT = {
     ],
     obstacles: [],
   },
-};
+} satisfies Schema<"Layout">;
 
 const ANSWERS = new Map<string, () => Response>([
   ["/api/v1/session", () => new Response(null, { status: 204 })],
-  ["/api/v1/devices", () => Response.json({ devices: [INVERTER] })],
-  ["/api/v1/layout", () => Response.json(LAYOUT)],
-  ["/api/v1/timezone", () => Response.json({ name: "UTC" })],
-  ["/api/v1/capabilities", () => Response.json({ devices: {} })],
-  ["/api/v1/module-types", () => Response.json({ moduleTypes: [] })],
-  ["/api/v1/location", () => Response.json({ latitude: 52.5, longitude: 13.4 })],
-  ["/api/v1/series", () => Response.json({ devices: [] })],
-  ["/api/v1/topology", () => Response.json({ appliesFrom: "2026-11-01T00:00:00Z", points: [] })],
+  ["/api/v1/devices", () => json("DeviceList", { devices: [INVERTER] })],
+  ["/api/v1/layout", () => json("Layout", LAYOUT)],
+  ["/api/v1/timezone", () => json("Zone", { name: "UTC" })],
+  [
+    "/api/v1/capabilities",
+    () =>
+      json("Support", {
+        version: "5.0.0",
+        schema: { min: 1, max: 1 },
+        capabilities: [],
+        transports: [],
+        devices: {},
+      }),
+  ],
+  ["/api/v1/module-types", () => json("ModuleTypes", { moduleTypes: [] })],
+  ["/api/v1/location", () => json("Location", { latitude: 52.5, longitude: 13.4 })],
+  ["/api/v1/series", () => json("SeriesCatalog", { devices: [] })],
+  ["/api/v1/topology", () => json("Topology", { appliesFrom: "2026-11-01T00:00:00Z", points: [] })],
   [
     "/api/v1/live",
     () =>

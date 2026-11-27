@@ -6,6 +6,7 @@ import { connect } from "../api/core.ts";
 import { problemText } from "../i18n/problems.ts";
 import { testCore } from "./tariff.harness.ts";
 import TariffScreen from "./TariffScreen.svelte";
+import { json } from "../api/core.harness.ts";
 
 // A costs read that fails, refused or lost, says so in place of the chart with a retry; a refusal
 // says the core's reason too (ADR 21).
@@ -29,7 +30,7 @@ const COSTS = {
 /** The core's costs: refused with `code`, lost, or answered, as `costs` says at each read. */
 function core(costs: () => "refused" | "lost" | "answered") {
   return testCore({
-    "GET /api/v1/timezone": () => Response.json({ name: "UTC" }),
+    "GET /api/v1/timezone": () => json("Zone", { name: "UTC" }),
     "GET /api/v1/costs": () => {
       const now = costs();
 
@@ -37,7 +38,7 @@ function core(costs: () => "refused" | "lost" | "answered") {
 
       return now === "refused"
         ? Response.json({ status: 500, code: "internal" }, { status: 500 })
-        : Response.json(COSTS);
+        : json("CostDays", COSTS);
     },
   });
 }

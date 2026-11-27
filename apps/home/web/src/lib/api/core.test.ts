@@ -1,7 +1,7 @@
 /// <reference types="bun" />
 import { afterEach, expect, test } from "bun:test";
 import { type CatalogDevice, connect, http } from "./core.ts";
-import { BASE, problem, scripted } from "./core.harness.ts";
+import { BASE, json, problem, scripted } from "./core.harness.ts";
 
 let server: ReturnType<typeof Bun.serve> | undefined;
 
@@ -17,7 +17,7 @@ test("history asks the core under its prefix for its series over a range", async
       const url = new URL(request.url);
       asked.push(url.pathname + url.search);
 
-      return Response.json({
+      return json("HistoryRead", {
         series: [
           {
             series: "pv.power",
@@ -80,7 +80,7 @@ test("the series catalog lists each device with stored history", async () => {
     ],
   };
 
-  const transport = scripted(Response.json({ devices: [device] }));
+  const transport = scripted(json("SeriesCatalog", { devices: [device] }));
 
   expect(await connect(transport).series()).toEqual([device]);
   expect(transport.urls).toEqual([`${BASE}api/v1/series`]);

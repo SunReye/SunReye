@@ -5,8 +5,9 @@ import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { connect, type Transport } from "../api/core.ts";
 import SettingsScreen from "./SettingsScreen.svelte";
-import { problem } from "./settings.harness.ts";
+import { problem } from "../api/core.harness.ts";
 import { closed } from "../motion/animations.harness.ts";
+import { json } from "../api/core.harness.ts";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -26,10 +27,11 @@ function collection(kind: "viewers" | "tokens", seed: readonly Readonly<Named>[]
   return {
     list: () => Response.json({ [kind]: items }),
     remove: (id: number) => {
-      items.splice(
-        items.findIndex((item) => item.id === id),
-        1,
-      );
+      const index = items.findIndex((item) => item.id === id);
+
+      if (index === -1) return problem(404, kind === "viewers" ? "viewer.none" : "token.none");
+
+      items.splice(index, 1);
 
       return new Response(null, { status: 204 });
     },
@@ -43,7 +45,7 @@ function collection(kind: "viewers" | "tokens", seed: readonly Readonly<Named>[]
       if (kind === "viewers") {
         items.push({ id: next, name });
 
-        return Response.json({ id: next, name }, { status: 201 });
+        return json("Viewer", { id: next, name }, { status: 201 });
       }
 
       items.push({ id: next, name, scope });

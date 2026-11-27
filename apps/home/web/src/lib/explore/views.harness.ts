@@ -2,6 +2,7 @@
 // the tests find the chips.
 import { page } from "vitest/browser";
 import type { View } from "./saved.ts";
+import { json } from "../api/core.harness.ts";
 
 /** `views`: the saved views as the core keeps them. `most`: how many it keeps. */
 export const kept = { views: new Array<View>(), most: 20 };
@@ -44,7 +45,7 @@ function written(id: number | null, draft: Omit<View, "id">): Response {
 
     kept.views = kept.views.map((was: View) => (was.id === id ? view : was));
 
-    return Response.json(view);
+    return json("SavedView", view);
   }
 
   if (kept.views.length >= kept.most) return refused(409, "views.full");
@@ -53,7 +54,7 @@ function written(id: number | null, draft: Omit<View, "id">): Response {
 
   kept.views = [...kept.views, view];
 
-  return Response.json(view, { status: 201 });
+  return json("SavedView", view, { status: 201 });
 }
 
 /** Whether a request is for the saved views' routes. */
@@ -67,7 +68,7 @@ export async function answerViews(request: Request): Promise<Response> {
   const named = /\/(\d+)$/u.exec(new URL(request.url).pathname)?.[1];
   const id = named === undefined ? null : Number(named);
 
-  if (request.method === "GET") return Response.json({ views: kept.views });
+  if (request.method === "GET") return json("SavedViews", { views: kept.views });
 
   if (request.method === "DELETE") {
     kept.views = kept.views.filter((view: View) => view.id !== id);

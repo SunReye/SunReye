@@ -6,6 +6,7 @@ import "../../app.css";
 import { connect, type Transport } from "../api/core.ts";
 import SettingsScreen from "./SettingsScreen.svelte";
 import { attempt, testCore } from "./settings.harness.ts";
+import { json } from "../api/core.harness.ts";
 
 afterEach(async () => {
   await page.viewport(414, 896);
@@ -32,7 +33,7 @@ test("on a phone the write log is a list of entries, newest first", async () => 
   };
 
   const screen = await opened(
-    testCore(() => Response.json(log)),
+    testCore(() => json("WriteLog", log)),
     "logs",
   );
 
@@ -53,7 +54,7 @@ test("with room the write log is a table", async () => {
   const log = { writes: [attempt({ outcome: "mismatch", after: 108 })] };
 
   const screen = await opened(
-    testCore(() => Response.json(log)),
+    testCore(() => json("WriteLog", log)),
     "logs",
   );
 
@@ -66,7 +67,7 @@ test("with room the write log is a table", async () => {
 
 test("an empty write log says what will land there", async () => {
   const screen = await opened(
-    testCore(() => Response.json({ writes: [] })),
+    testCore(() => json("WriteLog", { writes: [] })),
     "logs",
   );
 

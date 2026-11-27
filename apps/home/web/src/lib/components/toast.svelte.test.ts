@@ -8,6 +8,7 @@ import { render } from "vitest-browser-svelte";
 import { clearToasts, holdToasts } from "./toasts.harness.ts";
 import { Toaster } from "./ui/sonner/index.js";
 import "../../app.css";
+import { alpha } from "../alpha.harness.ts";
 
 const root = document.documentElement;
 const nothing = (): void => {};
@@ -70,11 +71,6 @@ async function shown(type: Type, theme: string): Promise<HTMLElement> {
   await expect.element(page.getByText(text)).toBeVisible();
 
   return page.getByText(text).element().closest<HTMLElement>("[data-sonner-toast]")!;
-}
-
-/** The alpha of a computed colour; 1 when the colour has none. */
-function alpha(colour: string): number {
-  return Number(/\/\s*([\d.]+)\)$/u.exec(colour)?.[1] ?? 1);
 }
 
 type Rgb = readonly [number, number, number];

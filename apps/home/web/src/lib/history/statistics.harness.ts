@@ -2,7 +2,7 @@
 // recorded, and every read the screen makes (ADR 9, 12).
 import { render } from "vitest-browser-svelte";
 import { connect, type Transport } from "../api/core.ts";
-import { eachSeries } from "../api/core.harness.ts";
+import { eachSeries, json } from "../api/core.harness.ts";
 import { iso } from "../range/calendar.ts";
 import StatisticsScreen from "./StatisticsScreen.svelte";
 import { at, rollups, series, TODAY } from "./statistics.series.ts";
@@ -111,7 +111,7 @@ function costs(q: Query): Response {
   const sum = (k: "paid" | "earned" | "saved") =>
     days.reduce((a, d: Readonly<typeof day>) => a + d[k], 0);
 
-  return Response.json({
+  return json("CostDays", {
     days,
     total: { paid: sum("paid"), earned: sum("earned"), saved: sum("saved"), standing: 0 },
   });
@@ -122,7 +122,7 @@ function payback(): Response {
   if (plant.paybackRefused !== null)
     return Response.json({ status: 500, code: plant.paybackRefused }, { status: 500 });
 
-  return Response.json({
+  return json("Payback", {
     investment: 12_000,
     remaining: 9000,
     savings: 3000,
@@ -145,7 +145,7 @@ const figures = (production: number, saved: number) => ({
 
 /** This year to date against the same dates last year, and last year whole. */
 function records(): Response {
-  return Response.json({
+  return json("Records", {
     years: [
       { year: YEAR, running: true, figures: figures(4200, 800), before: figures(3500, 700) },
       { year: YEAR - 1, running: false, figures: figures(6000, 1100), before: null },
@@ -160,7 +160,7 @@ function records(): Response {
 function capacity(): Response {
   const kwh = [10, 9.9, 9.8, 9.7, 9.6, 9.5];
 
-  return Response.json({
+  return json("Capacity", {
     measurements: plant.measured
       ? kwh.map((v, i) => ({ end: at(TODAY - 150 + i * 30, 20), kwh: v }))
       : [],
@@ -192,14 +192,18 @@ const READS = new Map<string, (q: Query, href: string) => Response>(
     timezone: () => {
       zone.read = true;
 
-      return Response.json({ name: "UTC" });
+      return json("Zone", { name: "UTC" });
     },
     history,
     costs,
     statistics,
     forecasts: (_, href) => eachSeries(href, () => ({ points: [] })),
     capabilities: () =>
-      Response.json({
+      json("Support", {
+        version: "5.0.0",
+        schema: { min: 1, max: 1 },
+        capabilities: [],
+        transports: [],
         devices: {
           // The core lists registered devices only, never the plant.
           "1": {
@@ -225,15 +229,16 @@ const READS = new Map<string, (q: Query, href: string) => Response>(
         })),
       }),
     "module-types": () => Response.json({ moduleTypes: [{ id: 1, pmax: 400 }] }),
-    corrections: () => Response.json({ inputs: [] }),
+    corrections: () => json("CorrectionList", { inputs: [] }),
     payback,
     records,
     capacity,
     tariff: () =>
-      Response.json({
+      json("Tariff", {
         appliesFrom: at(TODAY - 100, 0),
         import: { price: 0.32, bands: [] },
         export: { price: 0.08, bands: [] },
+        standingCharge: 0,
       }),
   }),
 );

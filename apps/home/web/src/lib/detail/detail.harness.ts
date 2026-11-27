@@ -3,7 +3,7 @@ import { cdp, page } from "vitest/browser";
 import { vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import { connect, type Transport } from "../api/core.ts";
-import { eachAnswer } from "../api/core.harness.ts";
+import { eachAnswer, json, type Schema } from "../api/core.harness.ts";
 import { turn } from "../api/settled.harness.ts";
 import { merge } from "../api/frames.ts";
 import Dashboard from "../dashboard/Dashboard.svelte";
@@ -76,7 +76,7 @@ export interface Served {
   /** Answers a costs read from `from` to before `to`, RFC 3339; null for none. */
   costs: ((from: string, to: string) => Response | Promise<Response>) | null;
   /** The payback the admin reads (ADR 12); null for a refusal. */
-  payback: object | null;
+  payback: Schema<"Payback"> | null;
   /** The series the inverter's profile publishes. */
   publishes: readonly string[];
   /** Answers the inverter's forecasts in place of its plan; null for the plan. */
@@ -103,19 +103,20 @@ export const served: Served = {
 
 /** The series catalog: each stored series a measurement since the month began. */
 function catalog(): Response {
-  const devices = Object.keys(served.stored).map((id) => ({
+  const devices = Object.keys(served.stored).map((id): Schema<"CatalogDevice"> => ({
     id: Number(id),
     name: null,
     removed: false,
     series: (served.stored[id] ?? []).map((series) => ({
       series,
       kind: "measurement",
+      estimated: false,
       first: "2026-11-01T00:00:00Z",
       last: served.last,
     })),
   }));
 
-  return Response.json({ devices });
+  return json("SeriesCatalog", { devices });
 }
 
 const IMPORTING = { [PLANT]: { "grid.power": 800 } };
@@ -173,14 +174,14 @@ const MODULE_TYPES = { moduleTypes: [{ id: 1, name: "M", pmax: 300 }] };
 
 /** Each path but statistics', and what the fake core answers there to query `q`. */
 const ROUTES = new Map<string, (q: Readonly<URLSearchParams>) => Response | Promise<Response>>([
-  ["/api/v1/topology", () => Response.json(TOPOLOGY)],
+  ["/api/v1/topology", () => json("Topology", TOPOLOGY)],
   ["/api/v1/series", catalog],
-  ["/api/v1/timezone", () => Response.json({ name: "UTC" })],
+  ["/api/v1/timezone", () => json("Zone", { name: "UTC" })],
   [
     "/api/v1/layout",
-    () => Response.json({ appliesFrom: "2026-11-01T00:00:00Z", strings: STRINGS, warnings: [] }),
+    () => json("Layout", { appliesFrom: "2026-11-01T00:00:00Z", strings: STRINGS, warnings: [] }),
   ],
-  ["/api/v1/capabilities", () => Response.json(capabilities(served.publishes))],
+  ["/api/v1/capabilities", () => json("Support", capabilities(served.publishes))],
   [`/api/v1/devices/${SPOT}/forecasts`, () => Response.json(SPOT_PRICES)],
   [`/api/v1/devices/${INVERTER}/forecasts`, () => served.forecasts?.() ?? plan()],
   [
@@ -188,17 +189,17 @@ const ROUTES = new Map<string, (q: Readonly<URLSearchParams>) => Response | Prom
     () => Response.json({ status: 403, code: "auth.forbidden" }, { status: 403 }),
   ],
   ["/api/v1/module-types", () => served.types?.() ?? Response.json(MODULE_TYPES)],
-  ["/api/v1/corrections", () => Response.json(CORRECTIONS)],
+  ["/api/v1/corrections", () => json("CorrectionList", CORRECTIONS)],
   [
     "/api/v1/costs",
-    (q) => served.costs?.(q.get("from") ?? "", q.get("to") ?? "") ?? Response.json(NO_COSTS),
+    (q) => served.costs?.(q.get("from") ?? "", q.get("to") ?? "") ?? json("CostDays", NO_COSTS),
   ],
   [
     "/api/v1/payback",
     () =>
       served.payback === null
         ? Response.json({ status: 403, code: "auth.forbidden" }, { status: 403 })
-        : Response.json(served.payback),
+        : json("Payback", served.payback),
   ],
 ]);
 

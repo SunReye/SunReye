@@ -1,10 +1,10 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
 import { connect } from "./core.ts";
-import { answering, BASE } from "./core.harness.ts";
+import { answering, BASE, json } from "./core.harness.ts";
 
 test("a car body uploads as a GLB under the prefix and answers its id", async () => {
-  const transport = answering(Response.json({ id: "ab".repeat(32) }, { status: 201 }));
+  const transport = answering(json("Uploaded", { id: "ab".repeat(32) }, { status: 201 }));
   const glb = new Blob([new Uint8Array([0x67, 0x6c, 0x54, 0x46])]);
 
   const id = await connect(transport).uploadCarBody(glb);

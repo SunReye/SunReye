@@ -8,6 +8,7 @@ import { aside, dragBy, letGo } from "../range/drag.harness.ts";
 import { feed } from "../live/stream.harness.ts";
 import { NOW, testCore } from "./tariff.harness.ts";
 import TariffScreen from "./TariffScreen.svelte";
+import { json } from "../api/core.harness.ts";
 
 test("the prices in force show in ct/kWh, the spot price with its attribution", async () => {
   feed()({
@@ -53,8 +54,8 @@ const COSTS = {
 
 test("the range's savings and costs read in the chart's legend, as the core totals them", async () => {
   const core = testCore({
-    "GET /api/v1/costs": () => Response.json(COSTS),
-    "GET /api/v1/timezone": () => Response.json({ name: "UTC" }),
+    "GET /api/v1/costs": () => json("CostDays", COSTS),
+    "GET /api/v1/timezone": () => json("Zone", { name: "UTC" }),
   });
 
   const route = { params: new URLSearchParams("range=month&at=2026-11-01"), go: () => {} };
@@ -101,8 +102,8 @@ test("a finger drags the costs to the earlier month, read only once it is shown"
   });
 
   const core = testCore({
-    "GET /api/v1/costs": () => Response.json(COSTS),
-    "GET /api/v1/timezone": () => Response.json({ name: "UTC" }),
+    "GET /api/v1/costs": () => json("CostDays", COSTS),
+    "GET /api/v1/timezone": () => json("Zone", { name: "UTC" }),
   });
 
   const went: (string | null | undefined)[] = [];

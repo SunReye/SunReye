@@ -50,6 +50,10 @@ test("without a scene the dashboard shows the 2D flow and offers no toggle", asy
   const screen = await render(Page, { context: homeCore() });
 
   await asked("/api/v1/layout");
+  // The 2D flow's hub.
+  await expect
+    .element(screen.getByRole("button", { name: "Wechselrichter: Details" }))
+    .toBeVisible();
   expect(screen.getByLabelText("3D-Szene des Hauses").query()).toBeNull();
   expect(screen.getByRole("radio", { name: "2D" }).query()).toBeNull();
 });
@@ -99,6 +103,9 @@ test("the low-power switch shows the 2D flow", async () => {
   motion.lowPower = true;
 
   await expect.element(screen.getByLabelText("3D-Szene des Hauses")).not.toBeInTheDocument();
+  await expect
+    .element(screen.getByRole("button", { name: "Wechselrichter: Details" }))
+    .toBeVisible();
   expect(screen.getByRole("radio", { name: "2D" }).query()).toBeNull();
 });
 
@@ -111,5 +118,8 @@ test("without WebGL2 a scene still leaves the 2D flow", async () => {
 
   await settle(() => localStorage.getItem("sunreye.webgl2") === "no");
   await expect.element(screen.getByRole("radio", { name: "2D" })).not.toBeInTheDocument();
+  await expect
+    .element(screen.getByRole("button", { name: "Wechselrichter: Details" }))
+    .toBeVisible();
   expect(screen.getByLabelText("3D-Szene des Hauses").query()).toBeNull();
 });

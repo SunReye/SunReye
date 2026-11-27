@@ -7,6 +7,7 @@ import { MODULE, press } from "../builder/builder.harness.ts";
 import { layout, scene } from "../live/live-scene.harness.ts";
 import Hero from "./Hero.svelte";
 import { settle } from "../motion/clock.harness.ts";
+import { json } from "../api/core.harness.ts";
 
 /** How the core answers the scene's module types: at once, never, or not at all. */
 let types: "answer" | "hold" | "fail" = "answer";
@@ -22,7 +23,7 @@ async function moduleTypes(): Promise<Response> {
 
   if (types === "hold") await held.promise;
 
-  return Response.json({ moduleTypes: [MODULE] });
+  return json("ModuleTypes", { moduleTypes: [MODULE] });
 }
 
 const transport: Transport = {

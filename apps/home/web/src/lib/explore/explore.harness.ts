@@ -11,7 +11,7 @@ import {
 } from "../api/core.ts";
 import Shell from "../shell/Shell.svelte";
 import ExploreScreen from "./ExploreScreen.svelte";
-import { eachSeries } from "../api/core.harness.ts";
+import { eachSeries, json } from "../api/core.harness.ts";
 import { answerViews, forViews, resetViews } from "./views.harness.ts";
 
 const SPAN = { first: "2026-01-01T00:00:00Z", last: "2026-11-15T12:00:00Z" };
@@ -139,7 +139,7 @@ function askedOf(url: URL, series: string): Asked | null {
 const catalog = () =>
   plant.broken
     ? Response.json({ status: 401, code: "auth.required" }, { status: 401 })
-    : Response.json({ devices: DEVICES });
+    : json("SeriesCatalog", { devices: DEVICES });
 
 /** The core's refusal of a read asking for the refused series. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the DOM's own type.
@@ -162,7 +162,7 @@ function transport(): Transport {
 
       if (plant.offline && read !== "timezone") return Promise.reject(new TypeError("network"));
 
-      if (read === "timezone") return Promise.resolve(Response.json({ name: "UTC" }));
+      if (read === "timezone") return Promise.resolve(json("Zone", { name: "UTC" }));
 
       if (read === "series") return Promise.resolve(catalog());
 

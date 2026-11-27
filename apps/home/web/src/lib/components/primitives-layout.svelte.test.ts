@@ -7,14 +7,10 @@ import PageTitle from "./page-title.svelte";
 import Section from "./section.svelte";
 import StatStrip from "./stat-strip.svelte";
 import * as Card from "@sunreye/ui/card";
+import { alpha } from "../alpha.harness.ts";
 
 const body = createRawSnippet(() => ({ render: () => `<p>Inhalt</p>` }));
 const action = createRawSnippet(() => ({ render: () => `<a href="#/x">Mehr</a>` }));
-
-/** The alpha of a computed colour; 1 when the colour has none. */
-function alpha(colour: string): number {
-  return Number(/\/\s*([\d.]+)\)$/u.exec(colour)?.[1] ?? 1);
-}
 
 const px = (length: string) => Number(length.replace("px", ""));
 

@@ -6,6 +6,7 @@ import "../../app.css";
 import { connect, type Transport } from "../api/core.ts";
 import ForecastScreen from "./ForecastScreen.svelte";
 import { card, PAST_WEEK, testCore, WEEK } from "./forecast.harness.ts";
+import { json } from "../api/core.harness.ts";
 
 /** The test core, its layout answered by `layout`. */
 function laidOut(layout: (request: Request) => Promise<Response>): Transport {
@@ -40,7 +41,7 @@ test("without strings the forecast stands in a card at the loading card's size",
     core: connect(
       laidOut(() =>
         Promise.resolve(
-          Response.json({ appliesFrom: "2026-11-01T00:00:00Z", warnings: [], strings: [] }),
+          json("Layout", { appliesFrom: "2026-11-01T00:00:00Z", warnings: [], strings: [] }),
         ),
       ),
     ),

@@ -68,6 +68,20 @@ test("a control writes only with its device's writes on and its setting verified
   ]);
 });
 
+test("a verified setting writes; a community one waits for its enable", () => {
+  const [battery] = controlGroups({
+    "1": device(true, [
+      { ...charge, enable: "verified" },
+      { ...charge, key: "battery.x", enable: "community" },
+    ]),
+  });
+
+  expect(battery?.controls.map((c) => [c.writable, c.awaiting])).toEqual([
+    [true, false],
+    [false, true],
+  ]);
+});
+
 test("a group with no settings is left out", () => {
   expect(controlGroups({ "1": device(true, [work]) }).map((g) => g.id)).toEqual(["advanced"]);
 });
