@@ -5,7 +5,7 @@ use std::borrow::Cow;
 
 use crate::estimate::{Tallies, sky, tallied};
 use crate::perez::cos_incidence;
-use crate::shade::Casters;
+use crate::shade::{Casters, GridTracer};
 use crate::string::{Open, Shade};
 use crate::{Estimate, Layout, Module, ModuleType, Occluder, Place, Plane, Sun, Weather};
 
@@ -98,9 +98,10 @@ impl ShadingTable {
             };
         }
         let modules: Vec<_> = modules(layout).collect();
+        let mut tracer = GridTracer::new(&modules, &scene.occluders);
         let mut nodes = vec![0; ELEVATIONS * AZIMUTHS * end];
         for (node, row) in nodes.chunks_exact_mut(end).enumerate() {
-            mark(&modules, sun_at(node), &scene.occluders, row);
+            tracer.mark(sun_at(node), row);
         }
         Self {
             scene,
@@ -202,20 +203,6 @@ fn modules(layout: &Layout) -> impl Iterator<Item = (&ModuleType, &Module)> {
         .flat_map(|inverter| &inverter.inputs)
         .flat_map(|input| &input.strings)
         .flat_map(|string| string.modules.iter().map(move |m| (&string.module, m)))
-}
-
-/// Writes in `row` how much of each substring of `modules`, in their order, lies in shade under
-/// `sun`.
-fn mark(modules: &[(&ModuleType, &Module)], sun: Sun, occluders: &[Occluder], row: &mut [u8]) {
-    let casters = Casters::under(sun, occluders);
-    let mut start = 0;
-    for &module in modules {
-        let parts = usize::from(module.0.bypass_diodes.max(1));
-        if let Some(shaded) = row.get_mut(start..start + parts) {
-            cover(&casters, module, sun, shaded);
-        }
-        start += parts;
-    }
 }
 
 /// Writes in `shaded` how much of each of the module's substrings lies in shade under `sun`:

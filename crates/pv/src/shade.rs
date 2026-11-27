@@ -5,6 +5,8 @@ use crate::{ModuleType, Occluder, Place, Plane, Point, Sun};
 /// Sample points per substring, edge to edge: across its strip, and along the module's long side.
 const ACROSS: u32 = 3;
 const ALONG: u32 = 9;
+/// Samples per substring.
+const SAMPLES: usize = (ACROSS * ALONG) as usize;
 /// What the samples weigh, as the trapezoid rule over the substring: a node's share of the
 /// substring's sky closed is the shaded samples' weight over this.
 pub const WHOLE: u8 = 4 * 16;
@@ -20,6 +22,8 @@ const SLACK: f64 = 1e-9;
 /// The cosine of incidence from which a module's own plane rules casters out; below it a ray
 /// gains too little height per metre to tell the plane from what lies in it.
 const FACING: f64 = 1e-4;
+/// Minimum height above a module's plane that can shade it when `facing >= FACING`.
+const MIN_ABOVE: f64 = CLEARANCE * FACING / 2.0;
 
 /// What casts beam shade under one sun.
 pub struct Casters {
@@ -253,14 +257,29 @@ impl Caster {
         })
     }
 
+    /// Whether a ray toward the sun, `ray`, from any of the module's samples could meet it
+    /// (ignoring the module's own plane check).
+    fn coverage(&self, face: &Face, ray: Point) -> Coverage {
+        match &self.shape {
+            Shape::Triangle(triangle) => triangle.coverage(face),
+            Shape::Sphere { .. } | Shape::Cylinder { .. } | Shape::Cone { .. } => {
+                let to = sub(self.centre, face.centre);
+                let along = dot(to, ray);
+                let apart = (self.radius + face.reach).mul_add(1.0 + SLACK, SLACK);
+                if along >= -apart && along.mul_add(-along, dot(to, to)) <= apart * apart {
+                    Coverage::Partial
+                } else {
+                    Coverage::None
+                }
+            }
+        }
+    }
+
     /// Whether a ray toward the sun, `ray`, from any of the module's samples could meet it. It
     /// cannot when the caster lies behind the module along the ray, beside the rays, or on or
     /// behind the module's own plane.
     fn reaches(&self, face: &Face, ray: Point) -> bool {
-        let to = sub(self.centre, face.centre);
-        let along = dot(to, ray);
-        let apart = (self.radius + face.reach).mul_add(1.0 + SLACK, SLACK);
-        if along < -apart || along.mul_add(-along, dot(to, to)) > apart * apart {
+        if matches!(self.coverage(face, ray), Coverage::None) {
             return false;
         }
         let facing = dot(face.normal, ray);
@@ -276,7 +295,7 @@ impl Caster {
                 heights.into_iter().fold(f64::MIN, f64::max)
             }
             Shape::Sphere { .. } | Shape::Cylinder { .. } | Shape::Cone { .. } => {
-                dot(to, face.normal) + self.radius
+                dot(sub(self.centre, face.centre), face.normal) + self.radius
             }
         };
         above > CLEARANCE * facing / 2.0
@@ -285,7 +304,7 @@ impl Caster {
     /// Whether the ray from `origin` toward the sun, `ray`, meets it.
     fn blocks(&self, origin: Point, ray: Point) -> bool {
         match self.shape {
-            Shape::Triangle(ref triangle) => triangle.blocks(origin, ray),
+            Shape::Triangle(ref triangle) => triangle.blocks(origin),
             Shape::Sphere { radius } => {
                 let to = sub(origin, self.centre);
                 let b = dot(ray, to);
@@ -361,14 +380,34 @@ pub fn cross(a: Point, b: Point) -> Point {
     ]
 }
 
-/// A triangle under one ray direction, by Möller and Trumbore 1997: what every ray shares.
+/// How much of a module's bounding ball a caster covers along one ray direction.
+#[derive(Clone, Copy)]
+enum Coverage {
+    None,
+    Partial,
+    Full,
+}
+
+fn scale(p: Point, s: f64) -> Point {
+    [p[0] * s, p[1] * s, p[2] * s]
+}
+
+fn norm(p: Point) -> f64 {
+    dot(p, p).sqrt()
+}
+
+/// A triangle under one ray direction, by Möller and Trumbore 1997: `u`, `v` and `t` are each
+/// linear in the ray origin, so one dot product per axis tests a sample or culls a whole module.
 struct Triangle {
     corners: [Point; 3],
     first: Point,
-    edge: Point,
-    other: Point,
-    normal: Point,
-    det: f64,
+    vec_u: Point,
+    vec_v: Point,
+    vec_t: Point,
+    len_u: f64,
+    len_v: f64,
+    len_uv: f64,
+    len_t: f64,
 }
 
 impl Triangle {
@@ -376,28 +415,435 @@ impl Triangle {
     fn new(ray: Point, corners: [Point; 3]) -> Option<Self> {
         let [first, second, third] = corners;
         let (edge, other) = (sub(second, first), sub(third, first));
+        Self::from_prepared(ray, corners, edge, other, cross(edge, other))
+    }
+
+    fn from_prepared(
+        ray: Point,
+        corners: [Point; 3],
+        edge: Point,
+        other: Point,
+        tri_normal: Point,
+    ) -> Option<Self> {
         let normal = cross(ray, other);
         let det = dot(edge, normal);
-        (det.abs() >= 1e-12).then_some(Self {
+        if det.abs() < 1e-12 {
+            return None;
+        }
+        let inv = 1.0 / det;
+        let vec_u = scale(normal, inv);
+        let vec_v = scale(cross(edge, ray), inv);
+        let vec_t = scale(tri_normal, inv);
+        let uv = [
+            vec_u[0] + vec_v[0],
+            vec_u[1] + vec_v[1],
+            vec_u[2] + vec_v[2],
+        ];
+        Some(Self {
             corners,
-            first,
-            edge,
-            other,
-            normal,
-            det,
+            first: corners[0],
+            vec_u,
+            vec_v,
+            vec_t,
+            len_u: norm(vec_u),
+            len_v: norm(vec_v),
+            len_uv: norm(uv),
+            len_t: norm(vec_t),
         })
     }
 
-    fn blocks(&self, origin: Point, ray: Point) -> bool {
+    /// Exact conservative test of the module's bounding ball against the triangle's extruded prism.
+    fn coverage(&self, face: &Face) -> Coverage {
+        let r = face.reach.mul_add(1.0 + SLACK, SLACK);
+        let to = sub(face.centre, self.first);
+        let t = dot(to, self.vec_t);
+        let dt = r * self.len_t;
+        if t + dt <= CLEARANCE {
+            return Coverage::None;
+        }
+        let u = dot(to, self.vec_u);
+        let du = r * self.len_u;
+        if u + du < 0.0 || u - du > 1.0 {
+            return Coverage::None;
+        }
+        let v = dot(to, self.vec_v);
+        let dv = r * self.len_v;
+        if v + dv < 0.0 || v - dv > 1.0 {
+            return Coverage::None;
+        }
+        let uv = u + v;
+        let duv = r * self.len_uv;
+        if uv - duv > 1.0 {
+            return Coverage::None;
+        }
+        if t - dt > CLEARANCE && u - du >= 0.0 && v - dv >= 0.0 && uv + duv <= 1.0 {
+            return Coverage::Full;
+        }
+        Coverage::Partial
+    }
+
+    fn blocks(&self, origin: Point) -> bool {
         let to = sub(origin, self.first);
-        let u = dot(to, self.normal) / self.det;
+        let u = dot(to, self.vec_u);
         if !(0.0..=1.0).contains(&u) {
             return false;
         }
-        let turned = cross(to, self.edge);
-        let v = dot(ray, turned) / self.det;
-        let distance = dot(self.other, turned) / self.det;
-        v >= 0.0 && u + v <= 1.0 && distance > CLEARANCE
+        let v = dot(to, self.vec_v);
+        v >= 0.0 && u + v <= 1.0 && dot(to, self.vec_t) > CLEARANCE
+    }
+}
+
+/// An occluder's sun-independent bounding ball and triangle edges, prepared once for a full sky
+/// grid trace.
+struct PreparedOccluder {
+    centre: Point,
+    radius: f64,
+    shape: PreparedShape,
+}
+
+enum PreparedShape {
+    Triangle {
+        corners: [Point; 3],
+        edge: Point,
+        other: Point,
+        tri_normal: Point,
+    },
+    Sphere {
+        radius: f64,
+    },
+    Cylinder {
+        base: Point,
+        radius: f64,
+        height: f64,
+    },
+    Cone {
+        base: Point,
+        radius: f64,
+        height: f64,
+    },
+}
+
+impl PreparedOccluder {
+    fn new(occluder: &Occluder) -> Self {
+        match *occluder {
+            Occluder::Triangle(corners) => Self::triangle(corners),
+            Occluder::Sphere { centre, radius } => Self {
+                centre,
+                radius: radius.abs(),
+                shape: PreparedShape::Sphere { radius },
+            },
+            Occluder::Cylinder {
+                base,
+                radius,
+                height,
+            } => Self::upright(
+                base,
+                radius,
+                height,
+                PreparedShape::Cylinder {
+                    base,
+                    radius,
+                    height,
+                },
+            ),
+            Occluder::Cone {
+                base,
+                radius,
+                height,
+            } => Self::upright(
+                base,
+                radius,
+                height,
+                PreparedShape::Cone {
+                    base,
+                    radius,
+                    height,
+                },
+            ),
+        }
+    }
+
+    fn triangle(corners: [Point; 3]) -> Self {
+        let [first, second, third] = corners;
+        let centre = [
+            (first[0] + second[0] + third[0]) / 3.0,
+            (first[1] + second[1] + third[1]) / 3.0,
+            (first[2] + second[2] + third[2]) / 3.0,
+        ];
+        let far = corners.map(|p| dot(sub(p, centre), sub(p, centre)));
+        let (edge, other) = (sub(second, first), sub(third, first));
+        Self {
+            centre,
+            radius: far.into_iter().fold(0.0, f64::max).sqrt(),
+            shape: PreparedShape::Triangle {
+                corners,
+                edge,
+                other,
+                tri_normal: cross(edge, other),
+            },
+        }
+    }
+
+    fn upright(base: Point, radius: f64, height: f64, shape: PreparedShape) -> Self {
+        Self {
+            centre: offset(base, [0.0, 0.0, 1.0], height / 2.0),
+            radius: radius.hypot(height / 2.0),
+            shape,
+        }
+    }
+
+    fn above(&self, face: &Face) -> f64 {
+        match &self.shape {
+            PreparedShape::Triangle { corners, .. } => corners
+                .map(|p| dot(sub(p, face.centre), face.normal))
+                .into_iter()
+                .fold(f64::MIN, f64::max),
+            PreparedShape::Sphere { .. }
+            | PreparedShape::Cylinder { .. }
+            | PreparedShape::Cone { .. } => {
+                dot(sub(self.centre, face.centre), face.normal) + self.radius
+            }
+        }
+    }
+
+    fn under(&self, ray: Point) -> Option<Caster> {
+        let shape = match self.shape {
+            PreparedShape::Triangle {
+                corners,
+                edge,
+                other,
+                tri_normal,
+            } => Shape::Triangle(Triangle::from_prepared(
+                ray, corners, edge, other, tri_normal,
+            )?),
+            PreparedShape::Sphere { radius } => Shape::Sphere { radius },
+            PreparedShape::Cylinder {
+                base,
+                radius,
+                height,
+            } => Shape::Cylinder {
+                base,
+                radius,
+                height,
+            },
+            PreparedShape::Cone {
+                base,
+                radius,
+                height,
+            } => Shape::Cone {
+                base,
+                radius,
+                height,
+            },
+        };
+        Some(Caster {
+            centre: self.centre,
+            radius: self.radius,
+            shape,
+        })
+    }
+}
+
+/// One placed module's sun-independent geometry, sample points, and occluders rising above its
+/// plane.
+struct PreparedModule {
+    face: Face,
+    /// Sample points `(origin, weight)`, `SAMPLES` per substring in order.
+    samples: Vec<(Point, u8)>,
+    /// `(occluder_index, above_plane)` for every occluder with `above > MIN_ABOVE`.
+    above: Vec<(usize, f64)>,
+}
+
+impl PreparedModule {
+    fn new(
+        module_type: &ModuleType,
+        plane: Plane,
+        at: Place,
+        occluders: &[PreparedOccluder],
+    ) -> Self {
+        let (tilt, azimuth) = (plane.tilt.to_radians(), plane.azimuth.to_radians());
+        let up_slope = [
+            azimuth.sin() * tilt.cos(),
+            azimuth.cos() * tilt.cos(),
+            tilt.sin(),
+        ];
+        let across_slope = [azimuth.cos(), -azimuth.sin(), 0.0];
+        let face = Face {
+            centre: at.centre,
+            normal: cross(across_slope, up_slope),
+            reach: module_type.width.hypot(module_type.height) / 2.0,
+        };
+        let (long, short) = if at.landscape {
+            (across_slope, up_slope)
+        } else {
+            (up_slope, across_slope)
+        };
+        let parts = module_type.bypass_diodes.max(1);
+        let mut pts = Vec::with_capacity(usize::from(parts) * SAMPLES);
+        for part in 0..parts {
+            for (s, l, weight) in samples(module_type, parts, part) {
+                let origin = offset(offset(at.centre, short, s), long, l);
+                pts.push((origin, weight));
+            }
+        }
+        let above = occluders
+            .iter()
+            .enumerate()
+            .filter_map(|(i, o)| {
+                let h = o.above(&face);
+                (h > MIN_ABOVE).then_some((i, h))
+            })
+            .collect();
+        Self {
+            face,
+            samples: pts,
+            above,
+        }
+    }
+}
+
+/// Precomputed scene state for tracing every node of a [`crate::ShadingTable`] without per-node
+/// allocations or repeated trig.
+pub struct GridTracer {
+    occluders: Vec<PreparedOccluder>,
+    modules: Vec<(usize, Option<PreparedModule>)>,
+    casters: Vec<Option<Caster>>,
+    near: Vec<usize>,
+}
+
+impl GridTracer {
+    pub fn new(modules: &[(&ModuleType, &crate::Module)], occluders: &[Occluder]) -> Self {
+        let prepared: Vec<PreparedOccluder> = occluders.iter().map(PreparedOccluder::new).collect();
+        let modules = modules
+            .iter()
+            .map(|&(module_type, module)| {
+                let parts = usize::from(module_type.bypass_diodes.max(1));
+                let slot = module
+                    .place
+                    .map(|place| PreparedModule::new(module_type, module.plane, place, &prepared));
+                (parts, slot)
+            })
+            .collect();
+        let cap = prepared.len();
+        Self {
+            occluders: prepared,
+            modules,
+            casters: Vec::with_capacity(cap),
+            near: Vec::with_capacity(cap),
+        }
+    }
+
+    /// Traces one sky node's row into `row`, reusing internal scratch buffers.
+    pub fn mark(&mut self, sun: Sun, row: &mut [u8]) {
+        let ray = direction(sun);
+        let mut built = false;
+        let mut start = 0;
+        for i in 0..self.modules.len() {
+            let Some((parts, slot)) = self.modules.get(i) else {
+                continue;
+            };
+            let stop = start + *parts;
+            let Some(module) = slot else {
+                start = stop;
+                continue;
+            };
+            let facing = dot(module.face.normal, ray);
+            if facing <= 0.0 || (facing >= FACING && module.above.is_empty()) {
+                start = stop;
+                continue;
+            }
+            if !built {
+                self.casters.clear();
+                self.casters
+                    .extend(self.occluders.iter().map(|o| o.under(ray)));
+                built = true;
+            }
+            if let Some(shaded) = row.get_mut(start..stop) {
+                let full = collect_near(module, facing, ray, &self.casters, &mut self.near);
+                cover_near(module, full, ray, (&self.casters, &self.near), shaded);
+            }
+            start = stop;
+        }
+    }
+}
+
+/// Fills `near` with the indices of casters that may partially cover `module`. Returns `true` if
+/// one caster covers the whole module, so every substring is fully shaded.
+fn collect_near(
+    module: &PreparedModule,
+    facing: f64,
+    ray: Point,
+    casters: &[Option<Caster>],
+    near: &mut Vec<usize>,
+) -> bool {
+    near.clear();
+    if facing >= FACING {
+        return collect_above(module, CLEARANCE * facing / 2.0, ray, casters, near);
+    }
+    for (idx, caster) in casters.iter().enumerate() {
+        let Some(caster) = caster else { continue };
+        match caster.coverage(&module.face, ray) {
+            Coverage::Full => return true,
+            Coverage::Partial => near.push(idx),
+            Coverage::None => {}
+        }
+    }
+    false
+}
+
+fn collect_above(
+    module: &PreparedModule,
+    threshold: f64,
+    ray: Point,
+    casters: &[Option<Caster>],
+    near: &mut Vec<usize>,
+) -> bool {
+    for &(idx, height) in &module.above {
+        if height <= threshold {
+            continue;
+        }
+        let Some(caster) = casters.get(idx).and_then(Option::as_ref) else {
+            continue;
+        };
+        match caster.coverage(&module.face, ray) {
+            Coverage::Full => return true,
+            Coverage::Partial => near.push(idx),
+            Coverage::None => {}
+        }
+    }
+    false
+}
+
+fn any_blocks(casters: &[Option<Caster>], near: &[usize], origin: Point, ray: Point) -> bool {
+    near.iter().any(|&idx| {
+        casters
+            .get(idx)
+            .and_then(Option::as_ref)
+            .is_some_and(|c| c.blocks(origin, ray))
+    })
+}
+
+fn cover_near(
+    module: &PreparedModule,
+    full: bool,
+    ray: Point,
+    (casters, near): (&[Option<Caster>], &[usize]),
+    shaded: &mut [u8],
+) {
+    if full {
+        shaded.fill(WHOLE);
+        return;
+    }
+    if near.is_empty() {
+        return;
+    }
+    let (chunks, _) = module.samples.as_chunks::<SAMPLES>();
+    for (chunk, out) in chunks.iter().zip(shaded.iter_mut()) {
+        *out = chunk
+            .iter()
+            .filter(|&&(origin, _)| any_blocks(casters, near, origin, ray))
+            .map(|&(_, weight)| weight)
+            .sum();
     }
 }
 
